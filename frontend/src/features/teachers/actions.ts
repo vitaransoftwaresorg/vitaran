@@ -197,10 +197,16 @@ export async function updateSchoolTeacherAction(
   );
 }
 
+function revalidateSchoolTeacherViews() {
+  revalidatePath(`${SCHOOL_BASE_PATH}/classes`, "layout");
+  revalidatePath(`${SCHOOL_BASE_PATH}/teachers`, "layout");
+  revalidatePath(SCHOOL_BASE_PATH, "layout");
+}
+
 export async function setSchoolTeacherStatusAction(teacherId: string, status: TeacherStatus) {
   try {
     await teacherService.setSchoolTeacherStatus(teacherId, status);
-    revalidatePath(SCHOOL_BASE_PATH, "layout");
+    revalidateSchoolTeacherViews();
     return { ok: true as const };
   } catch {
     return { ok: false as const, message: "Could not update teacher status." };
@@ -210,7 +216,7 @@ export async function setSchoolTeacherStatusAction(teacherId: string, status: Te
 export async function deleteSchoolTeacherAction(teacherId: string) {
   try {
     await teacherService.deleteSchoolTeacher(teacherId);
-    revalidatePath(SCHOOL_BASE_PATH, "layout");
+    revalidateSchoolTeacherViews();
     return { ok: true as const };
   } catch {
     return { ok: false as const, message: "Could not delete teacher." };
@@ -247,6 +253,8 @@ export async function setAdminTeacherStatusAction(teacherId: string, status: Tea
   try {
     await teacherService.setAdminTeacherStatus(teacherId, status);
     revalidatePath(ADMIN_BASE_PATH, "layout");
+    // Class-teacher slots live on the school portal — keep Classes in sync.
+    revalidateSchoolTeacherViews();
     return { ok: true as const };
   } catch {
     return { ok: false as const, message: "Could not update teacher status." };

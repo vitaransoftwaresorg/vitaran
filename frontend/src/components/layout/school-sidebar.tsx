@@ -76,7 +76,12 @@ export function SchoolSidebar({ school }: { school: SchoolAccount }) {
                       tooltip={item.title}
                       isActive={isSchoolNavActive(item.href, pathname)}
                       onClick={() => isMobile && setOpenMobile(false)}
-                      render={<Link href={item.href} />}
+                      render={
+                        <Link
+                          href={item.href}
+                          prefetch={item.href === "/school/classes" ? false : undefined}
+                        />
+                      }
                       className="transition-colors duration-150 data-active:bg-white data-active:font-semibold data-active:text-brand-900"
                     >
                       <item.icon />

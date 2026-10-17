@@ -328,16 +328,18 @@ export async function listSchoolClasses(schoolId: string) {
 
   const classTeachers = await teacherRepository.listClassTeachers(schoolId);
   const bySlot = new Map(
-    classTeachers.map((row) => [
-      `${row.programId}:${row.classLevel}`,
-      {
-        id: row.id,
-        teacherId: row.teacherId,
-        name: row.teacher.name,
-        email: row.teacher.email,
-        status: row.teacher.status,
-      },
-    ]),
+    classTeachers
+      .filter((row) => row.teacher.status === TeacherStatus.ACTIVE)
+      .map((row) => [
+        `${row.programId}:${row.classLevel}`,
+        {
+          id: row.id,
+          teacherId: row.teacherId,
+          name: row.teacher.name,
+          email: row.teacher.email,
+          status: row.teacher.status,
+        },
+      ]),
   );
 
   return school.schoolPrograms.flatMap((program) =>
@@ -355,14 +357,16 @@ export async function listSchoolClasses(schoolId: string) {
 
 export async function listClassTeacherSlots(schoolId: string) {
   const rows = await teacherRepository.listClassTeachers(schoolId);
-  return rows.map((row) => ({
-    programId: row.programId,
-    programCode: row.program.code,
-    programName: row.program.name,
-    classLevel: row.classLevel,
-    teacherId: row.teacherId,
-    teacherName: row.teacher.name,
-  }));
+  return rows
+    .filter((row) => row.teacher.status === TeacherStatus.ACTIVE)
+    .map((row) => ({
+      programId: row.programId,
+      programCode: row.program.code,
+      programName: row.program.name,
+      classLevel: row.classLevel,
+      teacherId: row.teacherId,
+      teacherName: row.teacher.name,
+    }));
 }
 
 export async function listClassTeachersForTeacher(teacherId: string) {
@@ -382,6 +386,9 @@ export async function setClassTeacher(schoolId: string, input: SetClassTeacherIn
     const teacher = await teacherRepository.findTeacherById(input.teacherId);
     if (!teacher || teacher.schoolId !== schoolId) {
       throw new AppError(400, "Class teacher must belong to this school");
+    }
+    if (teacher.status !== TeacherStatus.ACTIVE) {
+      throw new AppError(400, "Only active teachers can be class teachers");
     }
   }
 

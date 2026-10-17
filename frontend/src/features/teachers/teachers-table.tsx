@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -18,6 +18,7 @@ import { SUBJECT_LABELS } from "@/features/schools/constants";
 import { cn } from "@/lib/utils";
 import type { Teacher, TeacherStatus } from "@/types/teacher";
 import { TEACHER_STATUS_LABELS } from "./constants";
+import { capitalizeWords } from "../schools/schema";
 
 type TeachersTableProps = {
   teachers: Teacher[];
@@ -34,7 +35,8 @@ export function TeachersTable({
   showSchool,
 }: TeachersTableProps) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
 
   if (teachers.length === 0) {
     return (
@@ -80,7 +82,7 @@ export function TeachersTable({
                 <TableCell className="py-3.5 pl-5">
                   <Link href={`${editHrefBase}/${teacher.id}`} className="group block min-w-0">
                     <p className="font-semibold text-neutral-950 group-hover:text-brand-800 group-hover:underline">
-                      {teacher.name}
+                      {capitalizeWords(teacher.name)}
                     </p>
                     <p className="mt-0.5 truncate text-xs text-neutral-500">{teacher.email}</p>
                   </Link>
@@ -117,20 +119,26 @@ export function TeachersTable({
                 <TableCell>
                   <div className="flex items-center gap-2.5">
                     <Switch
+                      className="cursor-pointer"
                       checked={active}
-                      disabled={pending}
+                      disabled={pendingId === teacher.id}
                       onCheckedChange={(checked) => {
+                        setPendingId(teacher.id);
                         startTransition(async () => {
                           const next = checked ? "ACTIVE" : "INACTIVE";
-                          const result = await onToggleStatus(teacher.id, next);
-                          if (!result.ok) {
-                            toast.error(result.message ?? "Update failed");
-                            return;
+                          try {
+                            const result = await onToggleStatus(teacher.id, next);
+                            if (!result.ok) {
+                              toast.error(result.message ?? "Update failed");
+                              return;
+                            }
+                            toast.success(
+                              `${teacher.name} is now ${TEACHER_STATUS_LABELS[next].toLowerCase()}`,
+                            );
+                            router.refresh();
+                          } finally {
+                            setPendingId(null);
                           }
-                          toast.success(
-                            `${teacher.name} is now ${TEACHER_STATUS_LABELS[next].toLowerCase()}`,
-                          );
-                          router.refresh();
                         });
                       }}
                     />

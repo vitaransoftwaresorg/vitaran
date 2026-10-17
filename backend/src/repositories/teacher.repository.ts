@@ -1,6 +1,6 @@
 import { prisma } from "../config/database.js";
 import type { Prisma, Subject } from "../generated/prisma/client.js";
-import type { TeacherStatus } from "../generated/prisma/enums.js";
+import { TeacherStatus } from "../generated/prisma/enums.js";
 import type { ListTeachersQuery } from "../schemas/teacher.schema.js";
 
 const teacherInclude = {
@@ -139,11 +139,17 @@ export async function updateTeacher(
   });
 }
 
-export function setTeacherStatus(id: string, status: TeacherStatus) {
-  return prisma.teacher.update({
-    where: { id },
-    data: { status },
-    include: teacherInclude,
+export async function setTeacherStatus(id: string, status: TeacherStatus) {
+  return prisma.$transaction(async (tx) => {
+    // Inactive teachers must not remain assigned as class teachers.
+    if (status === TeacherStatus.INACTIVE) {
+      await tx.classTeacher.deleteMany({ where: { teacherId: id } });
+    }
+    return tx.teacher.update({
+      where: { id },
+      data: { status },
+      include: teacherInclude,
+    });
   });
 }
 
