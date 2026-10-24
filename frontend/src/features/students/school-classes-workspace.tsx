@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -51,32 +51,43 @@ export function SchoolClassesWorkspace({
   const [students, setStudents] = useState(initialStudents);
   const [pending, startTransition] = useTransition();
 
-  const refreshList = useCallback(() => {
+  const rosterQuery = (focus: RosterFocus) =>
+    focus.kind === "section"
+      ? { sectionId: focus.row.id }
+      : { programId: focus.row.programId, classLevel: focus.row.classLevel, wholeClass: true };
+
+  const loadRoster = useCallback((focus: RosterFocus) => {
+    startTransition(async () => {
+      const items = await loadSchoolRosterAction(rosterQuery(focus));
+      setStudents(items);
+    });
+  }, []);
+
+  const refreshBoard = useCallback(() => {
     startTransition(() => {
       router.refresh();
     });
   }, [router]);
 
-  useEffect(() => {
-    setStudents(initialStudents);
-  }, [initialStudents]);
-
   const goBack = useCallback(() => {
-    setView((current) => {
-      if (current.name === "form") {
-        return current.student
-          ? { name: "student", focus: current.focus, student: current.student }
-          : { name: "roster", focus: current.focus };
-      }
-      if (current.name === "student") {
-        return { name: "roster", focus: current.focus };
-      }
-      if (current.name === "roster") {
-        return { name: "board" };
-      }
-      return current;
-    });
-  }, []);
+    if (view.name === "form") {
+      setView(
+        view.student
+          ? { name: "student", focus: view.focus, student: view.student }
+          : { name: "roster", focus: view.focus },
+      );
+      return;
+    }
+    if (view.name === "student") {
+      const focus = view.focus;
+      setView({ name: "roster", focus });
+      loadRoster(focus);
+      return;
+    }
+    if (view.name === "roster") {
+      setView({ name: "board" });
+    }
+  }, [view, loadRoster]);
 
   useRegisterInPageBack(view.name === "board" ? null : goBack);
 
@@ -96,14 +107,7 @@ export function SchoolClassesWorkspace({
 
   const openRoster = (focus: RosterFocus) => {
     setView({ name: "roster", focus });
-    startTransition(async () => {
-      const items = await loadSchoolRosterAction(
-        focus.kind === "section"
-          ? { sectionId: focus.row.id }
-          : { programId: focus.row.programId, classLevel: focus.row.classLevel, wholeClass: true },
-      );
-      setStudents(items);
-    });
+    loadRoster(focus);
   };
 
   const openStudent = (studentId: string, focus: RosterFocus) => {
@@ -150,7 +154,8 @@ export function SchoolClassesWorkspace({
             returnTo="/school/classes"
             stayInPlace
             onSuccess={(studentId) => {
-              refreshList();
+              refreshBoard();
+              loadRoster(focus);
               openStudent(studentId, focus);
             }}
           />
@@ -174,7 +179,8 @@ export function SchoolClassesWorkspace({
             setView({ name: "form", focus: view.focus, student: view.student })
           }
           onDeleted={() => {
-            refreshList();
+            refreshBoard();
+            loadRoster(view.focus);
             setView({ name: "roster", focus: view.focus });
           }}
         />
@@ -228,7 +234,10 @@ export function SchoolClassesWorkspace({
               setView({ name: "form", focus, student: detail });
             });
           }}
-          onDeleted={() => refreshList()}
+          onDeleted={() => {
+            refreshBoard();
+            loadRoster(focus);
+          }}
         />
       </div>
     );

@@ -70,6 +70,7 @@ export function saveAnswerKeyAnswers(
     explanations: Record<string, string>;
     printedAnswers?: Record<string, AnswerOption | string>;
     subjectRanges: SubjectRange[];
+    pattern?: "MAINS" | "ADVANCED";
   },
 ) {
   return adminApi<AnswerKeyDetail>(`${itemPath(BASE, id)}/answers`, { method: "PATCH", body: input });

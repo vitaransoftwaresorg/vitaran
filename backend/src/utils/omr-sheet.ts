@@ -1,6 +1,5 @@
 import sharp from "sharp";
 import { createWorker, PSM, type Worker } from "tesseract.js";
-import type { AnswerOption } from "./answer-key-parse.js";
 import {
   applyHomography,
   asGray,
@@ -29,7 +28,7 @@ export type OmRead = {
   examDate: string;
   testId: string;
   testCandidates: string[];
-  answers: Record<string, AnswerOption>;
+  answers: Record<string, string>;
   flags: OmFlag[];
   markCount: number;
   bubbles: OmBubble[];

@@ -62,6 +62,7 @@ export async function saveAnswerKeyAnswersAction(
     explanations: Record<string, string>;
     printedAnswers?: Record<string, string>;
     subjectRanges: SubjectRange[];
+    pattern?: "MAINS" | "ADVANCED";
   },
 ) {
   const result = await answerKeyService.saveAnswerKeyAnswers(id, input);

@@ -24,6 +24,7 @@ export const omScanSummarySelect = {
   scannedById: true,
   createdAt: true,
   updatedAt: true,
+  school: { select: { type: true } },
   answerKey: { select: { testNumber: true } },
   student: {
     select: {
@@ -122,6 +123,11 @@ export function upsertOmResultRelease(
 export function findOmScansForKey(answerKeyId: string) {
   return prisma.omScan.findMany({
     where: { answerKeyId },
-    select: { id: true, answers: true, studentId: true, testId: true },
+    select: {
+      id: true,
+      answers: true,
+      schoolId: true,
+      school: { select: { type: true } },
+    },
   });
 }

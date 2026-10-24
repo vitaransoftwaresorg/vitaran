@@ -7,6 +7,7 @@ export type OmSubjectScore = {
   correct: number;
   wrong: number;
   blank: number;
+  partial?: number;
   total: number;
   maxTotal: number;
 };
@@ -28,12 +29,13 @@ export type OmScan = {
     programCode: string;
     programName: string;
   };
-  answers: Record<string, "A" | "B" | "C" | "D">;
+  answers: Record<string, string>;
   flags: Array<{ question: number; reason: string }>;
   subjectScores: OmSubjectScore[];
   correct: number;
   wrong: number;
   blank: number;
+  partial?: number;
   total: number;
   maxTotal: number;
   rank: number | null;
@@ -47,9 +49,10 @@ export type OmScan = {
 
 export type OmQuestionReview = {
   question: number;
-  marked: "A" | "B" | "C" | "D" | null;
+  marked: string | null;
   key: string | null;
-  result: "OK" | "WRONG" | "BLANK" | "INVALID" | "BONUS";
+  result: "OK" | "PARTIAL" | "WRONG" | "BLANK" | "INVALID" | "BONUS";
+  marks: number;
   explanation: string;
   subject: Subject | null;
 };

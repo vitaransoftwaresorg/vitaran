@@ -1,4 +1,5 @@
 import { SUBJECT_LABELS } from "@/features/schools/constants";
+import { cn } from "@/lib/utils";
 import type { OmScan, OmScanResult } from "@/types/om-scan";
 
 export function OmScorecard({ scan, read }: { scan: OmScan; read?: OmScanResult["read"] }) {
@@ -32,8 +33,9 @@ export function OmScorecard({ scan, read }: { scan: OmScan; read?: OmScanResult[
           )}
         </div>
       </div>
-      <dl className="grid grid-cols-3 gap-2 text-center text-sm">
+      <dl className={cn("grid gap-2 text-center text-sm", (scan.partial ?? 0) > 0 ? "grid-cols-4" : "grid-cols-3")}>
         <Stat label="Correct" value={scan.correct} />
+        {(scan.partial ?? 0) > 0 ? <Stat label="Partial" value={scan.partial ?? 0} /> : null}
         <Stat label="Wrong" value={scan.wrong} />
         <Stat label="Blank" value={scan.blank} />
       </dl>

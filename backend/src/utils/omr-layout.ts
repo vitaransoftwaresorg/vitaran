@@ -24,9 +24,9 @@ const MARK_MIN = 0.05;
 const MARK_LEAD = 0.05;
 /** A printed letter never inks more of the core than this; above it the option is just popular. */
 const LETTER_INK_MAX = 0.15;
-/** Two options this dark and this close are both filled. */
+/** Every option this dark, and at least this share of the darkest option's fill, is filled. */
 const MARK_FILL = 0.22;
-const MARK_GAP = 0.08;
+const MARK_RATIO = 0.6;
 
 export type OmFlag = { question: number; reason: string };
 
@@ -43,7 +43,8 @@ export type OmBubble = {
 };
 
 export type OmLayout = {
-  answers: Record<string, AnswerOption>;
+  /** Filled options, A–D packed ("A", "ACD"). Empty questions are omitted. */
+  answers: Record<string, string>;
   flags: OmFlag[];
   markCount: number;
   bubbles: OmBubble[];
@@ -291,7 +292,7 @@ function localRowInk(img: Gray, x0: number, x1: number, yFrom: number) {
  * The four printed question groups are bands of bubbles separated by clear paper.
  * Their height and position change with how the photo was taken, so measure them on every sheet.
  */
-function findGroupBands(img: Gray, x0: number, x1: number): Box[] | null {
+function findGroupBands(img: Gray, x0: number, x1: number, rowGap: number): { found: Box[][]; guessed: Box[][] } {
   const W = img.width;
   const H = img.height;
   const yFrom = Math.round(H * 0.01);
@@ -301,7 +302,7 @@ function findGroupBands(img: Gray, x0: number, x1: number): Box[] | null {
   rows.forEach((row, i) => {
     const y = yFrom + i;
     if (row.ink <= 6) return;
-    if (current && y - current.y1 <= 4) {
+    if (current && y - current.y1 <= rowGap) {
       current.y1 = y;
       current.run = Math.max(current.run, row.run);
     } else {
@@ -315,6 +316,7 @@ function findGroupBands(img: Gray, x0: number, x1: number): Box[] | null {
     return h >= H * 0.04 && h <= H * 0.28 && band.run < W * 0.1;
   };
   const packs: Band[][] = [];
+  const guesses: Band[][] = [];
   for (let i = 0; i < bands.length; i++) {
     const found: Band[] = [];
     for (let j = i; j < bands.length && found.length < GROUPS && isGroup(bands[j]!); j++) found.push(bands[j]!);
@@ -327,18 +329,24 @@ function findGroupBands(img: Gray, x0: number, x1: number): Box[] | null {
     const start = next && next.y0 - c.y1 <= gap * 2 ? next.y0 : c.y1 + gap;
     const end = Math.min(H - 1, start + height);
     if (end - start < height * 0.8) continue;
-    packs.push([...found, { y0: start, y1: end, run: 0 }]);
+    guesses.push([...found, { y0: start, y1: end, run: 0 }]);
   }
-  if (packs.length === 0) return null;
-  const scored = packs.map((found) => {
-    const heights = found.map((band) => band.y1 - band.y0);
-    const mean = heights.reduce((sum, h) => sum + h, 0) / heights.length;
-    const spread = heights.reduce((sum, h) => sum + (h - mean) ** 2, 0) / heights.length;
-    const span = found[GROUPS - 1]!.y1 - found[0]!.y0;
-    return { found, score: span - spread * 4 };
-  });
-  scored.sort((a, b) => b.score - a.score);
-  return scored[0]!.found.map(({ y0, y1 }) => ({ x0, x1, y0, y1 }));
+  const rank = (list: Band[][]) =>
+    list
+      .map((pack) => {
+        const heights = pack.map((band) => band.y1 - band.y0);
+        const gaps = pack.slice(1).map((band, k) => band.y0 - pack[k]!.y1);
+        const span = pack[GROUPS - 1]!.y1 - pack[0]!.y0;
+        return { pack, score: span - variance(heights) * 4 - variance(gaps) * 4 };
+      })
+      .sort((a, b) => b.score - a.score)
+      .map(({ pack }) => pack.map(({ y0, y1 }) => ({ x0, x1, y0, y1 })));
+  return { found: rank(packs), guessed: rank(guesses) };
+}
+
+function variance(values: number[]) {
+  const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+  return values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
 }
 
 /**
@@ -468,9 +476,8 @@ function pickMarked(cells: Array<{ option: AnswerOption; fill: number }>) {
   const best = ranked[0];
   const second = ranked[1];
   if (!best || best.fill < MARK_MIN) return { marked: [] as typeof cells };
-  if (second && second.fill >= MARK_FILL && best.fill - second.fill < MARK_GAP) {
-    return { marked: ranked.filter((cell) => cell.fill >= MARK_FILL) };
-  }
+  const filled = ranked.filter((cell) => cell.fill >= MARK_FILL && cell.fill >= best.fill * MARK_RATIO);
+  if (filled.length > 1) return { marked: filled };
   if (second && best.fill - second.fill < MARK_LEAD) return { marked: [] as typeof cells };
   return { marked: [best] };
 }
@@ -486,13 +493,24 @@ export function layoutOmrBubbles(rgba: Rgba): OmLayout {
     y0: Math.round(H * (fullSheet ? 0.3 : 0.02)),
     y1: Math.round(H * (fullSheet ? 0.9 : 0.98)),
   };
-  const bands = findGroupBands(img, Math.round(W * AREA.x0), Math.round(W * AREA.x1));
-  const measured = bands ? measuredBlocks(img, bands) : null;
+  // Crisp scans with faint outlines leave clear paper between bubble rows, so groups are also
+  // merged across a wider gap (still well under the gap between groups). Four groups seen on
+  // the sheet beat a guessed fourth, and a candidate only counts once all five columns are found.
+  const groupX0 = Math.round(W * AREA.x0);
+  const groupX1 = Math.round(W * AREA.x1);
+  const tight = findGroupBands(img, groupX0, groupX1, 4);
+  const wide = findGroupBands(img, groupX0, groupX1, Math.max(8, Math.round(H * 0.008)));
+  const candidates = [...tight.found, ...wide.found, ...tight.guessed, ...wide.guessed];
+  let measured: Block[] | null = null;
+  for (const bands of candidates.slice(0, 12)) {
+    measured = measuredBlocks(img, bands);
+    if (measured) break;
+  }
   const blocks = measured ?? fixedBlocks(img, search);
   const sheetPitch = median(blocks.flatMap((block) => (block.fit?.pitch != null ? [block.fit.pitch] : []))) || W * 0.03;
 
   const bubbles: OmBubble[] = [];
-  const answers: Record<string, AnswerOption> = {};
+  const answers: Record<string, string> = {};
   const flags: OmFlag[] = [];
   const radii: number[] = [];
 
@@ -545,8 +563,11 @@ export function layoutOmrBubbles(rgba: Rgba): OmLayout {
     const { marked } = pickMarked(
       cells.map((cell) => ({ option: cell.option, fill: Math.max(0, cell.fill - (baseline.get(`${c}${cell.option}`) ?? 0)) })),
     );
-    if (marked.length === 1) answers[String(question)] = marked[0]!.option;
-    else if (marked.length > 1) flags.push({ question, reason: "More than one option is filled" });
+    if (marked.length > 0) {
+      answers[String(question)] = ANSWER_OPTIONS.filter((option) =>
+        marked.some((cell) => cell.option === option),
+      ).join("");
+    }
   }
 
   return {

@@ -46,6 +46,13 @@ enum StudentStatus {
   INACTIVE
 }
 
+/// Mains: one bubble, ADD (any bubble = 4), B/C (either = 4).
+/// Advanced: multi-correct with partial marks; full 4 only when every correct option is filled.
+enum AnswerKeyPattern {
+  MAINS
+  ADVANCED
+}
+
 /// Admin-managed catalog: name, year, class range and subjects. Fully dynamic.
 model LearningProgram {
   id        String    @id @default(uuid()) @db.Uuid
@@ -296,8 +303,10 @@ model AnswerKey {
   printedAnswers Json? @map("printed_answers")
   /// Explanations as first parsed from the PDF (usually empty for scanned keys).
   printedExplanations Json? @map("printed_explanations")
-  /// Subject bands in paper order: MPC (75) or MPCB (100), 25 questions each.
+  /// Subject bands in paper order: MPC / PCB (75) or MPCB (100), 25 questions each.
   subjectRanges Json? @map("subject_ranges")
+  /// Mains vs Advanced marking. Detected from the PDF; admin can override.
+  pattern     AnswerKeyPattern @default(MAINS)
   /// Schools only see published answer keys.
   published   Boolean    @default(false)
   publishedAt DateTime?  @map("published_at") @db.Timestamptz(3)

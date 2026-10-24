@@ -5,8 +5,9 @@ import { readKeyGrid } from "./answer-key-grid.js";
 
 export const ANSWER_OPTIONS = ["A", "B", "C", "D"] as const;
 export type AnswerOption = (typeof ANSWER_OPTIONS)[number];
-/** Printed KEY cell: one option, two options ("B/C"), or a bonus ("ADD"). */
-export type KeyAnswer = AnswerOption | `${AnswerOption}/${AnswerOption}` | "ADD";
+/** ADD | single A–D | mains OR ("B/C") | advanced AND ("A,C,D"). */
+export type KeyAnswer = string;
+export type KeyPattern = "MAINS" | "ADVANCED";
 
 export type SubjectRange = {
   subject: Subject;
@@ -20,11 +21,13 @@ export type ParsedAnswerKey = {
   answers: Record<string, KeyAnswer>;
   explanations: Record<string, string>;
   subjectRanges: SubjectRange[];
+  pattern: KeyPattern;
 };
 
 const MARKS_PER_QUESTION = 4;
 const BLOCK = 25;
 const MPC = [Subject.MATHEMATICS, Subject.PHYSICS, Subject.CHEMISTRY] as const;
+const PCB = [Subject.PHYSICS, Subject.CHEMISTRY, Subject.BIOLOGY] as const;
 const MPCB = [...MPC, Subject.BIOLOGY] as const;
 
 const HEADING: Record<string, Subject> = {
@@ -44,19 +47,38 @@ export function parseKeyAnswer(value: unknown): KeyAnswer | null {
   if (typeof value !== "string") return null;
   const token = value.trim().toUpperCase();
   if (token === "ADD" || token === "BONUS" || token === "FREE") return "ADD";
+  const slash = token.includes("/");
+  const comma = token.includes(",");
   const parts = token
-    .split("/")
+    .split(/[,/]/)
     .map((part) => part.trim())
     .filter(isOption);
-  if (parts.length === 0) return null;
-  if (parts.length === 1) return parts[0]!;
-  const unique = [...new Set(parts)];
-  return unique.join("/") as KeyAnswer;
+  const packed =
+    parts.length === 0 && /^[A-D]{1,4}$/.test(token)
+      ? [...new Set(token.split(""))].filter(isOption)
+      : parts;
+  const unique = [...new Set(packed)];
+  if (unique.length === 0) return null;
+  if (unique.length === 1) return unique[0]!;
+  unique.sort();
+  return slash && !comma ? unique.join("/") : unique.join(",");
 }
 
 export function keyOptions(answer: KeyAnswer | null | undefined): AnswerOption[] {
   if (!answer || answer === "ADD") return [];
-  return answer.split("/").filter(isOption);
+  const split = answer.split(/[,/]/).filter(isOption);
+  const letters = split.length > 0 ? split : answer.replace(/[^A-D]/g, "").split("").filter(isOption);
+  return ANSWER_OPTIONS.filter((option) => letters.includes(option));
+}
+
+/** Mains B/C: any one listed option is full marks. */
+export function isOrKey(answer: KeyAnswer | null | undefined) {
+  return Boolean(answer && answer.includes("/") && !answer.includes(","));
+}
+
+/** Advanced A,C,D: every listed option is required for full marks. */
+export function isAndKey(answer: KeyAnswer | null | undefined) {
+  return Boolean(answer && answer !== "ADD" && keyOptions(answer).length > 1 && !isOrKey(answer));
 }
 
 export function isBonusKey(answer: KeyAnswer | null | undefined) {
@@ -64,7 +86,7 @@ export function isBonusKey(answer: KeyAnswer | null | undefined) {
 }
 
 export function matchesKey(marked: AnswerOption | null | undefined, expected: KeyAnswer) {
-  if (expected === "ADD") return true;
+  if (expected === "ADD") return Boolean(marked);
   return Boolean(marked && keyOptions(expected).includes(marked));
 }
 
@@ -97,13 +119,13 @@ async function cropBand(png: Buffer, top: number, height: number) {
 }
 
 function collectAnswers(text: string) {
-  const answers: Record<string, AnswerOption> = {};
-  for (const match of text.matchAll(/(\d{1,3})\s*[).:\-]\s*([A-D])(?:[A-D])?\b/g)) {
+  const answers: Record<string, KeyAnswer> = {};
+  const token =
+    /(\d{1,3})\s*[).:\-]\s*(Add|BONUS|FREE|[A-D](?:\s*[,/]\s*[A-D])+|[A-D]{2,4}|[A-D])(?![A-Za-z])/gi;
+  for (const match of text.matchAll(token)) {
     const question = Number(match[1]);
-    const option = match[2];
-    if (question >= 1 && question <= 200 && option && isOption(option)) {
-      answers[String(question)] = option;
-    }
+    const parsed = parseKeyAnswer(match[2]);
+    if (question >= 1 && question <= 200 && parsed) answers[String(question)] = parsed;
   }
   return answers;
 }
@@ -138,15 +160,26 @@ function rangesFor(subjects: readonly Subject[], last: number): SubjectRange[] {
     .filter((range) => range.to >= range.from && last >= range.from);
 }
 
-/** Friend’s rule: paper order is always M-P-C, plus Biology when there are 100 questions. */
+/** 75-q is MPC or PCB from headings; 100-q is MPCB. Same 25-bubble blocks either way. */
 function subjectOrder(headings: Subject[], last: number) {
-  const canonical = last > BLOCK * 3 ? MPCB : MPC;
-  const fromHeadings = canonical.filter((subject) => headings.includes(subject));
-  if (fromHeadings.length >= 3) return fromHeadings;
+  if (last > BLOCK * 3) {
+    const fromHeadings = MPCB.filter((subject) => headings.includes(subject));
+    return fromHeadings.length >= 3 ? fromHeadings : [...MPCB];
+  }
+  const pcb = PCB.filter((subject) => headings.includes(subject));
+  if (pcb.length === 3 && !headings.includes(Subject.MATHEMATICS)) return [...PCB];
+  const mpc = MPC.filter((subject) => headings.includes(subject));
+  if (mpc.length >= 3) return mpc;
   if (headings.includes(Subject.SCIENCE) && headings.length >= 2) {
     return [Subject.MATHEMATICS, Subject.SCIENCE].filter((subject) => headings.includes(subject));
   }
-  return [...canonical];
+  return [...MPC];
+}
+
+export function detectKeyPattern(text: string, answers: Record<string, KeyAnswer>): KeyPattern {
+  if (/one\s+or\s+more\s+than\s+one/i.test(text) || /multi[\s-]?correct/i.test(text)) return "ADVANCED";
+  if (Object.values(answers).some((answer) => answer.includes(","))) return "ADVANCED";
+  return "MAINS";
 }
 
 function explanationChunks(text: string) {
@@ -165,12 +198,12 @@ function explanationChunks(text: string) {
   return chunks;
 }
 
-function parseChunk(chunk: string): { answer: AnswerOption | null; explanation: string } {
+function parseChunk(chunk: string): { answer: KeyAnswer | null; explanation: string } {
   const answerMatch =
-    chunk.match(/Answer\s*:?\s*([A-D])\s*[\]).:]/i) ??
-    chunk.match(/^\s*([A-D])\s*[\]).:]/) ??
+    chunk.match(/Answer\s*:?\s*(ADD|[A-D](?:\s*[,/]\s*[A-D])*|[A-D]{2,4})/i) ??
+    chunk.match(/^\s*(ADD|[A-D](?:\s*[,/]\s*[A-D])*|[A-D]{2,4})\s*[\]).:]/) ??
     chunk.match(/\bmatches\s+([A-D])\b/i);
-  const answer = answerMatch?.[1] && isOption(answerMatch[1]) ? answerMatch[1] : null;
+  const answer = parseKeyAnswer(answerMatch?.[1] ?? "");
   const explMatch = chunk.match(/Explanation\s*:\s*([\s\S]+)/i);
   let explanation = (explMatch?.[1] ?? chunk.replace(/^[\s\S]*?Answer\s*:?[^\n]*\n?/i, "")).trim();
   explanation = explanation
@@ -199,10 +232,11 @@ export function parseAnswerKeyText(text: string): ParsedAnswerKey {
   const subjects = subjectOrder(headings, last || Object.keys(answers).length);
   const subjectRanges = rangesFor(subjects, last || subjects.length * BLOCK);
 
-  return { testId, answers, explanations, subjectRanges };
+  return { testId, answers, explanations, subjectRanges, pattern: detectKeyPattern(text, answers) };
 }
 
-const KEY_TOKEN = /(\d{1,3})\s*\)\s*(Add|BONUS|FREE|[A-D](?:\s*\/\s*[A-D])*)(?![A-Za-z])/gi;
+const KEY_TOKEN =
+  /(\d{1,3})\s*\)\s*(Add|BONUS|FREE|[A-D](?:\s*[,/]\s*[A-D])+|[A-D]{2,4}|[A-D])(?![A-Za-z])/gi;
 
 /** A key line is "1) C 2) A 3) B …"; prose never packs this many "n) X" pairs on one line. */
 function isKeyLine(line: string) {
@@ -211,7 +245,8 @@ function isKeyLine(line: string) {
 
 /**
  * Typed key list such as "1) C 2) A … 75) A".
- * "B/C" keeps both options. "60) Add" is a bonus (free marks).
+ * Mains: "B/C" (either is 4 marks), "60) Add" (any bubble = 4).
+ * Advanced: "11) A,C,D" (all required for 4; partial otherwise).
  */
 export function parseTextKey(text: string): ParsedAnswerKey | null {
   const lines = text.split(/\r?\n/);
@@ -241,6 +276,7 @@ export function parseTextKey(text: string): ParsedAnswerKey | null {
     answers,
     explanations,
     subjectRanges: rangesFor(subjects, last),
+    pattern: detectKeyPattern(text, answers),
   };
 }
 
@@ -259,7 +295,7 @@ export async function parseAnswerKeyPdf(pdf: Buffer): Promise<ParsedAnswerKey> {
     const last = lastQuestion(answers, []);
     const subjects = subjectOrder([], last || Object.keys(answers).length);
     const subjectRanges = rangesFor(subjects, last || subjects.length * BLOCK);
-    return { testId: null, answers, explanations: {}, subjectRanges };
+    return { testId: null, answers, explanations: {}, subjectRanges, pattern: "MAINS" };
   } finally {
     await parser.destroy();
   }
@@ -278,10 +314,28 @@ export function asAnswers(value: unknown): Record<string, KeyAnswer> {
 
 export function asMarkedAnswers(value: unknown): Record<string, AnswerOption> {
   const answers: Record<string, AnswerOption> = {};
-  for (const [question, option] of Object.entries(asAnswers(value))) {
-    if (isOption(option)) answers[question] = option;
+  for (const [question, options] of Object.entries(asMarkedSelections(value))) {
+    if (options[0]) answers[question] = options[0];
   }
   return answers;
+}
+
+/** Every filled bubble on a question, in A–D order. Accepts "A", "ACD", "A,C,D", "B/C". */
+export function asMarkedSelections(value: unknown): Record<string, AnswerOption[]> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const answers: Record<string, AnswerOption[]> = {};
+  for (const [question, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (!/^\d+$/.test(question)) continue;
+    const token = typeof raw === "string" ? raw.toUpperCase() : "";
+    const letters = token.replace(/[^A-D]/g, "").split("").filter(isOption);
+    const unique = ANSWER_OPTIONS.filter((option) => letters.includes(option));
+    if (unique.length > 0) answers[question] = unique;
+  }
+  return answers;
+}
+
+export function formatMarked(options: AnswerOption[]) {
+  return ANSWER_OPTIONS.filter((option) => options.includes(option)).join("");
 }
 
 export function asExplanations(value: unknown): Record<string, string> {

@@ -6,6 +6,7 @@ export const answerKeySummarySelect = {
   id: true,
   programCode: true,
   type: true,
+  pattern: true,
   testId: true,
   testNumber: true,
   classLevel: true,

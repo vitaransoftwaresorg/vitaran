@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SchoolType, Subject } from "../generated/prisma/enums.js";
+import { AnswerKeyPattern, SchoolType, Subject } from "../generated/prisma/enums.js";
 
 const programCode = z.string().trim().min(1).max(64);
 
@@ -36,7 +36,14 @@ const keyAnswer = z
   .string()
   .trim()
   .transform((value) => value.toUpperCase())
-  .pipe(z.string().regex(/^(ADD|[A-D](\/[A-D])*)$/, "Use A–D, two options like B/C, or ADD"));
+  .pipe(
+    z
+      .string()
+      .regex(
+        /^(ADD|[A-D]([,\/][A-D])*)$/,
+        "Use A–D, mains B/C, advanced A,C,D, or ADD",
+      ),
+  );
 
 export const saveAnswerKeyAnswersSchema = z.object({
   answers: z.record(questionKey, keyAnswer),
@@ -52,6 +59,7 @@ export const saveAnswerKeyAnswersSchema = z.object({
       }),
     )
     .default([]),
+  pattern: z.enum(AnswerKeyPattern).optional(),
 });
 
 export type UploadAnswerKeyQuery = z.infer<typeof uploadAnswerKeyQuerySchema>;

@@ -21,6 +21,7 @@ const TAB_LABELS: Record<Subject, string> = {
 
 const RESULT_BADGE: Record<OmQuestionReview["result"], { label: string; className: string }> = {
   OK: { label: "Correct", className: "bg-emerald-50 text-emerald-800" },
+  PARTIAL: { label: "Partial", className: "bg-amber-50 text-amber-800" },
   BONUS: { label: "Bonus", className: "bg-sky-50 text-sky-800" },
   WRONG: { label: "Wrong", className: "bg-rose-50 text-rose-800" },
   BLANK: { label: "Blank", className: "bg-neutral-100 text-neutral-600" },
@@ -31,6 +32,7 @@ function countsOf(rows: OmQuestionReview[]) {
   return {
     ALL: rows.length,
     OK: rows.filter((row) => row.result === "OK" || row.result === "BONUS").length,
+    PARTIAL: rows.filter((row) => row.result === "PARTIAL").length,
     BONUS: rows.filter((row) => row.result === "BONUS").length,
     WRONG: rows.filter((row) => row.result === "WRONG").length,
     BLANK: rows.filter((row) => row.result === "BLANK").length,
@@ -39,7 +41,7 @@ function countsOf(rows: OmQuestionReview[]) {
 }
 
 function accuracyOf(counts: ReturnType<typeof countsOf>) {
-  const attempted = counts.OK + counts.WRONG;
+  const attempted = counts.OK + counts.PARTIAL + counts.WRONG;
   return attempted ? Math.round((counts.OK / attempted) * 1000) / 10 : null;
 }
 
@@ -47,10 +49,12 @@ function stripItems(counts: ReturnType<typeof countsOf>) {
   const accuracy = accuracyOf(counts);
   const items = [
     { label: "Correct", value: counts.OK, tone: "good" as const },
+    { label: "Partial", value: counts.PARTIAL, tone: "warn" as const },
     { label: "Wrong", value: counts.WRONG, tone: "bad" as const },
     { label: "Blank", value: counts.BLANK },
     { label: "Accuracy", value: accuracy != null ? `${accuracy}%` : "—", tone: "brand" as const },
   ];
+  if (counts.PARTIAL === 0) items.splice(1, 1);
   if (counts.INVALID > 0) items.splice(2, 0, { label: "Invalid", value: counts.INVALID, tone: "warn" as const });
   return items;
 }
@@ -68,6 +72,7 @@ function SubjectPanel({ rows }: { rows: OmQuestionReview[] }) {
             ["ALL", "All"],
             ["WRONG", "Wrong"],
             ["OK", "Correct"],
+            ["PARTIAL", "Partial"],
             ["BONUS", "Bonus"],
             ["BLANK", "Blank"],
             ["INVALID", "Invalid"],
@@ -111,12 +116,14 @@ function QuestionRow({ row }: { row: OmQuestionReview }) {
   const [open, setOpen] = useState(false);
   const summary =
     row.result === "INVALID"
-      ? "More than one option was filled."
+      ? "Could not read this question."
       : row.result === "BONUS"
-        ? "Bonus question — marks given."
-        : row.marked
-          ? `You marked ${row.marked} · Key ${row.key ?? "—"}`
-          : `Left blank · Key ${row.key ?? "—"}`;
+        ? `Bonus — ${row.marks} marks.`
+        : row.result === "PARTIAL"
+          ? `You marked ${row.marked} · Key ${row.key ?? "—"} · ${row.marks} marks`
+          : row.marked
+            ? `You marked ${row.marked} · Key ${row.key ?? "—"} · ${row.marks} marks`
+            : `Left blank · Key ${row.key ?? "—"}`;
 
   return (
     <li className="rounded-xl border border-brand-100 bg-white px-4 py-3.5">
@@ -127,8 +134,8 @@ function QuestionRow({ row }: { row: OmQuestionReview }) {
             <Bubble
               key={option}
               option={option}
-              marked={row.marked === option}
-              isKey={Boolean(row.key && row.key !== "ADD" && row.key.split("/").includes(option))}
+              marked={Boolean(row.marked && row.marked.replace(/[^A-D]/g, "").includes(option))}
+              isKey={Boolean(row.key && row.key !== "ADD" && row.key.split(/[,/]/).includes(option))}
             />
           ))}
         </div>

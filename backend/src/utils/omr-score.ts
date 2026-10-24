@@ -1,11 +1,16 @@
-import type { Subject } from "../generated/prisma/enums.js";
+import type { SchoolType, Subject } from "../generated/prisma/enums.js";
 import {
+  ANSWER_OPTIONS,
   asAnswers,
-  asMarkedAnswers,
+  asMarkedSelections,
   asSubjectRanges,
+  formatMarked,
+  isAndKey,
   isBonusKey,
-  matchesKey,
+  isOrKey,
+  keyOptions,
   type AnswerOption,
+  type KeyAnswer,
   type SubjectRange,
 } from "./answer-key-parse.js";
 
@@ -16,28 +21,80 @@ export type SubjectScore = {
   correct: number;
   wrong: number;
   blank: number;
+  partial: number;
   total: number;
   maxTotal: number;
 };
 
 export type OmScore = {
-  answers: Record<string, AnswerOption>;
+  answers: Record<string, string>;
   subjectScores: SubjectScore[];
   correct: number;
   wrong: number;
   blank: number;
+  partial: number;
   total: number;
   maxTotal: number;
 };
 
-const MARKS = 4;
+export type QuestionResult = "OK" | "PARTIAL" | "BONUS" | "WRONG" | "BLANK";
+
+export type QuestionScore = {
+  marked: AnswerOption[];
+  marks: number;
+  result: QuestionResult;
+};
+
+const FULL = 4;
+
+export function wrongPenaltyFor(schoolType: SchoolType | string | null | undefined) {
+  return schoolType === "CUSTOMIZED" ? -1 : 0;
+}
+
+/**
+ * Mains: one bubble. ADD = 4 if any bubble else 0. B/C = 4 if the one bubble is B or C.
+ * Advanced A,C,D: +1 per correct option with no extras; 4 only when every correct option is filled.
+ * Wrong combo: customized −1, regular 0. Blank is always 0.
+ */
+export function scoreQuestion(
+  marked: AnswerOption[],
+  expected: KeyAnswer,
+  wrongPenalty: number,
+): QuestionScore {
+  const got = ANSWER_OPTIONS.filter((option) => marked.includes(option));
+  if (isBonusKey(expected)) {
+    return got.length > 0 ? { marked: got, marks: FULL, result: "BONUS" } : { marked: got, marks: 0, result: "BLANK" };
+  }
+  const want = keyOptions(expected);
+  if (got.length === 0) return { marked: got, marks: 0, result: "BLANK" };
+
+  if (isOrKey(expected)) {
+    if (got.length === 1 && want.includes(got[0]!)) {
+      return { marked: got, marks: FULL, result: "OK" };
+    }
+    return { marked: got, marks: wrongPenalty, result: "WRONG" };
+  }
+
+  if (isAndKey(expected)) {
+    if (got.some((option) => !want.includes(option))) {
+      return { marked: got, marks: wrongPenalty, result: "WRONG" };
+    }
+    if (got.length === want.length) return { marked: got, marks: FULL, result: "OK" };
+    return { marked: got, marks: got.length, result: "PARTIAL" };
+  }
+
+  if (got.length === 1 && got[0] === want[0]) return { marked: got, marks: FULL, result: "OK" };
+  return { marked: got, marks: wrongPenalty, result: "WRONG" };
+}
 
 export function scoreOmrAnswers(
   markedInput: unknown,
   keyAnswers: unknown,
   rangesInput: unknown,
+  options: { wrongPenalty?: number } = {},
 ): OmScore {
-  const marked = asMarkedAnswers(markedInput);
+  const wrongPenalty = options.wrongPenalty ?? 0;
+  const marked = asMarkedSelections(markedInput);
   const key = asAnswers(keyAnswers);
   const keyQuestions = Object.keys(key)
     .map(Number)
@@ -48,7 +105,7 @@ export function scoreOmrAnswers(
     asSubjectRanges(rangesInput).length > 0
       ? asSubjectRanges(rangesInput)
       : last > 0
-        ? [{ subject: "MATHEMATICS" as Subject, from: 1, to: last, maxMarks: last * MARKS }]
+        ? [{ subject: "MATHEMATICS" as Subject, from: 1, to: last, maxMarks: last * FULL }]
         : [];
 
   const questions =
@@ -65,28 +122,38 @@ export function scoreOmrAnswers(
     correct: 0,
     wrong: 0,
     blank: 0,
+    partial: 0,
     total: 0,
-    maxTotal: range.maxMarks || (range.to - range.from + 1) * MARKS,
+    maxTotal: range.maxMarks || (range.to - range.from + 1) * FULL,
   }));
 
   let correct = 0;
   let wrong = 0;
   let blank = 0;
+  let partial = 0;
+  let total = 0;
+  const answers: Record<string, string> = {};
 
   for (const question of questions) {
     const expected = key[String(question)];
-    const got = marked[String(question)];
+    const got = marked[String(question)] ?? [];
     const band = subjectScores.find((row) => question >= row.from && question <= row.to);
     if (!expected) continue;
-    if (isBonusKey(expected) || matchesKey(got, expected)) {
+    answers[String(question)] = formatMarked(got);
+    const scored = scoreQuestion(got, expected, wrongPenalty);
+    total += scored.marks;
+    if (band) band.total += scored.marks;
+    if (scored.result === "OK" || scored.result === "BONUS") {
       correct += 1;
-      if (band) {
-        band.correct += 1;
-        band.total += MARKS;
-      }
+      if (band) band.correct += 1;
       continue;
     }
-    if (!got) {
+    if (scored.result === "PARTIAL") {
+      partial += 1;
+      if (band) band.partial += 1;
+      continue;
+    }
+    if (scored.result === "BLANK") {
       blank += 1;
       if (band) band.blank += 1;
       continue;
@@ -96,12 +163,13 @@ export function scoreOmrAnswers(
   }
 
   return {
-    answers: marked,
+    answers,
     subjectScores,
     correct,
     wrong,
     blank,
-    total: correct * MARKS,
-    maxTotal: subjectScores.reduce((sum, row) => sum + row.maxTotal, 0) || questions.length * MARKS,
+    partial,
+    total,
+    maxTotal: subjectScores.reduce((sum, row) => sum + row.maxTotal, 0) || questions.length * FULL,
   };
 }

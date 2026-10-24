@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { SUBJECT_LABELS } from "@/features/schools/constants";
 import { cn } from "@/lib/utils";
-import type { AnswerKeyDetail, AnswerOption, KeyAnswer, SubjectRange } from "@/types/answer-key";
-import { isBonusKey, keyOptions } from "@/types/answer-key";
+import type { AnswerKeyDetail, AnswerOption, KeyAnswer, KeyPattern, SubjectRange } from "@/types/answer-key";
+import { formatKeyAnswer, isBonusKey, keyOptions, rewriteKeyAnswers } from "@/types/answer-key";
 import { reparseAnswerKeyAction, saveAnswerKeyAnswersAction } from "./actions";
 
 const OPTIONS: AnswerOption[] = ["A", "B", "C", "D"];
@@ -27,8 +27,9 @@ function snapshot(
   answers: Record<string, KeyAnswer>,
   explanations: Record<string, string>,
   ranges: SubjectRange[],
+  pattern: KeyPattern,
 ) {
-  return JSON.stringify({ answers, explanations, ranges });
+  return JSON.stringify({ answers, explanations, ranges, pattern });
 }
 
 export function AnswerKeyAnswersEditor({ answerKey, readOnly = false }: AnswerKeyAnswersEditorProps) {
@@ -37,8 +38,9 @@ export function AnswerKeyAnswersEditor({ answerKey, readOnly = false }: AnswerKe
   const [answers, setAnswers] = useState<Record<string, KeyAnswer>>(() => answerKey.answers);
   const [explanations, setExplanations] = useState<Record<string, string>>(() => answerKey.explanations);
   const [ranges, setRanges] = useState<SubjectRange[]>(() => answerKey.subjectRanges);
+  const [pattern, setPattern] = useState<KeyPattern>(() => answerKey.pattern ?? "MAINS");
   const [baseline, setBaseline] = useState(() =>
-    snapshot(answerKey.answers, answerKey.explanations, answerKey.subjectRanges),
+    snapshot(answerKey.answers, answerKey.explanations, answerKey.subjectRanges, answerKey.pattern ?? "MAINS"),
   );
 
   const [filter, setFilter] = useState<"all" | "filled" | "missing">("all");
@@ -48,8 +50,8 @@ export function AnswerKeyAnswersEditor({ answerKey, readOnly = false }: AnswerKe
   );
 
   const dirty = useMemo(
-    () => snapshot(answers, explanations, ranges) !== baseline,
-    [answers, explanations, ranges, baseline],
+    () => snapshot(answers, explanations, ranges, pattern) !== baseline,
+    [answers, explanations, ranges, pattern, baseline],
   );
   const totalQuestions = ranges.reduce((sum, range) => sum + Math.max(0, range.to - range.from + 1), 0);
   const answerCount = Object.keys(answers).length;
@@ -74,13 +76,15 @@ export function AnswerKeyAnswersEditor({ answerKey, readOnly = false }: AnswerKe
           explanations,
           printedAnswers,
           subjectRanges: ranges,
+          pattern,
         });
         setAnswers(saved.answers);
         setExplanations(saved.explanations);
         setPrintedAnswers(saved.printedAnswers ?? {});
         setPrintedExplanations(saved.printedExplanations ?? {});
         setRanges(saved.subjectRanges);
-        setBaseline(snapshot(saved.answers, saved.explanations, saved.subjectRanges));
+        setPattern(saved.pattern ?? pattern);
+        setBaseline(snapshot(saved.answers, saved.explanations, saved.subjectRanges, saved.pattern ?? pattern));
         toast.success("Saved");
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Could not save answers");
@@ -97,6 +101,10 @@ export function AnswerKeyAnswersEditor({ answerKey, readOnly = false }: AnswerKe
         setPrintedExplanations(parsed.printedExplanations ?? {});
         setExplanations(parsed.explanations);
         setRanges(parsed.subjectRanges);
+        if (parsed.pattern) {
+          setPattern(parsed.pattern);
+          setAnswers(rewriteKeyAnswers(parsed.answers, parsed.pattern));
+        }
         setFilter("all");
         toast.success(
           `Read ${parsed.answerCount} answers from the PDF KEY. Change only the options school reported, then save.`,
@@ -112,17 +120,38 @@ export function AnswerKeyAnswersEditor({ answerKey, readOnly = false }: AnswerKe
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-brand-100 bg-brand-50/50 px-4 py-3">
         <div>
           <p className="text-sm font-semibold text-neutral-900">
-            Test ID {answerKey.testId} · {paper} (
+            Test ID {answerKey.testId} · {paper} · {pattern === "ADVANCED" ? "Advanced" : "Mains"} (
             {ranges.map((range) => `${range.from}–${range.to}`).join(", ") || "no ranges yet"})
           </p>
           <p className="text-xs text-neutral-500">
             {readOnly
               ? "View only. Ask admin to change an option or explanation."
-              : "Change an option or explanation and save. School and the class teacher see those updates. You do not reprint the PDF."}
+              : pattern === "ADVANCED"
+                ? "Advanced: pick every correct option. Full 4 only when all are selected; otherwise +1 each. B/C is mains (either = 4)."
+                : "Mains: one option, or two like B/C (either = 4). Add = 4 if the student bubbles any option."}
           </p>
         </div>
         {!readOnly && (
           <div className="flex flex-wrap gap-2">
+            <div className="flex rounded-lg border border-neutral-200 bg-white p-0.5">
+              {(["MAINS", "ADVANCED"] as const).map((id) => (
+                <button
+                  key={id}
+                  type="button"
+                  disabled={pending}
+                  onClick={() => {
+                    setPattern(id);
+                    setAnswers((current) => rewriteKeyAnswers(current, id));
+                  }}
+                  className={cn(
+                    "rounded-md px-2.5 py-1.5 text-[11px] font-bold",
+                    pattern === id ? "bg-brand-900 text-white" : "text-neutral-600 hover:bg-neutral-50",
+                  )}
+                >
+                  {id === "ADVANCED" ? "Advanced" : "Mains"}
+                </button>
+              ))}
+            </div>
             <Button type="button" variant="outline" onClick={reparse} disabled={pending}>
               {parsing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
               {parsing ? "Reading PDF…" : "Re-parse PDF"}
@@ -209,7 +238,7 @@ export function AnswerKeyAnswersEditor({ answerKey, readOnly = false }: AnswerKe
                                 else picked.add(option);
                                 const next = { ...current };
                                 if (picked.size === 0) delete next[key];
-                                else next[key] = [...picked].join("/") as KeyAnswer;
+                                else next[key] = formatKeyAnswer([...picked] as AnswerOption[], pattern);
                                 return next;
                               });
                             }}

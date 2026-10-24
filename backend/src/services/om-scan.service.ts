@@ -9,16 +9,14 @@ import { AppError } from "../utils/app-error.js";
 import {
   asAnswers,
   asExplanations,
-  asMarkedAnswers,
+  asMarkedSelections,
   asSubjectRanges,
-  isBonusKey,
-  matchesKey,
-  type AnswerOption,
+  formatMarked,
   type KeyAnswer,
 } from "../utils/answer-key-parse.js";
 import { notifyContentChanged } from "../utils/content-events.js";
 import { readOmrSheet } from "../utils/omr-sheet.js";
-import { scoreOmrAnswers, type SubjectScore } from "../utils/omr-score.js";
+import { scoreOmrAnswers, scoreQuestion, wrongPenaltyFor, type SubjectScore } from "../utils/omr-score.js";
 import { assignedSubjects, isClassTeacherOf } from "./content-access.js";
 import type { TeacherAccountDto } from "./teacher.service.js";
 
@@ -43,12 +41,13 @@ export type OmScanDto = {
     programCode: string;
     programName: string;
   };
-  answers: Record<string, AnswerOption>;
+  answers: Record<string, string>;
   flags: Array<{ question: number; reason: string }>;
   subjectScores: SubjectScore[];
   correct: number;
   wrong: number;
   blank: number;
+  partial: number;
   total: number;
   maxTotal: number;
   rank: number | null;
@@ -64,9 +63,10 @@ export type OmScanDto = {
 
 export type OmQuestionReview = {
   question: number;
-  marked: AnswerOption | null;
+  marked: string | null;
   key: KeyAnswer | null;
-  result: "OK" | "WRONG" | "BLANK" | "INVALID" | "BONUS";
+  result: "OK" | "PARTIAL" | "WRONG" | "BLANK" | "INVALID" | "BONUS";
+  marks: number;
   explanation: string;
   subject: Subject | null;
 };
@@ -127,12 +127,15 @@ function toDto(row: OmScanSummary, view: "class" | "subject" = "class", released
       programCode: row.student.program.code,
       programName: row.student.program.name,
     },
-    answers: asMarkedAnswers(row.answers),
+    answers: Object.fromEntries(
+      Object.entries(asMarkedSelections(row.answers)).map(([question, options]) => [question, formatMarked(options)]),
+    ),
     flags: Array.isArray(row.flags) ? (row.flags as OmScanDto["flags"]) : [],
     subjectScores: row.subjectScores as SubjectScore[],
     correct: row.correct,
     wrong: row.wrong,
     blank: row.blank,
+    partial: (row.subjectScores as SubjectScore[]).reduce((sum, band) => sum + (band.partial ?? 0), 0),
     total: row.total,
     maxTotal: row.maxTotal,
     rank: row.rank,
@@ -165,6 +168,7 @@ function clipToSubjects(dto: OmScanDto, subjects: Subject[]): OmScanDto {
     correct: subjectScores.reduce((sum, row) => sum + row.correct, 0),
     wrong: subjectScores.reduce((sum, row) => sum + row.wrong, 0),
     blank: subjectScores.reduce((sum, row) => sum + row.blank, 0),
+    partial: subjectScores.reduce((sum, row) => sum + (row.partial ?? 0), 0),
     total: subjectScores.reduce((sum, row) => sum + row.total, 0),
     maxTotal: subjectScores.reduce((sum, row) => sum + row.maxTotal, 0),
     rank: null,
@@ -351,7 +355,9 @@ export async function scanOmrSheet(
   const read = await readOmrSheet(image, { identity: false });
   if (!read.ok) throw new AppError(422, read.reason);
 
-  const score = scoreOmrAnswers(read.answers, key.answers, key.subjectRanges);
+  const score = scoreOmrAnswers(read.answers, key.answers, key.subjectRanges, {
+    wrongPenalty: wrongPenaltyFor(teacher.school.type),
+  });
   const preview = await jpegPreview(image);
   const saved = await omScanRepository.upsertOmScan(student.id, key.testId, {
     schoolId: teacher.schoolId,
@@ -392,7 +398,9 @@ export async function rescoreOmScansForKey(answerKeyId: string) {
   const rows = await omScanRepository.findOmScansForKey(answerKeyId);
   if (rows.length === 0) return 0;
   for (const row of rows) {
-    const score = scoreOmrAnswers(asMarkedAnswers(row.answers), key.answers, key.subjectRanges);
+    const score = scoreOmrAnswers(row.answers, key.answers, key.subjectRanges, {
+      wrongPenalty: wrongPenaltyFor(row.school.type),
+    });
     await omScanRepository.updateOmScan(row.id, applyScore(score));
   }
   const ranked = await omScanRepository.findOmScans({ answerKeyId });
@@ -522,34 +530,31 @@ export async function setOmResultRelease(
 }
 
 function buildReview(
-  answers: Record<string, AnswerOption>,
+  answers: Record<string, string>,
   flags: OmScanDto["flags"],
   keyAnswers: Record<string, KeyAnswer>,
   explanations: Record<string, string>,
   ranges: ReturnType<typeof asSubjectRanges>,
+  wrongPenalty: number,
 ): OmQuestionReview[] {
   const last = Math.max(0, ...ranges.map((row) => row.to), ...Object.keys(keyAnswers).map(Number));
   const flagByQ = new Map(flags.map((row) => [row.question, row.reason]));
+  const markedByQ = asMarkedSelections(answers);
   const review: OmQuestionReview[] = [];
   for (let question = 1; question <= last; question++) {
-    const marked = answers[String(question)] ?? null;
+    const got = markedByQ[String(question)] ?? [];
     const key = keyAnswers[String(question)] ?? null;
     const invalid = flagByQ.get(question);
-    const result = invalid
-      ? "INVALID"
-      : key && isBonusKey(key)
-        ? "BONUS"
-        : !marked
-          ? "BLANK"
-          : key && matchesKey(marked, key)
-            ? "OK"
-            : "WRONG";
+    const scored = key
+      ? scoreQuestion(got, key, wrongPenalty)
+      : { marked: got, marks: 0, result: got.length > 0 ? ("WRONG" as const) : ("BLANK" as const) };
     const range = ranges.find((row) => question >= row.from && question <= row.to);
     review.push({
       question,
-      marked,
+      marked: formatMarked(got) || null,
       key,
-      result,
+      result: invalid ? "INVALID" : scored.result,
+      marks: invalid ? 0 : scored.marks,
       explanation: explanations[String(question)] ?? "",
       subject: range?.subject ?? null,
     });
@@ -583,6 +588,7 @@ export async function getStudentOmScanReview(studentId: string, testId: string):
       asAnswers(key.answers),
       asExplanations(key.explanations),
       asSubjectRanges(key.subjectRanges),
+      wrongPenaltyFor(row.school.type),
     ),
   };
 }
