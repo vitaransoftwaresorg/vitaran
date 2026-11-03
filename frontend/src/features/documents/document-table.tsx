@@ -110,18 +110,9 @@ export function DocumentTable({
                   <span className={NUMBER_PILL}>{item.classLevel}</span>
                 </TableCell>
                 <TableCell className="hidden max-w-52 text-sm text-neutral-800 lg:table-cell">
-                  {item.type === "CUSTOMIZED" && item.school ? (
-                    <div className="min-w-0">
-                      <p className="truncate font-medium text-neutral-950" title={item.school.name}>
-                        {item.school.name}
-                      </p>
-                      <p className="truncate text-xs text-neutral-500" title={programLabel(item.program)}>
-                        {programLabel(item.program)}
-                      </p>
-                    </div>
-                  ) : (
-                    programLabel(item.program)
-                  )}
+                  {item.type === "CUSTOMIZED" && item.school
+                    ? item.school.name
+                    : programLabel(item.program)}
                 </TableCell>
                 {showType && item.type && (
                   <TableCell>

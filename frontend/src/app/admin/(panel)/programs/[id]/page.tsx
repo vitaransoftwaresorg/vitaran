@@ -5,7 +5,8 @@ import { notFound } from "next/navigation";
 import { BookOpen, Clock, Pencil } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { SUBJECT_LABELS } from "@/features/schools/constants";
+import { subjectLabel } from "@/features/schools/constants";
+import { SchoolTypeBadge } from "@/features/schools/school-type-badge";
 import { capitalizeWords } from "@/features/schools/schema";
 import { getProgram } from "@/services/programs";
 import { formatDateTime } from "@/utils/format";
@@ -72,12 +73,15 @@ export default async function ProgramDetailsPage({
         <Panel title="Program details" icon={<BookOpen />}>
           <Field label="Name">{capitalizeWords(program.name)}</Field>
           <Field label="Code">{program.code}</Field>
+          <Field label="Type">
+            <SchoolTypeBadge type={program.type ?? "REGULAR"} size="sm" />
+          </Field>
           <Field label="Year">{program.year}</Field>
           <Field label="Classes">
             {program.classFrom}–{program.classTo}
           </Field>
           <Field label="Subjects" span={3}>
-            {program.subjects.map((subject) => SUBJECT_LABELS[subject]).join(", ")}
+            {program.subjects.map((subject) => subjectLabel(subject)).join(", ")}
           </Field>
         </Panel>
 

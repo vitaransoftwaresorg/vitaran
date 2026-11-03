@@ -13,12 +13,20 @@ export const SCHOOL_TYPES = ["REGULAR", "CUSTOMIZED"] as const;
 
 export const SCHOOL_STATUSES = ["ACTIVE", "INACTIVE"] as const;
 
-// export const SUBJECTS = ["MATHEMATICS", "PHYSICS", "CHEMISTRY", "BIOLOGY", "SCIENCE"] as const;
-
 export type SchoolBoard = (typeof SCHOOL_BOARDS)[number];
 export type SchoolType = (typeof SCHOOL_TYPES)[number];
 export type SchoolStatus = (typeof SCHOOL_STATUSES)[number];
-export type Subject = (typeof SUBJECTS)[number];
+/** Catalog subject code on a program (e.g. MATHEMATICS, ENGLISH). */
+export type Subject = string;
+
+export function toSubjectCode(value: string) {
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_|_$/g, "")
+    .slice(0, 64);
+}
 /** Catalog program code from LearningProgram.code (dynamic). */
 export type Program = string;
 
@@ -71,6 +79,11 @@ export type SchoolProgramInput = {
   classes: { classLevel: number; subjects: Subject[] }[];
 };
 
+export type CustomProgramInput = {
+  name: string;
+  classes: { classLevel: number; subjects: Subject[] }[];
+};
+
 export type SchoolInput = Omit<
   School,
   | "id"
@@ -86,6 +99,8 @@ export type SchoolInput = Omit<
   accountEmail: string;
   accountPhone: string;
   programs: SchoolProgramInput[];
+  /** Customized schools: create/update this catalog program instead of picking one. */
+  customProgram?: CustomProgramInput;
   password?: string;
 };
 

@@ -11,7 +11,7 @@ const MAX_RETRY_MS = 30_000;
  * Calls `onChange` when the admin publishes/hides/edits this content kind,
  * so portal pages update without a manual refresh.
  */
-export function useLiveContent(kind: LiveContentKind, onChange: () => void, as?: "student") {
+export function useLiveContent(kind: LiveContentKind, onChange: () => void) {
   useEffect(() => {
     let source: EventSource | undefined;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -24,7 +24,7 @@ export function useLiveContent(kind: LiveContentKind, onChange: () => void, as?:
     };
 
     const connect = () => {
-      source = new EventSource(as ? `${LIVE_PATH}?as=${as}` : LIVE_PATH);
+      source = new EventSource(LIVE_PATH);
 
       source.onopen = () => {
         attempts = 0;
@@ -54,5 +54,5 @@ export function useLiveContent(kind: LiveContentKind, onChange: () => void, as?:
       clearTimeout(retryTimer);
       clearTimeout(refreshTimer);
     };
-  }, [kind, onChange, as]);
+  }, [kind, onChange]);
 }

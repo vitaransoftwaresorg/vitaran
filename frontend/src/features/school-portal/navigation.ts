@@ -2,6 +2,7 @@ import {
   BookOpen,
   KeyRound,
   LayoutDashboard,
+  ScanLine,
   School2,
   Trophy,
   Users,
@@ -37,6 +38,7 @@ export const schoolNavGroups: SchoolNavGroup[] = [
       { title: "Resources", href: "/school/resources", icon: BookOpen },
       { title: "Answer Keys", href: "/school/answer-keys", icon: KeyRound },
       { title: "Results", href: "/school/results", icon: Trophy },
+      { title: "OMR Scan", href: "/school/omr-scan", icon: ScanLine },
     ],
   },
 ];
@@ -67,10 +69,11 @@ const SEGMENT_LABELS: Record<string, string> = {
   students: "Students",
   new: "Add student",
   edit: "Edit",
-  answers: "Key corrections",
+  answers: "Answer key",
   resources: "Resources",
   "answer-keys": "Answer Keys",
   results: "Results",
+  "omr-scan": "OMR Scan",
 };
 
 function crumbLabel(segment: string, previous: string | undefined) {

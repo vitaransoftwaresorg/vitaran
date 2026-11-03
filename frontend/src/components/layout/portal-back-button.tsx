@@ -5,7 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { useInPageBackHandler } from "@/components/layout/in-page-back";
 
 type PortalBackButtonProps = {
-  getParentHref: (pathname: string) => string | null;
+  getParentHref: (pathname: string, search?: string) => string | null;
   homeHref: string;
   homeHrefs?: string[];
 };
@@ -24,14 +24,16 @@ export function PortalBackButton({
   // Nested in-page views (e.g. classes roster) still show Back even on a nav root URL.
   if (roots.has(pathname) && !inPageBack) return null;
 
-  const parentHref = getParentHref(pathname) ?? homeHref;
-
   const goBack = () => {
     if (inPageBack) {
       inPageBack();
       return;
     }
-    router.push(parentHref);
+    const search = typeof window === "undefined" ? "" : window.location.search;
+    const href = getParentHref(pathname, search) ?? homeHref;
+    router.push(href);
+    // Same path, different Drive query — push alone can leave the folder stale.
+    if (href.split("?")[0] === pathname) router.refresh();
   };
 
   return (

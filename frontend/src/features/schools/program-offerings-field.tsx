@@ -92,7 +92,7 @@ export function ProgramOfferingsField({
   if (catalog.length === 0) {
     return (
       <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-        Create at least one program in Admin → Programs before enrolling a school.
+        Create a matching Regular or Customized program in Admin → Programs before enrolling this school.
       </p>
     );
   }

@@ -7,7 +7,7 @@ import { ANSWER_KEYS_PATH } from "@/features/answer-keys/constants";
 import { AnswerKeyForm } from "@/features/answer-keys/answer-key-form";
 import { documentAnswersHref } from "@/features/documents/constants";
 import { getAnswerKey } from "@/services/answer-keys";
-import { listPrograms } from "@/services/programs";
+import { listAdminPrograms } from "@/services/programs";
 import { listCustomizedSchoolOptions } from "@/services/schools";
 
 export const metadata: Metadata = { title: "Edit Answer Key" };
@@ -17,7 +17,7 @@ export default async function EditAnswerKeyPage({ params }: PageProps<"/admin/an
   const [answerKey, schools, programs] = await Promise.all([
     getAnswerKey(id),
     listCustomizedSchoolOptions(),
-    listPrograms(),
+    listAdminPrograms(),
   ]);
   if (!answerKey) notFound();
 
@@ -25,7 +25,7 @@ export default async function EditAnswerKeyPage({ params }: PageProps<"/admin/an
     <div className="mx-auto max-w-5xl">
       <PageHeader
         title="Edit answer key"
-        description="Update the details or replace the PDF. Changes show up in Recent uploads."
+        description="Update the program, test or class. Use Edit answers to change options and explanations."
         actions={
           <Link href={documentAnswersHref(ANSWER_KEYS_PATH, id)} className={buttonVariants({ variant: "outline" })}>
             Edit answers

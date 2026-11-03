@@ -12,12 +12,12 @@ import type {
   TeacherInput,
   TeacherStatus,
 } from "@/types/teacher";
-import { SUBJECTS, type Subject } from "@/types/school";
+import { toSubjectCode } from "@/types/school";
 
 const assignmentSchema = z.object({
   programId: z.uuid(),
   classLevel: z.coerce.number().int().min(1).max(12),
-  subject: z.enum(SUBJECTS),
+  subject: z.string().trim().min(2).transform(toSubjectCode),
 });
 
 const classTeacherSlotSchema = z.discriminatedUnion("kind", [
@@ -89,7 +89,7 @@ function parseAssignments(raw: string[]): TeacherAssignmentInput[] {
       return {
         programId,
         classLevel: Number(classLevel),
-        subject: subject as Subject,
+        subject,
       };
     })
     .filter((item) => item.programId && item.classLevel && item.subject);

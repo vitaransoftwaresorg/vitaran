@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { PageHeader } from "@/features/admin/page-header";
 import { AnswerKeyAnswersEditor } from "@/features/answer-keys/answer-key-answers-editor";
+import { customizedOwnerLabel } from "@/features/schools/constants";
 import { getAnswerKey } from "@/services/answer-keys";
+import { listAdminPrograms } from "@/services/programs";
 
 export const metadata: Metadata = { title: "Edit answers" };
 export const maxDuration = 300;
@@ -11,16 +12,19 @@ export default async function AnswerKeyAnswersPage({
   params,
 }: PageProps<"/admin/answer-keys/[id]/answers">) {
   const { id } = await params;
-  const answerKey = await getAnswerKey(id);
+  const [answerKey, programs] = await Promise.all([getAnswerKey(id), listAdminPrograms()]);
   if (!answerKey) notFound();
 
+  const program = programs.find((row) => row.code === answerKey.program);
+  const heading = [
+    customizedOwnerLabel(answerKey, program),
+    `Test ${answerKey.testNumber}`,
+    `Class ${answerKey.classLevel}`,
+  ].join(" · ");
+
   return (
-    <div className="mx-auto max-w-5xl">
-      <PageHeader
-        title="Edit answers"
-        description={`${answerKey.fileName} · Test ID ${answerKey.testId}. Each subject is a separate section.`}
-      />
-      <AnswerKeyAnswersEditor answerKey={answerKey} />
+    <div className="w-full">
+      <AnswerKeyAnswersEditor answerKey={answerKey} heading={heading} />
     </div>
   );
 }

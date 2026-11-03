@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { classLabel } from "@/utils/format";
-import { programs } from "./content";
+import { portalPrograms } from "./portal-programs";
 import type { SolutionBook, Subject } from "./solution-books";
 
 const subjectIcons: Record<Subject, LucideIcon> = {
@@ -29,14 +29,21 @@ const subjectIcons: Record<Subject, LucideIcon> = {
 type ProgramTabsProps = {
   /** Programs to show, in the standard program order. */
   programIds: string[];
+  programNames?: Record<string, string>;
   books: Record<string, SolutionBook[]>;
   label: string;
   emptyMessage: string;
 };
 
-export function ProgramTabs({ programIds, books: booksByProgram, label, emptyMessage }: ProgramTabsProps) {
+export function ProgramTabs({
+  programIds,
+  programNames,
+  books: booksByProgram,
+  label,
+  emptyMessage,
+}: ProgramTabsProps) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
-  const visiblePrograms = programs.filter((program) => programIds.includes(program.id));
+  const visiblePrograms = portalPrograms(programIds, programNames);
 
   if (visiblePrograms.length === 0) {
     return (

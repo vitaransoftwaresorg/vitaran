@@ -23,10 +23,6 @@ export type StudentDetail = Student & {
   school: { id: string; name: string; code: string };
 };
 
-export type StudentAccount = Student & {
-  school: { id: string; name: string; code: string };
-};
-
 export type StudentListResult = {
   items: Student[];
   pagination: {

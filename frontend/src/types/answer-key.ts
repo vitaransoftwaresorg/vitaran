@@ -40,6 +40,10 @@ export type AnswerKey = PdfDocument & Publishable & {
   printedExplanations?: Record<string, string>;
   corrections?: AnswerCorrection[];
   subjectRanges?: SubjectRange[];
+  /** Marks for a matching option. */
+  correctMarks?: number;
+  /** Marks deducted for a wrong option. */
+  wrongMarks?: number;
   answerCount?: number;
   correctionCount?: number;
 };
@@ -51,6 +55,8 @@ export type AnswerKeyDetail = AnswerKey & {
   printedExplanations: Record<string, string>;
   corrections: AnswerCorrection[];
   subjectRanges: SubjectRange[];
+  correctMarks: number;
+  wrongMarks: number;
   answerCount: number;
   correctionCount: number;
 };
@@ -59,10 +65,10 @@ export type AnswerKeyInput = {
   program: Program;
   type: SchoolType;
   schoolId?: string;
-  testId: string;
+  testId?: string;
   testNumber: number;
   classLevel: number;
-  /** Required on upload; on update, only sent to replace the PDF. */
+  /** Optional leftover PDF; new keys are entered as A–D / ADD + explanations. */
   file?: File;
 };
 

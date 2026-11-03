@@ -10,7 +10,7 @@ export function PortalPageBack({
   homeHref,
   homeHrefs,
 }: {
-  getParentHref: (pathname: string) => string | null;
+  getParentHref: (pathname: string, search?: string) => string | null;
   homeHref: string;
   homeHrefs?: string[];
 }) {

@@ -24,8 +24,8 @@ export const pdfFileField = (mode: DocumentFormMode) => (mode === "create" ? pdf
 export const testNumberField = z.coerce
   .number({ error: "Select a test number." })
   .int()
-  .min(1, "Select a test number from 1 to 30.")
-  .max(30, "Select a test number from 1 to 30.");
+  .min(1, "Select a test number from 1 to 18.")
+  .max(18, "Select a test number from 1 to 18.");
 
 export const classLevelField = z.coerce
   .number({ error: "Select a class." })

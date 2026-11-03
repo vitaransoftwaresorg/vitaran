@@ -49,7 +49,7 @@ type CredentialTarget =
 type CredentialMailBarProps = {
   loginEmail: string;
   loginPhone?: string | null;
-  /** Shown instead of email when set (e.g. student roll number). */
+  /** Shown instead of email when set (e.g. student registration number). */
   loginLabel?: string;
   loginValue?: string | null;
   password: string | null;

@@ -96,7 +96,7 @@ export function StudentDetailView({
               {capitalizeWords(student.name)}
             </h1>
             <p className="mt-1 truncate text-sm text-white/70">
-              Roll {student.rollNo} · {classLabel} · {student.programName}
+              Registration no {student.rollNo} · {classLabel} · {student.programName}
             </p>
           </div>
 
@@ -149,7 +149,7 @@ export function StudentDetailView({
 
         <div className="mt-3 flex flex-wrap gap-2">
           <Chip label="Status" value={student.status === "ACTIVE" ? "Active" : "Inactive"} />
-          <Chip label="Roll" value={student.rollNo} />
+          <Chip label="Registration no" value={student.rollNo} />
           <Chip label="Class" value={classLabel} />
         </div>
       </header>
@@ -157,7 +157,7 @@ export function StudentDetailView({
       <div className="grid items-start gap-3 lg:grid-cols-2">
         <Panel title="Student details" icon={<Contact />}>
           <Field label="Full name">{capitalizeWords(student.name)}</Field>
-          <Field label="Roll number">{student.rollNo}</Field>
+          <Field label="Registration number">{student.rollNo}</Field>
           <Field label="Status">{student.status === "ACTIVE" ? "Active" : "Inactive"}</Field>
           <Field label="Parent / guardian email" span={2}>
             {student.email}
@@ -173,27 +173,13 @@ export function StudentDetailView({
           </Field>
           <Field label="Class">{classLabel}</Field>
           <Field label="Section">{student.sectionName ?? "Whole class"}</Field>
-          <Field label="Sign in with" span={3}>
-            Roll <strong>{student.rollNo}</strong>
-            {student.email ? (
-              <>
-                {" "}
-                or email <strong>{student.email}</strong>
-              </>
-            ) : null}
-          </Field>
-          <Field label="Password reset" span={3}>
-            {student.email
-              ? "Forgot password on /school/student/login uses this parent / guardian email"
-              : "Add a parent / guardian email so they can reset the password"}
-          </Field>
         </Panel>
       </div>
 
       {showCredentials ? (
         <CredentialMailBar
           loginEmail={student.email ?? ""}
-          loginLabel="Roll"
+          loginLabel="Registration number"
           loginValue={student.rollNo}
           password={student.password || null}
           setPasswordHref={editHref}

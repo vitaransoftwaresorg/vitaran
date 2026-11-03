@@ -6,30 +6,44 @@ import { z } from "zod";
 import { ADMIN_BASE_PATH } from "@/constants/auth";
 import { ApiError } from "@/services/api-client";
 import * as programService from "@/services/programs";
-import { SUBJECTS, type Subject } from "@/types/school";
+import { SCHOOL_TYPES, toSubjectCode } from "@/types/school";
 
 const programSchema = z
   .object({
     name: z.string().trim().min(2, "Enter the program name.").max(120),
+    type: z.enum(SCHOOL_TYPES, { error: "Select type." }),
     year: z.coerce.number().int().min(2020).max(2100),
-    classFrom: z.coerce.number().int().min(1).max(12),
-    classTo: z.coerce.number().int().min(1).max(12),
-    subjects: z.array(z.enum(SUBJECTS)).min(1, "Select at least one subject."),
+    classFrom: z.coerce.number({ error: "Select class from." }).int().min(1, "Select class from.").max(12),
+    classTo: z.coerce.number({ error: "Select class to." }).int().min(1, "Select class to.").max(12),
+    subjects: z
+      .array(z.string().trim().min(1).transform(toSubjectCode).refine((value) => value.length >= 2))
+      .min(1, "Add at least one subject."),
     code: z
       .string()
       .trim()
       .toUpperCase()
-      .regex(/^[A-Z][A-Z0-9_]{1,63}$/, "Use letters, numbers and underscores.")
-      .optional()
-      .or(z.literal("")),
+      .regex(/^[A-Z][A-Z0-9_]{1,63}$/, "Use letters, numbers and underscores (e.g. INTEGRATED)."),
   })
   .refine((value) => value.classFrom <= value.classTo, {
     message: "Class from must be ≤ class to.",
     path: ["classTo"],
   });
 
+function fieldErrorsFromApi(details: unknown) {
+  if (!Array.isArray(details)) return undefined;
+  const fieldErrors: Partial<Record<keyof ProgramFormValues, string[]>> = {};
+  for (const issue of details) {
+    const field = issue?.path?.[0] as keyof ProgramFormValues | undefined;
+    if (field && typeof issue.message === "string") {
+      (fieldErrors[field] ??= []).push(issue.message);
+    }
+  }
+  return Object.keys(fieldErrors).length > 0 ? fieldErrors : undefined;
+}
+
 export type ProgramFormValues = {
   name: string;
+  type: string;
   year: string;
   classFrom: string;
   classTo: string;
@@ -50,6 +64,7 @@ export type ProgramFormState =
 function readValues(formData: FormData): ProgramFormValues {
   return {
     name: String(formData.get("name") ?? ""),
+    type: String(formData.get("type") ?? ""),
     year: String(formData.get("year") ?? ""),
     classFrom: String(formData.get("classFrom") ?? ""),
     classTo: String(formData.get("classTo") ?? ""),
@@ -65,8 +80,7 @@ async function save(
   const values = readValues(formData);
   const parsed = programSchema.safeParse({
     ...values,
-    code: values.code || undefined,
-    subjects: values.subjects as Subject[],
+    subjects: values.subjects,
   });
 
   if (!parsed.success) {
@@ -84,7 +98,8 @@ async function save(
   } catch (error) {
     unstable_rethrow(error);
     if (error instanceof ApiError && (error.status === 400 || error.status === 409)) {
-      return { status: "error", values, message: error.message };
+      const fieldErrors = fieldErrorsFromApi(error.details);
+      return { status: "error", values, message: fieldErrors ? undefined : error.message, fieldErrors };
     }
     return { status: "error", values, message: "Could not save the program. Please try again." };
   }
@@ -103,6 +118,20 @@ export async function updateProgramAction(
   formData: FormData,
 ): Promise<ProgramFormState> {
   return save(formData, (input) => programService.updateProgram(id, input));
+}
+
+const PROGRAM_CODE = /^[A-Z][A-Z0-9_]{1,63}$/;
+
+export async function isProgramCodeTakenAction(code: string, excludeId?: string): Promise<boolean> {
+  const normalized = code.trim().toUpperCase();
+  if (!PROGRAM_CODE.test(normalized)) return false;
+  try {
+    const { taken } = await programService.getProgramCodeAvailability(normalized, excludeId);
+    return taken;
+  } catch (error) {
+    unstable_rethrow(error);
+    return false;
+  }
 }
 
 export async function deleteProgramAction(id: string) {

@@ -1,9 +1,9 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
-import { Loader2, Upload } from "lucide-react";
+import { useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Loader2, Plus } from "lucide-react";
 import { toast } from "sonner";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -11,18 +11,17 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { PdfField } from "@/features/documents/pdf-field";
+import { documentAnswersHref } from "@/features/documents/constants";
 import { programLabel } from "@/features/schools/constants";
 import type { LearningProgram } from "@/types/program";
-import { uploadAnswerKeyAction } from "./actions";
+import { createAnswerKeyAction } from "./actions";
+import { ANSWER_KEYS_PATH } from "./constants";
 import type { DrivePath } from "./drive-path";
-import type { AnswerKeyFormState } from "./schema";
 
 type AnswerKeyUploadSheetProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   path: DrivePath;
-  /** Curriculum code for customized uploads (school's first enrolled program). */
   curriculumProgram?: string;
   programs: LearningProgram[];
 };
@@ -47,13 +46,13 @@ export function AnswerKeyUploadSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full gap-0 sm:max-w-md">
         <SheetHeader>
-          <SheetTitle>Upload</SheetTitle>
+          <SheetTitle>Add key</SheetTitle>
           {titleParts.length > 0 ? (
             <p className="text-sm text-neutral-500">{titleParts.join(" · ")}</p>
           ) : null}
         </SheetHeader>
         {open && path.testNumber && path.classLevel && programCode ? (
-          <UploadForm
+          <CreateForm
             key={`${programCode}-${path.schoolId ?? ""}-${path.testNumber}-${path.classLevel}`}
             program={programCode}
             schoolId={path.schoolId}
@@ -62,14 +61,14 @@ export function AnswerKeyUploadSheet({
             onDone={() => onOpenChange(false)}
           />
         ) : (
-          <p className="px-4 text-sm text-neutral-500">Open a test, then upload for a class.</p>
+          <p className="px-4 text-sm text-neutral-500">Open a test, then add a key for a class.</p>
         )}
       </SheetContent>
     </Sheet>
   );
 }
 
-function UploadForm({
+function CreateForm({
   program,
   schoolId,
   testNumber,
@@ -82,53 +81,48 @@ function UploadForm({
   classLevel: number;
   onDone: () => void;
 }) {
-  const [state, formAction, pending] = useActionState<AnswerKeyFormState, FormData>(
-    uploadAnswerKeyAction,
-    undefined,
-  );
-  const failed = state?.status === "error" ? state : undefined;
-
-  useEffect(() => {
-    if (state?.status !== "success") return;
-    toast.success("Uploaded");
-    onDone();
-  }, [state, onDone]);
+  const router = useRouter();
+  const [pending, start] = useTransition();
 
   return (
-    <form action={formAction} noValidate className="flex flex-col gap-4 px-4 pb-4">
-      <input type="hidden" name="type" value={schoolId ? "CUSTOMIZED" : "REGULAR"} />
-      <input type="hidden" name="program" value={program} />
-      {schoolId ? <input type="hidden" name="schoolId" value={schoolId} /> : null}
-      <input type="hidden" name="testNumber" value={String(testNumber)} />
-      <input type="hidden" name="testId" value={`T-${testNumber}`} />
-      <input type="hidden" name="classLevel" value={String(classLevel)} />
-
-      {failed?.message ? (
-        <Alert variant="destructive">
-          <AlertDescription>{failed.message}</AlertDescription>
-        </Alert>
-      ) : null}
-      {failed?.fieldErrors?.file?.[0] ? (
-        <Alert variant="destructive">
-          <AlertDescription>{failed.fieldErrors.file[0]}</AlertDescription>
-        </Alert>
-      ) : null}
-
-      <PdfField errors={failed?.fieldErrors?.file} onFileChange={() => undefined} />
-
-      <Button type="submit" disabled={pending} className="h-11 w-full rounded-lg">
+    <div className="flex flex-col gap-4 px-4 pb-4">
+      <p className="text-sm text-neutral-600">
+        Opens a 100-question key. Pick A, B, C, D or ADD for each question, add explanations, then save.
+      </p>
+      <Button
+        type="button"
+        disabled={pending}
+        className="h-11 w-full rounded-lg"
+        onClick={() => {
+          start(async () => {
+            const result = await createAnswerKeyAction({
+              program,
+              type: schoolId ? "CUSTOMIZED" : "REGULAR",
+              schoolId,
+              testNumber,
+              classLevel,
+            });
+            if (!result.ok) {
+              toast.error(result.message);
+              return;
+            }
+            onDone();
+            router.push(documentAnswersHref(ANSWER_KEYS_PATH, result.id));
+          });
+        }}
+      >
         {pending ? (
           <>
             <Loader2 className="animate-spin" />
-            Uploading…
+            Opening…
           </>
         ) : (
           <>
-            <Upload />
-            Upload
+            <Plus />
+            Add key
           </>
         )}
       </Button>
-    </form>
+    </div>
   );
 }

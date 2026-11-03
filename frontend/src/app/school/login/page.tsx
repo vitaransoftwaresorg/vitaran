@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { BookOpenCheck, ClipboardCheck, ScanLine, Trophy } from "lucide-react";
+import { BookOpenCheck, ClipboardCheck, School2, Trophy } from "lucide-react";
 import {
   SCHOOL_HOME_PATH,
   SCHOOL_SESSION_COOKIE,
-  STUDENT_LOGIN_PATH,
   TEACHER_HOME_PATH,
   TEACHER_SESSION_COOKIE,
 } from "@/constants/auth";
@@ -34,9 +33,9 @@ const highlights = [
     description: "Test results for your school and assigned classes.",
   },
   {
-    icon: ScanLine,
-    title: "OMR Scan",
-    description: "Teachers can capture OMR sheets for their tests.",
+    icon: School2,
+    title: "Classes",
+    description: "Teachers, sections and students for your school.",
   },
 ];
 
@@ -59,11 +58,6 @@ export default async function PortalLoginPage({
       }
       description="One login for schools and teachers. Continue with Google only if that Gmail is already on the account."
       highlights={highlights}
-      switcher={{
-        href: STUDENT_LOGIN_PATH,
-        label: "Student sign in",
-        hint: "Are you a student?",
-      }}
       footnote="Use the login details shared by Vitaran or your school."
     >
       <PortalLoginForm googleError={googleErrorMessage(error)} />

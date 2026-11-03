@@ -3,15 +3,14 @@ import { PageHeader } from "@/features/admin/page-header";
 import { parseListFilters } from "@/features/documents/list-filters";
 import { setResultPublishedAction } from "@/features/results/actions";
 import { ResultsDrive, type DrivePath } from "@/features/results/results-drive";
-import { ResultsFilters } from "@/features/results/results-filters";
 import { listResultSets } from "@/services/results";
-import { listPrograms } from "@/services/programs";
+import { listAdminPrograms } from "@/services/programs";
 import { listSchoolOptions } from "@/services/schools";
 
 export const metadata: Metadata = { title: "Results" };
 
 export default async function AdminResultsPage({ searchParams }: PageProps<"/admin/results">) {
-  const [schools, programs] = await Promise.all([listSchoolOptions(), listPrograms()]);
+  const [schools, programs] = await Promise.all([listSchoolOptions(), listAdminPrograms()]);
   const filters = parseListFilters(await searchParams, {
     programCodes: programs.map((program) => program.code),
   });
@@ -23,17 +22,14 @@ export default async function AdminResultsPage({ searchParams }: PageProps<"/adm
   });
 
   const path: DrivePath = {
-    program: filters.type === "REGULAR" ? filters.program : undefined,
+    program: filters.program,
     schoolId: filters.schoolId,
     testNumber: filters.testNumber,
   };
 
   return (
     <>
-      <PageHeader
-        title="Results"
-        toolbar={<ResultsFilters path={path} programs={programs} schools={schools} />}
-      />
+      <PageHeader title="Results" />
       <ResultsDrive
         resultSets={resultSets}
         programs={programs}

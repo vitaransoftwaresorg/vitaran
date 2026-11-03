@@ -70,7 +70,7 @@ export function StudentsTable({
         <thead className="border-b border-brand-100 bg-brand-50/60 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">
           <tr>
             {showSchool ? <th className="px-4 py-2.5">School</th> : null}
-            <th className="px-4 py-2.5">Roll</th>
+            <th className="px-4 py-2.5">Registration no</th>
             <th className="px-4 py-2.5">Name</th>
             <th className="hidden px-4 py-2.5 sm:table-cell">Class</th>
             <th className="hidden px-4 py-2.5 md:table-cell">Program</th>

@@ -3,11 +3,9 @@ import {
   SCHOOL_BOARDS,
   SCHOOL_STATUSES,
   SCHOOL_TYPES,
-  SUBJECTS,
   type SchoolInput,
-  type Subject,
 } from "@/types/school";
-import { SCHOOLS_PAGE_SIZE } from "./constants";
+import { SCHOOLS_PAGE_SIZE, subjectsForClassLevel } from "./constants";
 import { offeringsToPrograms, parseOfferingToken } from "./offerings";
 
 const emptyToNull = (value: string) => (value === "" ? null : value);
@@ -38,7 +36,7 @@ const offeringToken = z
   .string()
   .refine((value) => {
     const parsed = parseOfferingToken(value);
-    return parsed !== null && SUBJECTS.includes(parsed.subject as Subject);
+    return parsed !== null && parsed.subject.length >= 2;
   }, "Invalid class or subject selection.");
 
 const schoolCodeField = z
@@ -58,7 +56,9 @@ const schoolFields = z.object({
   board: z.enum(SCHOOL_BOARDS, { error: "Select a board." }),
   type: z.enum(SCHOOL_TYPES, { error: "Select a type." }),
   status: z.enum(SCHOOL_STATUSES, { error: "Select a status." }),
-  offerings: z.array(offeringToken),
+  offerings: z.array(offeringToken).default([]),
+  customProgramName: z.string().trim().max(120).optional().default(""),
+  customClasses: z.array(z.string()).optional().default([]),
   principalName: z
     .string()
     .trim()
@@ -104,13 +104,37 @@ const schoolFields = z.object({
   password: z.string().max(128, "Keep the password under 128 characters."),
 });
 
+function withCustomProgramRules<T extends z.ZodType>(schema: T) {
+  return schema.superRefine((value, ctx) => {
+    const data = value as z.output<typeof schoolFields>;
+    if (data.type !== "CUSTOMIZED") return;
+
+    if (!data.customProgramName || data.customProgramName.trim().length < 2) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["customProgramName"],
+        message: "Enter the program name.",
+      });
+    }
+    if (!data.customClasses?.length) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["customClasses"],
+        message: "Select at least one class.",
+      });
+    }
+  });
+}
+
 /** On edit, a blank password keeps the current one. */
 export function getSchoolFormSchema(mode: "create" | "edit") {
-  if (mode === "edit") return schoolFields;
-
-  return schoolFields.extend({
-    password: schoolFields.shape.password.min(1, "Enter a password."),
-  });
+  const base =
+    mode === "edit"
+      ? schoolFields
+      : schoolFields.extend({
+          password: schoolFields.shape.password.min(1, "Enter a password."),
+        });
+  return withCustomProgramRules(base);
 }
 
 export type SchoolFormMode = Parameters<typeof getSchoolFormSchema>[0];
@@ -119,14 +143,30 @@ export type SchoolFormField = keyof z.input<typeof schoolFields>;
 export function toSchoolInput({
   password,
   offerings,
+  customProgramName,
+  customClasses,
   ...input
 }: z.output<typeof schoolFields>): SchoolInput {
+  if (input.type === "CUSTOMIZED") {
+    const classes = [...new Set(customClasses)]
+      .map(Number)
+      .filter((level) => Number.isInteger(level) && level >= 1 && level <= 12)
+      .sort((a, b) => a - b)
+      .map((classLevel) => ({ classLevel, subjects: subjectsForClassLevel(classLevel) }));
+    const payload = {
+      ...input,
+      programs: [] as SchoolInput["programs"],
+      customProgram: { name: customProgramName.trim(), classes },
+    };
+    return password ? { ...payload, password } : payload;
+  }
+
   const programs = offeringsToPrograms(offerings);
   return password ? { ...input, programs, password } : { ...input, programs };
 }
 
 /** Checkbox groups; every other field is a single text value. */
-export const LIST_FIELDS = ["offerings"] as const;
+export const LIST_FIELDS = ["offerings", "customClasses"] as const;
 export type ListField = (typeof LIST_FIELDS)[number];
 export type TextField = Exclude<SchoolFormField, ListField>;
 

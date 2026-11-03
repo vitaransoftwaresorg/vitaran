@@ -42,8 +42,8 @@ export function AuthShell({
         </Link>
       </header>
 
-      <div className="mx-auto grid w-full max-w-6xl flex-1 items-center gap-14 px-5 pt-8 pb-20 sm:px-8 lg:grid-cols-[1fr_1fr] lg:pt-0">
-        <div>
+      <div className="mx-auto grid w-full max-w-6xl flex-1 items-center gap-14 px-5 pt-4 pb-20 sm:px-8 lg:grid-cols-[1fr_1fr] lg:pt-0">
+        <div className="hidden lg:block">
           <p className="animate-in fade-in slide-in-from-bottom-4 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-xs font-medium text-brand-200 backdrop-blur duration-700">
             <ShieldCheck className="size-3.5 text-glow" />
             {badge}
@@ -57,7 +57,7 @@ export function AuthShell({
             </p>
           ) : null}
 
-          <ul className="mt-10 hidden space-y-5 lg:block">
+          <ul className="mt-10 space-y-5">
             {highlights.map((item) => (
               <li key={item.title} className="flex gap-4">
                 <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-white/10 text-white">
@@ -72,7 +72,7 @@ export function AuthShell({
           </ul>
         </div>
 
-        <div className="animate-in fade-in slide-in-from-bottom-8 w-full max-w-md duration-700 lg:justify-self-end">
+        <div className="animate-in fade-in slide-in-from-bottom-8 mx-auto w-full max-w-md duration-700 lg:mx-0 lg:justify-self-end">
           {children}
           {switcher ? (
             <div className="mt-4 space-y-2">

@@ -8,12 +8,11 @@ import {
   loadTeacherPortalResourcesAction,
   type PortalResourcesPayload,
 } from "./portal-resources-action";
-import { loadStudentPortalResourcesAction } from "./student-resources-action";
 import { ResourcePage } from "./resource-page";
 import { solutionBooks } from "./solution-books";
 
 type PortalResourcesBoardProps = {
-  role: "school" | "teacher" | "student";
+  role: "school" | "teacher";
   description: string;
 };
 
@@ -27,9 +26,7 @@ export function PortalResourcesBoard({ role, description }: PortalResourcesBoard
       const next =
         role === "school"
           ? await loadSchoolPortalResourcesAction()
-          : role === "student"
-            ? await loadStudentPortalResourcesAction()
-            : await loadTeacherPortalResourcesAction();
+          : await loadTeacherPortalResourcesAction();
       setPayload(next);
     });
   }, [role]);
@@ -70,10 +67,12 @@ export function PortalResourcesBoard({ role, description }: PortalResourcesBoard
       <div className={cn("-mx-4 -mb-4 sm:-mx-5 lg:-mx-6", pending && "opacity-70 transition-opacity")}>
         <ResourcePage
           key={cacheKey}
-          title={role === "student" ? "Your" : "Teachers"}
+          title="Teachers"
           highlight="Resources"
           books={solutionBooks}
           programIds={payload.programIds}
+          catalogIds={payload.catalogIds}
+          programNames={payload.programNames}
           subjectIds={payload.subjectIds}
           assignments={payload.assignments}
           label="Solution Books"

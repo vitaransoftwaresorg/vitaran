@@ -26,7 +26,7 @@ export type StudentFormState = {
 
 const studentSchema = z.object({
   name: z.string().trim().min(2, "Enter the student name"),
-  rollNo: z.string().trim().min(1, "Enter the roll number"),
+  rollNo: z.string().trim().min(1, "Enter the registration number"),
   email: z.union([z.literal(""), z.string().trim().email("Enter a valid email")]),
   programId: z
     .string()
@@ -73,7 +73,7 @@ function apiFieldErrors(error: ApiError): Record<string, string[] | undefined> |
 
   // Fall back so seat / uniqueness messages still land on a field.
   const msg = error.message;
-  if (/roll/i.test(msg)) return { rollNo: [msg] };
+  if (/roll|registration/i.test(msg)) return { rollNo: [msg] };
   if (/section/i.test(msg)) return { sectionId: [msg] };
   if (/seat|full|strength/i.test(msg)) return { sectionId: [msg] };
   if (/program|class/i.test(msg)) return { programId: [msg] };

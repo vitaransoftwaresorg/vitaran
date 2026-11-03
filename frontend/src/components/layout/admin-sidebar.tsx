@@ -41,7 +41,8 @@ export function AdminSidebar({ admin }: { admin: AdminProfile }) {
   const initials = admin.email.slice(0, 2).toUpperCase();
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="icon" side={isMobile ? "right" : "left"}>
+      {!isMobile && (
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -65,6 +66,7 @@ export function AdminSidebar({ admin }: { admin: AdminProfile }) {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
+      )}
 
       <SidebarContent>
         {adminNavGroups.map((group) => (

@@ -30,6 +30,6 @@ export const resultSheetDownloadHref = (basePath: string, id: string, classLevel
   `${basePath}/${id}/classes/${classLevel}/file`;
 
 export const resultProgramLabel = ({ program, programName }: Pick<ResultSet, "program" | "programName">) =>
-  program ? programLabel(program) : (programName ?? "");
+  programLabel(program ?? "", programName);
 
 export const studentCount = (count: number) => `${count} ${count === 1 ? "student" : "students"}`;

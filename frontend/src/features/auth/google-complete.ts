@@ -7,15 +7,12 @@ import {
   GOOGLE_PORTAL_COOKIE,
   SCHOOL_HOME_PATH,
   SCHOOL_LOGIN_PATH,
-  STUDENT_HOME_PATH,
-  STUDENT_LOGIN_PATH,
   TEACHER_HOME_PATH,
   RETURN_TO_COOKIE,
   safePortalReturnPath,
 } from "@/constants/auth";
 import { googleErrorCode } from "@/features/auth/google-errors";
 import { createSchoolSession } from "@/features/school-auth/session";
-import { createStudentSession } from "@/features/student-auth/session";
 import { createTeacherSession } from "@/features/teacher-auth/session";
 import { ApiError } from "@/services/api-client";
 import { loginWithGoogle } from "@/services/auth";
@@ -41,10 +38,8 @@ async function clearGoogleHandshakeCookies() {
 export async function completeGoogleSignIn(): Promise<never> {
   const cookieStore = await cookies();
   const portal = cookieStore.get(GOOGLE_PORTAL_COOKIE)?.value;
-  const destinationLogin =
-    portal === "student" ? STUDENT_LOGIN_PATH : SCHOOL_LOGIN_PATH;
 
-  if (portal !== "school" && portal !== "student") {
+  if (portal !== "school") {
     await clearGoogleHandshakeCookies();
     redirect(`${SCHOOL_LOGIN_PATH}?error=google`);
   }
@@ -52,7 +47,7 @@ export async function completeGoogleSignIn(): Promise<never> {
   const session = await auth();
   if (!session?.idToken) {
     await clearGoogleHandshakeCookies();
-    redirect(`${destinationLogin}?error=google`);
+    redirect(`${SCHOOL_LOGIN_PATH}?error=google`);
   }
 
   try {
@@ -60,10 +55,8 @@ export async function completeGoogleSignIn(): Promise<never> {
 
     if (result.role === "school") {
       await createSchoolSession(result.token, result.expiresAt);
-    } else if (result.role === "teacher") {
-      await createTeacherSession(result.token, result.expiresAt);
     } else {
-      await createStudentSession(result.token, result.expiresAt);
+      await createTeacherSession(result.token, result.expiresAt);
     }
 
     const returnTo = cookieStore.get(RETURN_TO_COOKIE)?.value;
@@ -71,9 +64,6 @@ export async function completeGoogleSignIn(): Promise<never> {
 
     if (result.role === "teacher") {
       redirect(safePortalReturnPath(returnTo, "teacher", TEACHER_HOME_PATH));
-    }
-    if (result.role === "student") {
-      redirect(safePortalReturnPath(returnTo, "student", STUDENT_HOME_PATH));
     }
     redirect(safePortalReturnPath(returnTo, "school", SCHOOL_HOME_PATH));
   } catch (error) {
@@ -83,6 +73,6 @@ export async function completeGoogleSignIn(): Promise<never> {
       error instanceof ApiError
         ? googleErrorCode(error.message, error.status)
         : "google";
-    redirect(`${destinationLogin}?error=${code}`);
+    redirect(`${SCHOOL_LOGIN_PATH}?error=${code}`);
   }
 }

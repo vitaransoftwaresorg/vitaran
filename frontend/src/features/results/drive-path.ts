@@ -19,5 +19,4 @@ export type DriveSchool = {
   offerings?: Array<{ code: string; name: string; classLevels: number[] }>;
 };
 
-export const DRIVE_TESTS = Array.from({ length: 30 }, (_, index) => index + 1);
-export const DRIVE_CLASSES = Array.from({ length: 10 }, (_, index) => index + 1);
+export const DRIVE_TESTS = Array.from({ length: 18 }, (_, index) => index + 1);

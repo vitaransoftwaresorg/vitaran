@@ -4,11 +4,13 @@ import {
   GraduationCap,
   KeyRound,
   LayoutDashboard,
+  ScanLine,
   School,
   Trophy,
   Users,
   type LucideIcon,
 } from "lucide-react";
+import { readAnswerKeysReturnHref } from "@/features/answer-keys/drive-path";
 
 export type AdminNavItem = {
   title: string;
@@ -41,6 +43,7 @@ export const adminNavGroups: AdminNavGroup[] = [
     items: [
       { title: "Answer Keys", href: "/admin/answer-keys", icon: KeyRound },
       { title: "Results", href: "/admin/results", icon: Trophy },
+      { title: "OMR Scan", href: "/admin/omr-scan", icon: ScanLine },
     ],
   },
 ];
@@ -90,6 +93,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   "answer-keys": "Answer Keys",
   upload: "Upload",
   results: "Results",
+  "omr-scan": "OMR Scan",
   classes: "Classes",
   students: "Students",
 };
@@ -121,9 +125,26 @@ export function getAdminBreadcrumbs(pathname: string): AdminBreadcrumb[] {
   return crumbs;
 }
 
-export function getAdminParentHref(pathname: string): string | null {
+/** Drive folders live in the query string, so pathname-only Back would skip to Dashboard. */
+function adminDriveParentHref(pathname: string, search: string): string | null {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  if (params.has("test")) {
+    params.delete("test");
+    const query = params.toString();
+    return query ? `${pathname}?${query}` : pathname;
+  }
+  if (params.has("program") || params.has("school") || params.has("type")) {
+    return pathname;
+  }
+  return getAdminBreadcrumbs(pathname).at(-2)?.href ?? null;
+}
+
+export function getAdminParentHref(pathname: string, search = ""): string | null {
   if (/^\/admin\/answer-keys\/[^/]+\/(edit|answers)$/.test(pathname)) {
-    return "/admin/answer-keys";
+    return readAnswerKeysReturnHref() ?? "/admin/answer-keys";
+  }
+  if (pathname === "/admin/answer-keys" || pathname === "/admin/results") {
+    return adminDriveParentHref(pathname, search);
   }
   return getAdminBreadcrumbs(pathname).at(-2)?.href ?? null;
 }

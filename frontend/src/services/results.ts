@@ -3,10 +3,9 @@ import { ApiError } from "@/services/api-client";
 import { adminApi, adminFetch } from "@/services/admin-api";
 import { listFiltersQuery, type ListFilters } from "@/services/list-filters";
 import { schoolApi, schoolFetch } from "@/services/school-api";
-import { studentApi } from "@/services/student-api";
 import { teacherApi, teacherFetch } from "@/services/teacher-api";
 import type { ContentStats } from "@/types/document";
-import type { ResultSet, ResultSheet, StudentResultRow } from "@/types/result";
+import type { ResultSet, ResultSheet } from "@/types/result";
 
 const BASE = "/results";
 const SCHOOL_BASE = "/school/results";
@@ -93,8 +92,4 @@ export function getTeacherResultSheet(id: string, classLevel: number) {
 
 export function fetchTeacherResultSheetFile(id: string, classLevel: number) {
   return teacherFetch(`${sheetPath(TEACHER_BASE, id, classLevel)}/file`);
-}
-
-export function listStudentResultRows() {
-  return studentApi<StudentResultRow[]>("/student/results");
 }

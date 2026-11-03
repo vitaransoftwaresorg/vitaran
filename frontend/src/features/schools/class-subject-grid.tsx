@@ -1,6 +1,6 @@
 "use client";
 
-import { SUBJECT_LABELS } from "@/features/schools/constants";
+import { subjectLabel } from "@/features/schools/constants";
 import type { Subject } from "@/types/school";
 import { cn } from "@/lib/utils";
 
@@ -66,7 +66,7 @@ function SubjectList({
                 }
               />
               <span className="text-sm font-medium text-neutral-800">
-                {SUBJECT_LABELS[subject]}
+                {subjectLabel(subject)}
               </span>
             </label>
           </li>

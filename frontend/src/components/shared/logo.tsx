@@ -6,13 +6,14 @@ type LogoProps = {
   variant?: "color" | "white";
   /** Smaller mark for portal headers on mobile. */
   compact?: boolean;
+  href?: string;
   className?: string;
 };
 
-export function Logo({ variant = "color", compact = false, className }: LogoProps) {
+export function Logo({ variant = "color", compact = false, href = "/", className }: LogoProps) {
   return (
     <Link
-      href="/"
+      href={href}
       prefetch
       aria-label="Vitaran Learning home"
       className={cn("relative z-10 inline-flex shrink-0 items-center", className)}

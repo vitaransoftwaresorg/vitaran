@@ -22,6 +22,7 @@ import {
 /** Program/class checks drive Classes, Resources, answer keys, and teacher views. */
 function revalidateSchoolPortalViews() {
   revalidatePath(ADMIN_BASE_PATH, "layout");
+  revalidatePath(`${ADMIN_BASE_PATH}/programs`);
   revalidatePath(SCHOOL_BASE_PATH, "layout");
   revalidatePath(`${SCHOOL_BASE_PATH}/classes`);
   revalidatePath(`${SCHOOL_BASE_PATH}/resources`);
@@ -32,13 +33,23 @@ function revalidateSchoolPortalViews() {
   revalidatePath(`${TEACHER_BASE_PATH}/answer-keys`);
 }
 
+function mapApiField(path: unknown): SchoolFormField | undefined {
+  if (!Array.isArray(path) || typeof path[0] !== "string") return undefined;
+  const root = path[0];
+  if (root === "programs") return "offerings";
+  if (root === "customProgram") {
+    return path[1] === "classes" ? "customClasses" : "customProgramName";
+  }
+  return root as SchoolFormField;
+}
+
 function fieldErrorsFromApi(details: unknown) {
   if (!Array.isArray(details)) return undefined;
 
   const fieldErrors: SchoolFormErrors = {};
 
   for (const issue of details) {
-    const field = issue?.path?.[0] as SchoolFormField | undefined;
+    const field = mapApiField(issue?.path);
     if (field && typeof issue.message === "string") {
       (fieldErrors[field] ??= []).push(issue.message);
     }

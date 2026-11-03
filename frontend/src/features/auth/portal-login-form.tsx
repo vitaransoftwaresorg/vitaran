@@ -147,7 +147,7 @@ export function PortalLoginForm({ googleError }: { googleError?: string | null }
             <span className="absolute inset-x-0 top-1/2 border-t border-neutral-200" />
             <span className="relative bg-white px-2">or</span>
           </p>
-          <GoogleSignInButton portal="school" />
+          <GoogleSignInButton />
         </div>
       </CardContent>
     </Card>

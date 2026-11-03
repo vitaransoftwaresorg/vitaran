@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { SUBJECT_LABELS } from "@/features/schools/constants";
+import { subjectLabel } from "@/features/schools/constants";
 import { cn } from "@/lib/utils";
 import type { Teacher, TeacherStatus } from "@/types/teacher";
 import { TEACHER_STATUS_LABELS } from "./constants";
@@ -108,7 +108,7 @@ export function TeachersTable({
                           key={`${item.programId}-${item.classLevel}-${item.subject}`}
                           className="rounded-full border border-brand-100 bg-brand-50 px-2 py-0.5 text-[11px] font-medium text-brand-800"
                         >
-                          C{item.classLevel} · {SUBJECT_LABELS[item.subject]}
+                          C{item.classLevel} · {subjectLabel(item.subject)}
                         </span>
                       ))}
                       {teacher.assignments.length > 4 && (

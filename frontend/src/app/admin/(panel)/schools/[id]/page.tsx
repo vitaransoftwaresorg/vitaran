@@ -10,7 +10,7 @@ import { ResultsTable } from "@/features/results/results-table";
 import {
   BOARD_LABELS,
   STATUS_LABELS,
-  SUBJECT_LABELS,
+  subjectLabel,
   TYPE_LABELS,
 } from "@/features/schools/constants";
 import { CredentialMailBar } from "@/features/auth/credential-mail-bar";
@@ -175,7 +175,7 @@ export default async function SchoolDetailsPage({ params }: PageProps<"/admin/sc
             {(() => {
               const subjects = uniqueSubjectsFromOfferings(school.schoolPrograms);
               return subjects.length > 0
-                ? subjects.map((subject) => SUBJECT_LABELS[subject]).join(", ")
+                ? subjects.map((subject) => subjectLabel(subject)).join(", ")
                 : null;
             })()}
           </Field>

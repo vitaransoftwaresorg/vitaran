@@ -17,7 +17,7 @@ import type { StudentFormState } from "@/features/students/actions";
 
 const studentSchema = z.object({
   name: z.string().trim().min(2, "Enter the student name"),
-  rollNo: z.string().trim().min(1, "Enter the roll number"),
+  rollNo: z.string().trim().min(1, "Enter the registration number"),
   email: z.union([z.literal(""), z.string().trim().email("Enter a valid email")]),
   programId: z.string().min(1, "Pick a program").uuid("Pick a program"),
   classLevel: z.preprocess(
@@ -60,7 +60,7 @@ function apiFieldErrors(error: ApiError): Record<string, string[] | undefined> |
   if (Object.keys(out).length > 0) return out;
 
   const msg = error.message;
-  if (/roll/i.test(msg)) return { rollNo: [msg] };
+  if (/roll|registration/i.test(msg)) return { rollNo: [msg] };
   if (/section/i.test(msg)) return { sectionId: [msg] };
   if (/seat|full|strength/i.test(msg)) return { sectionId: [msg] };
   if (/program|class/i.test(msg)) return { programId: [msg] };

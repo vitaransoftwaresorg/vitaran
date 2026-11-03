@@ -5,7 +5,7 @@ import { ProgramForm } from "@/features/programs/program-form";
 export default function NewProgramPage() {
   return (
     <>
-      <PageHeader title="Add program" description="Name, year, class range and subjects." />
+      <PageHeader title="Add program" description="Name, type, code, class range and subjects." />
       <ProgramForm action={createProgramAction} />
     </>
   );

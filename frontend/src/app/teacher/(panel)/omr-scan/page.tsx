@@ -1,17 +1,17 @@
+import type { Metadata } from "next";
 import { PageHeader } from "@/features/admin/page-header";
-import { OmrScanBoard } from "@/features/omr/omr-scan-board";
-import { listOmResultReleases, listTeacherOmScans } from "@/services/om-scans";
+import { ScanBoard } from "@/features/scan/board";
+import { listScansOrEmpty } from "@/services/scans";
+
+export const metadata: Metadata = { title: "OMR Scan" };
+export const maxDuration = 120;
 
 export default async function TeacherOmrScanPage() {
-  const [scans, releases] = await Promise.all([listTeacherOmScans(), listOmResultReleases()]);
-
+  const scans = await listScansOrEmpty("teacher");
   return (
     <>
-      <PageHeader
-        title="OMR Scan"
-        description="Enter roll no, test ID and date, then scan. Results stay with you until you push them to students."
-      />
-      <OmrScanBoard initial={scans} releases={releases} />
+      <PageHeader title="OMR Scan" />
+      <ScanBoard portal="teacher" initial={scans} />
     </>
   );
 }

@@ -1,31 +1,38 @@
 import Link from "next/link";
-import { BookOpen, KeyRound, School2, Trophy, Users } from "lucide-react";
+import { BookOpen, KeyRound, ScanLine, School2, Trophy, Users } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/features/admin/page-header";
 import { StatCard } from "@/features/admin/dashboard-parts";
-import { SUBJECT_LABELS, programLabel } from "@/features/schools/constants";
+import { programLabel, subjectLabel } from "@/features/schools/constants";
 import { capitalizeWords } from "@/features/schools/schema";
-import { programs } from "@/features/teachers-resources/content";
+import {
+  booksForPortalProgram,
+  portalProgramIds,
+  portalPrograms,
+  regularCatalogIds,
+} from "@/features/teachers-resources/portal-programs";
 import { solutionBooks } from "@/features/teachers-resources/solution-books";
 import { getSchoolDashboard } from "@/services/teachers";
 import { cn } from "@/lib/utils";
-import type { Subject } from "@/types/school";
 
-function countResources(programCodes: string[], subjectIds: string[]) {
-  const subjects = new Set(subjectIds.map((id) => SUBJECT_LABELS[id as keyof typeof SUBJECT_LABELS]));
-  return programs
-    .filter((program) => programCodes.includes(program.id))
-    .reduce((total, program) => {
-      const books = solutionBooks[program.title] ?? [];
-      return total + books.filter((book) => subjects.has(book.subject)).length;
-    }, 0);
+function countResources(programCodes: string[], subjectIds: string[], names?: Record<string, string>) {
+  const subjects = new Set(subjectIds.map((id) => subjectLabel(id)));
+  const catalogIds = regularCatalogIds(programCodes);
+  return portalPrograms(portalProgramIds(programCodes), names).reduce((total, program) => {
+    const books = booksForPortalProgram(program, solutionBooks, undefined, catalogIds);
+    return total + books.filter((book) => subjects.has(book.subject)).length;
+  }, 0);
 }
 
 export default async function SchoolDashboardPage() {
   const stats = await getSchoolDashboard();
+  const programNames = Object.fromEntries(stats.programLabels.map((row) => [row.code, row.name]));
+  const ownProgramCodes = new Set(portalProgramIds(stats.programLabels.map((row) => row.code)));
+  const ownPrograms = stats.programLabels.filter((program) => ownProgramCodes.has(program.code));
   const resources = countResources(
     stats.programLabels.map((row) => row.code),
     stats.subjectIds,
+    programNames,
   );
 
   return (
@@ -40,7 +47,7 @@ export default async function SchoolDashboardPage() {
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <StatCard
           label="Teachers"
           value={stats.teachers.total}
@@ -76,6 +83,7 @@ export default async function SchoolDashboardPage() {
           icon={Trophy}
           href="/school/results"
         />
+        <StatCard label="OMR Scan" hint="Camera scan a sheet" icon={ScanLine} href="/school/omr-scan" />
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
@@ -83,8 +91,8 @@ export default async function SchoolDashboardPage() {
           <h2 className="text-sm font-bold text-neutral-950">Your programs</h2>
           <p className="mt-1 text-xs text-neutral-500">Assigned by Vitaran for this school.</p>
           <ul className="mt-4 flex flex-wrap gap-2">
-            {stats.programLabels.length > 0 ? (
-              stats.programLabels.map((program) => (
+            {ownPrograms.length > 0 ? (
+              ownPrograms.map((program) => (
                 <li
                   key={program.code}
                   className="rounded-full border border-brand-100 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-800"
@@ -108,7 +116,7 @@ export default async function SchoolDashboardPage() {
                   key={subject}
                   className="rounded-full border border-neutral-200 bg-neutral-50 px-3 py-1 text-xs font-semibold text-neutral-800"
                 >
-                  {SUBJECT_LABELS[subject as Subject] ?? subject}
+                  {subjectLabel(subject)}
                 </li>
               ))
             ) : (

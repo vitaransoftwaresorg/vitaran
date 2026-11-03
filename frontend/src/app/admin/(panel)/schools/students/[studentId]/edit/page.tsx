@@ -26,7 +26,7 @@ export default async function AdminStudentEditPage({ params }: Props) {
     <>
       <PageHeader
         title="Edit student"
-        description={`${student.name} · Roll ${student.rollNo} · ${school.name}`}
+        description={`${student.name} · Registration no ${student.rollNo} · ${school.name}`}
       />
       <div className="mt-3 w-full max-w-lg rounded-2xl border border-brand-200 bg-white p-4 shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)] sm:p-5">
         <StudentForm

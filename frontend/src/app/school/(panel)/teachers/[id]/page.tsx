@@ -6,7 +6,7 @@ import { BookOpen, Clock, Contact, Pencil } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { CredentialMailBar } from "@/features/auth/credential-mail-bar";
-import { SUBJECT_LABELS } from "@/features/schools/constants";
+import { subjectLabel } from "@/features/schools/constants";
 import { TEACHER_STATUS_LABELS } from "@/features/teachers/constants";
 import { getSchoolTeacher, listSchoolClassTeacherSlots } from "@/services/teachers";
 import { formatDateTime } from "@/utils/format";
@@ -111,7 +111,7 @@ export default async function SchoolTeacherDetailsPage({
                       <span className="text-neutral-400"> · </span>
                       Class {item.classLevel}
                       <span className="text-neutral-400"> · </span>
-                      {SUBJECT_LABELS[item.subject]}
+                      {subjectLabel(item.subject)}
                     </li>
                   ))}
                 </ul>

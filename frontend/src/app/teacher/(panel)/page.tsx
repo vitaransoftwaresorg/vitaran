@@ -2,10 +2,9 @@ import { BookOpen, KeyRound, ScanLine, Trophy, Users } from "lucide-react";
 import { PageHeader } from "@/features/admin/page-header";
 import { StatCard } from "@/features/admin/dashboard-parts";
 import { ChipRow, QuickLinks } from "@/features/admin/quick-links";
-import { SUBJECT_LABELS } from "@/features/schools/constants";
+import { subjectLabel } from "@/features/schools/constants";
 import { capitalizeWords } from "@/features/schools/schema";
 import { getTeacherDashboard } from "@/services/teachers";
-import type { Subject } from "@/types/school";
 
 export default async function TeacherDashboardPage() {
   const stats = await getTeacherDashboard();
@@ -42,7 +41,7 @@ export default async function TeacherDashboardPage() {
       label: "OMR Scan",
       href: "/teacher/omr-scan",
       icon: ScanLine,
-      hint: "Capture sheets",
+      hint: "Scan a sheet",
     },
   ] as const;
 
@@ -62,7 +61,7 @@ export default async function TeacherDashboardPage() {
           />
           <ChipRow
             title="Subjects"
-            items={stats.subjects.map((subject) => SUBJECT_LABELS[subject as Subject] ?? subject)}
+            items={stats.subjects.map((subject) => subjectLabel(subject))}
             empty="No subjects assigned yet."
           />
           <ChipRow

@@ -38,3 +38,9 @@ export function updateProgram(id: string, input: Partial<LearningProgramInput>) 
 export function deleteProgram(id: string) {
   return adminApi<void>(`${ADMIN_BASE}/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
+
+export function getProgramCodeAvailability(code: string, excludeId?: string) {
+  const query = new URLSearchParams({ code });
+  if (excludeId) query.set("excludeId", excludeId);
+  return adminApi<{ taken: boolean }>(`${ADMIN_BASE}/code-availability?${query}`);
+}

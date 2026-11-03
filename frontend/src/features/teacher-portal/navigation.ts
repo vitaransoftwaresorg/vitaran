@@ -56,20 +56,15 @@ const SEGMENT_LABELS: Record<string, string> = {
   students: "Students",
   resources: "Resources",
   "answer-keys": "Answer Keys",
-  answers: "Key corrections",
+  answers: "Answer key",
   edit: "Edit",
   results: "Results",
   "omr-scan": "OMR Scan",
 };
 
-function isUuid(value: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
-
 function crumbLabel(segment: string, previous: string | undefined) {
   if (SEGMENT_LABELS[segment]) return SEGMENT_LABELS[segment];
   if (previous === "answer-keys") return "Key";
-  if (previous === "omr-scan" && isUuid(segment)) return "Scorecard";
   return "Details";
 }
 

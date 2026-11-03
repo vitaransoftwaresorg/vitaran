@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { programLabel } from "@/features/schools/constants";
+import { programLabel, soleSchoolForCustomProgram, TYPE_LABELS } from "@/features/schools/constants";
 import type { LearningProgram } from "@/types/program";
 import { RESULTS_PATH } from "./constants";
 import { DRIVE_TESTS, type DrivePath, type DriveSchool } from "./drive-path";
@@ -22,16 +22,13 @@ type ResultsFiltersProps = {
   schools: DriveSchool[];
 };
 
-function hrefFor(path: DrivePath) {
+function hrefFor(path: DrivePath, programs: LearningProgram[] = []) {
   const params = new URLSearchParams();
-  if (path.program) {
-    params.set("type", "REGULAR");
-    params.set("program", path.program);
-  }
-  if (path.schoolId) {
-    if (!path.program) params.set("type", "CUSTOMIZED");
-    params.set("school", path.schoolId);
-  }
+  const programType = programs.find((program) => program.code === path.program)?.type;
+  const type = programType ?? (path.schoolId ? "CUSTOMIZED" : path.program ? "REGULAR" : undefined);
+  if (type) params.set("type", type);
+  if (path.program) params.set("program", path.program);
+  if (path.schoolId) params.set("school", path.schoolId);
   if (path.testNumber) params.set("test", String(path.testNumber));
   const q = params.toString();
   return q ? `${RESULTS_PATH}?${q}` : RESULTS_PATH;
@@ -84,26 +81,33 @@ function FilterSelect({
 export function ResultsFilters({ path, programs, schools }: ResultsFiltersProps) {
   const router = useRouter();
   const customized = schools.filter((school) => school.type === "CUSTOMIZED");
-  const regular = schools.filter((school) => school.type === "REGULAR");
+  const selectedProgram = programs.find((program) => program.code === path.program);
+  const wantedSchoolType = selectedProgram?.type ?? "REGULAR";
+  const soleSchool = soleSchoolForCustomProgram(selectedProgram, customized);
+  const schoolId = path.schoolId ?? soleSchool?.id;
 
   const programValue = path.program
-    ? `p:${path.program}`
+    ? path.program
     : path.schoolId && !path.program
       ? `s:${path.schoolId}`
       : ALL;
 
   const programItems = [
     { value: ALL, label: "All programs" },
-    ...programs
-      .slice()
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((program) => ({
-        value: `p:${program.code}`,
-        label: programLabel(program.code, program.name),
-      })),
+    ...programs.map((program) => ({
+      value: program.code,
+      label: `${programLabel(program.code, program.name)} (${TYPE_LABELS[program.type ?? "REGULAR"]})`,
+    })),
     ...customized
-      .slice()
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .filter(
+        (school) =>
+          !programs.some(
+            (program) =>
+              program.type === "CUSTOMIZED" &&
+              (school.programs?.includes(program.code) ||
+                soleSchoolForCustomProgram(program, [school])),
+          ),
+      )
       .map((school) => ({
         value: `s:${school.id}`,
         label: school.name,
@@ -113,8 +117,8 @@ export function ResultsFilters({ path, programs, schools }: ResultsFiltersProps)
   const schoolItems = [
     { value: ALL, label: "All schools" },
     ...(path.program
-      ? regular
-          .filter((school) => school.programs?.includes(path.program!))
+      ? schools
+          .filter((school) => school.type === wantedSchoolType && school.programs?.includes(path.program!))
           .sort((a, b) => a.name.localeCompare(b.name))
           .map((school) => ({ value: school.id, label: school.name }))
       : []),
@@ -126,7 +130,7 @@ export function ResultsFilters({ path, programs, schools }: ResultsFiltersProps)
   ];
 
   const go = (next: DrivePath) => {
-    router.push(hrefFor(next));
+    router.push(hrefFor(next, programs));
   };
 
   const onProgram = (value: string) => {
@@ -134,19 +138,19 @@ export function ResultsFilters({ path, programs, schools }: ResultsFiltersProps)
       go({});
       return;
     }
-    if (value.startsWith("p:")) {
-      go({
-        program: value.slice(2),
-        testNumber: path.testNumber,
-      });
-      return;
-    }
     if (value.startsWith("s:")) {
       go({
         schoolId: value.slice(2),
         testNumber: path.testNumber,
       });
+      return;
     }
+    const program = programs.find((item) => item.code === value);
+    go({
+      program: value,
+      schoolId: soleSchoolForCustomProgram(program, customized)?.id,
+      testNumber: path.testNumber,
+    });
   };
 
   const onSchool = (value: string) => {
@@ -164,12 +168,12 @@ export function ResultsFilters({ path, programs, schools }: ResultsFiltersProps)
 
   const onTest = (value: string) => {
     const owner = path.program
-      ? { program: path.program, schoolId: path.schoolId }
-      : path.schoolId
-        ? { schoolId: path.schoolId }
+      ? { program: path.program, schoolId }
+      : schoolId
+        ? { schoolId }
         : {};
-    if (!path.program && !path.schoolId) return;
-    if (path.program && !path.schoolId) return;
+    if (!path.program && !schoolId) return;
+    if (path.program && !schoolId) return;
     if (value === ALL) {
       go({ ...owner });
       return;
@@ -180,7 +184,7 @@ export function ResultsFilters({ path, programs, schools }: ResultsFiltersProps)
     });
   };
 
-  const testReady = Boolean(path.schoolId);
+  const testReady = Boolean(schoolId);
 
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
@@ -191,7 +195,7 @@ export function ResultsFilters({ path, programs, schools }: ResultsFiltersProps)
         onChange={onProgram}
         className="min-w-40 max-w-52"
       />
-      {path.program ? (
+      {path.program && !soleSchool ? (
         <FilterSelect
           label="School"
           value={path.schoolId ?? ALL}

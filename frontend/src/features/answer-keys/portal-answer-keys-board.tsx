@@ -16,6 +16,9 @@ type PortalAnswerKeysBoardProps = {
   role: "school" | "teacher";
   basePath: string;
   programIds: string[];
+  programNames?: Record<string, string>;
+  /** Customized school — tabs and keys use this name instead of a regular catalog title. */
+  ownerLabel?: string;
   description: string;
   hideIdBadgeOnMobile?: boolean;
 };
@@ -25,6 +28,8 @@ export function PortalAnswerKeysBoard({
   role,
   basePath,
   programIds,
+  programNames,
+  ownerLabel,
   description,
   hideIdBadgeOnMobile = false,
 }: PortalAnswerKeysBoardProps) {
@@ -75,6 +80,8 @@ export function PortalAnswerKeysBoard({
         <SchoolDocuments
           key={documents.map((doc) => `${doc.id}:${doc.updatedAt}`).join("|")}
           programIds={programIds}
+          programNames={programNames}
+          ownerLabel={ownerLabel}
           documents={documents}
           noun={ANSWER_KEY_NOUN}
           basePath={basePath}

@@ -1,9 +1,10 @@
-import type { Subject } from "./school";
+import type { SchoolType, Subject } from "./school";
 
 export type LearningProgram = {
   id: string;
   code: string;
   name: string;
+  type: SchoolType;
   year: number;
   classFrom: number;
   classTo: number;
@@ -14,11 +15,12 @@ export type LearningProgram = {
 
 export type LearningProgramInput = {
   name: string;
+  type: SchoolType;
   year: number;
   classFrom: number;
   classTo: number;
   subjects: Subject[];
-  code?: string;
+  code: string;
 };
 
 export type SchoolProgramClass = {
@@ -30,6 +32,7 @@ export type SchoolProgramOffering = {
   programId: string;
   programCode: string;
   programName: string;
+  type?: SchoolType;
   year: number;
   classFrom: number;
   classTo: number;

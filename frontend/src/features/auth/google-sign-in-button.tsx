@@ -27,9 +27,9 @@ function GoogleMark() {
   );
 }
 
-export function GoogleSignInButton({ portal }: { portal: "school" | "student" }) {
+export function GoogleSignInButton() {
   return (
-    <Form action={continueWithGoogle.bind(null, portal)}>
+    <Form action={continueWithGoogle}>
       <Button
         type="submit"
         variant="outline"

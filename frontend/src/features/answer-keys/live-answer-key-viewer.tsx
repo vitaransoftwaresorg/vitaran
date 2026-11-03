@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { useLiveContent } from "@/features/live/use-live-content";
 import type { AnswerKeyDetail } from "@/types/answer-key";
-import { KeyCorrectionsList } from "./key-corrections-list";
+import { AnswerKeyAnswersEditor } from "./answer-key-answers-editor";
 import { loadSchoolAnswerKeyAction, loadTeacherAnswerKeyAction } from "./portal-answer-keys-action";
 
 type LiveAnswerKeyViewerProps = {
@@ -12,7 +12,7 @@ type LiveAnswerKeyViewerProps = {
   answerKey: AnswerKeyDetail;
 };
 
-/** School / teacher — only options admin changed. PDF is not reprinted. */
+/** School / teacher — live options and explanations. */
 export function LiveAnswerKeyViewer({ role, answerKey }: LiveAnswerKeyViewerProps) {
   const [current, setCurrent] = useState(answerKey);
   const [, startReload] = useTransition();
@@ -20,7 +20,7 @@ export function LiveAnswerKeyViewer({ role, answerKey }: LiveAnswerKeyViewerProp
   const apply = useCallback((next: AnswerKeyDetail) => {
     setCurrent((prev) => {
       if (prev.updatedAt === next.updatedAt) return prev;
-      toast.message("Key corrections updated");
+      toast.message("Answer key updated");
       return next;
     });
   }, []);
@@ -41,5 +41,5 @@ export function LiveAnswerKeyViewer({ role, answerKey }: LiveAnswerKeyViewerProp
     setCurrent(answerKey);
   }, [answerKey]);
 
-  return <KeyCorrectionsList key={current.updatedAt} answerKey={current} />;
+  return <AnswerKeyAnswersEditor key={current.updatedAt} answerKey={current} readOnly />;
 }

@@ -70,8 +70,8 @@ export function ResultUploadSheet({
           <UploadForm
             key={`${path.schoolId}-${path.program ?? ""}-${path.testNumber}-${path.classLevel}-${resultSet?.id ?? "new"}`}
             schoolId={path.schoolId}
-            program={school?.type === "CUSTOMIZED" ? undefined : programCode}
-            programName={programName}
+            program={path.program ?? (school?.type === "CUSTOMIZED" ? undefined : programCode)}
+            programName={school?.type === "CUSTOMIZED" && !path.program ? programName : undefined}
             testNumber={path.testNumber}
             classLevel={path.classLevel}
             resultSet={resultSet}

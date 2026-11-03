@@ -45,9 +45,7 @@ type ForgotPasswordFormProps = {
   onBackToLogin?: () => void;
   /** Portal: login email already entered on the sign-in form. */
   initialEmail?: string;
-  /** Student: roll number already entered on the sign-in form. */
-  initialRollNo?: string;
-  /** Skip re-entering email/roll and send OTP immediately. */
+  /** Skip re-entering email and send OTP immediately. */
   autoRequest?: boolean;
   description?: string;
 };
@@ -55,7 +53,6 @@ type ForgotPasswordFormProps = {
 export function ForgotPasswordForm({
   onBackToLogin,
   initialEmail,
-  initialRollNo,
   autoRequest = false,
   description,
 }: ForgotPasswordFormProps) {
@@ -72,10 +69,10 @@ export function ForgotPasswordForm({
 
   useEffect(() => {
     if (!autoRequest || autoStarted.current) return;
-    if (!initialEmail && !initialRollNo) return;
+    if (!initialEmail) return;
     autoStarted.current = true;
     autoFormRef.current?.requestSubmit();
-  }, [autoRequest, initialEmail, initialRollNo]);
+  }, [autoRequest, initialEmail]);
 
   const step =
     verifyState?.step === "done"
@@ -86,15 +83,12 @@ export function ForgotPasswordForm({
   const email = verifyState?.email || requestState?.email || initialEmail || "";
   const emailMasked =
     verifyState?.emailMasked || requestState?.emailMasked || (email ? email : "");
-  const rollNo = verifyState?.rollNo || requestState?.rollNo || initialRollNo || "";
   const pending = requestPending || verifyPending;
   const otpError = verifyState?.fieldErrors?.otp?.[0];
   const id = useId();
-  const isStudent = Boolean(initialRollNo);
 
-  const defaultDescription = isStudent
-    ? "We look up the parent/guardian email on file for your roll number, then send a one-time code there."
-    : "We send a one-time code to your school or teacher login email — only after you verify it do we create and email a new password.";
+  const defaultDescription =
+    "We send a one-time code to your school or teacher login email — only after you verify it do we create and email a new password.";
 
   if (step === "done") {
     return (
@@ -103,16 +97,8 @@ export function ForgotPasswordForm({
           <CardTitle className="text-2xl font-bold text-neutral-950">Password updated</CardTitle>
           <CardDescription>
             Your new password was emailed to{" "}
-            <span className="font-medium text-neutral-800">
-              {emailMasked || email}
-            </span>
-            {rollNo ? (
-              <>
-                {" "}
-                for roll <span className="font-medium text-neutral-800">{rollNo}</span>
-              </>
-            ) : null}
-            . The updated password also appears on the admin/school detail page.
+            <span className="font-medium text-neutral-800">{emailMasked || email}</span>. The
+            updated password also appears on the admin/school detail page.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -146,25 +132,9 @@ export function ForgotPasswordForm({
         <CardHeader>
           <CardTitle className="text-2xl font-bold text-neutral-950">Enter verification code</CardTitle>
           <CardDescription>
-            {isStudent ? (
-              <>
-                We sent a 6-digit OTP to the parent/guardian email on file for roll{" "}
-                <span className="font-medium text-neutral-800">{rollNo}</span>
-                {emailMasked ? (
-                  <>
-                    {" "}
-                    (<span className="font-medium text-neutral-800">{emailMasked}</span>)
-                  </>
-                ) : null}
-                . After you verify it, a new password is emailed automatically.
-              </>
-            ) : (
-              <>
-                We sent a 6-digit OTP to{" "}
-                <span className="font-medium text-neutral-800">{emailMasked || email}</span>.
-                After you verify it, a new password is emailed automatically.
-              </>
-            )}
+            We sent a 6-digit OTP to{" "}
+            <span className="font-medium text-neutral-800">{emailMasked || email}</span>. After
+            you verify it, a new password is emailed automatically.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -175,7 +145,6 @@ export function ForgotPasswordForm({
           >
             <input type="hidden" name="email" value={email} />
             <input type="hidden" name="emailMasked" value={emailMasked} />
-            {rollNo ? <input type="hidden" name="rollNo" value={rollNo} /> : null}
             <FieldGroup>
               {infoMessage && !errorMessage ? (
                 <Alert className="rounded-xl border-brand-200 bg-brand-50 text-brand-950">
@@ -224,11 +193,7 @@ export function ForgotPasswordForm({
           </Form>
 
           <Form action={requestAction} className="flex items-center justify-between gap-2">
-            {isStudent ? (
-              <input type="hidden" name="rollNo" value={rollNo} />
-            ) : (
-              <input type="hidden" name="email" value={email} />
-            )}
+            <input type="hidden" name="email" value={email} />
             <BackLink onBackToLogin={onBackToLogin} />
             <Button type="submit" variant="ghost" size="sm" disabled={pending} className="text-xs">
               {requestPending ? <Loader2 className="animate-spin" /> : null}
@@ -240,13 +205,10 @@ export function ForgotPasswordForm({
     );
   }
 
-  // Auto-request from login form values — no second email/roll entry.
-  if (autoRequest && (initialEmail || initialRollNo)) {
+  if (autoRequest && initialEmail) {
     const requestError =
       requestState?.step === "email"
-        ? requestState.message ||
-          requestState.fieldErrors?.email?.[0] ||
-          requestState.fieldErrors?.rollNo?.[0]
+        ? requestState.message || requestState.fieldErrors?.email?.[0]
         : undefined;
 
     return (
@@ -257,22 +219,14 @@ export function ForgotPasswordForm({
         </CardHeader>
         <CardContent className="space-y-4">
           <Form ref={autoFormRef} action={requestAction} className="sr-only" aria-hidden>
-            {initialRollNo ? (
-              <input type="hidden" name="rollNo" value={initialRollNo} />
-            ) : (
-              <input type="hidden" name="email" value={initialEmail} />
-            )}
+            <input type="hidden" name="email" value={initialEmail} />
             <Button type="submit">Send</Button>
           </Form>
 
           {requestPending || !requestState ? (
             <Alert className="rounded-xl border-brand-200 bg-brand-50 text-brand-950">
               <Loader2 className="animate-spin" />
-              <AlertDescription>
-                {isStudent
-                  ? `Looking up roll ${initialRollNo} and sending a code to the parent/guardian email on file…`
-                  : `Sending a verification code to ${initialEmail}…`}
-              </AlertDescription>
+              <AlertDescription>Sending a verification code to {initialEmail}…</AlertDescription>
             </Alert>
           ) : null}
 
@@ -307,39 +261,22 @@ export function ForgotPasswordForm({
               </Alert>
             ) : null}
 
-            {isStudent ? (
-              <Field data-invalid={requestState?.fieldErrors?.rollNo?.[0] ? true : undefined}>
-                <FieldLabel htmlFor={`${id}-roll`}>Roll number</FieldLabel>
-                <Input
-                  id={`${id}-roll`}
-                  name="rollNo"
-                  required
-                  autoFocus
-                  placeholder="Your roll number"
-                  defaultValue={rollNo}
-                  aria-invalid={requestState?.fieldErrors?.rollNo?.[0] ? true : undefined}
-                  className={INPUT_CLASSES}
-                />
-                <FieldError>{requestState?.fieldErrors?.rollNo?.[0]}</FieldError>
-              </Field>
-            ) : (
-              <Field data-invalid={requestState?.fieldErrors?.email?.[0] ? true : undefined}>
-                <FieldLabel htmlFor={`${id}-email`}>Login email</FieldLabel>
-                <Input
-                  id={`${id}-email`}
-                  name="email"
-                  type="email"
-                  required
-                  autoComplete="email"
-                  autoFocus
-                  placeholder="you@example.com"
-                  defaultValue={email}
-                  aria-invalid={requestState?.fieldErrors?.email?.[0] ? true : undefined}
-                  className={INPUT_CLASSES}
-                />
-                <FieldError>{requestState?.fieldErrors?.email?.[0]}</FieldError>
-              </Field>
-            )}
+            <Field data-invalid={requestState?.fieldErrors?.email?.[0] ? true : undefined}>
+              <FieldLabel htmlFor={`${id}-email`}>Login email</FieldLabel>
+              <Input
+                id={`${id}-email`}
+                name="email"
+                type="email"
+                required
+                autoComplete="email"
+                autoFocus
+                placeholder="you@example.com"
+                defaultValue={email}
+                aria-invalid={requestState?.fieldErrors?.email?.[0] ? true : undefined}
+                className={INPUT_CLASSES}
+              />
+              <FieldError>{requestState?.fieldErrors?.email?.[0]}</FieldError>
+            </Field>
 
             <Button type="submit" disabled={pending} className="h-11 w-full rounded-full text-sm font-semibold">
               {requestPending ? (

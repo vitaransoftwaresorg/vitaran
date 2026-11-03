@@ -35,6 +35,7 @@ import {
   SCHOOL_STATUSES,
   SCHOOL_TYPES,
   type SchoolDetail,
+  type SchoolType,
 } from "@/types/school";
 import type { LearningProgram } from "@/types/program";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
@@ -50,6 +51,7 @@ import {
   STATUS_LABELS,
   TYPE_LABELS,
 } from "./constants";
+import { CustomSchoolProgramField } from "./custom-school-program-field";
 import { schoolProgramsToTokens } from "./offerings";
 import { ProgramOfferingsField } from "./program-offerings-field";
 import {
@@ -127,8 +129,24 @@ const ROOMY_CONTROLS =
 const BOLD_SECTION_HEADINGS =
   "[&_[data-slot=section-heading]]:text-sm [&_[data-slot=section-heading]]:font-bold [&_[data-slot=section-heading]]:text-neutral-950";
 
+function customOffering(school: SchoolDetail) {
+  return (
+    school.schoolPrograms.find((program) => program.type === "CUSTOMIZED") ??
+    (school.type === "CUSTOMIZED" ? school.schoolPrograms[0] : undefined)
+  );
+}
+
 function toFormValues(school?: SchoolDetail): SchoolFormValues {
-  if (!school) return { type: "REGULAR", status: "ACTIVE", offerings: [] };
+  if (!school) {
+    return {
+      type: "REGULAR",
+      status: "ACTIVE",
+      offerings: [],
+      customClasses: [],
+    };
+  }
+
+  const custom = customOffering(school);
 
   return {
     code: school.code,
@@ -136,7 +154,11 @@ function toFormValues(school?: SchoolDetail): SchoolFormValues {
     board: school.board,
     type: school.type,
     status: school.status,
-    offerings: schoolProgramsToTokens(school.schoolPrograms),
+    offerings: schoolProgramsToTokens(
+      school.schoolPrograms.filter((program) => (program.type ?? "REGULAR") === school.type),
+    ),
+    customProgramName: custom?.programName ?? (school.type === "CUSTOMIZED" ? school.name : ""),
+    customClasses: custom?.classes.map((row) => String(row.classLevel)) ?? [],
     principalName: school.principalName ?? "",
     contactName: school.contactName,
     contactEmail: school.contactEmail,
@@ -237,6 +259,11 @@ function SchoolFormWizard({
   // the parent re-reads the saved draft on every render.
   const [values] = useState(initialValues);
   const [offerings, setOfferings] = useState(initialValues.offerings ?? []);
+  const [customClasses, setCustomClasses] = useState(initialValues.customClasses ?? []);
+  const [schoolType, setSchoolType] = useState<SchoolType>(
+    initialValues.type === "CUSTOMIZED" ? "CUSTOMIZED" : "REGULAR",
+  );
+  const typeCatalog = catalog.filter((program) => (program.type ?? "REGULAR") === schoolType);
   const [step, setStep] = useState(() =>
     resolveInitialStep(searchParams.get(STEP_SEARCH_PARAM), values, serverErrors, mode),
   );
@@ -254,6 +281,15 @@ function SchoolFormWizard({
     const timers = emailCheckTimers.current;
     return () => Object.values(timers).forEach(clearTimeout);
   }, []);
+
+  useEffect(() => {
+    if (schoolType !== "CUSTOMIZED") return;
+    const programName = formRef.current?.elements.namedItem("customProgramName") as HTMLInputElement | null;
+    const schoolName = formRef.current?.elements.namedItem("name") as HTMLInputElement | null;
+    if (programName && !programName.value.trim() && schoolName?.value.trim()) {
+      programName.value = capitalizeWords(schoolName.value.trim());
+    }
+  }, [schoolType]);
 
   const errors: SchoolFormErrors = { ...serverErrors, ...clientErrors };
   const isLast = step === LAST_STEP;
@@ -489,7 +525,17 @@ function SchoolFormWizard({
 
                 <Field data-invalid={invalid("type")}>
                   <FieldLabel htmlFor="type">Type *</FieldLabel>
-                  <Select name="type" items={typeItems} defaultValue={values.type ?? "REGULAR"} onValueChange={saveDraftSoon}>
+                  <Select
+                    name="type"
+                    items={typeItems}
+                    defaultValue={values.type ?? "REGULAR"}
+                    onValueChange={(next) => {
+                      const type = next as SchoolType;
+                      setSchoolType(type);
+                      setOfferings([]);
+                      saveDraftSoon();
+                    }}
+                  >
                     <SelectTrigger id="type" className="w-full" aria-invalid={invalid("type")}>
                       <SelectValue />
                     </SelectTrigger>
@@ -571,20 +617,43 @@ function SchoolFormWizard({
             <div {...panel(1)}>
               <FormSection title="Programs & classes">
                 <p className="-mt-1 text-sm text-neutral-500">
-                  Select a program, then check the classes this school offers.
+                  {schoolType === "CUSTOMIZED"
+                    ? "Enter the program name and select classes. Subjects follow the regular catalog (1–5 Science, 6–10 Physics / Chemistry / Biology)."
+                    : "Select a program, then check the classes this school offers."}
                 </p>
-                <ProgramOfferingsField
-                  catalog={catalog}
-                  value={offerings}
-                  onChange={(next) => {
-                    setOfferings(next);
-                    if (savedValues) {
-                      setDirty(!sameFormValues({ ...readValues(), offerings: next }, savedValues));
-                    }
-                    saveDraftSoon();
-                  }}
-                  error={errors.offerings?.[0]}
-                />
+                {schoolType === "CUSTOMIZED" ? (
+                  <CustomSchoolProgramField
+                    name={values.customProgramName ?? ""}
+                    classes={customClasses}
+                    onClassesChange={(next) => {
+                      setCustomClasses(next);
+                      if (savedValues) {
+                        setDirty(
+                          !sameFormValues({ ...readValues(), customClasses: next }, savedValues),
+                        );
+                      }
+                      saveDraftSoon();
+                    }}
+                    errors={{
+                      customProgramName: errors.customProgramName?.[0],
+                      customClasses: errors.customClasses?.[0],
+                    }}
+                  />
+                ) : (
+                  <ProgramOfferingsField
+                    key={schoolType}
+                    catalog={typeCatalog}
+                    value={offerings}
+                    onChange={(next) => {
+                      setOfferings(next);
+                      if (savedValues) {
+                        setDirty(!sameFormValues({ ...readValues(), offerings: next }, savedValues));
+                      }
+                      saveDraftSoon();
+                    }}
+                    error={errors.offerings?.[0]}
+                  />
+                )}
               </FormSection>
             </div>
 

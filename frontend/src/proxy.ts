@@ -9,9 +9,6 @@ import {
   SCHOOL_HOME_PATH,
   SCHOOL_LOGIN_PATH,
   SCHOOL_SESSION_COOKIE,
-  STUDENT_HOME_PATH,
-  STUDENT_LOGIN_PATH,
-  STUDENT_SESSION_COOKIE,
   TEACHER_BASE_PATH,
   TEACHER_HOME_PATH,
   TEACHER_SESSION_COOKIE,
@@ -88,13 +85,6 @@ export function proxy(request: NextRequest) {
     }
     if (hasTeacher) {
       return NextResponse.redirect(new URL(TEACHER_HOME_PATH, request.nextUrl));
-    }
-    return NextResponse.next();
-  }
-
-  if (pathname === STUDENT_LOGIN_PATH || pathname === "/student/login") {
-    if (request.cookies.has(STUDENT_SESSION_COOKIE)) {
-      return NextResponse.redirect(new URL(STUDENT_HOME_PATH, request.nextUrl));
     }
     return NextResponse.next();
   }

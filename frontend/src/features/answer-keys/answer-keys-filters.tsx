@@ -9,7 +9,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { programLabel } from "@/features/schools/constants";
+import { programLabel, soleSchoolForCustomProgram, TYPE_LABELS } from "@/features/schools/constants";
 import type { LearningProgram } from "@/types/program";
 import { ANSWER_KEYS_PATH } from "./constants";
 import { DRIVE_TESTS, type DrivePath, type DriveSchool } from "./drive-path";
@@ -22,16 +22,13 @@ type AnswerKeysFiltersProps = {
   schools: DriveSchool[];
 };
 
-function hrefFor(path: DrivePath) {
+function hrefFor(path: DrivePath, programs: LearningProgram[] = []) {
   const params = new URLSearchParams();
-  if (path.program) {
-    params.set("type", "REGULAR");
-    params.set("program", path.program);
-  }
-  if (path.schoolId) {
-    params.set("type", "CUSTOMIZED");
-    params.set("school", path.schoolId);
-  }
+  const programType = programs.find((program) => program.code === path.program)?.type;
+  const type = programType ?? (path.schoolId ? "CUSTOMIZED" : path.program ? "REGULAR" : undefined);
+  if (type) params.set("type", type);
+  if (path.program) params.set("program", path.program);
+  if (path.schoolId) params.set("school", path.schoolId);
   if (path.testNumber) params.set("test", String(path.testNumber));
   const q = params.toString();
   return q ? `${ANSWER_KEYS_PATH}?${q}` : ANSWER_KEYS_PATH;
@@ -83,30 +80,46 @@ function FilterSelect({
 
 export function AnswerKeysFilters({ path, programs, schools }: AnswerKeysFiltersProps) {
   const router = useRouter();
+  const selectedProgram = programs.find((program) => program.code === path.program);
+  const customProgram = selectedProgram?.type === "CUSTOMIZED";
   const customized = schools.filter((school) => school.type === "CUSTOMIZED");
+  const soleSchool = soleSchoolForCustomProgram(selectedProgram, customized);
+  const schoolId = path.schoolId ?? soleSchool?.id;
 
   const programValue = path.program
-    ? `p:${path.program}`
+    ? path.program
     : path.schoolId
       ? `s:${path.schoolId}`
       : ALL;
 
   const programItems = [
     { value: ALL, label: "All programs" },
-    ...programs
-      .slice()
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map((program) => ({
-        value: `p:${program.code}`,
-        label: programLabel(program.code, program.name),
-      })),
+    ...programs.map((program) => ({
+      value: program.code,
+      label: `${programLabel(program.code, program.name)} (${TYPE_LABELS[program.type ?? "REGULAR"]})`,
+    })),
     ...customized
-      .slice()
-      .sort((a, b) => a.name.localeCompare(b.name))
+      .filter(
+        (school) =>
+          !programs.some(
+            (program) =>
+              program.type === "CUSTOMIZED" &&
+              (school.programs?.includes(program.code) ||
+                soleSchoolForCustomProgram(program, [school])),
+          ),
+      )
       .map((school) => ({
         value: `s:${school.id}`,
         label: school.name,
       })),
+  ];
+
+  const schoolItems = [
+    { value: ALL, label: "All schools" },
+    ...customized
+      .filter((school) => school.programs?.includes(path.program!))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((school) => ({ value: school.id, label: school.name })),
   ];
 
   const testItems = [
@@ -115,7 +128,7 @@ export function AnswerKeysFilters({ path, programs, schools }: AnswerKeysFilters
   ];
 
   const go = (next: DrivePath) => {
-    router.push(hrefFor(next));
+    router.push(hrefFor(next, programs));
   };
 
   const onProgram = (value: string) => {
@@ -123,28 +136,41 @@ export function AnswerKeysFilters({ path, programs, schools }: AnswerKeysFilters
       go({});
       return;
     }
-    if (value.startsWith("p:")) {
-      go({
-        program: value.slice(2),
-        testNumber: path.testNumber,
-      });
-      return;
-    }
     if (value.startsWith("s:")) {
       go({
         schoolId: value.slice(2),
         testNumber: path.testNumber,
       });
+      return;
     }
+    const program = programs.find((item) => item.code === value);
+    go({
+      program: value,
+      schoolId: soleSchoolForCustomProgram(program, customized)?.id,
+      testNumber: path.testNumber,
+    });
+  };
+
+  const onSchool = (value: string) => {
+    if (!path.program) return;
+    if (value === ALL) {
+      go({ program: path.program, testNumber: path.testNumber });
+      return;
+    }
+    go({
+      program: path.program,
+      schoolId: value,
+      testNumber: path.testNumber,
+    });
   };
 
   const onTest = (value: string) => {
-    const owner = path.program
-      ? { program: path.program }
-      : path.schoolId
-        ? { schoolId: path.schoolId }
-        : {};
-    if (!path.program && !path.schoolId) return;
+    const owner = {
+      program: path.program,
+      schoolId,
+    };
+    if (!path.program && !schoolId) return;
+    if (customProgram && !schoolId) return;
     if (value === ALL) {
       go({ ...owner });
       return;
@@ -155,6 +181,8 @@ export function AnswerKeysFilters({ path, programs, schools }: AnswerKeysFilters
     });
   };
 
+  const testReady = customProgram ? Boolean(schoolId) : Boolean(path.program || schoolId);
+
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
       <FilterSelect
@@ -164,12 +192,21 @@ export function AnswerKeysFilters({ path, programs, schools }: AnswerKeysFilters
         onChange={onProgram}
         className="min-w-40 max-w-52"
       />
+      {customProgram && !soleSchool ? (
+        <FilterSelect
+          label="School"
+          value={path.schoolId ?? ALL}
+          items={schoolItems}
+          onChange={onSchool}
+          className="min-w-40 max-w-52"
+        />
+      ) : null}
       <FilterSelect
         label="Test"
         value={path.testNumber ? String(path.testNumber) : ALL}
         items={testItems}
         onChange={onTest}
-        disabled={!path.program && !path.schoolId}
+        disabled={!testReady}
         className="w-32"
       />
     </div>

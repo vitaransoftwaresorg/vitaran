@@ -6,7 +6,12 @@ import { deleteDocument, publishDocument, saveDocument } from "@/features/docume
 import * as answerKeyService from "@/services/answer-keys";
 import type { SubjectRange } from "@/types/answer-key";
 import { ANSWER_KEY_NOUN, ANSWER_KEYS_PATH } from "./constants";
-import { ANSWER_KEY_FIELDS, getAnswerKeySchema, type AnswerKeyFormState } from "./schema";
+import {
+  ANSWER_KEY_FIELDS,
+  getAnswerKeySchema,
+  type AnswerKeyField,
+  type AnswerKeyFormState,
+} from "./schema";
 
 function revalidateAnswerKeyViews() {
   revalidatePath(ANSWER_KEYS_PATH, "layout");
@@ -14,16 +19,23 @@ function revalidateAnswerKeyViews() {
   revalidatePath(`${TEACHER_BASE_PATH}/answer-keys`, "layout");
 }
 
-const options = { fields: ANSWER_KEY_FIELDS, revalidate: ANSWER_KEYS_PATH, noun: ANSWER_KEY_NOUN };
+type AnswerKeySaveInput = ReturnType<typeof getAnswerKeySchema>["_output"];
+
+const options = {
+  fields: ANSWER_KEY_FIELDS,
+  fileFields: [] as readonly AnswerKeyField[],
+  revalidate: ANSWER_KEYS_PATH,
+  noun: ANSWER_KEY_NOUN,
+};
 
 export async function uploadAnswerKeyAction(
   _state: AnswerKeyFormState,
   formData: FormData,
 ): Promise<AnswerKeyFormState> {
-  const result = await saveDocument({
+  const result = await saveDocument<AnswerKeyField, AnswerKeySaveInput>({
     ...options,
     formData,
-    schema: getAnswerKeySchema("create"),
+    schema: getAnswerKeySchema(),
     save: answerKeyService.uploadAnswerKey,
   });
   if (result?.status === "success") revalidateAnswerKeyViews();
@@ -35,14 +47,54 @@ export async function updateAnswerKeyAction(
   _state: AnswerKeyFormState,
   formData: FormData,
 ): Promise<AnswerKeyFormState> {
-  const result = await saveDocument({
+  const result = await saveDocument<AnswerKeyField, AnswerKeySaveInput>({
     ...options,
     formData,
-    schema: getAnswerKeySchema("edit"),
+    schema: getAnswerKeySchema(),
     save: (input) => answerKeyService.updateAnswerKey(id, input),
   });
   if (result?.status === "success") revalidateAnswerKeyViews();
   return result;
+}
+
+export async function createAnswerKeyAction(input: {
+  program: string;
+  type: "REGULAR" | "CUSTOMIZED";
+  schoolId?: string;
+  testNumber: number;
+  classLevel: number;
+  testId?: string;
+}): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
+  try {
+    const created = await answerKeyService.uploadAnswerKey({
+      program: input.program,
+      type: input.type,
+      schoolId: input.schoolId,
+      ...(input.testId?.trim() ? { testId: input.testId.trim() } : {}),
+      testNumber: input.testNumber,
+      classLevel: input.classLevel,
+    });
+    revalidateAnswerKeyViews();
+    return { ok: true, id: created.id };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not create this answer key.";
+    return { ok: false, message };
+  }
+}
+
+export async function setAnswerKeyTestIdAction(id: string, testId: string) {
+  const next = testId.trim();
+  if (!next) return { ok: false as const, message: "Enter the test ID" };
+  try {
+    await answerKeyService.setAnswerKeyTestId(id, next);
+    revalidateAnswerKeyViews();
+    return { ok: true as const };
+  } catch (error) {
+    return {
+      ok: false as const,
+      message: error instanceof Error ? error.message : "Could not save this test ID.",
+    };
+  }
 }
 
 export async function setAnswerKeyPublishedAction(id: string, published: boolean) {
@@ -62,6 +114,9 @@ export async function saveAnswerKeyAnswersAction(
     explanations: Record<string, string>;
     printedAnswers?: Record<string, string>;
     subjectRanges: SubjectRange[];
+    testId?: string;
+    correctMarks: number;
+    wrongMarks: number;
   },
 ) {
   const result = await answerKeyService.saveAnswerKeyAnswers(id, input);

@@ -4,7 +4,11 @@ import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { CalendarClock, Download, Eye, FileText, ListChecks } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { programs } from "@/features/teachers-resources/content";
+import {
+  customProgramIds,
+  isRegularCatalog,
+  portalPrograms,
+} from "@/features/teachers-resources/portal-programs";
 import type { PdfDocument } from "@/types/document";
 import { classLabel, formatDateTime } from "@/utils/format";
 import {
@@ -18,6 +22,10 @@ import {
 type SchoolDocumentsProps = {
   /** Programs assigned to the signed-in school. */
   programIds: string[];
+  /** Catalog names so customized programs are not stuck as a code. */
+  programNames?: Record<string, string>;
+  /** Customized school name — used instead of Advanced / Integrated tab titles. */
+  ownerLabel?: string;
   documents: PdfDocument[];
   /** Lowercase, e.g. "answer key". */
   noun: string;
@@ -27,15 +35,41 @@ type SchoolDocumentsProps = {
   hideIdBadgeOnMobile?: boolean;
 };
 
+function tabProgramIds(programIds: string[], ownerLabel?: string) {
+  if (!ownerLabel) return programIds;
+  const custom = customProgramIds(programIds);
+  return custom.length > 0 ? custom : programIds.slice(0, 1);
+}
+
+function documentsForProgram(
+  documents: PdfDocument[],
+  programId: string,
+  programIds: string[],
+  ownerLabel?: string,
+) {
+  const custom = customProgramIds(programIds);
+  return documents.filter((document) => {
+    if (document.program === programId) return true;
+    if (custom[0] === programId && isRegularCatalog(document.program)) return true;
+    if (ownerLabel && custom.length === 0) return true;
+    return false;
+  });
+}
+
 /** What a signed-in school sees: program tabs, then each class with its tests. */
 export function SchoolDocuments({
   programIds,
+  programNames,
+  ownerLabel,
   documents,
   noun,
   basePath,
   hideIdBadgeOnMobile = false,
 }: SchoolDocumentsProps) {
-  const visiblePrograms = programs.filter((program) => programIds.includes(program.id));
+  const visiblePrograms = portalPrograms(tabProgramIds(programIds, ownerLabel), programNames).map(
+    (program) =>
+      ownerLabel && isRegularCatalog(program.id) ? { ...program, title: ownerLabel } : program,
+  );
   const [programId, setProgramId] = useState(visiblePrograms[0]?.id);
   const [classLevel, setClassLevel] = useState<number | null>(null);
   const plural = (count: number) => `${count} ${count === 1 ? noun : `${noun}s`}`;
@@ -47,7 +81,7 @@ export function SchoolDocuments({
   }
 
   const activeProgram = visiblePrograms.find((program) => program.id === programId);
-  const programDocuments = documents.filter((document) => document.program === programId);
+  const programDocuments = documentsForProgram(documents, programId ?? "", programIds, ownerLabel);
   const classes = [...new Set(programDocuments.map((document) => document.classLevel))].sort(
     (a, b) => a - b,
   );
@@ -63,7 +97,7 @@ export function SchoolDocuments({
         >
           {visiblePrograms.map((program) => {
             const active = program.id === programId;
-            const count = documents.filter((document) => document.program === program.id).length;
+            const count = documentsForProgram(documents, program.id, programIds, ownerLabel).length;
             return (
               <button
                 key={program.id}
@@ -186,13 +220,26 @@ function DocumentRow({
         </span>
         <div className="min-w-0">
           <p className="text-base font-semibold text-neutral-950">
-            {document.testId ? `Test ID ${document.testId}` : `Test No ${document.testNumber}`} {noun}
+            {document.testId?.trim()
+              ? `Test ID ${document.testId}`
+              : `Test No ${document.testNumber}`}{" "}
+            {noun}
           </p>
           <p className="mt-0.5 flex items-center gap-1.5 text-xs text-neutral-500">
             <FileText className="size-3.5 shrink-0" />
-            <span className="truncate">{document.fileName}</span>
-            <span className="text-neutral-300">·</span>
-            <span className="shrink-0">{formatFileSize(document.fileSize)}</span>
+            <span className="truncate">
+              {document.fileSize > 0
+                ? document.fileName
+                : document.answerCount
+                  ? `${document.answerCount} answers`
+                  : "Answer key"}
+            </span>
+            {document.fileSize > 0 ? (
+              <>
+                <span className="text-neutral-300">·</span>
+                <span className="shrink-0">{formatFileSize(document.fileSize)}</span>
+              </>
+            ) : null}
           </p>
         </div>
       </div>
@@ -215,29 +262,33 @@ function DocumentRow({
           className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-brand-200 bg-white px-3.5 text-sm font-semibold text-brand-900 transition-colors hover:border-brand-900 hover:bg-brand-50 md:flex-none"
         >
           <ListChecks className="size-4" />
-          Key corrections
+          View key
         </Link>
-        <Link
-          href={documentFileHref(basePath, document.id)}
-          target="_blank"
-          rel="noopener noreferrer"
-          prefetch={false}
-          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-brand-200 bg-white px-3.5 text-sm font-semibold text-brand-900 transition-colors hover:border-brand-900 hover:bg-brand-50 md:flex-none"
-        >
-          <Eye className="size-4" />
-          PDF
-        </Link>
-        <Link
-          href={documentDownloadHref(basePath, document.id)}
-          download={document.fileName}
-          target="_blank"
-          rel="noopener noreferrer"
-          prefetch={false}
-          className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-brand-900 px-3.5 text-sm font-semibold text-white transition-colors hover:bg-brand-800 active:scale-[0.98] md:flex-none"
-        >
-          <Download className="size-4" />
-          Download
-        </Link>
+        {document.fileSize > 0 ? (
+          <>
+            <Link
+              href={documentFileHref(basePath, document.id)}
+              target="_blank"
+              rel="noopener noreferrer"
+              prefetch={false}
+              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-brand-200 bg-white px-3.5 text-sm font-semibold text-brand-900 transition-colors hover:border-brand-900 hover:bg-brand-50 md:flex-none"
+            >
+              <Eye className="size-4" />
+              PDF
+            </Link>
+            <Link
+              href={documentDownloadHref(basePath, document.id)}
+              download={document.fileName}
+              target="_blank"
+              rel="noopener noreferrer"
+              prefetch={false}
+              className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-brand-900 px-3.5 text-sm font-semibold text-white transition-colors hover:bg-brand-800 active:scale-[0.98] md:flex-none"
+            >
+              <Download className="size-4" />
+              Download
+            </Link>
+          </>
+        ) : null}
       </div>
     </li>
   );

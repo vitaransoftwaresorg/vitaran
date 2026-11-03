@@ -7,14 +7,10 @@ import { toast } from "sonner";
 import { FieldError } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import {
-  documentFileHref,
-  hasChanges,
-} from "@/features/documents/constants";
+import { hasChanges } from "@/features/documents/constants";
 import { DocumentFormShell, FormSection } from "@/features/documents/document-form-shell";
-import { PdfField } from "@/features/documents/pdf-field";
 import { SelectField } from "@/features/documents/select-field";
-import { TYPE_LABELS } from "@/features/schools/constants";
+import { programLabel, TYPE_LABELS } from "@/features/schools/constants";
 import type { AnswerKey } from "@/types/answer-key";
 import type { LearningProgram } from "@/types/program";
 import { SCHOOL_TYPES } from "@/types/school";
@@ -22,6 +18,7 @@ import { updateAnswerKeyAction, uploadAnswerKeyAction } from "./actions";
 import { ANSWER_KEYS_PATH } from "./constants";
 import type { AnswerKeyFormState, AnswerKeyFormValues } from "./schema";
 import type { AnswerKeySchoolOption } from "./school-options";
+import { enteredTestId } from "./test-id";
 import {
   classItemsFromLevels,
   classLevelsFromProgram,
@@ -38,7 +35,7 @@ function toFormValues(answerKey?: AnswerKey): AnswerKeyFormValues {
     program: answerKey.program,
     type: answerKey.type,
     schoolId: answerKey.school?.id,
-    testId: answerKey.testId,
+    testId: enteredTestId(answerKey.testId),
     testNumber: String(answerKey.testNumber),
     classLevel: String(answerKey.classLevel),
   };
@@ -60,7 +57,7 @@ export function AnswerKeyForm({ schools, programs, answerKey }: AnswerKeyFormPro
 
   useEffect(() => {
     if (state?.status !== "success") return;
-    toast.success(answerKey ? "Answer key updated" : "Answer key uploaded");
+    toast.success(answerKey ? "Answer key updated" : "Answer key created");
     router.push(ANSWER_KEYS_PATH);
   }, [state, answerKey, router]);
 
@@ -95,10 +92,9 @@ type FormFieldsProps = {
 function FormFields({ schools, programs, answerKey, values, errors, message, pending }: FormFieldsProps) {
   const programItems = programs.map((program) => ({
     value: program.code,
-    label: program.name,
+    label: programLabel(program.code, program.name),
   }));
   const [current, setCurrent] = useState(values);
-  const [hasNewFile, setHasNewFile] = useState(false);
   const customized = current.type === "CUSTOMIZED";
 
   const selectedProgram = useMemo(
@@ -161,16 +157,15 @@ function FormFields({ schools, programs, answerKey, values, errors, message, pen
   };
 
   const changed =
-    hasNewFile ||
-    (answerKey !== undefined &&
-      hasChanges(toFormValues(answerKey), current, [
-        "program",
-        "type",
-        "testId",
-        "testNumber",
-        "classLevel",
-        ...(customized ? (["schoolId"] as const) : []),
-      ]));
+    answerKey !== undefined &&
+    hasChanges(toFormValues(answerKey), current, [
+      "program",
+      "type",
+      "testId",
+      "testNumber",
+      "classLevel",
+      ...(customized ? (["schoolId"] as const) : []),
+    ]);
 
   const schoolItems = schools.map((school) => ({
     value: school.id,
@@ -195,7 +190,7 @@ function FormFields({ schools, programs, answerKey, values, errors, message, pen
       editing={Boolean(answerKey)}
       changed={changed}
       pending={pending}
-      uploadLabel="Upload answer key"
+      uploadLabel="Create answer key"
     >
       <FormSection title="Program">
         <div className={cn("grid gap-4 sm:grid-cols-2", customized && "lg:grid-cols-3")}>
@@ -275,19 +270,9 @@ function FormFields({ schools, programs, answerKey, values, errors, message, pen
         </div>
       </FormSection>
 
-      <FormSection title="Answer key file">
-        <PdfField
-          current={
-            answerKey && {
-              fileName: answerKey.fileName,
-              fileSize: answerKey.fileSize,
-              href: documentFileHref(ANSWER_KEYS_PATH, answerKey.id),
-            }
-          }
-          errors={errors.file}
-          onFileChange={setHasNewFile}
-        />
-      </FormSection>
+      <p className="px-6 py-4 text-sm text-neutral-600">
+        After you create the key, fill 100 questions with A, B, C, D or ADD, plus explanations.
+      </p>
     </DocumentFormShell>
   );
 }

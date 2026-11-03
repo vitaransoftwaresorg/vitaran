@@ -1,4 +1,4 @@
-import { SUBJECT_LABELS } from "@/features/schools/constants";
+import { subjectLabel } from "@/features/schools/constants";
 import type { AnswerKeyDetail } from "@/types/answer-key";
 
 type KeyCorrectionsListProps = {
@@ -34,7 +34,7 @@ export function KeyCorrectionsList({ answerKey }: KeyCorrectionsListProps) {
             <div>
               <p className="text-sm font-bold text-neutral-800 tabular-nums">Q{row.question}</p>
               {subjectFor(row.question) && (
-                <p className="text-[11px] text-neutral-500">{SUBJECT_LABELS[subjectFor(row.question)!]}</p>
+                <p className="text-[11px] text-neutral-500">{subjectLabel(subjectFor(row.question)!)}</p>
               )}
             </div>
             <p className="text-sm font-semibold text-neutral-900">{row.to ?? "—"}</p>

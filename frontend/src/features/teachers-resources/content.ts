@@ -6,7 +6,7 @@ import {
   Trophy,
   type LucideIcon,
 } from "lucide-react";
-type ProgramContent = {
+export type ProgramContent = {
   id: string;
   icon: LucideIcon;
   /** Also the key used in `solutionBooks`. */

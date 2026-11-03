@@ -188,7 +188,7 @@ export function StudentForm({
   function validateBeforeSubmit(): boolean {
     const next: typeof clientErrors = {};
     if (name.trim().length < 2) next.name = "Enter the student name";
-    if (!rollNo.trim()) next.rollNo = "Enter the roll number";
+    if (!rollNo.trim()) next.rollNo = "Enter the registration number";
     if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       next.email = "Enter a valid parent / guardian email";
     }
@@ -249,7 +249,7 @@ export function StudentForm({
         </Field>
 
         <Field data-invalid={errors.rollNo ? true : undefined}>
-          <FieldLabel htmlFor="rollNo">Roll number *</FieldLabel>
+          <FieldLabel htmlFor="rollNo">Registration number *</FieldLabel>
           <Input
             id="rollNo"
             name="rollNo"

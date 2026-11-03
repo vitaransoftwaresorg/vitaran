@@ -59,6 +59,10 @@ export function setAnswerKeyPublished(id: string, published: boolean) {
   return adminApi<AnswerKey>(`${itemPath(BASE, id)}/publish`, { method: "PATCH", body: { published } });
 }
 
+export function setAnswerKeyTestId(id: string, testId: string) {
+  return adminApi<AnswerKey>(`${itemPath(BASE, id)}/test-id`, { method: "PATCH", body: { testId } });
+}
+
 export function deleteAnswerKey(id: string) {
   return adminApi<void>(itemPath(BASE, id), { method: "DELETE" });
 }
@@ -70,6 +74,9 @@ export function saveAnswerKeyAnswers(
     explanations: Record<string, string>;
     printedAnswers?: Record<string, AnswerOption | string>;
     subjectRanges: SubjectRange[];
+    testId?: string;
+    correctMarks: number;
+    wrongMarks: number;
   },
 ) {
   return adminApi<AnswerKeyDetail>(`${itemPath(BASE, id)}/answers`, { method: "PATCH", body: input });

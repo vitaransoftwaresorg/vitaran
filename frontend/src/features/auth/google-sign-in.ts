@@ -7,19 +7,16 @@ import {
   GOOGLE_COMPLETE_PATH,
   GOOGLE_PORTAL_COOKIE,
   SCHOOL_LOGIN_PATH,
-  STUDENT_LOGIN_PATH,
 } from "@/constants/auth";
 import { isGoogleAuthConfigured } from "./google-complete";
 
-export async function continueWithGoogle(portal: "school" | "student") {
+export async function continueWithGoogle() {
   if (!isGoogleAuthConfigured()) {
-    redirect(
-      `${portal === "student" ? STUDENT_LOGIN_PATH : SCHOOL_LOGIN_PATH}?error=Configuration`,
-    );
+    redirect(`${SCHOOL_LOGIN_PATH}?error=Configuration`);
   }
 
   const cookieStore = await cookies();
-  cookieStore.set(GOOGLE_PORTAL_COOKIE, portal, {
+  cookieStore.set(GOOGLE_PORTAL_COOKIE, "school", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
