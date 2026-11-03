@@ -1,8 +1,11 @@
 import { prisma } from "../config/database.js";
-import type { Prisma, Subject } from "../generated/prisma/client.js";
+import type { Prisma } from "../generated/prisma/client.js";
+import type { SchoolType } from "../generated/prisma/enums.js";
 
 export function findPrograms() {
-  return prisma.learningProgram.findMany({ orderBy: [{ year: "desc" }, { name: "asc" }] });
+  return prisma.learningProgram.findMany({
+    orderBy: [{ type: "asc" }, { year: "desc" }, { name: "asc" }],
+  });
 }
 
 export function findProgramById(id: string) {
@@ -16,10 +19,11 @@ export function findProgramByCode(code: string) {
 export function createProgram(data: {
   code: string;
   name: string;
+  type: SchoolType;
   year: number;
   classFrom: number;
   classTo: number;
-  subjects: Subject[];
+  subjects: string[];
 }) {
   return prisma.learningProgram.create({ data });
 }

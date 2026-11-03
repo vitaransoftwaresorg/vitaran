@@ -51,9 +51,12 @@ function holeCount(gray: Gray, left: number, top: number, right: number, bottom:
   }
   const seen = new Uint8Array(w * h);
   const flood = (sx: number, sy: number) => {
-    const stack = [[sx, sy]];
+    const stack: Array<[number, number]> = [[sx, sy]];
     while (stack.length) {
-      const [x, y] = stack.pop()!;
+      const next = stack.pop();
+      if (!next) break;
+      const x = next[0];
+      const y = next[1];
       if (x < 0 || y < 0 || x >= w || y >= h) continue;
       const i = y * w + x;
       if (seen[i] || ink[i]) continue;
@@ -123,10 +126,13 @@ function rightmostLetterBox(gray: Gray, left: number, top: number, right: number
       let minY = y;
       let maxY = y;
       let area = 0;
-      const stack = [[x, y]];
+      const stack: Array<[number, number]> = [[x, y]];
       seen[start] = 1;
       while (stack.length) {
-        const [cx, cy] = stack.pop()!;
+        const next = stack.pop();
+        if (!next) break;
+        const cx = next[0];
+        const cy = next[1];
         area += 1;
         minX = Math.min(minX, cx);
         maxX = Math.max(maxX, cx);

@@ -1,4 +1,4 @@
-import type { Prisma, Subject } from "../generated/prisma/client.js";
+import type { Prisma } from "../generated/prisma/client.js";
 import { SchoolType } from "../generated/prisma/enums.js";
 import type { SchoolAccountDto } from "./school.service.js";
 import type { TeacherAccountDto } from "./teacher.service.js";
@@ -37,31 +37,57 @@ function programClassSlots(
   return branches;
 }
 
+function customProgramCodes(
+  school: Pick<SchoolAccountDto, "schoolPrograms">,
+) {
+  return school.schoolPrograms
+    .filter((row) => row.type === SchoolType.CUSTOMIZED)
+    .map((row) => row.programCode);
+}
+
+/** Keys live on the customized program code even if the teacher is assigned to a regular offering. */
+function withCustomProgramSlots(
+  school: Pick<SchoolAccountDto, "schoolPrograms">,
+  slots: Array<{ programCode: string; classLevel: number }>,
+) {
+  const custom = customProgramCodes(school);
+  if (custom.length === 0) return slots;
+  return [
+    ...slots,
+    ...slots.flatMap((slot) => custom.map((programCode) => ({ programCode, classLevel: slot.classLevel }))),
+  ];
+}
+
 export function answerKeyAccessFilter(actor: ContentActor): Prisma.AnswerKeyWhereInput {
   const school = contentSchool(actor);
   const ownership = ownershipFilter(school);
 
   if (actor.kind === "teacher") {
-    const slots = programClassSlots([
-      ...actor.teacher.assignments.map((row) => ({
-        programCode: row.programCode,
-        classLevel: row.classLevel,
-      })),
-      ...actor.teacher.classTeacherSections.map((row) => ({
-        programCode: row.programCode,
-        classLevel: row.classLevel,
-      })),
-    ]);
+    const slots = programClassSlots(
+      withCustomProgramSlots(school, [
+        ...actor.teacher.assignments.map((row) => ({
+          programCode: row.programCode,
+          classLevel: row.classLevel,
+        })),
+        ...actor.teacher.classTeacherSections.map((row) => ({
+          programCode: row.programCode,
+          classLevel: row.classLevel,
+        })),
+      ]),
+    );
     if (slots.length === 0) return { id: { in: [] } };
     return { published: true, ...ownership, OR: slots };
   }
 
   const slots = programClassSlots(
-    school.schoolPrograms.flatMap((program) =>
-      program.classes.map((cls) => ({
-        programCode: program.programCode,
-        classLevel: cls.classLevel,
-      })),
+    withCustomProgramSlots(
+      school,
+      school.schoolPrograms.flatMap((program) =>
+        program.classes.map((cls) => ({
+          programCode: program.programCode,
+          classLevel: cls.classLevel,
+        })),
+      ),
     ),
   );
   if (slots.length === 0) return { id: { in: [] } };
@@ -105,7 +131,7 @@ export function isClassTeacherOf(teacher: TeacherAccountDto, student: StudentSco
 export function assignedSubjects(
   teacher: TeacherAccountDto,
   student: Pick<StudentScope, "programCode" | "classLevel">,
-): Subject[] {
+): string[] {
   return [
     ...new Set(
       teacher.assignments
@@ -146,7 +172,7 @@ export function resultSheetClassFilter(actor: ContentActor): number[] | null {
   return teacherClassLevels(actor.teacher);
 }
 
-export function teacherSubjects(teacher: TeacherAccountDto): Subject[] {
+export function teacherSubjects(teacher: TeacherAccountDto): string[] {
   return [...new Set(teacher.assignments.map((a) => a.subject))];
 }
 

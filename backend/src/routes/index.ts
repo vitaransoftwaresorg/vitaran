@@ -8,12 +8,10 @@ import {
 } from "./answer-key.routes.js";
 import { authRouter } from "./auth.routes.js";
 import { healthRouter } from "./health.routes.js";
-import { schoolEventsRouter, studentEventsRouter, teacherEventsRouter } from "./live.routes.js";
-import { studentOmScanRouter, teacherOmScanRouter } from "./om-scan.routes.js";
+import { schoolEventsRouter, teacherEventsRouter } from "./live.routes.js";
 import {
   resultRouter,
   schoolResultRouter,
-  studentResultRouter,
   teacherResultRouter,
 } from "./result.routes.js";
 import { programCatalogRouter, programRouter } from "./program.routes.js";
@@ -25,6 +23,7 @@ import {
   schoolStudentRouter,
   teacherStudentRouter,
 } from "./student.routes.js";
+import { adminOmScanRouter, schoolOmScanRouter, teacherOmScanRouter } from "../scan/routes.js";
 import { schoolTeacherRouter, teacherRouter } from "./teacher.routes.js";
 
 export const apiRouter = Router();
@@ -48,10 +47,9 @@ apiRouter.use("/school/answer-keys", schoolAnswerKeyRouter);
 apiRouter.use("/school/results", schoolResultRouter);
 apiRouter.use("/school/events", schoolEventsRouter);
 apiRouter.use("/teacher/events", teacherEventsRouter);
-apiRouter.use("/student/events", studentEventsRouter);
 apiRouter.use("/teacher/answer-keys", teacherAnswerKeyRouter);
 apiRouter.use("/teacher/results", teacherResultRouter);
 apiRouter.use("/teacher/students", teacherStudentRouter);
+apiRouter.use("/omr-scans", adminOmScanRouter);
+apiRouter.use("/school/omr-scans", schoolOmScanRouter);
 apiRouter.use("/teacher/omr-scans", teacherOmScanRouter);
-apiRouter.use("/student/omr-scans", studentOmScanRouter);
-apiRouter.use("/student/results", studentResultRouter);

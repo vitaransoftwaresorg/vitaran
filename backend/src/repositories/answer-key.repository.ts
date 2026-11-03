@@ -20,6 +20,8 @@ export const answerKeySummarySelect = {
   printedAnswers: true,
   printedExplanations: true,
   subjectRanges: true,
+  correctMarks: true,
+  wrongMarks: true,
   school: { select: { id: true, name: true, code: true } },
 } satisfies Prisma.AnswerKeySelect;
 
@@ -61,6 +63,13 @@ export function countAnswerKeys(where?: Prisma.AnswerKeyWhereInput) {
 
 export function findAnswerKeyById(id: string) {
   return prisma.answerKey.findUnique({ where: { id }, select: answerKeyDetailSelect });
+}
+
+export function findAnswerKeyTestIds() {
+  return prisma.answerKey.findMany({
+    where: { testId: { not: null } },
+    select: { testId: true },
+  });
 }
 
 export function findAnswerKeyByTestId(testId: string, exceptId?: string) {

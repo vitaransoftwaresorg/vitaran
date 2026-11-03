@@ -9,7 +9,6 @@ import * as resultService from "../services/result.service.js";
 import type { UploadedFiles } from "../services/result.service.js";
 import type { ContentActor } from "../services/content-access.js";
 import type { SchoolAccountDto } from "../services/school.service.js";
-import type { StudentAccountDto } from "../services/student.service.js";
 import type { TeacherAccountDto } from "../services/teacher.service.js";
 import { sendSuccess } from "../utils/api-response.js";
 import { EXCEL_MIME_TYPE } from "../utils/excel.js";
@@ -107,6 +106,3 @@ export const getTeacherResultSheetFile: RequestHandler = async (req, res) => {
   sendExcel(res, await resultService.getResultSheetFile(sheetParams(req.params), signedInTeacher(res)));
 };
 
-export const listStudentResultRows: RequestHandler = async (_req, res) => {
-  sendSuccess(res, await resultService.listStudentResultRows(res.locals.student as StudentAccountDto));
-};

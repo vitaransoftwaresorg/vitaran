@@ -81,6 +81,21 @@ export function findActiveStudentInSchool(schoolId: string, rollNo: string) {
   });
 }
 
+export function findActiveStudentsByRollNo(rollNo: string) {
+  return prisma.student.findMany({
+    where: {
+      status: StudentStatus.ACTIVE,
+      rollNo: { equals: rollNo.trim(), mode: "insensitive" },
+    },
+    include: {
+      school: { select: { id: true, name: true, code: true, type: true } },
+      program: { select: { id: true, code: true, name: true } },
+      section: { select: { id: true, name: true } },
+    },
+    take: 8,
+  });
+}
+
 export function findStudentBySchoolCodeAndRoll(schoolCode: string, rollNo: string) {
   return prisma.student.findFirst({
     where: {
@@ -88,30 +103,6 @@ export function findStudentBySchoolCodeAndRoll(schoolCode: string, rollNo: strin
       school: { code: { equals: schoolCode.trim().toUpperCase(), mode: "insensitive" } },
     },
     include: studentInclude,
-  });
-}
-
-export function findStudentByEmail(email: string) {
-  return prisma.student.findFirst({
-    where: { email: { equals: email, mode: "insensitive" } },
-    include: studentInclude,
-  });
-}
-
-/** Up to two rows so Google login can detect a shared parent/guardian email. */
-export function findStudentsByEmail(email: string) {
-  return prisma.student.findMany({
-    where: { email: { equals: email, mode: "insensitive" } },
-    include: studentInclude,
-    take: 2,
-  });
-}
-
-export function findStudentsByRoll(rollNo: string) {
-  return prisma.student.findMany({
-    where: { rollNo: { equals: rollNo.trim(), mode: "insensitive" } },
-    include: studentInclude,
-    take: 5,
   });
 }
 

@@ -17,13 +17,15 @@ import {
   asAnswers,
   asExplanations,
   asSubjectRanges,
+  defaultSubjectRanges,
   diffCorrections,
   parseAnswerKeyPdf,
 } from "../utils/answer-key-parse.js";
 import { AppError } from "../utils/app-error.js";
 import { notifyContentChanged } from "../utils/content-events.js";
 import { logger } from "../utils/logger.js";
-import { readPdf, requirePdf, toPdfData } from "../utils/pdf.js";
+import { readPdf, toPdfData } from "../utils/pdf.js";
+import { enteredTestId } from "../utils/test-id.js";
 import { answerKeyAccessFilter, type ContentActor } from "./content-access.js";
 import { toSchoolRef, type SchoolAccountDto } from "./school.service.js";
 
@@ -43,7 +45,7 @@ function toAnswerKeyDto(row: AnswerKeySummary | AnswerKeyDetail, forPortal = fal
     program: row.programCode,
     programCode: row.programCode,
     type: row.type,
-    testId: row.testId,
+    testId: enteredTestId(row.testId),
     testNumber: row.testNumber,
     classLevel: row.classLevel,
     fileName: row.fileName,
@@ -55,6 +57,8 @@ function toAnswerKeyDto(row: AnswerKeySummary | AnswerKeyDetail, forPortal = fal
     printedExplanations: forPortal ? {} : printedExplanations,
     corrections,
     subjectRanges: asSubjectRanges(row.subjectRanges),
+    correctMarks: row.correctMarks ?? 1,
+    wrongMarks: row.wrongMarks ?? 0,
     answerCount: Object.keys(answers).length,
     correctionCount: corrections.length,
     school: row.school && toSchoolRef(row.school),
@@ -95,7 +99,7 @@ async function parsedFromPdf(pdf: Buffer): Promise<ParsedJsonFields> {
 async function withPrintedSnapshot(row: AnswerKeyDetail): Promise<AnswerKeyDetail> {
   if (Object.keys(asAnswers(row.printedAnswers)).length > 0) return row;
   const file = await answerKeyRepository.findAnswerKeyFile({ id: row.id });
-  if (!file) return row;
+  if (!file || file.data.length === 0) return row;
   try {
     const parsed = await parseAnswerKeyPdf(Buffer.from(file.data));
     if (Object.keys(parsed.answers).length === 0) return row;
@@ -113,7 +117,8 @@ const classLevelIssue = (message: string) =>
   new AppError(400, message, [{ path: ["classLevel"], message }]);
 
 /** Test numbers may repeat. Test IDs may not — one key per ID. */
-async function assertUniqueTestId(testId: string, exceptId?: string) {
+async function assertUniqueTestId(testId: string | undefined, exceptId?: string) {
+  if (!testId) return;
   const existing = await answerKeyRepository.findAnswerKeyByTestId(testId, exceptId);
   if (existing) {
     throw new AppError(400, "This test ID is already used", [
@@ -241,10 +246,12 @@ export async function listSchoolTestsForResults(schoolId: string) {
   const tests = new Map<string, TestBucket>();
 
   for (const key of keys) {
-    const testKey = `${key.testId}\0${key.testNumber}`;
+    const testId = enteredTestId(key.testId);
+    if (!testId) continue;
+    const testKey = `${testId}\0${key.testNumber}`;
     let test = tests.get(testKey);
     if (!test) {
-      test = { testId: key.testId, testNumber: key.testNumber, programs: new Map() };
+      test = { testId, testNumber: key.testNumber, programs: new Map() };
       tests.set(testKey, test);
     }
 
@@ -289,25 +296,40 @@ export async function getAnswerKey(id: string) {
   return toAnswerKeyDto(await withPrintedSnapshot(answerKey));
 }
 
+function emptyKeyFile() {
+  return { fileName: "Answer key", fileSize: 0, data: Buffer.alloc(0) };
+}
+
+async function blankKeyFields(programCode: string): Promise<ParsedJsonFields> {
+  const program = await programRepository.findProgramByCode(programCode);
+  return {
+    answers: {} as Prisma.InputJsonValue,
+    explanations: {} as Prisma.InputJsonValue,
+    printedAnswers: {} as Prisma.InputJsonValue,
+    printedExplanations: {} as Prisma.InputJsonValue,
+    subjectRanges: defaultSubjectRanges(program?.subjects ?? []) as Prisma.InputJsonValue,
+  };
+}
+
 export async function uploadAnswerKey(
   { schoolId, fileName, program, ...meta }: UploadAnswerKeyQuery,
   body: unknown,
 ) {
-  const pdf = requirePdf(body);
+  const pdf = readPdf(body);
   const resolvedSchoolId = await resolveSchoolId(meta.type, schoolId);
   await assertProgramClass(meta.type, program, meta.classLevel, resolvedSchoolId);
   await assertUniqueTestId(meta.testId);
 
-  const parsed = await parsedFromPdf(pdf);
+  const parsed = pdf ? await parsedFromPdf(pdf) : await blankKeyFields(program);
   return toAnswerKeyDto(
     await answerKeyRepository.createAnswerKey({
       type: meta.type,
-      testId: meta.testId,
+      ...(meta.testId ? { testId: meta.testId } : {}),
       testNumber: meta.testNumber,
       classLevel: meta.classLevel,
       programCode: program,
       schoolId: resolvedSchoolId,
-      ...toPdfData(pdf, fileName ?? "answer-key.pdf"),
+      ...(pdf ? toPdfData(pdf, fileName ?? "answer-key.pdf") : emptyKeyFile()),
       ...parsed,
     }),
   );
@@ -326,7 +348,7 @@ export async function updateAnswerKey(
   const parsed = pdf ? await parsedFromPdf(pdf) : {};
   const answerKey = await answerKeyRepository.updateAnswerKey(id, {
     type: meta.type,
-    testId: meta.testId,
+    ...(meta.testId ? { testId: meta.testId } : {}),
     testNumber: meta.testNumber,
     classLevel: meta.classLevel,
     programCode: program,
@@ -351,7 +373,7 @@ export async function getAnswerKeyFile(id: string, actor?: ContentActor | School
     id,
     ...(contentActor && answerKeyAccessFilter(contentActor)),
   });
-  if (!file) throw new AppError(404, "Answer key not found");
+  if (!file || file.data.length === 0) throw new AppError(404, "Answer key not found");
   return file;
 }
 
@@ -371,6 +393,15 @@ export async function listSchoolAnswerKeys(school: SchoolAccountDto) {
 }
 
 export async function setAnswerKeyPublished(id: string, published: boolean) {
+  if (published) {
+    const existing = await answerKeyRepository.findAnswerKeyById(id);
+    if (!existing) throw new AppError(404, "Answer key not found");
+    if (!enteredTestId(existing.testId)) {
+      throw new AppError(400, "Enter the test ID before publishing", [
+        { path: ["testId"], message: "Enter the test ID before publishing" },
+      ]);
+    }
+  }
   const answerKey = await answerKeyRepository.setAnswerKeyPublished(id, published);
   if (!answerKey) throw new AppError(404, "Answer key not found");
   notifyContentChanged({ kind: KIND, schoolId: answerKey.school?.id ?? null });
@@ -380,6 +411,17 @@ export async function setAnswerKeyPublished(id: string, published: boolean) {
 export async function deleteAnswerKey(id: string) {
   const { schoolId, published } = await answerKeyRepository.deleteAnswerKey(id);
   if (published) notifyContentChanged({ kind: KIND, schoolId });
+}
+
+export async function setAnswerKeyTestId(id: string, testId: string) {
+  const existing = await answerKeyRepository.findAnswerKeyById(id);
+  if (!existing) throw new AppError(404, "Answer key not found");
+  if (testId !== existing.testId) {
+    await assertUniqueTestId(testId, id);
+  }
+  const answerKey = await answerKeyRepository.updateAnswerKey(id, { testId });
+  notifyContentChanged({ kind: KIND, schoolId: answerKey.school?.id ?? null });
+  return toAnswerKeyDto(answerKey);
 }
 
 /** Admin edits one question's option and explanation after parse. */
@@ -401,6 +443,16 @@ export async function saveAnswerKeyAnswers(id: string, input: SaveAnswerKeyAnswe
       ? input.subjectRanges
       : asSubjectRanges(existing.subjectRanges);
 
+  const nextTestId = (input.testId ?? existing.testId)?.trim() || "";
+  if (!nextTestId) {
+    throw new AppError(400, "Enter the test ID", [
+      { path: ["testId"], message: "Enter the test ID" },
+    ]);
+  }
+  if (nextTestId !== existing.testId) {
+    await assertUniqueTestId(nextTestId, id);
+  }
+
   const answerKey = await answerKeyRepository.updateAnswerKey(id, {
     answers: answers as Prisma.InputJsonValue,
     explanations: explanations as Prisma.InputJsonValue,
@@ -408,23 +460,26 @@ export async function saveAnswerKeyAnswers(id: string, input: SaveAnswerKeyAnswe
       ? { printedAnswers: printedAnswers as Prisma.InputJsonValue }
       : {}),
     subjectRanges: subjectRanges as Prisma.InputJsonValue,
+    testId: nextTestId,
+    correctMarks: input.correctMarks,
+    wrongMarks: input.wrongMarks,
   });
   notifyContentChanged({ kind: KIND, schoolId: answerKey.school?.id ?? null });
-  const { rescoreOmScansForKey } = await import("./om-scan.service.js");
-  await rescoreOmScansForKey(id);
   return toAnswerKeyDto(answerKey);
 }
 
 export async function getVisibleAnswerKey(id: string, actor: ContentActor) {
   const row = await answerKeyRepository.findVisibleAnswerKey(id, answerKeyAccessFilter(actor));
   if (!row) throw new AppError(404, "Answer key not found");
-  return toAnswerKeyDto(await withPrintedSnapshot(row), true);
+  return toAnswerKeyDto(await withPrintedSnapshot(row));
 }
 
 /** Re-read the stored PDF into the editor. Does not write until admin clicks Save. */
 export async function reparseAnswerKey(id: string) {
   const file = await answerKeyRepository.findAnswerKeyFile({ id });
-  if (!file) throw new AppError(404, "Answer key not found");
+  if (!file || file.data.length === 0) {
+    throw new AppError(422, "This answer key has no PDF to parse");
+  }
   const existing = await answerKeyRepository.findAnswerKeyById(id);
   if (!existing) throw new AppError(404, "Answer key not found");
   const parsed = await parseAnswerKeyPdf(Buffer.from(file.data));

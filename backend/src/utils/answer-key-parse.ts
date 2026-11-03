@@ -1,6 +1,5 @@
 import { PDFParse } from "pdf-parse";
 import sharp from "sharp";
-import { Subject } from "../generated/prisma/enums.js";
 import { readKeyGrid } from "./answer-key-grid.js";
 
 export const ANSWER_OPTIONS = ["A", "B", "C", "D"] as const;
@@ -9,7 +8,7 @@ export type AnswerOption = (typeof ANSWER_OPTIONS)[number];
 export type KeyAnswer = AnswerOption | `${AnswerOption}/${AnswerOption}` | "ADD";
 
 export type SubjectRange = {
-  subject: Subject;
+  subject: string;
   from: number;
   to: number;
   maxMarks: number;
@@ -22,19 +21,21 @@ export type ParsedAnswerKey = {
   subjectRanges: SubjectRange[];
 };
 
-const MARKS_PER_QUESTION = 4;
+export const QUESTIONS_PER_PAPER = 100;
+export const MARKS_PER_QUESTION = 4;
 const BLOCK = 25;
-const MPC = [Subject.MATHEMATICS, Subject.PHYSICS, Subject.CHEMISTRY] as const;
-const MPCB = [...MPC, Subject.BIOLOGY] as const;
+const MPC = ["MATHEMATICS", "PHYSICS", "CHEMISTRY"] as const;
+const MPCB = [...MPC, "BIOLOGY"] as const;
 
-const HEADING: Record<string, Subject> = {
-  mathematics: Subject.MATHEMATICS,
-  maths: Subject.MATHEMATICS,
-  math: Subject.MATHEMATICS,
-  physics: Subject.PHYSICS,
-  chemistry: Subject.CHEMISTRY,
-  biology: Subject.BIOLOGY,
-  science: Subject.SCIENCE,
+const HEADING: Record<string, string> = {
+  mathematics: "MATHEMATICS",
+  maths: "MATHEMATICS",
+  math: "MATHEMATICS",
+  physics: "PHYSICS",
+  chemistry: "CHEMISTRY",
+  biology: "BIOLOGY",
+  science: "SCIENCE",
+  english: "ENGLISH",
 };
 
 const isOption = (value: string): value is AnswerOption =>
@@ -64,8 +65,48 @@ export function isBonusKey(answer: KeyAnswer | null | undefined) {
 }
 
 export function matchesKey(marked: AnswerOption | null | undefined, expected: KeyAnswer) {
-  if (expected === "ADD") return true;
+  if (expected === "ADD") return Boolean(marked);
   return Boolean(marked && keyOptions(expected).includes(marked));
+}
+
+export function isMultiKey(answer: KeyAnswer | null | undefined) {
+  return keyOptions(answer).length > 1;
+}
+
+export function markedList(value: unknown): AnswerOption[] {
+  if (Array.isArray(value)) return value.filter(isOption);
+  if (typeof value !== "string") return [];
+  return value
+    .split("/")
+    .map((part) => part.trim().toUpperCase())
+    .filter(isOption);
+}
+
+/** Single-correct keys ignore double marks. Multi-correct keys need the same set. */
+export function markedMatchesKey(marked: AnswerOption[], expected: KeyAnswer) {
+  if (isBonusKey(expected)) return marked.length > 0;
+  const wanted = keyOptions(expected);
+  if (wanted.length === 0 || marked.length === 0) return false;
+  if (marked.length > 1 && wanted.length === 1) return false;
+  if (marked.length > 1) {
+    return [...marked].sort().join("") === [...wanted].sort().join("");
+  }
+  return wanted.includes(marked[0]!);
+}
+
+/** 100 questions split across the program's subjects, 4 marks each. */
+export function defaultSubjectRanges(subjects: readonly string[]): SubjectRange[] {
+  const list = subjects.length > 0 ? [...subjects] : ["MATHEMATICS"];
+  const extra = QUESTIONS_PER_PAPER % list.length;
+  const base = Math.floor(QUESTIONS_PER_PAPER / list.length);
+  let from = 1;
+  return list.map((subject, index) => {
+    const count = base + (index < extra ? 1 : 0);
+    const to = from + count - 1;
+    const range = { subject, from, to, maxMarks: count * MARKS_PER_QUESTION };
+    from = to + 1;
+    return range;
+  });
 }
 
 async function screenshotPage(parser: PDFParse, page: number, scale: number) {
@@ -109,7 +150,7 @@ function collectAnswers(text: string) {
 }
 
 function collectHeadings(text: string) {
-  const found: Subject[] = [];
+  const found: string[] = [];
   for (const match of text.matchAll(
     /(?:^|\n)\s*(mathematics|maths|math|physics|chemistry|biology|science)\s*(?:\n|$)/gi,
   )) {
@@ -127,7 +168,7 @@ function lastQuestion(answers: Record<string, KeyAnswer>, extras: number[]) {
   return max;
 }
 
-function rangesFor(subjects: readonly Subject[], last: number): SubjectRange[] {
+function rangesFor(subjects: readonly string[], last: number): SubjectRange[] {
   return subjects
     .map((subject, index) => {
       const from = index * BLOCK + 1;
@@ -139,12 +180,12 @@ function rangesFor(subjects: readonly Subject[], last: number): SubjectRange[] {
 }
 
 /** Friend’s rule: paper order is always M-P-C, plus Biology when there are 100 questions. */
-function subjectOrder(headings: Subject[], last: number) {
+function subjectOrder(headings: string[], last: number) {
   const canonical = last > BLOCK * 3 ? MPCB : MPC;
   const fromHeadings = canonical.filter((subject) => headings.includes(subject));
   if (fromHeadings.length >= 3) return fromHeadings;
-  if (headings.includes(Subject.SCIENCE) && headings.length >= 2) {
-    return [Subject.MATHEMATICS, Subject.SCIENCE].filter((subject) => headings.includes(subject));
+  if (headings.includes("SCIENCE") && headings.length >= 2) {
+    return ["MATHEMATICS", "SCIENCE"].filter((subject) => headings.includes(subject));
   }
   return [...canonical];
 }
@@ -300,21 +341,17 @@ export function asSubjectRanges(value: unknown): SubjectRange[] {
   return value.flatMap((row) => {
     if (!row || typeof row !== "object") return [];
     const { subject, from, to, maxMarks } = row as Record<string, unknown>;
-    if (typeof subject !== "string" || !(subject in Subject)) return [];
+    if (typeof subject !== "string" || !/^[A-Z][A-Z0-9_]{1,63}$/.test(subject)) return [];
     if (typeof from !== "number" || typeof to !== "number") return [];
     return [
       {
-        subject: subject as Subject,
+        subject,
         from,
         to,
         maxMarks: typeof maxMarks === "number" ? maxMarks : Math.max(0, to - from + 1) * MARKS_PER_QUESTION,
       },
     ];
   });
-}
-
-export function defaultSubjectRanges(lastQuestion: number): SubjectRange[] {
-  return rangesFor(lastQuestion > BLOCK * 3 ? MPCB : MPC, lastQuestion);
 }
 
 export type AnswerCorrection = {

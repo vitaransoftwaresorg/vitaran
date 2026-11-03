@@ -81,48 +81,14 @@ function luma(r: number, g: number, b: number) {
   return 0.299 * r + 0.587 * g + 0.114 * b;
 }
 
-/** Whole sheet, including dark print and the red logo. Desk stays out. */
-export function findPaperQuad(rgba: Rgba): Quad | null {
-  const scale = Math.max(rgba.width, rgba.height) > 900 ? Math.max(rgba.width, rgba.height) / 800 : 1;
-  const w = Math.max(8, Math.round(rgba.width / scale));
-  const h = Math.max(8, Math.round(rgba.height / scale));
-  const light = new Uint8Array(w * h);
-  for (let y = 0; y < h; y++) {
-    const sy = Math.min(rgba.height - 1, Math.round(y * scale));
-    for (let x = 0; x < w; x++) {
-      const sx = Math.min(rgba.width - 1, Math.round(x * scale));
-      const { r, g, b } = pixelAt(rgba, sx, sy);
-      light[y * w + x] = luma(r, g, b) > 48 ? 1 : 0;
-    }
-  }
+const A4 = 1000 / 1414;
 
-  const mask = new Uint8Array(w * h);
-  const stack = [((h / 2) | 0) * w + ((w / 2) | 0)];
-  if (!light[stack[0]!]) {
-    const fallback = light.findIndex((v) => v !== 0);
-    if (fallback < 0) return null;
-    stack[0] = fallback;
-  }
-  mask[stack[0]!] = 1;
-  while (stack.length) {
-    const i = stack.pop()!;
-    const x = i % w;
-    const y = (i / w) | 0;
-    for (const [nx, ny] of [
-      [x + 1, y],
-      [x - 1, y],
-      [x, y + 1],
-      [x, y - 1],
-    ] as const) {
-      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-      const ni = ny * w + nx;
-      if (mask[ni] || !light[ni]) continue;
-      mask[ni] = 1;
-      stack.push(ni);
-    }
-  }
-
+function quadFromMask(mask: Uint8Array, w: number, h: number) {
   let count = 0;
+  let minX = w;
+  let minY = h;
+  let maxX = 0;
+  let maxY = 0;
   let minSum = Infinity;
   let maxSum = -Infinity;
   let minDiff = Infinity;
@@ -136,6 +102,10 @@ export function findPaperQuad(rgba: Rgba): Quad | null {
     for (let x = 0; x < w; x++) {
       if (!mask[y * w + x]) continue;
       count += 1;
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x > maxX) maxX = x;
+      if (y > maxY) maxY = y;
       const sum = x + y;
       const diff = x - y;
       if (sum < minSum) {
@@ -156,14 +126,120 @@ export function findPaperQuad(rgba: Rgba): Quad | null {
       }
     }
   }
+  if (count < w * h * 0.12) return null;
+  const boxW = Math.max(1, maxX - minX);
+  const boxH = Math.max(1, maxY - minY);
+  const aspect = boxW / boxH;
+  const a4err = aspect <= 1 ? Math.abs(aspect - A4) : Math.abs(aspect - 1 / A4);
+  const fill = count / (w * h);
+  const compact = count / (boxW * boxH);
+  const header = minY / h < 0.12 ? 0.28 : minY / h < 0.2 ? 0.1 : -0.2;
+  const score =
+    (1 - Math.min(1, a4err / 0.28)) * (0.45 + compact * 0.55) * (0.2 + Math.min(fill, 0.8)) + header;
+  return { tl, tr, br, bl, count, a4err, score, minY };
+}
 
-  if (count < w * h * 0.18) return null;
+function largestBlob(light: Uint8Array, w: number, h: number) {
+  const seen = new Uint8Array(w * h);
+  const bestMask = new Uint8Array(w * h);
+  let bestCount = 0;
+  const stack: number[] = [];
+  for (let start = 0; start < light.length; start++) {
+    if (!light[start] || seen[start]) continue;
+    const mask = new Uint8Array(w * h);
+    stack.length = 0;
+    stack.push(start);
+    seen[start] = 1;
+    mask[start] = 1;
+    let count = 0;
+    while (stack.length) {
+      const i = stack.pop()!;
+      count += 1;
+      const x = i % w;
+      const y = (i / w) | 0;
+      for (const [nx, ny] of [
+        [x + 1, y],
+        [x - 1, y],
+        [x, y + 1],
+        [x, y - 1],
+      ] as const) {
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const ni = ny * w + nx;
+        if (seen[ni] || !light[ni]) continue;
+        seen[ni] = 1;
+        mask[ni] = 1;
+        stack.push(ni);
+      }
+    }
+    if (count > bestCount) {
+      bestCount = count;
+      bestMask.set(mask);
+    }
+  }
+  return bestCount ? bestMask : null;
+}
+
+/** Whole sheet, including dark print and the red logo. Desk stays out. */
+export function findPaperQuad(rgba: Rgba): Quad | null {
+  const scale = Math.max(rgba.width, rgba.height) > 900 ? Math.max(rgba.width, rgba.height) / 800 : 1;
+  const w = Math.max(8, Math.round(rgba.width / scale));
+  const h = Math.max(8, Math.round(rgba.height / scale));
+  const lumaMap = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) {
+    const sy = Math.min(rgba.height - 1, Math.round(y * scale));
+    for (let x = 0; x < w; x++) {
+      const sx = Math.min(rgba.width - 1, Math.round(x * scale));
+      const { r, g, b } = pixelAt(rgba, sx, sy);
+      lumaMap[y * w + x] = luma(r, g, b);
+    }
+  }
+
+  let best: ReturnType<typeof quadFromMask> | null = null;
+  let loose: ReturnType<typeof quadFromMask> | null = null;
+  const light = new Uint8Array(w * h);
+  for (const thr of [90, 72, 55, 48]) {
+    for (let i = 0; i < lumaMap.length; i++) light[i] = lumaMap[i]! > thr ? 1 : 0;
+    const mask = largestBlob(light, w, h);
+    if (!mask) continue;
+    const next = quadFromMask(mask, w, h);
+    if (!next) continue;
+    if (!loose || next.score > loose.score) loose = next;
+    if (next.a4err > 0.26) continue;
+    if (!best || next.score > best.score) best = next;
+  }
+  best = best ?? loose;
+  if (!best) return null;
 
   const toFull = (p: Point): Point => ({
     x: Math.max(0, Math.min(rgba.width - 1, p.x * scale)),
     y: Math.max(0, Math.min(rgba.height - 1, p.y * scale)),
   });
-  return [toFull(tl), toFull(tr), toFull(br), toFull(bl)];
+  return includeHeader(
+    [toFull(best.tl), toFull(best.tr), toFull(best.br), toFull(best.bl)],
+    rgba.width,
+    rgba.height,
+  );
+}
+
+/** Answer-grid-only crops miss the registration bubbles. Grow the quad up to the printed header. */
+function includeHeader(quad: Quad, imgW: number, imgH: number): Quad {
+  const [tl, tr, br, bl] = quad;
+  const top = (tl.y + tr.y) / 2;
+  const bot = (bl.y + br.y) / 2;
+  const height = bot - top;
+  if (height <= 1 || top <= imgH * 0.1 || height / imgH > 0.78) return quad;
+  const up = 0.36 / 0.46;
+  const down = 0.18 / 0.46;
+  const clamp = (p: Point): Point => ({
+    x: Math.max(0, Math.min(imgW - 1, p.x)),
+    y: Math.max(0, Math.min(imgH - 1, p.y)),
+  });
+  return [
+    clamp({ x: tl.x - (bl.x - tl.x) * up, y: tl.y - (bl.y - tl.y) * up }),
+    clamp({ x: tr.x - (br.x - tr.x) * up, y: tr.y - (br.y - tr.y) * up }),
+    clamp({ x: br.x + (br.x - tr.x) * down, y: br.y + (br.y - tr.y) * down }),
+    clamp({ x: bl.x + (bl.x - tl.x) * down, y: bl.y + (bl.y - tl.y) * down }),
+  ];
 }
 
 function solve8(a: number[][], b: number[]) {

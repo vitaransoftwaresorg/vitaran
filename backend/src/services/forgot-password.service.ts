@@ -2,7 +2,6 @@ import { createHash, randomInt } from "node:crypto";
 import { PasswordResetRole } from "../generated/prisma/enums.js";
 import { prisma } from "../config/database.js";
 import * as schoolRepository from "../repositories/school.repository.js";
-import * as studentRepository from "../repositories/student.repository.js";
 import * as teacherRepository from "../repositories/teacher.repository.js";
 import type { ForgotPasswordRequestInput } from "../schemas/auth.schema.js";
 import { AppError } from "../utils/app-error.js";
@@ -11,18 +10,12 @@ import { encryptSecret } from "../utils/secret-box.js";
 import {
   sendPasswordResetOtpEmail,
   sendSchoolCredentialsEmail,
-  sendStudentCredentialsEmail,
   sendTeacherCredentialsEmail,
 } from "./mail.service.js";
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
 const UNKNOWN_PORTAL_EMAIL = "No school or teacher account uses that email.";
-const UNKNOWN_ROLL = "No student account matches that roll number.";
-const NO_STUDENT_EMAIL =
-  "No parent/guardian email is on file for this roll number. Ask your school to add one or reset the password.";
-const AMBIGUOUS_ROLL =
-  "This roll number is used at more than one school. Ask your school to reset your password.";
 
 function hashOtp(code: string) {
   return createHash("sha256").update(code).digest("hex");
@@ -72,17 +65,6 @@ type AccountTarget =
       brand: string;
       schoolName: string;
       schoolEmail: string | null;
-    }
-  | {
-      role: typeof PasswordResetRole.STUDENT;
-      id: string;
-      email: string;
-      name: string;
-      brand: string;
-      schoolName: string;
-      schoolEmail: string | null;
-      schoolCode: string;
-      rollNo: string;
     };
 
 /** School / teacher portal — email must match a real school or teacher login. */
@@ -117,37 +99,6 @@ async function resolvePortalAccount(email: string): Promise<AccountTarget | null
   return null;
 }
 
-/** Student portal — roll number looks up the parent/guardian email on file. */
-async function resolveStudentByRoll(rollNo: string): Promise<AccountTarget> {
-  const matches = await studentRepository.findStudentsByRoll(rollNo);
-  if (matches.length === 0) {
-    throw new AppError(404, UNKNOWN_ROLL, [{ path: ["rollNo"], message: UNKNOWN_ROLL }]);
-  }
-  if (matches.length > 1) {
-    throw new AppError(400, AMBIGUOUS_ROLL, [{ path: ["rollNo"], message: AMBIGUOUS_ROLL }]);
-  }
-
-  const student = matches[0]!;
-  if (!student.passwordHash) {
-    throw new AppError(404, UNKNOWN_ROLL, [{ path: ["rollNo"], message: UNKNOWN_ROLL }]);
-  }
-  if (!student.email) {
-    throw new AppError(400, NO_STUDENT_EMAIL, [{ path: ["rollNo"], message: NO_STUDENT_EMAIL }]);
-  }
-
-  return {
-    role: PasswordResetRole.STUDENT,
-    id: student.id,
-    email: student.email,
-    name: student.name,
-    brand: student.school.name,
-    schoolName: student.school.name,
-    schoolEmail: student.school.accountEmail,
-    schoolCode: student.school.code,
-    rollNo: student.rollNo,
-  };
-}
-
 async function issueOtp(account: AccountTarget) {
   const otp = generateOtp();
   const expiresAt = new Date(Date.now() + OTP_TTL_MS);
@@ -175,10 +126,7 @@ async function issueOtp(account: AccountTarget) {
     to: account.email,
     brand: account.brand,
     fromName: account.brand,
-    replyTo:
-      account.role === PasswordResetRole.TEACHER || account.role === PasswordResetRole.STUDENT
-        ? account.schoolEmail
-        : null,
+    replyTo: account.role === PasswordResetRole.TEACHER ? account.schoolEmail : null,
     otp,
     minutes: 10,
   });
@@ -187,28 +135,18 @@ async function issueOtp(account: AccountTarget) {
   }
 
   const masked = maskEmail(account.email);
-  const message =
-    account.role === PasswordResetRole.STUDENT
-      ? `We sent a one-time code to the parent/guardian email on file for roll ${account.rollNo} (${masked}).`
-      : `We sent a one-time verification code to ${masked}.`;
 
   return {
     ok: true as const,
-    message,
+    message: `We sent a one-time verification code to ${masked}.`,
     email: account.email.toLowerCase(),
     emailMasked: masked,
-    ...(account.role === PasswordResetRole.STUDENT ? { rollNo: account.rollNo } : {}),
   };
 }
 
-/** Step 1 — send OTP only for a known portal email or student roll number. */
+/** Step 1 — send OTP only for a known school or teacher login email. */
 export async function requestPasswordResetOtp(input: ForgotPasswordRequestInput) {
-  if (input.rollNo) {
-    const account = await resolveStudentByRoll(input.rollNo);
-    return issueOtp(account);
-  }
-
-  const account = await resolvePortalAccount(input.email!);
+  const account = await resolvePortalAccount(input.email);
   if (!account) {
     throw new AppError(404, UNKNOWN_PORTAL_EMAIL, [
       { path: ["email"], message: UNKNOWN_PORTAL_EMAIL },
@@ -299,37 +237,6 @@ export async function verifyPasswordResetOtp(email: string, otp: string) {
       ok: true as const,
       role: "school" as const,
       message: "Password updated. Check your email for the new password.",
-    };
-  }
-
-  if (row.role === PasswordResetRole.STUDENT) {
-    const student = await studentRepository.findStudentById(row.accountId);
-    if (!student?.email) throw new AppError(404, "Student not found");
-
-    await studentRepository.updateStudent(row.accountId, sealed);
-
-    const sent = await sendStudentCredentialsEmail({
-      to: student.email,
-      studentName: student.name,
-      schoolName: student.school.name,
-      schoolEmail: student.school.accountEmail,
-      schoolCode: student.school.code,
-      rollNo: student.rollNo,
-      password,
-      reason: "password-reset",
-    });
-    if (!sent) {
-      throw new AppError(
-        502,
-        "Password was reset but we could not email it. Ask your school for help.",
-      );
-    }
-
-    return {
-      ok: true as const,
-      role: "student" as const,
-      message:
-        "Password updated. Check the parent/guardian email for the new password and roll number.",
     };
   }
 

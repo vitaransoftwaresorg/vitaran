@@ -1,6 +1,5 @@
 import type { RequestHandler } from "express";
 import type { SchoolAccountDto } from "../services/school.service.js";
-import type { StudentAccountDto } from "../services/student.service.js";
 import type { TeacherAccountDto } from "../services/teacher.service.js";
 import { onContentChanged } from "../utils/content-events.js";
 
@@ -35,12 +34,6 @@ function streamContentEvents(res: Parameters<RequestHandler>[1], schoolId: strin
 export const streamSchoolEvents: RequestHandler = (req, res) => {
   const school = res.locals.school as SchoolAccountDto;
   streamContentEvents(res, school.id, req);
-};
-
-/** Students: results appear or disappear as the class teacher publishes or unpublishes. */
-export const streamStudentEvents: RequestHandler = (req, res) => {
-  const student = res.locals.student as StudentAccountDto;
-  streamContentEvents(res, student.school.id, req);
 };
 
 /** Same stream for teachers — filtered to their school's content. */

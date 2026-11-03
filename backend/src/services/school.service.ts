@@ -1,4 +1,3 @@
-import type { Subject } from "../generated/prisma/client.js";
 import * as programRepository from "../repositories/program.repository.js";
 import * as schoolRepository from "../repositories/school.repository.js";
 import type {
@@ -8,32 +7,36 @@ import type {
   SchoolWithPrograms,
 } from "../repositories/school.repository.js";
 import * as teacherRepository from "../repositories/teacher.repository.js";
+import { SchoolType } from "../generated/prisma/enums.js";
 import type {
   AccountAvailabilityQuery,
   CreateSchoolInput,
+  CustomProgramInput,
   ListSchoolOptionsQuery,
   ListSchoolsQuery,
   SchoolProgramInput,
   UpdateSchoolInput,
 } from "../schemas/school.schema.js";
 import { AppError } from "../utils/app-error.js";
+import { subjectsForClassLevel } from "../utils/subject.js";
 import { hashPassword, verifyPassword } from "../utils/password.js";
 import { decryptSecret, encryptSecret } from "../utils/secret-box.js";
 import { sendSchoolCredentialsEmail } from "./mail.service.js";
 
 export type SchoolProgramClassDto = {
   classLevel: number;
-  subjects: Subject[];
+  subjects: string[];
 };
 
 export type SchoolProgramDto = {
   programId: string;
   programCode: string;
   programName: string;
+  type: SchoolWithPrograms["type"];
   year: number;
   classFrom: number;
   classTo: number;
-  catalogSubjects: Subject[];
+  catalogSubjects: string[];
   classes: SchoolProgramClassDto[];
 };
 
@@ -99,6 +102,7 @@ function toSchoolPrograms(school: SchoolWithPrograms): SchoolProgramDto[] {
     programId: row.programId,
     programCode: row.program.code,
     programName: row.program.name,
+    type: row.program.type,
     year: row.program.year,
     classFrom: row.program.classFrom,
     classTo: row.program.classTo,
@@ -175,6 +179,7 @@ export function toSchoolSessionAccountDto(school: SchoolSessionRow): SchoolAccou
     programId: row.programId,
     programCode: row.program.code,
     programName: row.program.name,
+    type: row.program.type,
     year: row.program.year,
     classFrom: row.program.classFrom,
     classTo: row.program.classTo,
@@ -252,6 +257,78 @@ async function assertAccountAvailable(
   }
 }
 
+function programCodeFromName(name: string) {
+  const code = name
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_|_$/g, "")
+    .replace(/^[0-9_]+/, "")
+    .slice(0, 64);
+  return code.length >= 2 ? code : "CUSTOM";
+}
+
+async function uniqueProgramCode(base: string) {
+  const root = base.replace(/_+$/, "") || "CUSTOM";
+  for (let n = 0; n < 100; n++) {
+    const suffix = n === 0 ? "" : `_${n + 1}`;
+    const code = `${root.slice(0, 64 - suffix.length)}${suffix}`;
+    if (!(await programRepository.findProgramByCode(code))) return code;
+  }
+  throw new AppError(409, "Could not generate a unique program code", [
+    { path: ["customProgramName"], message: "Pick a different program name" },
+  ]);
+}
+
+/** Create or update this school's customized catalog program, then enrol it. */
+async function attachNamedCustomProgram(
+  spec: CustomProgramInput,
+  existing: SchoolWithPrograms | null,
+) {
+  const classes = spec.classes.map((row) => ({
+    classLevel: row.classLevel,
+    subjects: subjectsForClassLevel(row.classLevel),
+  }));
+  const classLevels = classes.map((row) => row.classLevel).sort((a, b) => a - b);
+  const subjects = [...new Set(classes.flatMap((row) => row.subjects))];
+  const payload = {
+    name: spec.name.trim(),
+    year: new Date().getFullYear(),
+    classFrom: classLevels[0] ?? 1,
+    classTo: classLevels[classLevels.length - 1] ?? 12,
+    subjects: subjects.length > 0 ? subjects : ["MATHEMATICS"],
+  };
+
+  const current = existing?.schoolPrograms.find(
+    (row) => row.program.type === SchoolType.CUSTOMIZED,
+  )?.program;
+
+  const program = current
+    ? await programRepository.updateProgram(current.id, payload)
+    : await programRepository.createProgram({
+        code: await uniqueProgramCode(programCodeFromName(payload.name)),
+        type: SchoolType.CUSTOMIZED,
+        ...payload,
+      });
+
+  return [{ programId: program.id, classes }];
+}
+
+/** Regular schools take regular catalog programs; customized schools take customized ones. */
+async function offeringsForSchoolType(type: SchoolType, programs: SchoolProgramInput[]) {
+  const matched: SchoolProgramInput[] = [];
+  for (const row of programs) {
+    const catalog = await programRepository.findProgramById(row.programId);
+    if (!catalog) {
+      throw new AppError(400, "Unknown program", [
+        { path: ["programs"], message: "Select a valid program" },
+      ]);
+    }
+    if (catalog.type === type) matched.push(row);
+  }
+  return matched;
+}
+
 /** Offerings must stay inside each catalog program's class range and subject list. */
 async function assertProgramOfferings(programs: SchoolProgramInput[]) {
   for (const row of programs) {
@@ -311,16 +388,26 @@ export async function getSchool(id: string): Promise<SchoolDetailDto> {
   };
 }
 
-export async function createSchool({ password, programs, code, ...input }: CreateSchoolInput) {
+export async function createSchool({
+  password,
+  programs,
+  customProgram,
+  code,
+  ...input
+}: CreateSchoolInput) {
   await assertAccountAvailable(input);
-  await assertProgramOfferings(programs);
+  const offerings =
+    input.type === SchoolType.CUSTOMIZED && customProgram
+      ? await attachNamedCustomProgram(customProgram, null)
+      : await offeringsForSchoolType(input.type, programs);
+  await assertProgramOfferings(offerings);
   const schoolCode = await assertSchoolCodeAvailable(code);
 
   const school = toSchoolDto(
     await schoolRepository.createSchool({
       ...input,
       code: schoolCode,
-      programs,
+      programs: offerings,
       ...(await sealPassword(password)),
     }),
   );
@@ -341,10 +428,21 @@ export async function createSchool({ password, programs, code, ...input }: Creat
 
 export async function updateSchool(
   id: string,
-  { password, programs, code, ...input }: UpdateSchoolInput,
+  { password, programs, customProgram, code, ...input }: UpdateSchoolInput,
 ) {
   await assertAccountAvailable(input, id);
-  if (programs) await assertProgramOfferings(programs);
+  const current = await schoolRepository.findSchoolById(id);
+  if (!current) throw new AppError(404, "School not found");
+
+  const nextType = input.type ?? current.type;
+  let offerings = programs;
+  if (nextType === SchoolType.CUSTOMIZED && customProgram) {
+    offerings = await attachNamedCustomProgram(customProgram, current);
+    await assertProgramOfferings(offerings);
+  } else if (programs) {
+    offerings = await offeringsForSchoolType(nextType, programs);
+    await assertProgramOfferings(offerings);
+  }
 
   const seal = password && (await passwordChanged(id, password));
   const schoolCode = code !== undefined ? await assertSchoolCodeAvailable(code, id) : undefined;
@@ -352,11 +450,11 @@ export async function updateSchool(
   const school = await schoolRepository.updateSchool(id, {
     ...input,
     ...(schoolCode !== undefined ? { code: schoolCode } : {}),
-    ...(programs ? { programs } : {}),
+    ...(offerings ? { programs: offerings } : {}),
     ...(seal && password ? await sealPassword(password) : {}),
   });
 
-  if (programs) {
+  if (programs || customProgram) {
     await teacherRepository.pruneAssignmentsOutsideSchoolOfferings(id);
   }
 

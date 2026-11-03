@@ -1,25 +1,22 @@
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { env } from "../config/env.js";
 import * as schoolRepository from "../repositories/school.repository.js";
-import * as studentRepository from "../repositories/student.repository.js";
 import * as teacherRepository from "../repositories/teacher.repository.js";
 import { AppError } from "../utils/app-error.js";
 import { issueSchoolLogin, type SchoolLoginResult } from "./school-auth.service.js";
-import { issueStudentLogin, type StudentLoginResult } from "./student-auth.service.js";
 import { issueTeacherLogin, type TeacherLoginResult } from "./teacher-auth.service.js";
 
 const GOOGLE_ISSUERS = ["https://accounts.google.com", "accounts.google.com"];
 const GOOGLE_JWKS = createRemoteJWKSet(new URL("https://www.googleapis.com/oauth2/v3/certs"));
 
 const UNLINKED =
-  "This Google account isn't registered on Vitaran. Use the school, teacher, or student email we issued.";
+  "This Google account isn't registered on Vitaran. Use the school or teacher email we issued.";
 
-export type GooglePortal = "school" | "student";
+export type GooglePortal = "school";
 
 export type GoogleLoginResult =
   | (SchoolLoginResult & { role: "school" })
-  | (TeacherLoginResult & { role: "teacher" })
-  | (StudentLoginResult & { role: "student" });
+  | (TeacherLoginResult & { role: "teacher" });
 
 function emailVerified(value: unknown) {
   return value === true || value === "true";
@@ -56,50 +53,14 @@ async function loginSchoolOrTeacher(email: string): Promise<GoogleLoginResult> {
     return { role: "teacher", ...(await issueTeacherLogin(teacher)) };
   }
 
-  const students = await studentRepository.findStudentsByEmail(email);
-  if (students.length > 0) {
-    throw new AppError(
-      401,
-      "This Google account is a student login. Use student sign in instead.",
-    );
-  }
-
   throw new AppError(401, UNLINKED);
 }
 
-async function loginStudent(email: string): Promise<GoogleLoginResult> {
-  const students = await studentRepository.findStudentsByEmail(email);
-  if (students.length > 1) {
-    throw new AppError(
-      401,
-      "This email is used for more than one student. Sign in with roll number and password.",
-    );
-  }
-
-  const student = students[0];
-  if (student) {
-    return { role: "student", ...(await issueStudentLogin(student)) };
-  }
-
-  const school = await schoolRepository.findSchoolByAccount({ email });
-  const teacher = school
-    ? null
-    : await teacherRepository.findTeacherByAccount({ email });
-  if (school || teacher) {
-    throw new AppError(
-      401,
-      "This Google account is a school or teacher login. Use portal sign in instead.",
-    );
-  }
-
-  throw new AppError(401, UNLINKED);
-}
-
-/** Google email must already belong to that portal. Never creates an account. */
+/** Google email must already belong to a school or teacher. Never creates an account. */
 export async function loginWithGoogle(
   idToken: string,
-  portal: GooglePortal,
+  _portal: GooglePortal,
 ): Promise<GoogleLoginResult> {
   const email = await emailFromGoogleIdToken(idToken);
-  return portal === "student" ? loginStudent(email) : loginSchoolOrTeacher(email);
+  return loginSchoolOrTeacher(email);
 }

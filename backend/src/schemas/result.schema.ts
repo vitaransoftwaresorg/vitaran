@@ -19,7 +19,7 @@ export const resultSetFieldsSchema = z.object({
   /** Freeform test ID — any non-empty string. */
   testId: z.string().trim().min(1, "Enter the test ID").max(64, "Keep the test ID under 64 characters"),
   /** Ordinal test number. */
-  testNumber: z.coerce.number().int().min(1).max(30),
+  testNumber: z.coerce.number().int().min(1).max(18),
   /** Classes whose sheet should be deleted on update, e.g. "3,7". */
   removeClasses: z
     .preprocess(emptyToUndefined, z.string().optional())
@@ -32,7 +32,7 @@ export const resultSetFieldsSchema = z.object({
 
 export const listResultSetsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
-  testNumber: z.coerce.number().int().min(1).max(30).optional(),
+  testNumber: z.coerce.number().int().min(1).max(18).optional(),
   type: z.enum(SchoolType).optional(),
   schoolId: z.uuid().optional(),
 });

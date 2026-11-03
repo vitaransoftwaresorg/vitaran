@@ -15,6 +15,7 @@ import {
   reparseAnswerKey,
   saveAnswerKeyAnswers,
   setAnswerKeyPublished,
+  setAnswerKeyTestId,
   updateAnswerKey,
   uploadAnswerKey,
 } from "../controllers/answer-key.controller.js";
@@ -25,6 +26,7 @@ import {
   listAnswerKeysQuerySchema,
   saveAnswerKeyAnswersSchema,
   schoolTestsQuerySchema,
+  setAnswerKeyTestIdSchema,
   updateAnswerKeyQuerySchema,
   uploadAnswerKeyQuerySchema,
 } from "../schemas/answer-key.schema.js";
@@ -42,6 +44,12 @@ answerKeyRouter.post("/", validate(uploadAnswerKeyQuerySchema, "query"), readPdf
 answerKeyRouter.get("/stats", getAnswerKeyStats);
 answerKeyRouter.get("/school-tests", validate(schoolTestsQuerySchema, "query"), listSchoolTests);
 answerKeyRouter.get("/:id", validateId, getAnswerKey);
+answerKeyRouter.patch(
+  "/:id/test-id",
+  validateId,
+  validate(setAnswerKeyTestIdSchema),
+  setAnswerKeyTestId,
+);
 answerKeyRouter.patch(
   "/:id/answers",
   validateId,

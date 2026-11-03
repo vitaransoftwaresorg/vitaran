@@ -19,26 +19,18 @@ import { notifyContentChanged } from "../utils/content-events.js";
 import { ExcelParseError, parseResultSheet, type CellValue } from "../utils/excel.js";
 import * as answerKeyRepository from "../repositories/answer-key.repository.js";
 import * as studentRepository from "../repositories/student.repository.js";
-import type { Subject } from "../generated/prisma/enums.js";
 import { asSubjectRanges } from "../utils/answer-key-parse.js";
-import type { SubjectScore } from "../utils/omr-score.js";
-import { findVisibleOmScans, type OmScanViewer } from "./om-scan.service.js";
 import {
   canonicalizePaperMaxes,
-  findRowForStudent,
-  overlayOmrOnRows,
-  parseScoreRow,
   projectSheetForTeacher,
 } from "../utils/result-sheet-scope.js";
 import {
   resultSetAccessFilter,
-  resultSetMatchesProgram,
   resultSetVisibleToTeacher,
   resultSheetClassFilter,
   type ContentActor,
 } from "./content-access.js";
 import { toSchoolRef, type SchoolAccountDto } from "./school.service.js";
-import type { StudentAccountDto } from "./student.service.js";
 
 const KIND = "results";
 
@@ -65,7 +57,7 @@ function toResultSetDto({ school, sheets, createdAt, updatedAt, publishedAt, pro
   };
 }
 
-/** Regular schools pick one of their programs; customized schools name their own. */
+/** Regular schools pick a catalog program; customized schools may pick one or name their own. */
 async function resolveMeta({
   schoolId,
   program,
@@ -75,6 +67,21 @@ async function resolveMeta({
 }: ResultSetFields): Promise<ResultSetMeta> {
   const school = await schoolRepository.findSchoolById(schoolId);
   if (!school) throw fieldError(400, "schoolId", "Select a school");
+
+  if (program) {
+    const enrolled = school.schoolPrograms.find((row) => row.program.code === program);
+    if (!enrolled) {
+      throw fieldError(400, "program", "This school isn't enrolled in that program");
+    }
+    return {
+      schoolId,
+      programCode: program,
+      programName: school.type === SchoolType.CUSTOMIZED ? enrolled.program.name : null,
+      programKey: program,
+      testId,
+      testNumber,
+    };
+  }
 
   if (school.type === SchoolType.CUSTOMIZED) {
     if (!programName) throw fieldError(400, "programName", "Enter the program name");
@@ -88,19 +95,7 @@ async function resolveMeta({
     };
   }
 
-  if (!program) throw fieldError(400, "program", "Select a program");
-  const enrolled = school.schoolPrograms.some((row) => row.program.code === program);
-  if (!enrolled) {
-    throw fieldError(400, "program", "This school isn't enrolled in that program");
-  }
-  return {
-    schoolId,
-    programCode: program,
-    programName: null,
-    programKey: program,
-    testId,
-    testNumber,
-  };
+  throw fieldError(400, "program", "Select a program");
 }
 
 /** Parses every uploaded class file, reporting all bad files at once. */
@@ -241,27 +236,6 @@ async function paperRangesForTest(testId: string) {
   return asSubjectRanges(key?.subjectRanges);
 }
 
-/** Unpublished OMR scores stay out of result sheets for anyone but admin and the class teacher. */
-async function overlayOmrForTest(
-  schoolId: string,
-  testId: string,
-  columns: string[],
-  rows: CellValue[][],
-  viewer: OmScanViewer,
-) {
-  const scans = await findVisibleOmScans(schoolId, testId, viewer);
-  return overlayOmrOnRows(
-    columns,
-    rows,
-    scans.map((scan) => ({
-      rollNo: scan.rollNo,
-      subjectScores: scan.subjectScores as SubjectScore[],
-      total: scan.total,
-      maxTotal: scan.maxTotal,
-    })),
-  );
-}
-
 export async function getResultSheet(params: ResultSheetParams, actor?: ContentActor | SchoolAccountDto) {
   const contentActor = toContentActor(actor);
   assertSheetClassAllowed(params.classLevel, contentActor);
@@ -276,17 +250,7 @@ export async function getResultSheet(params: ResultSheetParams, actor?: ContentA
 
   const { rows, columns, updatedAt, caption, ...rest } = sheet;
   let parsedColumns = columns as string[];
-  let parsedRows = await overlayOmrForTest(
-    resultSet?.school.id ?? "",
-    resultSet?.testId ?? "",
-    columns as string[],
-    rows.map(({ values }) => values as CellValue[]),
-    !contentActor
-      ? { kind: "admin" }
-      : contentActor.kind === "teacher"
-        ? { kind: "teacher", teacher: contentActor.teacher }
-        : { kind: "released" },
-  );
+  let parsedRows = rows.map(({ values }) => values as CellValue[]);
   let parsedCaption = caption;
   if (contentActor?.kind === "teacher") {
     const roster = await studentRepository.listSchoolRoster(contentActor.teacher.schoolId);
@@ -363,67 +327,6 @@ export async function listVisibleResultSets(actor: ContentActor) {
 export async function countVisibleResultSets(actor: ContentActor) {
   if (actor.kind === "teacher") return (await listVisibleResultSets(actor)).length;
   return resultRepository.countResultSets(resultSetAccessFilter(actor));
-}
-
-export type StudentResultRowDto = {
-  resultSetId: string;
-  testId: string;
-  testNumber: number;
-  programName: string;
-  classLevel: number;
-  sectionName: string | null;
-  caption: string[];
-  subjects: Array<{ subject: Subject; score: number; max: number | null }>;
-  total: number | null;
-  maxTotal: number | null;
-  percentage: number | null;
-  updatedAt: string;
-};
-
-export async function listStudentResultRows(student: StudentAccountDto): Promise<StudentResultRowDto[]> {
-  const sets = await resultRepository.findResultSets({ schoolId: student.schoolId, published: true });
-  const rows: StudentResultRowDto[] = [];
-  for (const set of sets) {
-    if (!resultSetMatchesProgram(set, [{ programCode: student.programCode, programName: student.programName }])) {
-      continue;
-    }
-    if (!set.sheets.some((sheet) => sheet.classLevel === student.classLevel)) continue;
-    const sheet = await resultRepository.findResultSheet({
-      classLevel: student.classLevel,
-      resultSet: { id: set.id },
-    });
-    if (!sheet) continue;
-    const paper = canonicalizePaperMaxes(
-      sheet.columns as string[],
-      await overlayOmrForTest(
-        student.schoolId,
-        set.testId,
-        sheet.columns as string[],
-        sheet.rows.map(({ values }) => values as CellValue[]),
-        { kind: "released" },
-      ),
-      sheet.caption,
-      await paperRangesForTest(set.testId),
-    );
-    const row = findRowForStudent(paper.columns, paper.rows, student);
-    if (!row) continue;
-    const scores = parseScoreRow(paper.columns, row);
-    rows.push({
-      resultSetId: set.id,
-      testId: set.testId,
-      testNumber: set.testNumber,
-      programName: set.programName ?? student.programName,
-      classLevel: student.classLevel,
-      sectionName: student.sectionName,
-      caption: paper.caption,
-      subjects: scores.subjects,
-      total: scores.total,
-      maxTotal: scores.maxTotal,
-      percentage: scores.percentage,
-      updatedAt: sheet.updatedAt.toISOString(),
-    });
-  }
-  return rows.sort((a, b) => a.testNumber - b.testNumber);
 }
 
 export async function listSchoolResultSets(school: SchoolAccountDto) {

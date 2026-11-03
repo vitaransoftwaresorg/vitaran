@@ -28,14 +28,6 @@ enum SchoolStatus {
   INACTIVE
 }
 
-enum Subject {
-  MATHEMATICS
-  PHYSICS
-  CHEMISTRY
-  BIOLOGY
-  SCIENCE
-}
-
 enum TeacherStatus {
   ACTIVE
   INACTIVE
@@ -52,10 +44,13 @@ model LearningProgram {
   /// Stable key used on answer keys / results / solution books (e.g. INTEGRATED).
   code      String    @unique @db.VarChar(64)
   name      String    @db.VarChar(120)
+  /// Regular = shared track; Customized = for customized schools.
+  type      SchoolType @default(REGULAR)
   year      Int
   classFrom Int       @map("class_from") @db.SmallInt
   classTo   Int       @map("class_to") @db.SmallInt
-  subjects  Subject[]
+  /// Catalog subject codes for this program (e.g. MATHEMATICS, ENGLISH).
+  subjects  String[]
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
   schoolPrograms     SchoolProgram[]
@@ -66,6 +61,7 @@ model LearningProgram {
   students           Student[]
 
   @@index([year])
+  @@index([type])
   @@index([createdAt])
   @@map("learning_programs")
 }
@@ -105,7 +101,6 @@ model School {
   schoolClasses     SchoolClass[]
   students          Student[]
   omScans           OmScan[]
-  omResultReleases  OmResultRelease[]
 
   @@index([status])
   @@index([board])
@@ -133,7 +128,7 @@ model SchoolProgramClass {
   id              String        @id @default(uuid()) @db.Uuid
   schoolProgramId String        @map("school_program_id") @db.Uuid
   classLevel      Int           @map("class_level") @db.SmallInt
-  subjects        Subject[]
+  subjects        String[]
   schoolProgram   SchoolProgram @relation(fields: [schoolProgramId], references: [id], onDelete: Cascade)
 
   @@unique([schoolProgramId, classLevel])
@@ -158,7 +153,6 @@ model Teacher {
   classTeacherOf         SchoolSection[]
   classTeacherOfClasses  ClassTeacher[]
   omScans                OmScan[]
-  omResultReleases       OmResultRelease[]
 
   @@index([schoolId])
   @@index([status])
@@ -174,7 +168,7 @@ model TeacherAssignment {
   teacher    Teacher         @relation(fields: [teacherId], references: [id], onDelete: Cascade)
   program    LearningProgram @relation(fields: [programId], references: [id], onDelete: Restrict)
   classLevel Int             @map("class_level") @db.SmallInt
-  subject    Subject
+  subject    String          @db.VarChar(64)
 
   @@unique([teacherId, programId, classLevel, subject])
   @@index([teacherId])
@@ -239,7 +233,7 @@ model SchoolSection {
   @@map("school_sections")
 }
 
-/// Student roster: roll no + password login; optional email for password reset.
+/// Student roster: registration no + password login; optional email for password reset.
 model Student {
   id                String        @id @default(uuid()) @db.Uuid
   schoolId          String        @map("school_id") @db.Uuid
@@ -279,8 +273,8 @@ model AnswerKey {
   type        SchoolType
   schoolId    String?    @map("school_id") @db.Uuid
   school      School?    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  /// Human-facing test ID (freeform), shared with results.
-  testId      String     @map("test_id") @db.VarChar(64)
+  /// Human-facing test ID (freeform), shared with results. Entered on the answers editor.
+  testId      String?    @map("test_id") @db.VarChar(64)
   /// Ordinal test number (1–30).
   testNumber  Int        @map("test_number") @db.SmallInt
   classLevel  Int        @map("class_level") @db.SmallInt
@@ -298,6 +292,10 @@ model AnswerKey {
   printedExplanations Json? @map("printed_explanations")
   /// Subject bands in paper order: MPC (75) or MPCB (100), 25 questions each.
   subjectRanges Json? @map("subject_ranges")
+  /// Marks awarded for a matching option (and for ADD if attempted).
+  correctMarks Int @default(1) @map("correct_marks")
+  /// Marks deducted for a wrong option. Blank stays 0.
+  wrongMarks   Int @default(0) @map("wrong_marks")
   /// Schools only see published answer keys.
   published   Boolean    @default(false)
   publishedAt DateTime?  @map("published_at") @db.Timestamptz(3)
@@ -313,65 +311,45 @@ model AnswerKey {
   @@map("answer_keys")
 }
 
-/// One OMR attempt per student per test. Answers stay; scores recompute when the key changes.
+/// One captured sheet. Saved only after the operator confirms the preview.
+/// Identity comes from the sheet — no student roster is required.
 model OmScan {
-  id            String    @id @default(uuid()) @db.Uuid
-  schoolId      String    @map("school_id") @db.Uuid
-  school        School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  studentId     String    @map("student_id") @db.Uuid
-  student       Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  answerKeyId   String    @map("answer_key_id") @db.Uuid
-  answerKey     AnswerKey @relation(fields: [answerKeyId], references: [id], onDelete: Cascade)
-  testId        String    @map("test_id") @db.VarChar(64)
-  rollNo        String    @map("roll_no") @db.VarChar(64)
-  /// Entered by the teacher at scan time (defaults to the scan day).
-  examDate      DateTime? @map("exam_date") @db.Date
-  answers       Json
-  flags         Json
-  subjectScores Json      @map("subject_scores")
-  correct       Int
-  wrong         Int
-  blank         Int
-  total         Int
-  maxTotal      Int       @map("max_total")
-  rank          Int?
-  classSize     Int?      @map("class_size")
-  fileName      String    @map("file_name") @db.VarChar(255)
-  fileSize      Int       @map("file_size")
-  image         Bytes
-  scannedById   String    @map("scanned_by_id") @db.Uuid
-  scannedBy     Teacher   @relation(fields: [scannedById], references: [id], onDelete: Restrict)
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id             String    @id @default(uuid()) @db.Uuid
+  schoolId       String    @map("school_id") @db.Uuid
+  school         School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId      String?   @map("student_id") @db.Uuid
+  student        Student?  @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  studentName    String    @map("student_name") @db.VarChar(120)
+  classLevel     Int       @map("class_level") @db.SmallInt
+  sectionName    String?   @map("section_name") @db.VarChar(32)
+  programName    String?   @map("program_name") @db.VarChar(120)
+  answerKeyId    String    @map("answer_key_id") @db.Uuid
+  answerKey      AnswerKey @relation(fields: [answerKeyId], references: [id], onDelete: Cascade)
+  testId         String    @map("test_id") @db.VarChar(64)
+  rollNo         String    @map("roll_no") @db.VarChar(64)
+  examDate       DateTime? @map("exam_date") @db.Date
+  answers        Json
+  flags          Json
+  subjectScores  Json      @map("subject_scores")
+  correct        Int
+  wrong          Int
+  blank          Int
+  total          Int
+  maxTotal       Int       @map("max_total")
+  confidence     Float
+  fileName       String    @map("file_name") @db.VarChar(255)
+  fileSize       Int       @map("file_size")
+  image          Bytes
+  actor          String    @db.VarChar(16)
+  scannedById    String?   @map("scanned_by_id") @db.Uuid
+  scannedBy      Teacher?  @relation(fields: [scannedById], references: [id], onDelete: SetNull)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  @@unique([studentId, testId])
+  @@unique([schoolId, rollNo, testId, classLevel])
   @@index([schoolId, testId])
   @@index([answerKeyId])
-  @@index([scannedById])
   @@map("om_scans")
-}
-
-/// Class teacher's push of OMR results for one test to one class (section or whole class).
-/// Students and subject teachers only see scans whose class is released.
-model OmResultRelease {
-  id            String    @id @default(uuid()) @db.Uuid
-  schoolId      String    @map("school_id") @db.Uuid
-  school        School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  testId        String    @map("test_id") @db.VarChar(64)
-  programId     String    @map("program_id") @db.Uuid
-  classLevel    Int       @map("class_level") @db.SmallInt
-  /// Section id, or "class" for a whole class without sections.
-  sectionKey    String    @map("section_key") @db.VarChar(64)
-  published     Boolean   @default(false)
-  publishedAt   DateTime? @map("published_at") @db.Timestamptz(3)
-  updatedById   String    @map("updated_by_id") @db.Uuid
-  updatedBy     Teacher   @relation(fields: [updatedById], references: [id], onDelete: Restrict)
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
-
-  @@unique([schoolId, testId, programId, classLevel, sectionKey])
-  @@index([updatedById])
-  @@map("om_result_releases")
 }
 
 /// One test's results for one school and program; each class is uploaded as its own sheet.

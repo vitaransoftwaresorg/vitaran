@@ -1,5 +1,5 @@
 import { prisma } from "../config/database.js";
-import type { Prisma, Subject } from "../generated/prisma/client.js";
+import type { Prisma } from "../generated/prisma/client.js";
 import { TeacherStatus } from "../generated/prisma/enums.js";
 import type { ListTeachersQuery } from "../schemas/teacher.schema.js";
 
@@ -24,6 +24,24 @@ const teacherInclude = {
       type: true,
       status: true,
       accountEmail: true,
+      schoolPrograms: {
+        orderBy: { program: { name: "asc" as const } },
+        select: {
+          programId: true,
+          program: {
+            select: {
+              code: true,
+              name: true,
+              type: true,
+              year: true,
+              classFrom: true,
+              classTo: true,
+              subjects: true,
+            },
+          },
+          classes: { orderBy: { classLevel: "asc" as const }, select: { classLevel: true, subjects: true } },
+        },
+      },
     },
   },
 } satisfies Prisma.TeacherInclude;
@@ -100,7 +118,7 @@ export function createTeacher(data: {
   status: TeacherStatus;
   passwordHash: string;
   passwordEncrypted: string;
-  assignments: { programId: string; classLevel: number; subject: Subject }[];
+  assignments: { programId: string; classLevel: number; subject: string }[];
 }) {
   const { assignments, ...teacher } = data;
   return prisma.teacher.create({
@@ -121,7 +139,7 @@ export async function updateTeacher(
     status?: TeacherStatus;
     passwordHash?: string;
     passwordEncrypted?: string;
-    assignments?: { programId: string; classLevel: number; subject: Subject }[];
+    assignments?: { programId: string; classLevel: number; subject: string }[];
   },
 ) {
   const { assignments, ...fields } = data;

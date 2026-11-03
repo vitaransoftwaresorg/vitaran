@@ -26,8 +26,6 @@ export const loginRateLimit = createLoginRateLimit("email");
 export const schoolLoginRateLimit = createLoginRateLimit("identifier");
 export const teacherLoginRateLimit = createLoginRateLimit("identifier");
 
-export const studentLoginRateLimit = createLoginRateLimit("identifier");
-
 function googleLoginKey(idToken: unknown) {
   if (typeof idToken !== "string") return "google-unknown";
   try {
@@ -52,13 +50,15 @@ export const googleLoginRateLimit = rateLimit({
 
 export const omrScanRateLimit = rateLimit({
   windowMs: 5 * 60 * 1000,
-  limit: 20,
+  limit: 60,
   standardHeaders: "draft-8",
   legacyHeaders: false,
+  // A failed read should not lock the examiner out of the next attempt.
+  skipFailedRequests: true,
   validate: { keyGeneratorIpFallback: false },
   keyGenerator: (req, res) => {
-    const teacher = (res as { locals?: { teacher?: { id?: string } } }).locals?.teacher;
-    return teacher?.id ?? req.ip ?? "omr-unknown";
+    const locals = (res as { locals?: { admin?: { email?: string }; school?: { id?: string }; teacher?: { id?: string } } }).locals;
+    return locals?.teacher?.id ?? locals?.school?.id ?? locals?.admin?.email ?? req.ip ?? "omr-unknown";
   },
   handler: (_req, res) => {
     sendError(res, 429, "Too many OMR scans. Wait a few minutes and try again.");

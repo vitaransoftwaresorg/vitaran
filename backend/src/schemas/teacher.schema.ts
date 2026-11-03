@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { Subject, TeacherStatus } from "../generated/prisma/enums.js";
+import { TeacherStatus } from "../generated/prisma/enums.js";
+import { subjectCodeSchema } from "../utils/subject.js";
 
 const email = z.email().trim().toLowerCase().max(254);
 
@@ -13,7 +14,7 @@ const password = z.string().min(1, "Password is required").max(128);
 const assignmentSchema = z.object({
   programId: z.uuid(),
   classLevel: z.number().int().min(1).max(12),
-  subject: z.enum(Subject),
+  subject: subjectCodeSchema,
 });
 
 /** Class-level CT when no sections; section CT when sections exist. */

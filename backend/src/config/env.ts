@@ -36,6 +36,8 @@ const envSchema = z.object({
   SMTP_FROM: z.string().trim().min(1).optional(),
   /** Google OAuth client ID — must match Auth.js AUTH_GOOGLE_ID. */
   GOOGLE_CLIENT_ID: z.string().trim().min(1).optional(),
+  /** Redis for BullMQ OMR batch jobs. When unset, sheets are processed in-process. */
+  REDIS_URL: z.string().trim().min(1).optional(),
 });
 
 const parsed = envSchema.safeParse({
@@ -60,6 +62,7 @@ const parsed = envSchema.safeParse({
     process.env.GOOGLE_CLIENT_ID?.trim() ||
     process.env.AUTH_GOOGLE_ID?.trim() ||
     undefined,
+  REDIS_URL: process.env.REDIS_URL?.trim() || undefined,
 });
 
 if (!parsed.success) {

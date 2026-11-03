@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   createProgram,
   deleteProgram,
+  getCodeAvailability,
   getProgram,
   listPrograms,
   updateProgram,
@@ -10,6 +11,7 @@ import { requireAdmin } from "../middleware/authenticate.js";
 import { validate } from "../middleware/validate.js";
 import {
   createProgramSchema,
+  programCodeAvailabilityQuerySchema,
   programIdParamsSchema,
   updateProgramSchema,
 } from "../schemas/program.schema.js";
@@ -23,6 +25,11 @@ programCatalogRouter.get("/:id", validate(programIdParamsSchema, "params"), getP
 
 programRouter.use(requireAdmin);
 programRouter.get("/", listPrograms);
+programRouter.get(
+  "/code-availability",
+  validate(programCodeAvailabilityQuerySchema, "query"),
+  getCodeAvailability,
+);
 programRouter.post("/", validate(createProgramSchema), createProgram);
 programRouter.get("/:id", validate(programIdParamsSchema, "params"), getProgram);
 programRouter.patch(

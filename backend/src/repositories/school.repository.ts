@@ -1,5 +1,5 @@
 import { prisma } from "../config/database.js";
-import type { Prisma, Subject } from "../generated/prisma/client.js";
+import type { Prisma } from "../generated/prisma/client.js";
 import {
   SchoolStatus,
   SchoolType,
@@ -76,6 +76,7 @@ export const schoolSessionSelect = {
         select: {
           code: true,
           name: true,
+          type: true,
           year: true,
           classFrom: true,
           classTo: true,
@@ -190,7 +191,7 @@ function programNestedCreate(programs: SchoolProgramInput[]) {
       classes: {
         create: row.classes.map((cls) => ({
           classLevel: cls.classLevel,
-          subjects: cls.subjects as Subject[],
+          subjects: cls.subjects,
         })),
       },
     })),
@@ -231,7 +232,7 @@ export async function updateSchool(
             classes: {
               create: row.classes.map((cls) => ({
                 classLevel: cls.classLevel,
-                subjects: cls.subjects as Subject[],
+                subjects: cls.subjects,
               })),
             },
           },

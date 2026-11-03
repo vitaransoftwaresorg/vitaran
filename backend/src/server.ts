@@ -1,8 +1,10 @@
 import { createApp } from "./app.js";
 import { disconnectDatabase } from "./config/database.js";
 import { env } from "./config/env.js";
+import { startScanWorker, stopScanWorker } from "./scan/queue.js";
 import { logger } from "./utils/logger.js";
 
+startScanWorker();
 const app = createApp();
 
 const server = app.listen(env.PORT, () => {
@@ -18,7 +20,11 @@ function shutdown(signal: string) {
   logger.info({ signal }, "Shutting down");
 
   server.close(() => {
-    disconnectDatabase().finally(() => process.exit(0));
+    stopScanWorker()
+      .catch(() => undefined)
+      .finally(() => {
+        disconnectDatabase().finally(() => process.exit(0));
+      });
   });
 
   setTimeout(() => {

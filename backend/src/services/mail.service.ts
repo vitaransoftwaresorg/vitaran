@@ -21,10 +21,6 @@ function portalLoginUrl() {
   return `${appBaseUrl()}/school/login`;
 }
 
-function studentPortalLoginUrl() {
-  return `${appBaseUrl()}/school/student/login`;
-}
-
 function smtpConfigured() {
   return Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS);
 }
@@ -267,7 +263,7 @@ export async function sendTeacherCredentialsEmail(input: {
 }
 
 /**
- * School → student: roll no (or parent email) + password login. Optional email for reset.
+ * School → parent/guardian: student registration number and password on file.
  */
 export async function sendStudentCredentialsEmail(input: {
   to: string;
@@ -283,18 +279,18 @@ export async function sendStudentCredentialsEmail(input: {
   const schoolEmail = input.schoolEmail?.trim() || null;
   const subject =
     input.reason === "password-reset"
-      ? `Your student password was updated — ${input.schoolName}`
-      : `Your student portal account — ${input.schoolName}`;
+      ? `Student password updated — ${input.schoolName}`
+      : `Student record — ${input.schoolName}`;
   const greeting =
     input.reason === "password-reset"
       ? "Password updated"
       : input.reason === "resend"
-        ? `Login details for ${input.studentName}`
+        ? `Details for ${input.studentName}`
         : `Welcome, ${input.studentName}`;
   const intro =
     input.reason === "password-reset"
-      ? `${input.schoolName} set a new password for your student portal. Sign in with your roll number (or parent/guardian email) and this password.`
-      : `${input.schoolName} created your student portal account. Sign in with your roll number (or parent/guardian email) and the password below.`;
+      ? `${input.schoolName} updated the password on file for ${input.studentName}.`
+      : `${input.schoolName} added ${input.studentName} as a student.`;
 
   const loginId = input.rollNo;
   const text = [
@@ -302,10 +298,8 @@ export async function sendStudentCredentialsEmail(input: {
     greeting,
     "",
     `School: ${input.schoolName}`,
-    `Roll number: ${input.rollNo}`,
+    `Registration number: ${input.rollNo}`,
     `Password: ${input.password}`,
-    `You can also sign in with the parent/guardian email on the account.`,
-    `Sign in: ${studentPortalLoginUrl()}`,
   ].join("\n");
 
   return sendMail({
@@ -320,10 +314,9 @@ export async function sendStudentCredentialsEmail(input: {
       greeting,
       intro,
       loginId,
-      loginLabel: "Roll number",
+      loginLabel: "Registration number",
       password: input.password,
-      footerNote: `Sent by ${input.schoolName}. Sign in at ${studentPortalLoginUrl()}.`,
-      loginUrl: studentPortalLoginUrl(),
+      footerNote: `Sent by ${input.schoolName}. Reply to this email to reach your school.`,
     }),
   });
 }

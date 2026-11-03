@@ -3,6 +3,7 @@ import type {
   ListAnswerKeysQuery,
   SaveAnswerKeyAnswersInput,
   SchoolTestsQuery,
+  SetAnswerKeyTestIdInput,
   UpdateAnswerKeyQuery,
   UploadAnswerKeyQuery,
 } from "../schemas/answer-key.schema.js";
@@ -100,6 +101,13 @@ export const setAnswerKeyPublished: RequestHandler<IdParams> = async (req, res) 
 export const deleteAnswerKey: RequestHandler<IdParams> = async (req, res) => {
   await answerKeyService.deleteAnswerKey(req.params.id);
   res.status(204).end();
+};
+
+export const setAnswerKeyTestId: RequestHandler<IdParams, unknown, SetAnswerKeyTestIdInput> = async (
+  req,
+  res,
+) => {
+  sendSuccess(res, await answerKeyService.setAnswerKeyTestId(req.params.id, req.body.testId));
 };
 
 export const saveAnswerKeyAnswers: RequestHandler<IdParams, unknown, SaveAnswerKeyAnswersInput> = async (

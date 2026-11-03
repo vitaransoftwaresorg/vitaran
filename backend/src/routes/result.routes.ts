@@ -14,13 +14,12 @@ import {
   getTeacherResultSheetFile,
   listResultSets,
   listSchoolResultSets,
-  listStudentResultRows,
   listTeacherResultSets,
   setResultSetPublished,
   updateResultSet,
   uploadResultSet,
 } from "../controllers/result.controller.js";
-import { requireAdmin, requireSchool, requireStudent, requireTeacher } from "../middleware/authenticate.js";
+import { requireAdmin, requireSchool, requireTeacher } from "../middleware/authenticate.js";
 import { validate } from "../middleware/validate.js";
 import {
   CLASS_LEVELS,
@@ -78,6 +77,3 @@ teacherResultRouter.get("/:id", validateId, getTeacherResultSet);
 teacherResultRouter.get("/:id/classes/:classLevel", validateSheet, getTeacherResultSheet);
 teacherResultRouter.get("/:id/classes/:classLevel/file", validateSheet, getTeacherResultSheetFile);
 
-export const studentResultRouter = Router();
-studentResultRouter.use(requireStudent);
-studentResultRouter.get("/", listStudentResultRows);

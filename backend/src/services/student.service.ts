@@ -205,8 +205,8 @@ async function assertSeatAvailable(
 async function assertUniqueRoll(schoolId: string, rollNo: string, excludeId?: string) {
   const taken = await studentRepository.isRollTaken(schoolId, rollNo, excludeId);
   if (taken) {
-    throw new AppError(409, "Roll number already exists in this school", [
-      { path: ["rollNo"], message: "Roll number already exists" },
+    throw new AppError(409, "Registration number already exists in this school", [
+      { path: ["rollNo"], message: "Registration number already exists" },
     ]);
   }
 }

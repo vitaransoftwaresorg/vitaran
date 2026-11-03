@@ -3,8 +3,8 @@ import {
   SchoolBoard,
   SchoolStatus,
   SchoolType,
-  Subject,
 } from "../generated/prisma/enums.js";
+import { subjectCodeSchema } from "../utils/subject.js";
 
 const requiredText = (min: number, max: number) =>
   z.string().trim().min(min).max(max);
@@ -30,21 +30,29 @@ const password = z.string().min(1, "Password is required").max(128);
 const schoolProgramClassSchema = z.object({
   classLevel: z.number().int().min(1).max(12),
   subjects: z
-    .array(z.enum(Subject))
+    .array(subjectCodeSchema)
     .min(1, "Select at least one subject for each class")
     .transform((subjects) => [...new Set(subjects)]),
 });
 
+const schoolProgramClassesSchema = z
+  .array(schoolProgramClassSchema)
+  .min(1, "Select at least one class for each program")
+  .transform((classes) => {
+    const byClass = new Map<number, (typeof classes)[number]>();
+    for (const row of classes) byClass.set(row.classLevel, row);
+    return [...byClass.values()].sort((a, b) => a.classLevel - b.classLevel);
+  });
+
 const schoolProgramSchema = z.object({
   programId: z.uuid(),
-  classes: z
-    .array(schoolProgramClassSchema)
-    .min(1, "Select at least one class for each program")
-    .transform((classes) => {
-      const byClass = new Map<number, (typeof classes)[number]>();
-      for (const row of classes) byClass.set(row.classLevel, row);
-      return [...byClass.values()].sort((a, b) => a.classLevel - b.classLevel);
-    }),
+  classes: schoolProgramClassesSchema,
+});
+
+/** Created with the school — no catalog row needs to exist first. */
+const customProgramSchema = z.object({
+  name: requiredText(2, 120),
+  classes: schoolProgramClassesSchema,
 });
 
 /** Freeform school ID — any non-empty string. */
@@ -64,6 +72,7 @@ const schoolFields = {
       for (const row of programs) byId.set(row.programId, row);
       return [...byId.values()];
     }),
+  customProgram: customProgramSchema.optional(),
   principalName: optionalText(120),
   contactName: requiredText(2, 120),
   contactEmail: email,
@@ -81,12 +90,22 @@ const schoolFields = {
   accountPhone: phone,
 };
 
-export const createSchoolSchema = z.object({
-  ...schoolFields,
-  type: schoolFields.type.default(SchoolType.REGULAR),
-  status: schoolFields.status.default(SchoolStatus.ACTIVE),
-  password,
-});
+export const createSchoolSchema = z
+  .object({
+    ...schoolFields,
+    type: schoolFields.type.default(SchoolType.REGULAR),
+    status: schoolFields.status.default(SchoolStatus.ACTIVE),
+    password,
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === SchoolType.CUSTOMIZED && !data.customProgram) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["customProgram"],
+        message: "Enter a program name and select classes",
+      });
+    }
+  });
 
 export const updateSchoolSchema = z
   .object({ ...schoolFields, password })
@@ -132,3 +151,4 @@ export type ListSchoolsQuery = z.infer<typeof listSchoolsQuerySchema>;
 export type ListSchoolOptionsQuery = z.infer<typeof listSchoolOptionsQuerySchema>;
 export type AccountAvailabilityQuery = z.infer<typeof accountAvailabilityQuerySchema>;
 export type SchoolProgramInput = z.infer<typeof schoolProgramSchema>;
+export type CustomProgramInput = z.infer<typeof customProgramSchema>;

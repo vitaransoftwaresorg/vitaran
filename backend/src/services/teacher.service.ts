@@ -1,4 +1,3 @@
-import type { Subject } from "../generated/prisma/client.js";
 import { TeacherStatus } from "../generated/prisma/enums.js";
 import * as schoolRepository from "../repositories/school.repository.js";
 import * as sectionRepository from "../repositories/section.repository.js";
@@ -27,7 +26,7 @@ export type TeacherAssignmentDto = {
   programCode: string;
   programName: string;
   classLevel: number;
-  subject: Subject;
+  subject: string;
 };
 
 export type TeacherDto = {
@@ -108,6 +107,20 @@ export function toTeacherDetailDto(teacher: TeacherRecord): TeacherDetailDto {
 
 export function toTeacherAccountDto(teacher: TeacherRecord): TeacherAccountDto {
   const assignments = toAssignments(teacher);
+  const schoolPrograms: SchoolProgramDto[] = teacher.school.schoolPrograms.map((row) => ({
+    programId: row.programId,
+    programCode: row.program.code,
+    programName: row.program.name,
+    type: row.program.type,
+    year: row.program.year,
+    classFrom: row.program.classFrom,
+    classTo: row.program.classTo,
+    catalogSubjects: row.program.subjects,
+    classes: row.classes.map((cls) => ({
+      classLevel: cls.classLevel,
+      subjects: cls.subjects,
+    })),
+  }));
   return {
     id: teacher.id,
     name: teacher.name,
@@ -139,8 +152,13 @@ export function toTeacherAccountDto(teacher: TeacherRecord): TeacherAccountDto {
       name: teacher.school.name,
       code: teacher.school.code,
       type: teacher.school.type,
-      schoolPrograms: [],
-      programCodes: [...new Set(assignments.map((row) => row.programCode))],
+      schoolPrograms,
+      programCodes: [
+        ...new Set([
+          ...schoolPrograms.map((row) => row.programCode),
+          ...assignments.map((row) => row.programCode),
+        ]),
+      ],
     },
   };
 }
@@ -165,7 +183,7 @@ async function assertUniqueCredentials(email: string, phone: string, excludeId?:
 }
 
 function assertAssignmentsAgainstSchool(
-  assignments: { programId: string; classLevel: number; subject: Subject }[],
+  assignments: { programId: string; classLevel: number; subject: string }[],
   school: Awaited<ReturnType<typeof schoolRepository.findSchoolById>>,
 ) {
   if (!school) throw new AppError(404, "School not found");

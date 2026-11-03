@@ -15,31 +15,10 @@ export const schoolLoginSchema = z.object({
 
 export type SchoolLoginInput = z.infer<typeof schoolLoginSchema>;
 
-/** Student portal: roll number or parent/guardian email + password. */
-export const studentLoginSchema = z.object({
-  identifier: z.string().trim().min(1).max(254),
-  password: z.string().min(1).max(256),
+/** Portal reset uses the school or teacher login email. */
+export const forgotPasswordRequestSchema = z.object({
+  email: z.email().trim().toLowerCase(),
 });
-
-export type StudentLoginInput = z.infer<typeof studentLoginSchema>;
-
-/** Portal reset uses login email; student reset uses roll number (looks up parent email). */
-export const forgotPasswordRequestSchema = z
-  .object({
-    email: z.email().trim().toLowerCase().optional(),
-    rollNo: z.string().trim().min(1).max(64).optional(),
-  })
-  .superRefine((value, ctx) => {
-    const hasEmail = Boolean(value.email);
-    const hasRoll = Boolean(value.rollNo);
-    if (hasEmail === hasRoll) {
-      ctx.addIssue({
-        code: "custom",
-        message: "Provide either a login email or a student roll number.",
-        path: hasRoll ? ["rollNo"] : ["email"],
-      });
-    }
-  });
 
 export const forgotPasswordVerifySchema = z.object({
   email: z.email().trim().toLowerCase(),
@@ -51,7 +30,7 @@ export type ForgotPasswordVerifyInput = z.infer<typeof forgotPasswordVerifySchem
 
 export const googleLoginSchema = z.object({
   idToken: z.string().trim().min(20).max(8192),
-  portal: z.enum(["school", "student"]),
+  portal: z.literal("school"),
 });
 
 export type GoogleLoginInput = z.infer<typeof googleLoginSchema>;

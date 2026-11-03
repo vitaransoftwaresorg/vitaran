@@ -10,6 +10,7 @@ function toDto(program: Awaited<ReturnType<typeof programRepository.findProgramB
     id: program.id,
     code: program.code,
     name: program.name,
+    type: program.type,
     year: program.year,
     classFrom: program.classFrom,
     classTo: program.classTo,
@@ -19,17 +20,20 @@ function toDto(program: Awaited<ReturnType<typeof programRepository.findProgramB
   };
 }
 
-function slugify(name: string) {
-  return name
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "_")
-    .replace(/^_|_$/g, "")
-    .slice(0, 64);
+export async function listPrograms() {
+  return (await programRepository.findPrograms())
+    .map((program) => toDto(program)!)
+    .sort((a, b) => {
+      const byType = (a.type === "CUSTOMIZED" ? 1 : 0) - (b.type === "CUSTOMIZED" ? 1 : 0);
+      if (byType !== 0) return byType;
+      if (b.year !== a.year) return b.year - a.year;
+      return a.name.localeCompare(b.name);
+    });
 }
 
-export async function listPrograms() {
-  return (await programRepository.findPrograms()).map((program) => toDto(program)!);
+export async function getCodeAvailability(code: string, excludeId?: string) {
+  const existing = await programRepository.findProgramByCode(code);
+  return { taken: Boolean(existing && existing.id !== excludeId) };
 }
 
 export async function getProgram(id: string) {
@@ -39,9 +43,7 @@ export async function getProgram(id: string) {
 }
 
 export async function createProgram(input: CreateProgramInput) {
-  const code = input.code ?? slugify(input.name);
-  if (!code) throw new AppError(400, "Program code is required", [{ path: ["code"], message: "Enter a code" }]);
-
+  const code = input.code;
   const existing = await programRepository.findProgramByCode(code);
   if (existing) {
     throw new AppError(409, "Program code already exists", [
@@ -53,6 +55,7 @@ export async function createProgram(input: CreateProgramInput) {
     await programRepository.createProgram({
       code,
       name: input.name,
+      type: input.type,
       year: input.year,
       classFrom: input.classFrom,
       classTo: input.classTo,
@@ -84,6 +87,7 @@ export async function updateProgram(id: string, input: UpdateProgramInput) {
 
   const updated = await programRepository.updateProgram(id, {
     name: input.name,
+    type: input.type,
     year: input.year,
     classFrom: input.classFrom,
     classTo: input.classTo,

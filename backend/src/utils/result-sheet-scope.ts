@@ -1,4 +1,3 @@
-import type { Subject } from "../generated/prisma/enums.js";
 import {
   assignedSubjects,
   isClassTeacherOf,
@@ -25,7 +24,7 @@ export type ScopedSheet = {
 };
 
 export type ParsedSubjectScore = {
-  subject: Subject;
+  subject: string;
   score: number;
   max: number | null;
 };
@@ -39,14 +38,15 @@ export type ParsedScoreRow = {
 
 type RowAccess =
   | { view: "class" }
-  | { view: "subject"; subjects: Subject[] };
+  | { view: "subject"; subjects: string[] };
 
-const SUBJECT_COLUMN: Record<Subject, RegExp> = {
+const SUBJECT_COLUMN: Record<string, RegExp> = {
   MATHEMATICS: /\bmath/i,
   PHYSICS: /\bphys/i,
   CHEMISTRY: /\bchem/i,
   BIOLOGY: /\bbio/i,
   SCIENCE: /\bscience|\bgen\.?\s*sci/i,
+  ENGLISH: /\benglish|\beng\b/i,
 };
 
 function fold(value: string) {
@@ -73,9 +73,9 @@ function isIdentityColumn(label: string) {
   );
 }
 
-function subjectForColumn(label: string): Subject | null {
+function subjectForColumn(label: string): string | null {
   const text = compactLabel(label);
-  for (const [subject, pattern] of Object.entries(SUBJECT_COLUMN) as [Subject, RegExp][]) {
+  for (const [subject, pattern] of Object.entries(SUBJECT_COLUMN)) {
     if (pattern.test(text)) return subject;
   }
   return null;
@@ -113,7 +113,7 @@ function accessFor(teacher: TeacherAccountDto, student: RosterStudent): RowAcces
   return subjects.length ? { view: "subject", subjects } : null;
 }
 
-function keepColumn(label: string, subjects: Subject[]) {
+function keepColumn(label: string, subjects: string[]) {
   if (isIdentityColumn(label)) return true;
   const subject = subjectForColumn(label);
   return Boolean(subject && subjects.includes(subject));
@@ -234,40 +234,6 @@ function rewriteClassCell(row: CellValue[], columns: string[], student: RosterSt
   const next = [...row];
   next[classCol] = student.section?.name ? `${student.classLevel}-${student.section.name}` : String(student.classLevel);
   return next;
-}
-
-export type OmOverlayScan = {
-  rollNo: string;
-  subjectScores: Array<{ subject: Subject; total: number }>;
-  total: number;
-  maxTotal: number;
-};
-
-/** OMR scores win over uploaded Excel for the same roll on this test. */
-export function overlayOmrOnRows(columns: string[], rows: CellValue[][], scans: OmOverlayScan[]): CellValue[][] {
-  if (scans.length === 0) return rows;
-  const byRoll = new Map(scans.map((scan) => [normalizeRoll(scan.rollNo), scan]));
-  const rollCol = colIndex(columns, [/^roll/, /regd/, /registration/]);
-  return rows.map((row) => {
-    const roll = rollCol >= 0 ? normalizeRoll(row[rollCol] ?? null) : "";
-    const scan = roll ? byRoll.get(roll) : undefined;
-    if (!scan) return row;
-    const next = [...row];
-    columns.forEach((label, index) => {
-      const subject = subjectForColumn(label);
-      if (subject) {
-        const hit = scan.subjectScores.find((item) => item.subject === subject);
-        if (hit) next[index] = hit.total;
-        return;
-      }
-      const text = compactLabel(label);
-      if (/total marks|grand total|^total$/.test(text)) next[index] = scan.total;
-      if (/percentage|percent|^%$/.test(text) && scan.maxTotal) {
-        next[index] = Math.round((scan.total / scan.maxTotal) * 1000) / 10;
-      }
-    });
-    return next;
-  });
 }
 
 export function findRowForStudent(

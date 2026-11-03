@@ -20,12 +20,12 @@ const SPLIT_SEARCH_Y = 0.035;
  * The darkest option in a row is the answer when it stands clear of the other three, so light
  * pencil still counts. Fills here are above the option's empty-bubble level on the same sheet.
  */
-const MARK_MIN = 0.05;
-const MARK_LEAD = 0.05;
+const MARK_MIN = 0.04;
+const MARK_LEAD = 0.03;
 /** A printed letter never inks more of the core than this; above it the option is just popular. */
 const LETTER_INK_MAX = 0.15;
 /** Two options this dark and this close are both filled. */
-const MARK_FILL = 0.22;
+const MARK_FILL = 0.18;
 const MARK_GAP = 0.08;
 
 export type OmFlag = { question: number; reason: string };
@@ -43,7 +43,7 @@ export type OmBubble = {
 };
 
 export type OmLayout = {
-  answers: Record<string, AnswerOption>;
+  answers: Record<string, AnswerOption[]>;
   flags: OmFlag[];
   markCount: number;
   bubbles: OmBubble[];
@@ -418,7 +418,7 @@ function measuredBlocks(img: Gray, bands: Box[]) {
     if (!columns) return null;
     columns.forEach((cell, c) => {
       const local = paperLevel(img, cell);
-      cells.push({ c, g, cell, ink: local * 0.82, dark: local * 0.55 });
+      cells.push({ c, g, cell, ink: local * 0.82, dark: local * 0.66 });
     });
   }
 
@@ -466,12 +466,12 @@ function measuredBlocks(img: Gray, bands: Box[]) {
 function pickMarked(cells: Array<{ option: AnswerOption; fill: number }>) {
   const ranked = [...cells].sort((a, b) => b.fill - a.fill);
   const best = ranked[0];
-  const second = ranked[1];
+  const second = ranked[1]?.fill ?? 0;
   if (!best || best.fill < MARK_MIN) return { marked: [] as typeof cells };
-  if (second && second.fill >= MARK_FILL && best.fill - second.fill < MARK_GAP) {
+  if (second >= MARK_FILL && best.fill - second < MARK_GAP) {
     return { marked: ranked.filter((cell) => cell.fill >= MARK_FILL) };
   }
-  if (second && best.fill - second.fill < MARK_LEAD) return { marked: [] as typeof cells };
+  if (best.fill < MARK_FILL && best.fill - second < MARK_LEAD) return { marked: [] as typeof cells };
   return { marked: [best] };
 }
 
@@ -489,10 +489,11 @@ export function layoutOmrBubbles(rgba: Rgba): OmLayout {
   const bands = findGroupBands(img, Math.round(W * AREA.x0), Math.round(W * AREA.x1));
   const measured = bands ? measuredBlocks(img, bands) : null;
   const blocks = measured ?? fixedBlocks(img, search);
+  alignColumnXs(blocks);
   const sheetPitch = median(blocks.flatMap((block) => (block.fit?.pitch != null ? [block.fit.pitch] : []))) || W * 0.03;
 
   const bubbles: OmBubble[] = [];
-  const answers: Record<string, AnswerOption> = {};
+  const answers: Record<string, AnswerOption[]> = {};
   const flags: OmFlag[] = [];
   const radii: number[] = [];
 
@@ -510,7 +511,7 @@ export function layoutOmrBubbles(rgba: Rgba): OmLayout {
         flags.push({ question, reason: "Could not locate the bubbles for this question" });
         continue;
       }
-      const radius = Math.max(3, fit.width * 0.3);
+      const radius = Math.max(3, fit.width * 0.36);
       radii.push(radius);
       const cy = rows[r]!;
       const cells = xs.map((cx, i) => ({
@@ -545,8 +546,8 @@ export function layoutOmrBubbles(rgba: Rgba): OmLayout {
     const { marked } = pickMarked(
       cells.map((cell) => ({ option: cell.option, fill: Math.max(0, cell.fill - (baseline.get(`${c}${cell.option}`) ?? 0)) })),
     );
-    if (marked.length === 1) answers[String(question)] = marked[0]!.option;
-    else if (marked.length > 1) flags.push({ question, reason: "More than one option is filled" });
+    if (marked.length) answers[String(question)] = marked.map((cell) => cell.option);
+    if (marked.length > 1) flags.push({ question, reason: "More than one option is filled" });
   }
 
   return {
@@ -570,6 +571,22 @@ type Block = {
   xs: number[] | null;
   ys: number[] | null;
 };
+
+/** Keep A–D on the same column through all four groups. The bottom-right red dots can steal column 5. */
+function alignColumnXs(blocks: Block[]) {
+  for (let c = 0; c < COLS; c += 1) {
+    const col = blocks.filter((block) => block.c === c && block.xs?.length === OPTIONS);
+    if (col.length < 2) continue;
+    const medianXs = Array.from({ length: OPTIONS }, (_, i) => median(col.map((block) => block.xs![i]!)));
+    const pitch = median(col.flatMap((block) => (block.fit?.pitch != null ? [block.fit.pitch] : []))) || 24;
+    for (const block of col) {
+      const drift = Math.abs((block.xs?.[0] ?? 0) - (medianXs[0] ?? 0));
+      if (drift <= pitch * 1.1) continue;
+      block.xs = medianXs;
+      if (block.fit) block.fit = { ...block.fit, xs: medianXs };
+    }
+  }
+}
 
 /** The measured page fractions, used only when the group bands cannot be found. */
 function fixedBlocks(img: Gray, search: Box): Block[] {
@@ -606,7 +623,7 @@ function fixedBlocks(img: Gray, search: Box): Block[] {
       const cell: Box = { ...column, y0: groupEdges[g]!, y1: groupEdges[g + 1]! };
       const local = paperLevel(img, cell);
       const ink = local * 0.82;
-      blocks.push({ c, g, cell, ink, dark: local * 0.55, fit: optionCentres(img, cell, ink), xs: null, ys: null });
+      blocks.push({ c, g, cell, ink, dark: local * 0.66, fit: optionCentres(img, cell, ink), xs: null, ys: null });
     }
   }
   return blocks;
