@@ -5,9 +5,12 @@ import { schoolApi } from "@/services/school-api";
 import { teacherApi } from "@/services/teacher-api";
 import type {
   CreateStudentInput,
+  CreateStudentsBulkInput,
+  CreateStudentsBulkResult,
   Student,
   StudentDetail,
   StudentListResult,
+  StudentTestResult,
   UpdateStudentInput,
 } from "@/types/student";
 
@@ -66,6 +69,13 @@ export function createSchoolStudent(input: CreateStudentInput) {
   return schoolApi<StudentDetail>("/school/students", { method: "POST", body: input });
 }
 
+export function createSchoolStudentsBulk(input: CreateStudentsBulkInput) {
+  return schoolApi<CreateStudentsBulkResult>("/school/students/bulk", {
+    method: "POST",
+    body: input,
+  });
+}
+
 export function updateSchoolStudent(id: string, input: UpdateStudentInput) {
   return schoolApi<StudentDetail>(`/school/students/${encodeURIComponent(id)}`, {
     method: "PATCH",
@@ -76,19 +86,6 @@ export function updateSchoolStudent(id: string, input: UpdateStudentInput) {
 export function deleteSchoolStudent(id: string) {
   return schoolApi<{ ok: true }>(`/school/students/${encodeURIComponent(id)}`, {
     method: "DELETE",
-  });
-}
-
-export function sendSchoolStudentCredentials(id: string) {
-  return schoolApi<{ ok: true }>(`/school/students/${encodeURIComponent(id)}/send-credentials`, {
-    method: "POST",
-  });
-}
-
-export function resetSchoolStudentPassword(id: string, password: string) {
-  return schoolApi<StudentDetail>(`/school/students/${encodeURIComponent(id)}/reset-password`, {
-    method: "POST",
-    body: { password },
   });
 }
 
@@ -121,6 +118,16 @@ export function createAdminSchoolStudent(schoolId: string, input: CreateStudentI
     method: "POST",
     body: input,
   });
+}
+
+export function createAdminSchoolStudentsBulk(
+  schoolId: string,
+  input: CreateStudentsBulkInput,
+) {
+  return adminApi<CreateStudentsBulkResult>(
+    `/schools/${encodeURIComponent(schoolId)}/students/bulk`,
+    { method: "POST", body: input },
+  );
 }
 
 export function updateAdminSchoolStudent(
@@ -161,21 +168,51 @@ export function deleteAdminStudent(id: string) {
   return adminApi<{ ok: true }>(`/students/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
-export function sendAdminStudentCredentials(id: string) {
-  return adminApi<{ ok: true }>(`/students/${encodeURIComponent(id)}/send-credentials`, {
-    method: "POST",
-  });
-}
-
-export function resetAdminStudentPassword(id: string, password: string) {
-  return adminApi<StudentDetail>(`/students/${encodeURIComponent(id)}/reset-password`, {
-    method: "POST",
-    body: { password },
-  });
-}
-
 export function listTeacherStudents(params?: ListParams) {
   return teacherApi<StudentListResult>(`/teacher/students${queryString(params)}`);
 }
 
-export type { Student, StudentDetail };
+async function orNull<T>(request: Promise<T>): Promise<T | null> {
+  try {
+    return await request;
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 404 || error.status === 400)) return null;
+    throw error;
+  }
+}
+
+export function getAdminStudentPerformance(id: string) {
+  return adminApi<StudentTestResult[]>(`/students/${encodeURIComponent(id)}/performance`);
+}
+
+export function getSchoolStudentPerformance(id: string) {
+  return schoolApi<StudentTestResult[]>(`/school/students/${encodeURIComponent(id)}/performance`);
+}
+
+/** Teachers only open students in their assigned or class-teacher classes. */
+export function getTeacherStudent(id: string) {
+  return orNull(teacherApi<StudentDetail>(`/teacher/students/${encodeURIComponent(id)}`));
+}
+
+export function getTeacherStudentPerformance(id: string) {
+  return teacherApi<StudentTestResult[]>(`/teacher/students/${encodeURIComponent(id)}/performance`);
+}
+
+/** Exact registration-number match, used to open a student from a result sheet row. */
+export async function findStudentIdByRoll(
+  portal: "admin" | "school" | "teacher",
+  roll: string,
+  schoolId?: string,
+) {
+  const params = { q: roll, pageSize: 20 };
+  const result =
+    portal === "school"
+      ? await listSchoolStudents(params)
+      : portal === "teacher"
+        ? await listTeacherStudents(params)
+        : await (schoolId ? listAdminSchoolStudents(schoolId, params) : listAdminStudents(params));
+  const fold = (value: string) => value.trim().toLowerCase();
+  return result.items.find((student) => fold(student.rollNo) === fold(roll))?.id ?? null;
+}
+
+export type { Student, StudentDetail, StudentTestResult };

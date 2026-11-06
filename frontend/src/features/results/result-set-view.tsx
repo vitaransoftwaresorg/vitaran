@@ -5,7 +5,13 @@ import { wasEdited } from "@/features/documents/constants";
 import { SchoolTypeBadge } from "@/features/schools/school-type-badge";
 import type { ResultSet, ResultSheet } from "@/types/result";
 import { formatDateTime } from "@/utils/format";
-import { resultProgramLabel, resultSetHref, resultSheetDownloadHref } from "./constants";
+import {
+  RESULTS_PATH,
+  SCHOOL_RESULTS_PATH,
+  resultProgramLabel,
+  resultSetHref,
+  resultSheetDownloadHref,
+} from "./constants";
 import { ResultSheetCard } from "./result-sheet-card";
 
 type ResultSetViewProps = {
@@ -85,12 +91,20 @@ export function ResultSetView({
 
       <ResultSheetCard
         key={sheet.classLevel}
+        studentLink={studentLinkFor(basePath, resultSet.school.id)}
         sheet={sheet}
         downloadHref={resultSheetDownloadHref(basePath, resultSet.id, sheet.classLevel)}
         showDownload={showDownload}
       />
     </div>
   );
+}
+
+/** Registration numbers in the sheet open that student's profile in the same portal. */
+function studentLinkFor(basePath: string, schoolId: string) {
+  if (basePath === RESULTS_PATH) return { base: "/admin/schools/students/roll", query: `?school=${schoolId}` };
+  if (basePath === SCHOOL_RESULTS_PATH) return { base: "/school/students/roll" };
+  return { base: "/teacher/students/roll" };
 }
 
 /** Picks the class from `?class=`, falling back to the first uploaded class. */

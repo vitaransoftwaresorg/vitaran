@@ -43,6 +43,7 @@ export type SchoolSummary = {
   city: string;
   state: string;
   createdAt: string;
+  hasLogo?: boolean;
 };
 
 /** Dropdown / filter picker — enrolled program codes and class levels only. */
@@ -67,6 +68,7 @@ export type School = SchoolSummary & {
   notes: string | null;
   accountEmail: string | null;
   accountPhone: string | null;
+  hasLogo: boolean;
   updatedAt: string;
 };
 
@@ -93,6 +95,7 @@ export type SchoolInput = Omit<
   | "updatedAt"
   | "schoolPrograms"
   | "programCodes"
+  | "hasLogo"
 > & {
   /** School ID shown as VLS-XXXX (e.g. VLS-0018). */
   code: string;

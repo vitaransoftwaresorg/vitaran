@@ -1,13 +1,13 @@
 import { fileResponse } from "@/features/documents/file-response";
-import { fetchSchoolAnswerKeyFile } from "@/services/answer-keys";
+import { fetchSchoolAnswerKeyPdf } from "@/services/answer-keys";
 
 export async function GET(
   request: Request,
-  { params }: RouteContext<"/school/answer-keys/[id]/file">,
+  { params }: RouteContext<"/school/answer-keys/[id]/pdf">,
 ) {
   return fileResponse(
     request,
-    await fetchSchoolAnswerKeyFile((await params).id),
+    await fetchSchoolAnswerKeyPdf((await params).id),
     "Answer key not found",
   );
 }

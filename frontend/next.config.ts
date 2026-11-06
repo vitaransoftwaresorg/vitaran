@@ -11,9 +11,9 @@ const nextConfig: NextConfig = {
     root: path.dirname(fileURLToPath(import.meta.url)),
   },
   experimental: {
-    // Uploads go through server actions: answer key PDFs (10 MB) and up to 12 result sheets (2 MB each).
-    serverActions: { bodySizeLimit: "25mb" },
-    proxyClientMaxBodySize: "25mb",
+    // Keep Next buffers small — OMR PDFs upload directly to the API, not through Next.
+    serverActions: { bodySizeLimit: "12mb" },
+    proxyClientMaxBodySize: "12mb",
   },
 };
 

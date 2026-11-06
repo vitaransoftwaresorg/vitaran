@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { ApiError } from "@/services/api-client";
-import { commitScan, previewScan, type ScanPortal } from "@/services/scans";
-import type { OmScan, ScanPreview } from "@/types/scan";
+import { checkTestId, commitScan, previewScan, type ScanPortal } from "@/services/scans";
+import type { OmScan, ScanPreview, TestIdCheck } from "@/types/scan";
 
 const PATHS: Record<ScanPortal, string> = {
   admin: "/admin/omr-scan",
@@ -30,6 +30,17 @@ export async function previewScanAction(
   } catch (error) {
     const message = error instanceof ApiError ? error.message : "Could not read the sheet. Try a clearer photo.";
     return { ok: false, message };
+  }
+}
+
+export async function checkTestIdAction(
+  portal: ScanPortal,
+  testId: string,
+): Promise<({ ok: true } & TestIdCheck) | { ok: false; message: string }> {
+  try {
+    return { ok: true, ...(await checkTestId(portal, testId.trim())) };
+  } catch (error) {
+    return { ok: false, message: error instanceof ApiError ? error.message : "Could not check the test ID" };
   }
 }
 

@@ -28,7 +28,7 @@ const options = {
   noun: ANSWER_KEY_NOUN,
 };
 
-export async function uploadAnswerKeyAction(
+export async function createAnswerKeyFormAction(
   _state: AnswerKeyFormState,
   formData: FormData,
 ): Promise<AnswerKeyFormState> {
@@ -36,7 +36,7 @@ export async function uploadAnswerKeyAction(
     ...options,
     formData,
     schema: getAnswerKeySchema(),
-    save: answerKeyService.uploadAnswerKey,
+    save: answerKeyService.createAnswerKey,
   });
   if (result?.status === "success") revalidateAnswerKeyViews();
   return result;
@@ -66,7 +66,7 @@ export async function createAnswerKeyAction(input: {
   testId?: string;
 }): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
   try {
-    const created = await answerKeyService.uploadAnswerKey({
+    const created = await answerKeyService.createAnswerKey({
       program: input.program,
       type: input.type,
       schoolId: input.schoolId,
@@ -122,10 +122,6 @@ export async function saveAnswerKeyAnswersAction(
   const result = await answerKeyService.saveAnswerKeyAnswers(id, input);
   revalidateAnswerKeyViews();
   return result;
-}
-
-export async function reparseAnswerKeyAction(id: string) {
-  return answerKeyService.reparseAnswerKey(id);
 }
 
 export async function deleteAnswerKeyAction(id: string) {

@@ -68,8 +68,6 @@ export type AnswerKeyInput = {
   testId?: string;
   testNumber: number;
   classLevel: number;
-  /** Optional leftover PDF; new keys are entered as A–D / ADD + explanations. */
-  file?: File;
 };
 
 /** Distinct tests for a school, derived from its answer keys (admin results upload). */

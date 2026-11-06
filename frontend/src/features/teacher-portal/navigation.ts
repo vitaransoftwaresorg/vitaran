@@ -30,7 +30,7 @@ export const teacherNavGroups: TeacherNavGroup[] = [
       { title: "Students", href: "/teacher/students", icon: Users },
       { title: "Resources", href: "/teacher/resources", icon: BookOpen },
       { title: "Answer Keys", href: "/teacher/answer-keys", icon: KeyRound },
-      { title: "Results", href: "/teacher/results", icon: Trophy },
+      { title: "Results and Ranks", href: "/teacher/results", icon: Trophy },
       { title: "OMR Scan", href: "/teacher/omr-scan", icon: ScanLine },
     ],
   },
@@ -58,7 +58,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   "answer-keys": "Answer Keys",
   answers: "Answer key",
   edit: "Edit",
-  results: "Results",
+  results: "Results and Ranks",
   "omr-scan": "OMR Scan",
 };
 

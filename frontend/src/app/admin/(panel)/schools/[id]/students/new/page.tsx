@@ -1,31 +1,77 @@
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/features/admin/page-header";
-import { createAdminStudentAction } from "@/features/students/admin-student-actions";
-import { StudentForm } from "@/features/students/student-form";
+import { createAdminStudentsBulkAction } from "@/features/students/admin-student-actions";
+import { BulkStudentForm } from "@/features/students/bulk-student-form";
 import { listAdminSchoolSections } from "@/services/sections";
 import { getSchool } from "@/services/schools";
 
-type Props = { params: Promise<{ id: string }> };
+type Props = {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+};
 
-export default async function AdminSchoolStudentNewPage({ params }: Props) {
+function first(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+export default async function AdminSchoolStudentNewPage({ params, searchParams }: Props) {
   const { id } = await params;
+  const query = await searchParams;
+  const classLevelRaw = Number(first(query.class));
+  const classLevel =
+    Number.isInteger(classLevelRaw) && classLevelRaw >= 1 && classLevelRaw <= 12
+      ? classLevelRaw
+      : undefined;
+  const sectionName = first(query.section)?.trim().toUpperCase() || undefined;
+
   const [school, organization] = await Promise.all([
     getSchool(id),
     listAdminSchoolSections(id),
   ]);
   if (!school) notFound();
 
-  const formAction = createAdminStudentAction.bind(null, id);
+  const matchingSection =
+    classLevel != null && sectionName
+      ? organization.sections.find(
+          (section) =>
+            section.classLevel === classLevel &&
+            section.name.trim().toUpperCase() === sectionName,
+        )
+      : undefined;
+
+  const returnTo =
+    classLevel != null && sectionName
+      ? `/admin/schools/students?school=${id}&class=${classLevel}&section=${encodeURIComponent(sectionName)}`
+      : `/admin/schools/students?school=${id}`;
+
+  const submitAction = createAdminStudentsBulkAction.bind(null, id);
 
   return (
     <>
-      <PageHeader title="Add student" description={school.name} />
-      <div className="mt-3 w-full max-w-lg rounded-2xl border border-brand-200 bg-white p-4 shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)] sm:p-5">
-        <StudentForm
+      <PageHeader
+        title="Add students"
+        description={
+          classLevel != null && sectionName
+            ? `${school.name} · Class ${classLevel}-${sectionName}`
+            : school.name
+        }
+      />
+      <div className="mt-3">
+        <BulkStudentForm
           schoolPrograms={school.schoolPrograms}
           sections={organization.sections}
-          returnTo="/admin/schools/students"
-          formActionOverride={formAction}
+          defaults={
+            matchingSection
+              ? {
+                  programId: matchingSection.programId,
+                  classLevel: matchingSection.classLevel,
+                  sectionId: matchingSection.id,
+                }
+              : undefined
+          }
+          lockPlacement={Boolean(matchingSection)}
+          returnTo={returnTo}
+          submitAction={submitAction}
         />
       </div>
     </>

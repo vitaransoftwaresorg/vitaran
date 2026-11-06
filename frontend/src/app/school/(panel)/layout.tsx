@@ -8,7 +8,9 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PanelFallback } from "@/features/admin/dashboard-parts";
+import { LiveRefresh } from "@/features/live/live-refresh";
 import { verifySchoolSession } from "@/features/school-auth/session";
+import { MaintenanceBanner } from "@/features/settings/maintenance-banner";
 
 const SIDEBAR_STATE_COOKIE = "school_sidebar_state";
 
@@ -27,6 +29,7 @@ export default async function SchoolPanelLayout({
         >
           <SchoolSidebar school={school} />
           <SidebarInset className="min-w-0 bg-neutral-50">
+            <MaintenanceBanner />
             <SchoolHeader />
             <div className="w-full flex-1 p-4 sm:p-5 lg:px-6 lg:py-6">
               <SchoolPageBack />
@@ -35,6 +38,7 @@ export default async function SchoolPanelLayout({
           </SidebarInset>
         </SidebarProvider>
       </InPageBackProvider>
+      <LiveRefresh />
       <Toaster theme="light" position="top-right" richColors closeButton />
     </TooltipProvider>
   );

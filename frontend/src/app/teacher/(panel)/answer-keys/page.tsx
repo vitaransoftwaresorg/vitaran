@@ -24,7 +24,6 @@ export default async function TeacherAnswerKeysPage() {
       programNames={programNames}
       ownerLabel={teacher.school.type === "CUSTOMIZED" ? teacher.school.name : undefined}
       description="Published answer keys for your assigned classes."
-      hideIdBadgeOnMobile
     />
   );
 }

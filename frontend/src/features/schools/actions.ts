@@ -72,6 +72,21 @@ function errorState(
   };
 }
 
+const LOGO_MAX_BYTES = 2 * 1024 * 1024;
+const LOGO_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+function logoFromForm(formData: FormData): File | null {
+  const logo = formData.get("logo");
+  if (!(logo instanceof File) || logo.size <= 0) return null;
+  return logo;
+}
+
+function logoFieldError(file: File): string | null {
+  if (!LOGO_TYPES.has(file.type)) return "Upload a PNG, JPEG, or WebP logo.";
+  if (file.size > LOGO_MAX_BYTES) return "Logo must be under 2 MB.";
+  return null;
+}
+
 async function saveSchool(
   formData: FormData,
   mode: SchoolFormMode,
@@ -79,13 +94,31 @@ async function saveSchool(
 ): Promise<SchoolFormState> {
   const values = readFormValues(formData);
   const parsed = getSchoolFormSchema(mode).safeParse(values);
+  const logo = logoFromForm(formData);
+  const removeLogo = String(formData.get("removeLogo") ?? "") === "1";
 
   if (!parsed.success) {
     return errorState(mode, values, { fieldErrors: z.flattenError(parsed.error).fieldErrors });
   }
 
+  if (logo) {
+    const logoError = logoFieldError(logo);
+    if (logoError) {
+      return errorState(mode, values, { fieldErrors: { logo: [logoError] } });
+    }
+  }
+
   try {
     const school = await save(toSchoolInput(parsed.data));
+    if (logo) {
+      await schoolService.uploadSchoolLogo(school.id, logo);
+    } else if (removeLogo && mode === "edit") {
+      try {
+        await schoolService.deleteSchoolLogo(school.id);
+      } catch (error) {
+        if (!(error instanceof ApiError && error.status === 404)) throw error;
+      }
+    }
     revalidateSchoolPortalViews();
     return { status: "success", schoolId: school.id, submittedAt: Date.now() };
   } catch (error) {

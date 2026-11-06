@@ -1,6 +1,6 @@
 import "server-only";
 import { ApiError } from "@/services/api-client";
-import { adminApi } from "@/services/admin-api";
+import { adminApi, adminFetch } from "@/services/admin-api";
 import type {
   AdminDashboard,
   School,
@@ -81,6 +81,25 @@ export function updateSchool(id: string, input: SchoolInput) {
     method: "PATCH",
     body: input,
   });
+}
+
+export function uploadSchoolLogo(id: string, file: File) {
+  const body = new FormData();
+  body.append("logo", file);
+  return adminApi<SchoolDetail>(`/schools/${encodeURIComponent(id)}/logo`, {
+    method: "PUT",
+    body,
+  });
+}
+
+export function deleteSchoolLogo(id: string) {
+  return adminApi<SchoolDetail>(`/schools/${encodeURIComponent(id)}/logo`, {
+    method: "DELETE",
+  });
+}
+
+export function fetchSchoolLogo(id: string) {
+  return adminFetch(`/schools/${encodeURIComponent(id)}/logo`);
 }
 
 export function deleteSchool(id: string) {

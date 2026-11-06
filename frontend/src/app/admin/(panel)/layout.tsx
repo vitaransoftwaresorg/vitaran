@@ -9,6 +9,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PanelFallback } from "@/features/admin/dashboard-parts";
 import { verifyAdminSession } from "@/features/admin-auth/session";
+import { LiveRefresh } from "@/features/live/live-refresh";
 
 const SIDEBAR_STATE_COOKIE = "sidebar_state";
 
@@ -41,6 +42,7 @@ export default async function AdminPanelLayout({
           </SidebarInset>
         </SidebarProvider>
       </InPageBackProvider>
+      <LiveRefresh path="/admin/live" />
       <Toaster theme="light" position="top-right" richColors closeButton />
     </TooltipProvider>
   );

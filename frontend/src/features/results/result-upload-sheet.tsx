@@ -21,6 +21,7 @@ import { updateResultAction, uploadResultAction } from "./actions";
 import { classFileField, EXCEL_ACCEPT, EXCEL_MAX_BYTES } from "./constants";
 import type { DrivePath, DriveSchool } from "./drive-path";
 import type { ResultFormState } from "./schema";
+import { resultProgramFields } from "./school-program";
 
 type ResultUploadSheetProps = {
   open: boolean;
@@ -40,19 +41,20 @@ export function ResultUploadSheet({
   resultSet,
 }: ResultUploadSheetProps) {
   const school = schools.find((item) => item.id === path.schoolId);
-  const programCode = path.program ?? school?.offerings?.[0]?.code ?? school?.programs?.[0];
-  const programName =
-    school?.type === "CUSTOMIZED"
-      ? school.offerings?.[0]?.name ??
-        (programCode ? school.programLabels?.[programCode] : undefined) ??
-        programCode
-      : undefined;
+  const programFields = school
+    ? resultProgramFields(school, programs, path.program)
+    : { program: path.program };
+  const programTitle = programFields.program
+    ? programLabel(
+        programFields.program,
+        programFields.programName ??
+          programs.find((program) => program.code === programFields.program)?.name,
+      )
+    : programFields.programName;
 
   const titleParts = [
-    path.program
-      ? programLabel(path.program, programs.find((program) => program.code === path.program)?.name)
-      : school?.name,
-    school && path.program ? school.name : null,
+    programTitle ?? school?.name,
+    school && programTitle ? school.name : null,
     path.testNumber ? `Test ${path.testNumber}` : null,
     path.classLevel ? `Class ${path.classLevel}` : null,
   ].filter(Boolean);
@@ -68,10 +70,10 @@ export function ResultUploadSheet({
         </SheetHeader>
         {open && path.schoolId && path.testNumber && path.classLevel ? (
           <UploadForm
-            key={`${path.schoolId}-${path.program ?? ""}-${path.testNumber}-${path.classLevel}-${resultSet?.id ?? "new"}`}
+            key={`${path.schoolId}-${programFields.program ?? programFields.programName ?? ""}-${path.testNumber}-${path.classLevel}-${resultSet?.id ?? "new"}`}
             schoolId={path.schoolId}
-            program={path.program ?? (school?.type === "CUSTOMIZED" ? undefined : programCode)}
-            programName={school?.type === "CUSTOMIZED" && !path.program ? programName : undefined}
+            program={programFields.program}
+            programName={programFields.programName}
             testNumber={path.testNumber}
             classLevel={path.classLevel}
             resultSet={resultSet}

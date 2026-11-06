@@ -7,11 +7,14 @@ export type Student = {
   name: string;
   rollNo: string;
   email: string | null;
+  parentName: string | null;
+  parentPhone: string | null;
   programId: string;
   programCode: string;
   programName: string;
   classLevel: number;
   sectionId: string | null;
+  /** Whole class (no section row) is returned as "A". */
   sectionName: string | null;
   status: StudentStatus;
   createdAt: string;
@@ -19,7 +22,6 @@ export type Student = {
 };
 
 export type StudentDetail = Student & {
-  password: string;
   school: { id: string; name: string; code: string };
 };
 
@@ -37,13 +39,51 @@ export type CreateStudentInput = {
   name: string;
   rollNo: string;
   email?: string | null;
+  parentName: string;
+  parentPhone: string;
   programId: string;
   classLevel: number;
   sectionId?: string | null;
   status?: StudentStatus;
-  password?: string;
+};
+
+export type BulkStudentRowInput = {
+  name: string;
+  rollNo: string;
+  email?: string | null;
+  parentName: string;
+  parentPhone: string;
+};
+
+export type CreateStudentsBulkInput = {
+  programId: string;
+  classLevel: number;
+  sectionId?: string | null;
+  students: BulkStudentRowInput[];
+};
+
+export type CreateStudentsBulkResult = {
+  items: StudentDetail[];
+  count: number;
 };
 
 export type UpdateStudentInput = Partial<CreateStudentInput> & {
   status?: StudentStatus;
+};
+
+/** One saved test for a student, matched by registration number. */
+export type StudentTestResult = {
+  resultSetId: string;
+  testNumber: number;
+  testId: string | null;
+  programName: string;
+  classLevel: number;
+  published: boolean;
+  date: string;
+  subjects: Array<{ label: string; marks: number | null; max: number | null; percentage: number | null }>;
+  total: number | null;
+  totalMax: number | null;
+  percentage: number | null;
+  classRank: number | null;
+  sectionRank: number | null;
 };

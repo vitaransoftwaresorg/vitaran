@@ -6,6 +6,7 @@ import { useState, useTransition } from "react";
 import { Eye, Loader2, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { displaySectionName } from "@/features/schools/section-label";
 import { deleteStudentInPlaceAction } from "@/features/students/actions";
 import { deleteAdminStudentInPlaceAction } from "@/features/students/admin-student-actions";
 import { cn } from "@/lib/utils";
@@ -55,6 +56,7 @@ export function StudentsTable({
 
   function detailHref(student: StudentRow) {
     if (mode === "admin") return `/admin/schools/students/${student.id}`;
+    if (mode === "teacher") return `/teacher/students/${student.id}`;
     if (baseHref) return `${baseHref}/${student.id}`;
     return null;
   }
@@ -82,9 +84,7 @@ export function StudentsTable({
           {students.map((student) => {
             const detail = detailHref(student);
             const edit = editHref(student);
-            const classLabel = student.sectionName
-              ? `${student.classLevel}-${student.sectionName}`
-              : String(student.classLevel);
+            const classLabel = `${student.classLevel}-${displaySectionName(student.sectionName)}`;
             return (
               <tr key={student.id} className="border-b border-neutral-100 last:border-0">
                 {showSchool ? (
@@ -92,7 +92,23 @@ export function StudentsTable({
                     {student.schoolName ?? "—"}
                   </td>
                 ) : null}
-                <td className="px-4 py-2.5 font-medium text-neutral-950">{student.rollNo}</td>
+                <td className="px-4 py-2.5 font-medium text-neutral-950 tabular-nums">
+                  {detail ? (
+                    <Link href={detail} className="text-brand-900 hover:underline">
+                      {student.rollNo}
+                    </Link>
+                  ) : onView ? (
+                    <button
+                      type="button"
+                      className="font-medium text-brand-900 hover:underline"
+                      onClick={() => onView(student.id)}
+                    >
+                      {student.rollNo}
+                    </button>
+                  ) : (
+                    student.rollNo
+                  )}
+                </td>
                 <td className="px-4 py-2.5">
                   {detail ? (
                     <Link href={detail} className="font-medium text-brand-900 hover:underline">

@@ -35,13 +35,13 @@ type SchoolDocumentsProps = {
   hideIdBadgeOnMobile?: boolean;
 };
 
-function tabProgramIds(programIds: string[], ownerLabel?: string) {
+export function tabProgramIds(programIds: string[], ownerLabel?: string) {
   if (!ownerLabel) return programIds;
   const custom = customProgramIds(programIds);
   return custom.length > 0 ? custom : programIds.slice(0, 1);
 }
 
-function documentsForProgram(
+export function documentsForProgram(
   documents: PdfDocument[],
   programId: string,
   programIds: string[],

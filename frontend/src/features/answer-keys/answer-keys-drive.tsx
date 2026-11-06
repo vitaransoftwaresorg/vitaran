@@ -202,7 +202,7 @@ export function AnswerKeysDrive({
           name: `Test ${testNumber}`,
           kind: "folder" as const,
           href: link({ ...drivePath, testNumber }),
-          detail: count > 0 ? `${count} uploaded` : "Empty",
+          detail: count > 0 ? `${count} added` : "Empty",
         };
       }),
     );

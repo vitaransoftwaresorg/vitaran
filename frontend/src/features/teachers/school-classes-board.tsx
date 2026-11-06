@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
-import { Loader2, Pencil, Plus, Trash2, Users } from "lucide-react";
+import Link from "next/link";
+import { GraduationCap, Loader2, Pencil, Plus, Trash2, UserRound, Users } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -24,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { PageHeader } from "@/features/admin/page-header";
+import { useLiveContent } from "@/features/live/use-live-content";
 import {
   createSectionAction,
   deleteSectionAction,
@@ -39,7 +41,6 @@ import type { SchoolProgramOffering } from "@/types/program";
 import type {
   ClassOrganization,
   SchoolSection,
-  SectionStrength,
   WholeClass,
 } from "@/types/section";
 import type { ClassTeacherSlot, Teacher } from "@/types/teacher";
@@ -61,11 +62,11 @@ type SchoolClassesBoardProps = {
 
 const NONE = "__none__";
 
-const cardShell =
-  "overflow-hidden rounded-2xl border border-brand-200 bg-white shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)]";
-
 const iconBtn =
   "flex size-8 cursor-pointer items-center justify-center rounded-md text-neutral-500 disabled:pointer-events-none disabled:opacity-40";
+
+const linkBtn =
+  "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold text-brand-800 hover:bg-brand-50";
 
 type EditTarget =
   | { kind: "section"; row: SchoolSection }
@@ -97,7 +98,6 @@ export function SchoolClassesBoard({
   onOpenStudents,
 }: SchoolClassesBoardProps) {
   const [organization, setOrganization] = useState<ClassOrganization | null>(null);
-  const [strength, setStrength] = useState<SectionStrength | null>(null);
   const [slots, setSlots] = useState(initialSlots);
   const [pending, startTransition] = useTransition();
 
@@ -105,6 +105,7 @@ export function SchoolClassesBoard({
   const [name, setName] = useState("");
   const [programId, setProgramId] = useState("");
   const [studentCount, setStudentCount] = useState("30");
+  const [creating, setCreating] = useState(false);
   const [createErrors, setCreateErrors] = useState<
     Partial<Record<"classLevel" | "programId" | "studentCount" | "name", string>>
   >({});
@@ -128,14 +129,20 @@ export function SchoolClassesBoard({
     startTransition(async () => {
       const data = await loadSchoolSectionsAction();
       setOrganization(data.organization);
-      setStrength(data.strength);
       setSlots(data.classTeacherSlots);
     });
   }, []);
 
+  useLiveContent("sections", reload);
+  useLiveContent("teachers", reload);
+
   useEffect(() => {
     reload();
   }, [reload]);
+
+  useEffect(() => {
+    setSlots(initialSlots);
+  }, [initialSlots]);
 
   const classCtByKey = useMemo(() => {
     const map = new Map<string, ClassTeacherSlot>();
@@ -221,6 +228,19 @@ export function SchoolClassesBoard({
       editSeats !== editBaseline.seats ||
       editTeacherId !== editBaseline.teacherId);
 
+  const resetCreateForm = () => {
+    setClassLevel("");
+    setName("");
+    setProgramId("");
+    setStudentCount("30");
+    setCreateErrors({});
+  };
+
+  const openCreate = () => {
+    resetCreateForm();
+    setCreating(true);
+  };
+
   const create = () => {
     const level = Number(classLevel);
     const count = Number(studentCount);
@@ -257,7 +277,7 @@ export function SchoolClassesBoard({
     startTransition(async () => {
       const result = await createSectionAction({
         classLevel: level,
-        name: sectionName || null,
+        name: sectionName.trim() || "A",
         programId,
         studentCount: count,
       });
@@ -265,16 +285,15 @@ export function SchoolClassesBoard({
         setCreateErrors({ studentCount: result.message });
         return;
       }
-      if (result.result.kind === "class") {
-        toast.success(`Class ${result.result.class.classLevel} created (no section)`);
-      } else {
+      if (result.result.kind === "section") {
         toast.success(
           `Section ${result.result.section.classLevel}-${result.result.section.name} created`,
         );
+      } else {
+        toast.success(`Class ${result.result.class.classLevel}-A created`);
       }
-      setName("");
-      setStudentCount("30");
-      setCreateErrors({});
+      setCreating(false);
+      resetCreateForm();
       reload();
     });
   };
@@ -372,7 +391,7 @@ export function SchoolClassesBoard({
   };
 
   const removeWholeClass = (row: WholeClass) => {
-    if (!window.confirm(`Delete class ${row.classLevel} (no section)?`)) return;
+    if (!window.confirm(`Delete class ${row.classLevel}-A?`)) return;
     startTransition(async () => {
       const result = await deleteWholeClassAction(row.id);
       if (!result.ok) {
@@ -384,13 +403,10 @@ export function SchoolClassesBoard({
     });
   };
 
-  if (organization === null || strength === null) {
+  if (organization === null) {
     return (
       <>
-        <PageHeader
-          title="Classes"
-          description="Add classes and sections, then open Students to enrol. Seat limits are enforced."
-        />
+        <PageHeader title="Classes" />
         <div className="rounded-2xl border border-dashed border-brand-200 bg-white p-10 text-center text-sm text-neutral-500 shadow-[0_4px_16px_-8px_rgb(25_28_95/0.12)]">
           Loading classes…
         </div>
@@ -399,9 +415,6 @@ export function SchoolClassesBoard({
   }
 
   const totalCount = organization.wholeClasses.length + organization.sections.length;
-  const ceiling = strength.studentStrength;
-  const usedPct =
-    ceiling && ceiling > 0 ? Math.min(100, Math.round((strength.used / ceiling) * 100)) : 0;
 
   const teacherItems = [
     { value: NONE, label: "No class teacher" },
@@ -416,163 +429,25 @@ export function SchoolClassesBoard({
       <PageHeader
         title="Classes"
         count={totalCount}
-        description="1) Create a class below · 2) Click Students on a row to add students (limited by seats)."
+        actions={
+          classOptions.length > 0 ? (
+            <Button type="button" disabled={pending} onClick={openCreate} className="gap-1.5">
+              <Plus className="size-4" />
+              Create class
+            </Button>
+          ) : null
+        }
       />
 
-      <div className="space-y-6">
-        <div className="rounded-2xl border border-brand-200 bg-linear-to-br from-brand-50/90 to-white px-5 py-4 shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)]">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-[11px] font-semibold tracking-[0.14em] text-brand-700 uppercase">
-                Student strength
-              </p>
-              <p className="mt-1 text-sm text-neutral-700">
-                {ceiling == null ? (
-                  <>
-                    No ceiling from admin ·{" "}
-                    <span className="font-semibold text-neutral-950">{strength.used}</span> seats used
-                  </>
-                ) : (
-                  <>
-                    <span className="font-semibold text-neutral-950">{strength.used}</span>
-                    <span className="text-neutral-400"> / </span>
-                    <span className="font-semibold text-neutral-950">{ceiling}</span>
-                    {strength.remaining != null ? (
-                      <span className="text-neutral-500"> · {strength.remaining} left</span>
-                    ) : null}
-                  </>
-                )}
-              </p>
-            </div>
-            {ceiling != null ? (
-              <div className="h-2 w-44 overflow-hidden rounded-full bg-brand-100/80">
-                <div
-                  className={cn(
-                    "h-full rounded-full transition-all",
-                    usedPct >= 100 ? "bg-red-500" : "bg-brand-800",
-                  )}
-                  style={{ width: `${usedPct}%` }}
-                />
-              </div>
-            ) : null}
-          </div>
+      {classOptions.length === 0 ? (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          Ask admin to enrol programs and classes for this school first.
+        </p>
+      ) : totalCount === 0 ? (
+        <div className="rounded-2xl border border-dashed border-brand-200 bg-white px-6 py-10 text-center text-sm text-neutral-500">
+          No classes yet. Click <strong>Create class</strong> to add one.
         </div>
-
-        <div className={cn(cardShell, "p-4 sm:p-5")}>
-          <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-            <div>
-              <h3 className="text-sm font-bold text-neutral-950">Create class</h3>
-              <p className="mt-0.5 text-xs text-neutral-500">
-                Pick class + program + how many seats. Section is optional (A / B / C).
-              </p>
-            </div>
-            {classOptions.length > 0 ? (
-              <Button type="button" disabled={pending} onClick={create} className="gap-1.5">
-                {pending ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
-                Create class
-              </Button>
-            ) : null}
-          </div>
-
-          {classOptions.length === 0 ? (
-            <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              Ask admin to enrol programs and classes for this school first.
-            </p>
-          ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <Field data-invalid={createErrors.classLevel ? true : undefined}>
-                <FieldLabel>Class *</FieldLabel>
-                <Select
-                  value={classLevel || null}
-                  onValueChange={(value) => {
-                    setClassLevel(value ?? "");
-                    setCreateErrors((prev) => ({ ...prev, classLevel: undefined }));
-                  }}
-                  items={classOptions.map((level) => ({
-                    value: String(level),
-                    label: `Class ${level}`,
-                  }))}
-                >
-                  <SelectTrigger className="h-9 w-full">
-                    <SelectValue placeholder="Select class" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {classOptions.map((level) => (
-                      <SelectItem key={level} value={String(level)}>
-                        Class {level}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {createErrors.classLevel ? <FieldError>{createErrors.classLevel}</FieldError> : null}
-              </Field>
-
-              <Field data-invalid={createErrors.name ? true : undefined}>
-                <FieldLabel>Section (optional)</FieldLabel>
-                <Input
-                  value={name}
-                  className="h-9"
-                  onChange={(event) => setName(event.currentTarget.value.toUpperCase())}
-                  placeholder="e.g. A — blank = whole class"
-                  maxLength={32}
-                />
-                {createErrors.name ? <FieldError>{createErrors.name}</FieldError> : null}
-              </Field>
-
-              <Field data-invalid={createErrors.programId ? true : undefined}>
-                <FieldLabel>Program *</FieldLabel>
-                <Select
-                  value={programId || null}
-                  onValueChange={(value) => {
-                    setProgramId(value ?? "");
-                    setCreateErrors((prev) => ({ ...prev, programId: undefined }));
-                  }}
-                  disabled={!classLevel}
-                  items={programsForClass.map((row) => ({
-                    value: row.programId,
-                    label: row.programName,
-                  }))}
-                >
-                  <SelectTrigger className="h-9 w-full">
-                    <SelectValue placeholder={classLevel ? "Select program" : "Pick class first"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {programsForClass.map((row) => (
-                      <SelectItem key={row.programId} value={row.programId}>
-                        {row.programName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {createErrors.programId ? <FieldError>{createErrors.programId}</FieldError> : null}
-              </Field>
-
-              <Field data-invalid={createErrors.studentCount ? true : undefined}>
-                <FieldLabel>Seats *</FieldLabel>
-                <Input
-                  type="number"
-                  min={1}
-                  max={5000}
-                  className="h-9"
-                  value={studentCount}
-                  onChange={(event) => {
-                    setStudentCount(event.currentTarget.value);
-                    setCreateErrors((prev) => ({ ...prev, studentCount: undefined }));
-                  }}
-                />
-                {createErrors.studentCount ? (
-                  <FieldError>{createErrors.studentCount}</FieldError>
-                ) : null}
-              </Field>
-            </div>
-          )}
-        </div>
-
-        {totalCount === 0 ? (
-          <div className="rounded-2xl border border-dashed border-brand-200 bg-white px-6 py-10 text-center text-sm text-neutral-500">
-            No classes yet. Fill the form above and click <strong>Create class</strong>.
-          </div>
-        ) : (
+      ) : (
           <div
             className={cn(
               "overflow-hidden rounded-2xl border border-brand-200 bg-white shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)]",
@@ -580,31 +455,37 @@ export function SchoolClassesBoard({
             )}
           >
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[640px] text-left text-sm">
+              <table className="w-full min-w-[860px] text-left text-sm">
                 <thead className="border-b border-brand-100 bg-brand-50/70 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">
                   <tr>
                     <th className="px-4 py-2.5">Program</th>
                     <th className="px-4 py-2.5">Class</th>
                     <th className="px-4 py-2.5">Section</th>
+                    <th className="px-4 py-2.5">Seats</th>
                     <th className="px-4 py-2.5">Students</th>
-                    <th className="hidden px-4 py-2.5 md:table-cell">Class teacher</th>
+                    <th className="px-4 py-2.5">Class teacher</th>
+                    <th className="px-4 py-2.5">Teachers</th>
                     <th className="px-4 py-2.5 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {[
-                    ...organization.wholeClasses.map((row) => ({
-                      key: `w-${row.id}`,
-                      kind: "class" as const,
-                      row,
-                      programName: row.programName,
-                      classLevel: row.classLevel,
-                      sectionLabel: "—",
-                      enrolled: enrolledByWhole[row.id] ?? 0,
-                      seats: row.studentCount,
-                      teacherName: classCtByKey.get(`${row.programId}:${row.classLevel}`)?.teacherName,
-                      open: () => onOpenStudents?.({ kind: "whole", row }),
-                    })),
+                    ...organization.wholeClasses.map((row) => {
+                      const slot = classCtByKey.get(`${row.programId}:${row.classLevel}`);
+                      return {
+                        key: `w-${row.id}`,
+                        kind: "class" as const,
+                        row,
+                        programName: row.programName,
+                        classLevel: row.classLevel,
+                        sectionLabel: "A",
+                        enrolled: enrolledByWhole[row.id] ?? 0,
+                        seats: row.studentCount,
+                        teacherId: slot?.teacherId ?? null,
+                        teacherName: slot?.teacherName ?? null,
+                        open: () => onOpenStudents?.({ kind: "whole", row }),
+                      };
+                    }),
                     ...organization.sections.map((section) => ({
                       key: `s-${section.id}`,
                       kind: "section" as const,
@@ -614,7 +495,8 @@ export function SchoolClassesBoard({
                       sectionLabel: section.name,
                       enrolled: enrolledBySection[section.id] ?? 0,
                       seats: section.studentCount,
-                      teacherName: section.classTeacher?.name,
+                      teacherId: section.classTeacher?.teacherId ?? null,
+                      teacherName: section.classTeacher?.name ?? null,
                       open: () => onOpenStudents?.({ kind: "section", row: section }),
                     })),
                   ]
@@ -629,67 +511,50 @@ export function SchoolClassesBoard({
                         key={item.key}
                         className="border-b border-neutral-100 last:border-0 hover:bg-brand-50/40"
                       >
-                        <td className="px-4 py-3">
-                          <button
-                            type="button"
-                            onClick={item.open}
-                            className="font-medium text-brand-900 hover:underline"
-                          >
-                            {capitalizeWords(item.programName)}
-                          </button>
+                        <td className="px-4 py-3 font-medium text-neutral-950">
+                          {capitalizeWords(item.programName)}
                         </td>
-                        <td className="px-4 py-3">
-                          <button type="button" onClick={item.open} className="hover:underline">
-                            Class {item.classLevel}
-                          </button>
-                        </td>
-                        <td className="px-4 py-3 text-neutral-700">
-                          <button type="button" onClick={item.open} className="hover:underline">
-                            {item.sectionLabel}
-                          </button>
-                        </td>
+                        <td className="px-4 py-3 text-neutral-900">Class {item.classLevel}</td>
+                        <td className="px-4 py-3 text-neutral-700">{item.sectionLabel}</td>
                         <td className="px-4 py-3 tabular-nums">
-                          <button type="button" onClick={item.open} className="hover:underline">
-                            <span
-                              className={cn(
-                                "font-medium",
-                                item.enrolled >= item.seats
-                                  ? "text-amber-700"
-                                  : "text-neutral-900",
-                              )}
-                            >
-                              {item.enrolled}/{item.seats}
-                            </span>
+                          <span
+                            className={cn(
+                              "font-medium",
+                              item.enrolled >= item.seats
+                                ? "text-amber-700"
+                                : "text-neutral-900",
+                            )}
+                          >
+                            {item.enrolled}/{item.seats}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <button type="button" onClick={item.open} className={linkBtn}>
+                            <GraduationCap className="size-3.5 shrink-0" strokeWidth={2} />
+                            Students
                           </button>
                         </td>
-                        <td className="hidden px-4 py-3 text-neutral-600 md:table-cell">
-                          {item.teacherName ? capitalizeWords(item.teacherName) : "—"}
+                        <td className="px-4 py-3">
+                          {item.teacherId ? (
+                            <Link
+                              href={`/school/teachers/${item.teacherId}`}
+                              className={linkBtn}
+                            >
+                              <UserRound className="size-3.5 shrink-0" strokeWidth={2} />
+                              {capitalizeWords(item.teacherName ?? "Class teacher")}
+                            </Link>
+                          ) : (
+                            <span className="text-neutral-400">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Link href="/school/teachers" className={linkBtn}>
+                            <Users className="size-3.5 shrink-0" strokeWidth={2} />
+                            Teachers
+                          </Link>
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-0.5">
-                            <Tooltip>
-                              <TooltipTrigger
-                                render={
-                                  <button
-                                    type="button"
-                                    onClick={item.open}
-                                    aria-label="Open students"
-                                    className={cn(
-                                      iconBtn,
-                                      "w-auto gap-1 px-2 text-brand-800 hover:bg-brand-50",
-                                    )}
-                                  />
-                                }
-                              >
-                                <Users className="size-3.5" strokeWidth={2} />
-                                <span className="hidden text-xs font-semibold sm:inline">
-                                  Students
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent side="top">
-                                Open students / add student
-                              </TooltipContent>
-                            </Tooltip>
                             <Tooltip>
                               <TooltipTrigger
                                 render={
@@ -739,8 +604,124 @@ export function SchoolClassesBoard({
               </table>
             </div>
           </div>
-        )}
-      </div>
+      )}
+
+      <AlertDialog
+        open={creating}
+        onOpenChange={(open) => {
+          if (!open && !pending) {
+            setCreating(false);
+            resetCreateForm();
+          }
+        }}
+      >
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Create class</AlertDialogTitle>
+            <AlertDialogDescription>
+              Pick class, program, and seats. Section is optional (defaults to A).
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="grid gap-3 py-1">
+            <Field data-invalid={createErrors.classLevel ? true : undefined}>
+              <FieldLabel>Class *</FieldLabel>
+              <Select
+                value={classLevel || null}
+                onValueChange={(value) => {
+                  setClassLevel(value ?? "");
+                  setProgramId("");
+                  setCreateErrors((prev) => ({
+                    ...prev,
+                    classLevel: undefined,
+                    programId: undefined,
+                  }));
+                }}
+                items={classOptions.map((level) => ({
+                  value: String(level),
+                  label: `Class ${level}`,
+                }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select class" />
+                </SelectTrigger>
+                <SelectContent>
+                  {classOptions.map((level) => (
+                    <SelectItem key={level} value={String(level)}>
+                      Class {level}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {createErrors.classLevel ? <FieldError>{createErrors.classLevel}</FieldError> : null}
+            </Field>
+
+            <Field data-invalid={createErrors.name ? true : undefined}>
+              <FieldLabel>Section (optional)</FieldLabel>
+              <Input
+                value={name}
+                onChange={(event) => setName(event.currentTarget.value.toUpperCase())}
+                placeholder="A (default if blank)"
+                maxLength={32}
+              />
+              {createErrors.name ? <FieldError>{createErrors.name}</FieldError> : null}
+            </Field>
+
+            <Field data-invalid={createErrors.programId ? true : undefined}>
+              <FieldLabel>Program *</FieldLabel>
+              <Select
+                value={programId || null}
+                onValueChange={(value) => {
+                  setProgramId(value ?? "");
+                  setCreateErrors((prev) => ({ ...prev, programId: undefined }));
+                }}
+                disabled={!classLevel}
+                items={programsForClass.map((row) => ({
+                  value: row.programId,
+                  label: row.programName,
+                }))}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={classLevel ? "Select program" : "Pick class first"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {programsForClass.map((row) => (
+                    <SelectItem key={row.programId} value={row.programId}>
+                      {row.programName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {createErrors.programId ? <FieldError>{createErrors.programId}</FieldError> : null}
+            </Field>
+
+            <Field data-invalid={createErrors.studentCount ? true : undefined}>
+              <FieldLabel>Seats *</FieldLabel>
+              <Input
+                type="number"
+                min={1}
+                max={5000}
+                value={studentCount}
+                onChange={(event) => {
+                  setStudentCount(event.currentTarget.value);
+                  setCreateErrors((prev) => ({ ...prev, studentCount: undefined }));
+                }}
+              />
+              {createErrors.studentCount ? (
+                <FieldError>{createErrors.studentCount}</FieldError>
+              ) : null}
+            </Field>
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+            <Button type="button" disabled={pending} onClick={create} className="gap-1.5">
+              {pending ? <Loader2 className="size-4 animate-spin" /> : <Plus className="size-4" />}
+              Create class
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={!!editing}
@@ -759,7 +740,7 @@ export function SchoolClassesBoard({
             </AlertDialogTitle>
             <AlertDialogDescription>
               {editing ? `Class ${editing.row.classLevel}` : null}
-              {editing?.kind === "section" ? ` · Section ${editing.row.name}` : " · no section"}
+              {editing?.kind === "section" ? ` · Section ${editing.row.name}` : " · Section A"}
               . Only teachers assigned to this program and class appear below.
             </AlertDialogDescription>
           </AlertDialogHeader>

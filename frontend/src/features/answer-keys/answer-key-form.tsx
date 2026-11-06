@@ -14,7 +14,7 @@ import { programLabel, TYPE_LABELS } from "@/features/schools/constants";
 import type { AnswerKey } from "@/types/answer-key";
 import type { LearningProgram } from "@/types/program";
 import { SCHOOL_TYPES } from "@/types/school";
-import { updateAnswerKeyAction, uploadAnswerKeyAction } from "./actions";
+import { updateAnswerKeyAction, createAnswerKeyFormAction } from "./actions";
 import { ANSWER_KEYS_PATH } from "./constants";
 import type { AnswerKeyFormState, AnswerKeyFormValues } from "./schema";
 import type { AnswerKeySchoolOption } from "./school-options";
@@ -52,7 +52,7 @@ type AnswerKeyFormProps = {
 
 export function AnswerKeyForm({ schools, programs, answerKey }: AnswerKeyFormProps) {
   const router = useRouter();
-  const action = answerKey ? updateAnswerKeyAction.bind(null, answerKey.id) : uploadAnswerKeyAction;
+  const action = answerKey ? updateAnswerKeyAction.bind(null, answerKey.id) : createAnswerKeyFormAction;
   const [state, formAction, pending] = useActionState<AnswerKeyFormState, FormData>(action, undefined);
 
   useEffect(() => {

@@ -68,6 +68,8 @@ type DriveBrowserProps = {
   searchPlaceholder?: string;
   /** Included in search (e.g. keys matched by test ID outside this folder). */
   searchItems?: DriveItem[];
+  /** Shown in the toolbar above the folder table (e.g. Import Excel). */
+  headerAction?: React.ReactNode;
 };
 
 function dedupeDriveItems(rows: DriveItem[]) {
@@ -100,6 +102,7 @@ export function DriveBrowser({
   emptyText,
   searchPlaceholder = "Search in this folder",
   searchItems,
+  headerAction,
 }: DriveBrowserProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -166,6 +169,7 @@ export function DriveBrowser({
         </nav>
 
         <div className="flex items-center gap-1.5">
+          {headerAction}
           <label className="relative">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-neutral-400" />
             <Input

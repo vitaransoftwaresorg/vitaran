@@ -58,7 +58,7 @@ export default async function AdminSchoolProgramClassesPage({ params }: Props) {
               levelSections.length > 0
                 ? `${levelSections.length} section${levelSections.length === 1 ? "" : "s"}`
                 : whole
-                  ? `Whole class · ${whole.studentCount} seats`
+                  ? `Section A · ${whole.studentCount} seats`
                   : "Offered on school";
             return (
               <li key={level} className="flex items-center gap-3 px-4 py-3.5">

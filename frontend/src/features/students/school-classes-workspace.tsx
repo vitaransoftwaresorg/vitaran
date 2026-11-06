@@ -6,6 +6,7 @@ import { Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useRegisterInPageBack } from "@/components/layout/in-page-back";
 import { PageHeader } from "@/features/admin/page-header";
+import { BulkStudentForm } from "@/features/students/bulk-student-form";
 import { StudentDetailView } from "@/features/students/student-detail-view";
 import { StudentForm } from "@/features/students/student-form";
 import { StudentsTable } from "@/features/students/students-table";
@@ -116,7 +117,7 @@ export function SchoolClassesWorkspace({
 
   if (view.name === "form") {
     const focus = view.focus;
-    const title = view.student ? "Edit student" : "Add student";
+    const title = view.student ? "Edit student" : "Add students";
     const defaults =
       focus.kind === "section"
         ? {
@@ -140,21 +141,36 @@ export function SchoolClassesWorkspace({
               : `Class ${focus.row.classLevel} · ${capitalizeWords(focus.row.programName)}`
           }
         />
-        <div className="w-full max-w-lg rounded-2xl border border-brand-200 bg-white p-4 shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)] sm:p-5">
-          <StudentForm
+        {view.student ? (
+          <div className="w-full max-w-lg rounded-2xl border border-brand-200 bg-white p-4 shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)] sm:p-5">
+            <StudentForm
+              schoolPrograms={schoolPrograms}
+              sections={sections}
+              student={view.student}
+              defaults={defaults}
+              lockPlacement
+              returnTo="/school/classes"
+              stayInPlace
+              onSuccess={() => {
+                openRoster(focus);
+                refreshList();
+              }}
+            />
+          </div>
+        ) : (
+          <BulkStudentForm
             schoolPrograms={schoolPrograms}
             sections={sections}
-            student={view.student}
             defaults={defaults}
             lockPlacement
             returnTo="/school/classes"
             stayInPlace
-            onSuccess={(studentId) => {
+            onSuccess={() => {
+              openRoster(focus);
               refreshList();
-              openStudent(studentId, focus);
             }}
           />
-        </div>
+        )}
       </div>
     );
   }
@@ -170,6 +186,7 @@ export function SchoolClassesWorkspace({
         ) : null}
         <StudentDetailView
           student={view.student}
+          performancePortal="school"
           onEdit={() =>
             setView({ name: "form", focus: view.focus, student: view.student })
           }

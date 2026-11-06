@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { PageHeader } from "@/features/admin/page-header";
 import { LiveAnswerKeyViewer } from "@/features/answer-keys/live-answer-key-viewer";
 import { getTeacherAnswerKey } from "@/services/answer-keys";
 
@@ -16,7 +15,6 @@ export default async function TeacherAnswerKeyAnswersPage({
 
   return (
     <div className="w-full">
-      <PageHeader title="Answer key" />
       <LiveAnswerKeyViewer role="teacher" answerKey={answerKey} />
     </div>
   );

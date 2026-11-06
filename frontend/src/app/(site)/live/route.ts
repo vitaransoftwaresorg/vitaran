@@ -1,15 +1,10 @@
 import { cookies } from "next/headers";
 import { SCHOOL_SESSION_COOKIE, TEACHER_SESSION_COOKIE } from "@/constants/auth";
+import { relaySse } from "@/features/live/relay-sse";
 import { buildApiUrl } from "@/services/api-client";
 
 export const dynamic = "force-dynamic";
-
-const STREAM_HEADERS = {
-  "Content-Type": "text/event-stream",
-  "Cache-Control": "no-cache, no-transform",
-  Connection: "keep-alive",
-  "X-Accel-Buffering": "no",
-};
+export const runtime = "nodejs";
 
 /** Relays the API live-update stream for the signed-in school or teacher. */
 export async function GET(request: Request) {
@@ -33,8 +28,12 @@ export async function GET(request: Request) {
     if (!upstream.ok || !upstream.body) {
       return new Response(null, { status: upstream.status === 401 ? 401 : 502 });
     }
-    return new Response(upstream.body, { headers: STREAM_HEADERS });
-  } catch {
+    return relaySse(upstream, request.signal);
+  } catch (error) {
+    if (request.signal.aborted) return new Response(null, { status: 499 });
+    if (error instanceof Error && error.name === "AbortError") {
+      return new Response(null, { status: 499 });
+    }
     return new Response(null, { status: 502 });
   }
 }

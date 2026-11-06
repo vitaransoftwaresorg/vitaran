@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Eye, Pencil, Trophy, Upload } from "lucide-react";
+import { Eye, FileSpreadsheet, Pencil, Trophy } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import {
   Empty,
@@ -185,12 +185,12 @@ export function ResultsTable({
               <Trophy />
             </EmptyMedia>
             <EmptyTitle>No results yet</EmptyTitle>
-            <EmptyDescription>Uploaded test results will appear here, one row per test.</EmptyDescription>
+            <EmptyDescription>Imported Excel results will appear here, one row per test.</EmptyDescription>
           </EmptyHeader>
           <EmptyContent>
             <Link href={uploadHref} className={buttonVariants({ size: "sm" })}>
-              <Upload />
-              Upload results
+              <FileSpreadsheet />
+              Import Excel
             </Link>
           </EmptyContent>
         </Empty>

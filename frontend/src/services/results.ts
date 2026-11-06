@@ -5,7 +5,7 @@ import { listFiltersQuery, type ListFilters } from "@/services/list-filters";
 import { schoolApi, schoolFetch } from "@/services/school-api";
 import { teacherApi, teacherFetch } from "@/services/teacher-api";
 import type { ContentStats } from "@/types/document";
-import type { ResultSet, ResultSheet } from "@/types/result";
+import type { ResultCell, ResultSet, ResultSheet } from "@/types/result";
 
 const BASE = "/results";
 const SCHOOL_BASE = "/school/results";
@@ -41,6 +41,41 @@ export function uploadResultSet(form: FormData) {
   return adminApi<ResultSet>(BASE, { method: "POST", body: form });
 }
 
+export type ManualResultSheetInput = {
+  schoolId: string;
+  program?: string;
+  programName?: string;
+  testId: string;
+  testNumber: number;
+  classLevel: number;
+  resultSetId?: string;
+  columns: string[];
+  rows: ResultCell[][];
+};
+
+/** Admin class table: create/update one class; the API recalculates totals and ranks. */
+export function saveManualResultSheet(input: ManualResultSheetInput) {
+  return adminApi<ResultSet>(`${BASE}/manual`, { method: "POST", body: input });
+}
+
+/** Columns for a class table: the saved sheet's, or the answer key's subjects. */
+export function getClassResultTemplate(query: {
+  schoolId: string;
+  program?: string;
+  programName?: string;
+  testNumber: number;
+  classLevel: number;
+}) {
+  const params = new URLSearchParams({
+    schoolId: query.schoolId,
+    testNumber: String(query.testNumber),
+    classLevel: String(query.classLevel),
+  });
+  if (query.program) params.set("program", query.program);
+  if (query.programName) params.set("programName", query.programName);
+  return adminApi<{ columns: string[] }>(`${BASE}/class-template?${params}`);
+}
+
 export function updateResultSet(id: string, form: FormData) {
   return adminApi<ResultSet>(setPath(BASE, id), { method: "PATCH", body: form });
 }
@@ -59,6 +94,13 @@ export function getResultSheet(id: string, classLevel: number) {
 
 export function fetchResultSheetFile(id: string, classLevel: number) {
   return adminFetch(`${sheetPath(BASE, id, classLevel)}/file`);
+}
+
+/** Rank card(s): one student by roll number, or the whole class; PDF or a JPG preview. */
+export function fetchRankCards(id: string, classLevel: number, options: { roll?: string; format: "pdf" | "jpg" }) {
+  const query = new URLSearchParams({ format: options.format });
+  if (options.roll) query.set("roll", options.roll);
+  return adminFetch(`${sheetPath(BASE, id, classLevel)}/rank-cards?${query}`);
 }
 
 /** Only the signed-in school's own results. */

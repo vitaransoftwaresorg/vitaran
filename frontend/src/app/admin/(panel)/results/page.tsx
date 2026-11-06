@@ -22,9 +22,10 @@ export default async function AdminResultsPage({ searchParams }: PageProps<"/adm
   });
 
   const path: DrivePath = {
-    program: filters.program,
     schoolId: filters.schoolId,
     testNumber: filters.testNumber,
+    // Program is only used when opening a class (enter / upload), not as a drive folder.
+    program: filters.program,
   };
 
   return (

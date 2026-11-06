@@ -6,26 +6,44 @@ import { z } from "zod";
 import { ApiError } from "@/services/api-client";
 import {
   createAdminSchoolStudent,
+  createAdminSchoolStudentsBulk,
   deleteAdminStudent,
   getAdminStudent,
-  resetAdminStudentPassword,
-  sendAdminStudentCredentials,
   updateAdminStudent,
 } from "@/services/students";
-import type { CreateStudentInput } from "@/types/student";
-import type { StudentFormState } from "@/features/students/actions";
+import type {
+  BulkStudentRowInput,
+  CreateStudentInput,
+  CreateStudentsBulkInput,
+} from "@/types/student";
+import type { BulkStudentFormState, StudentFormState } from "@/features/students/actions";
 
 const studentSchema = z.object({
   name: z.string().trim().min(2, "Enter the student name"),
   rollNo: z.string().trim().min(1, "Enter the registration number"),
   email: z.union([z.literal(""), z.string().trim().email("Enter a valid email")]),
+  parentName: z.string().trim().min(2, "Enter the parent / guardian name"),
+  parentPhone: z
+    .string()
+    .trim()
+    .regex(/^\d{10}$/, "Enter a 10-digit mobile number"),
   programId: z.string().min(1, "Pick a program").uuid("Pick a program"),
   classLevel: z.preprocess(
     (value) => (value === "" || value == null ? undefined : value),
     z.coerce.number({ error: "Pick a class" }).int().min(1, "Pick a class").max(12),
   ),
   sectionId: z.union([z.literal(""), z.string().uuid("Pick a valid section")]),
-  password: z.string().max(128),
+});
+
+const bulkRowSchema = z.object({
+  name: z.string().trim().min(2, "Enter the student name"),
+  rollNo: z.string().trim().min(1, "Enter the registration number"),
+  email: z.union([z.literal(""), z.string().trim().email("Enter a valid email")]),
+  parentName: z.string().trim().min(2, "Enter the parent / guardian name"),
+  parentPhone: z
+    .string()
+    .trim()
+    .regex(/^\d{10}$/, "Enter a 10-digit mobile number"),
 });
 
 function formValues(formData: FormData): Partial<CreateStudentInput> {
@@ -33,10 +51,11 @@ function formValues(formData: FormData): Partial<CreateStudentInput> {
     name: String(formData.get("name") ?? ""),
     rollNo: String(formData.get("rollNo") ?? ""),
     email: String(formData.get("email") ?? "") || null,
+    parentName: String(formData.get("parentName") ?? ""),
+    parentPhone: String(formData.get("parentPhone") ?? "").replace(/\D/g, "").slice(0, 10),
     programId: String(formData.get("programId") ?? ""),
     classLevel: Number(formData.get("classLevel") || 0) || undefined,
     sectionId: String(formData.get("sectionId") ?? "") || null,
-    password: String(formData.get("password") ?? "") || undefined,
   };
 }
 
@@ -65,6 +84,8 @@ function apiFieldErrors(error: ApiError): Record<string, string[] | undefined> |
   if (/seat|full|strength/i.test(msg)) return { sectionId: [msg] };
   if (/program|class/i.test(msg)) return { programId: [msg] };
   if (/email/i.test(msg)) return { email: [msg] };
+  if (/parent.?name/i.test(msg)) return { parentName: [msg] };
+  if (/mobile|phone/i.test(msg)) return { parentPhone: [msg] };
   return undefined;
 }
 
@@ -86,7 +107,6 @@ export async function createAdminStudentAction(
     ...values,
     email: values.email ?? "",
     sectionId: values.sectionId ?? "",
-    password: values.password ?? "",
   });
 
   if (!parsed.success) {
@@ -98,19 +118,23 @@ export async function createAdminStudentAction(
   }
 
   const data = parsed.data;
+  const returnTo =
+    String(formData.get("returnTo") ?? "").trim() ||
+    `/admin/schools/students?school=${schoolId}`;
 
   try {
-    const student = await createAdminSchoolStudent(schoolId, {
+    await createAdminSchoolStudent(schoolId, {
       name: data.name,
       rollNo: data.rollNo,
       email: data.email || null,
+      parentName: data.parentName,
+      parentPhone: data.parentPhone,
       programId: data.programId,
       classLevel: data.classLevel,
       sectionId: data.sectionId || null,
-      password: data.password || undefined,
     });
     revalidateAdminStudentPaths(schoolId);
-    redirect(`/admin/schools/students/${student.id}`);
+    redirect(returnTo);
   } catch (error) {
     unstable_rethrow(error);
     if (error instanceof ApiError) {
@@ -120,6 +144,119 @@ export async function createAdminStudentAction(
         message: fieldErrors ? undefined : error.message,
         fieldErrors,
         submittedAt: Date.now(),
+      };
+    }
+    throw error;
+  }
+}
+
+export async function createAdminStudentsBulkAction(
+  schoolId: string,
+  input: {
+    programId: string;
+    classLevel: number;
+    sectionId?: string | null;
+    students: BulkStudentRowInput[];
+    returnTo?: string;
+    stay?: boolean;
+  },
+): Promise<BulkStudentFormState> {
+  if (!input.programId) return { message: "Pick a program" };
+  if (!input.classLevel) return { message: "Pick a class" };
+
+  const rowErrors: Record<number, Record<string, string>> = {};
+  const validRows: BulkStudentRowInput[] = [];
+  const uiIndexByPayload: number[] = [];
+
+  input.students.forEach((row, index) => {
+    const blank =
+      !row.name.trim() &&
+      !row.rollNo.trim() &&
+      !row.parentName.trim() &&
+      !row.parentPhone.trim() &&
+      !(row.email ?? "").trim();
+    if (blank) return;
+
+    const parsed = bulkRowSchema.safeParse({
+      ...row,
+      email: row.email ?? "",
+      parentPhone: String(row.parentPhone ?? "").replace(/\D/g, "").slice(0, 10),
+    });
+    if (!parsed.success) {
+      const flat = z.flattenError(parsed.error).fieldErrors;
+      rowErrors[index] = Object.fromEntries(
+        Object.entries(flat).map(([key, value]) => [key, value?.[0] ?? "Invalid"]),
+      );
+      return;
+    }
+    uiIndexByPayload.push(index);
+    validRows.push({
+      name: parsed.data.name,
+      rollNo: parsed.data.rollNo,
+      email: parsed.data.email || null,
+      parentName: parsed.data.parentName,
+      parentPhone: parsed.data.parentPhone,
+    });
+  });
+
+  if (Object.keys(rowErrors).length > 0) {
+    return { message: "Fix the highlighted rows", rowErrors };
+  }
+  if (validRows.length === 0) {
+    return { message: "Enter at least one student" };
+  }
+
+  const payload: CreateStudentsBulkInput = {
+    programId: input.programId,
+    classLevel: input.classLevel,
+    sectionId: input.sectionId || null,
+    students: validRows,
+  };
+
+  try {
+    const result = await createAdminSchoolStudentsBulk(schoolId, payload);
+    revalidateAdminStudentPaths(schoolId);
+    if (input.stay) {
+      return { success: true, count: result.count };
+    }
+    redirect(
+      input.returnTo?.trim() || `/admin/schools/students?school=${schoolId}`,
+    );
+  } catch (error) {
+    unstable_rethrow(error);
+    if (error instanceof ApiError) {
+      const fieldErrors = apiFieldErrors(error);
+      const rowErrorsFromApi: Record<number, Record<string, string>> = {};
+      if (Array.isArray(error.details)) {
+        for (const item of error.details) {
+          if (
+            item &&
+            typeof item === "object" &&
+            "path" in item &&
+            "message" in item &&
+            Array.isArray((item as { path: unknown }).path)
+          ) {
+            const path = (item as { path: string[]; message: string }).path;
+            if (path[0] === "students" && path[1] != null && path[2]) {
+              const payloadIndex = Number(path[1]);
+              const uiIndex = uiIndexByPayload[payloadIndex];
+              if (uiIndex != null) {
+                rowErrorsFromApi[uiIndex] = {
+                  ...(rowErrorsFromApi[uiIndex] ?? {}),
+                  [path[2]]: (item as { message: string }).message,
+                };
+              }
+            }
+          }
+        }
+      }
+      return {
+        message:
+          Object.keys(rowErrorsFromApi).length > 0
+            ? "Fix the highlighted rows"
+            : error.message,
+        fieldErrors,
+        rowErrors: Object.keys(rowErrorsFromApi).length > 0 ? rowErrorsFromApi : undefined,
       };
     }
     throw error;
@@ -136,7 +273,6 @@ export async function updateAdminStudentAction(
     ...values,
     email: values.email ?? "",
     sectionId: values.sectionId ?? "",
-    password: values.password ?? "",
   });
 
   if (!parsed.success) {
@@ -156,10 +292,11 @@ export async function updateAdminStudentAction(
       name: data.name,
       rollNo: data.rollNo,
       email: data.email || null,
+      parentName: data.parentName,
+      parentPhone: data.parentPhone,
       programId: data.programId,
       classLevel: data.classLevel,
       sectionId: data.sectionId || null,
-      ...(data.password ? { password: data.password } : {}),
     });
     revalidateAdminStudentPaths(student.schoolId);
     redirect(returnTo);
@@ -185,30 +322,3 @@ export async function deleteAdminStudentInPlaceAction(id: string) {
   return { ok: true as const };
 }
 
-export async function sendAdminStudentCredentialsAction(id: string) {
-  try {
-    const student = await getAdminStudent(id);
-    await sendAdminStudentCredentials(id);
-    return { ok: true as const, to: student?.email ?? "" };
-  } catch (error) {
-    unstable_rethrow(error);
-    if (error instanceof ApiError) {
-      return { ok: false as const, message: error.message };
-    }
-    return { ok: false as const, message: "Could not send credentials." };
-  }
-}
-
-export async function resetAdminStudentPasswordAction(id: string, password: string) {
-  try {
-    const result = await resetAdminStudentPassword(id, password);
-    revalidateAdminStudentPaths(result.schoolId);
-    return { ok: true as const, to: result.email ?? "" };
-  } catch (error) {
-    unstable_rethrow(error);
-    if (error instanceof ApiError) {
-      return { ok: false as const, message: error.message };
-    }
-    return { ok: false as const, message: "Could not reset password." };
-  }
-}

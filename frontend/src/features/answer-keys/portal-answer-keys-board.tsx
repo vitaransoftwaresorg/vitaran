@@ -2,11 +2,10 @@
 
 import { useCallback, useEffect, useState, useTransition } from "react";
 import { PageHeader } from "@/features/admin/page-header";
-import { SchoolDocuments } from "@/features/documents/school-documents";
 import { useLiveContent } from "@/features/live/use-live-content";
 import { cn } from "@/lib/utils";
 import type { PdfDocument } from "@/types/document";
-import { ANSWER_KEY_NOUN } from "./constants";
+import { PortalAnswerKeysBrowser } from "./portal-answer-keys-browser";
 import {
   loadSchoolPortalAnswerKeysAction,
   loadTeacherPortalAnswerKeysAction,
@@ -20,7 +19,6 @@ type PortalAnswerKeysBoardProps = {
   /** Customized school — tabs and keys use this name instead of a regular catalog title. */
   ownerLabel?: string;
   description: string;
-  hideIdBadgeOnMobile?: boolean;
 };
 
 /** Reloads when admin publishes/hides keys — live stream + focus/visibility. */
@@ -31,7 +29,6 @@ export function PortalAnswerKeysBoard({
   programNames,
   ownerLabel,
   description,
-  hideIdBadgeOnMobile = false,
 }: PortalAnswerKeysBoardProps) {
   const [documents, setDocuments] = useState<PdfDocument[] | null>(null);
   const [pending, startTransition] = useTransition();
@@ -77,15 +74,12 @@ export function PortalAnswerKeysBoard({
     <>
       <PageHeader title="Answer keys" count={documents.length} description={description} />
       <div className={cn(pending && "opacity-70 transition-opacity")}>
-        <SchoolDocuments
-          key={documents.map((doc) => `${doc.id}:${doc.updatedAt}`).join("|")}
+        <PortalAnswerKeysBrowser
           programIds={programIds}
           programNames={programNames}
           ownerLabel={ownerLabel}
           documents={documents}
-          noun={ANSWER_KEY_NOUN}
           basePath={basePath}
-          hideIdBadgeOnMobile={hideIdBadgeOnMobile}
         />
       </div>
     </>

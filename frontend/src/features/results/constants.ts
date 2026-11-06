@@ -3,6 +3,7 @@ import type { ResultSet } from "@/types/result";
 
 export const RESULTS_PATH = "/admin/results";
 export const RESULT_UPLOAD_PATH = `${RESULTS_PATH}/upload`;
+export const RESULT_ENTER_PATH = `${RESULTS_PATH}/enter`;
 /** School portal results. */
 export const SCHOOL_RESULTS_PATH = "/school/results";
 
@@ -21,6 +22,22 @@ export const classFileField = (level: number) => `class_${level}` as `class_${Cl
 /** Upload form with the school pre-selected; it returns to the school's page afterwards. */
 export const resultUploadHrefFor = (schoolId: string) =>
   `${RESULT_UPLOAD_PATH}?${new URLSearchParams({ schoolId })}`;
+
+/** Class student table for manual marks (+ Import Excel). */
+export const resultEnterHref = (params: {
+  schoolId: string;
+  program?: string;
+  testNumber: number;
+  classLevel: number;
+}) => {
+  const search = new URLSearchParams({
+    school: params.schoolId,
+    test: String(params.testNumber),
+    class: String(params.classLevel),
+  });
+  if (params.program) search.set("program", params.program);
+  return `${RESULT_ENTER_PATH}?${search}`;
+};
 
 /** `basePath` is `/admin/results` or `/results`. */
 export const resultSetHref = (basePath: string, id: string, classLevel?: number) =>

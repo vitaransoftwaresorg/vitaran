@@ -23,14 +23,6 @@ import {
 } from "@/features/schools/actions";
 import { CopyButton } from "@/features/schools/copy-button";
 import {
-  resetStudentPasswordAction,
-  sendStudentCredentialsAction,
-} from "@/features/students/actions";
-import {
-  resetAdminStudentPasswordAction,
-  sendAdminStudentCredentialsAction,
-} from "@/features/students/admin-student-actions";
-import {
   resetAdminTeacherPasswordAction,
   resetSchoolTeacherPasswordAction,
   sendAdminTeacherCredentialsAction,
@@ -42,16 +34,11 @@ type MailResult = { ok: true; to: string } | { ok: false; message: string };
 type CredentialTarget =
   | { kind: "school"; id: string }
   | { kind: "admin-teacher"; id: string }
-  | { kind: "school-teacher"; id: string }
-  | { kind: "school-student"; id: string }
-  | { kind: "admin-student"; id: string };
+  | { kind: "school-teacher"; id: string };
 
 type CredentialMailBarProps = {
   loginEmail: string;
   loginPhone?: string | null;
-  /** Shown instead of email when set (e.g. student registration number). */
-  loginLabel?: string;
-  loginValue?: string | null;
   password: string | null;
   setPasswordHref?: string;
   onSetPassword?: () => void;
@@ -69,16 +56,12 @@ function suggestPassword() {
 async function sendCredentials(target: CredentialTarget): Promise<MailResult> {
   if (target.kind === "school") return sendSchoolCredentialsAction(target.id);
   if (target.kind === "admin-teacher") return sendAdminTeacherCredentialsAction(target.id);
-  if (target.kind === "school-student") return sendStudentCredentialsAction(target.id);
-  if (target.kind === "admin-student") return sendAdminStudentCredentialsAction(target.id);
   return sendSchoolTeacherCredentialsAction(target.id);
 }
 
 async function resetPassword(target: CredentialTarget, password: string): Promise<MailResult> {
   if (target.kind === "school") return resetSchoolPasswordAction(target.id, password);
   if (target.kind === "admin-teacher") return resetAdminTeacherPasswordAction(target.id, password);
-  if (target.kind === "school-student") return resetStudentPasswordAction(target.id, password);
-  if (target.kind === "admin-student") return resetAdminStudentPasswordAction(target.id, password);
   return resetSchoolTeacherPasswordAction(target.id, password);
 }
 
@@ -86,8 +69,6 @@ async function resetPassword(target: CredentialTarget, password: string): Promis
 export function CredentialMailBar({
   loginEmail,
   loginPhone,
-  loginLabel,
-  loginValue,
   password,
   setPasswordHref,
   onSetPassword,
@@ -133,23 +114,9 @@ export function CredentialMailBar({
     <>
       <footer className="flex flex-col gap-3 rounded-xl border border-brand-200 bg-white px-4 py-3 text-sm text-neutral-500 shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)] sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          {loginLabel && loginValue ? (
-            <span>
-              {loginLabel}: <span className="font-semibold text-neutral-950">{loginValue}</span>
-            </span>
-          ) : (
-            <span>
-              Login email: <span className="font-semibold text-neutral-950">{loginEmail || "—"}</span>
-            </span>
-          )}
-          {loginEmail && loginLabel ? (
-            <>
-              <span aria-hidden>·</span>
-              <span>
-                Email: <span className="font-semibold text-neutral-950">{loginEmail}</span>
-              </span>
-            </>
-          ) : null}
+          <span>
+            Login email: <span className="font-semibold text-neutral-950">{loginEmail || "—"}</span>
+          </span>
           {loginPhone ? (
             <>
               <span aria-hidden>·</span>

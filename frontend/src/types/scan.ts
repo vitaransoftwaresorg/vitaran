@@ -9,6 +9,22 @@ export type ScanSubjectScore = {
   maxTotal: number;
 };
 
+/** Answer key(s) behind an entered test ID. */
+export type TestIdCheck = {
+  testId: string;
+  keys: Array<{ testNumber: number; classLevel: number; programCode: string; programName: string }>;
+};
+
+/** A saved OMR in a class, for the results table's OMR column. */
+export type ClassScan = {
+  id: string;
+  rollNo: string;
+  studentName: string;
+  total: number;
+  maxTotal: number;
+  updatedAt: string;
+};
+
 export type OmScan = {
   id: string;
   previewId?: string;

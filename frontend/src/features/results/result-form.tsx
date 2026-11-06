@@ -230,7 +230,7 @@ function FormFields({ schools, resultSet, backHref, values, errors, message, pen
       editing={editing}
       changed={changed}
       pending={pending}
-      uploadLabel="Submit results"
+      uploadLabel={editing ? "Save results" : "Import Excel"}
     >
       {classError && (
         <p

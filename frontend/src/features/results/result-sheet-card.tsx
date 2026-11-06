@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { ResultCell, ResultSheet } from "@/types/result";
 import { studentCount } from "./constants";
+import { columnRole } from "./result-columns";
 
 function formatCell(value: ResultCell) {
   if (value === null) return "—";
@@ -47,6 +48,8 @@ type ResultSheetCardProps = {
   downloadHref: string;
   showDownload?: boolean;
   emptyMessage?: string;
+  /** Roll and name cells link to `${base}/${roll}${query}`. */
+  studentLink?: { base: string; query?: string };
 };
 
 /** A class's results: title, search and download in one header, then the students. */
@@ -55,7 +58,15 @@ export function ResultSheetCard({
   downloadHref,
   showDownload = true,
   emptyMessage = "No students from your classes in this result.",
+  studentLink,
 }: ResultSheetCardProps) {
+  const roles = sheet.columns.map(columnRole);
+  const rollCol = roles.indexOf("roll");
+  const studentHref = (row: ResultCell[]) => {
+    const roll = rollCol >= 0 ? row[rollCol] : null;
+    if (!studentLink || roll == null || String(roll).trim() === "") return null;
+    return `${studentLink.base}/${encodeURIComponent(String(roll).trim())}${studentLink.query ?? ""}`;
+  };
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
   const { shown, tags, numeric } = splitColumns(sheet);
@@ -149,18 +160,27 @@ export function ResultSheetCard({
           <TableBody>
             {visible.map((row, rowIndex) => (
               <TableRow key={rowIndex} className="hover:bg-brand-50/50">
-                {shown.map((index) => (
-                  <TableCell
-                    key={index}
-                    className={cn(
-                      "px-2.5 py-2.5 wrap-anywhere whitespace-normal text-neutral-700 first:pl-5 last:pr-5",
-                      numeric.has(index) && "text-right text-neutral-950 tabular-nums",
-                      row[index] === null && "text-neutral-300",
-                    )}
-                  >
-                    {formatCell(row[index] ?? null)}
-                  </TableCell>
-                ))}
+                {shown.map((index) => {
+                  const href = roles[index] === "roll" || roles[index] === "name" ? studentHref(row) : null;
+                  return (
+                    <TableCell
+                      key={index}
+                      className={cn(
+                        "px-2.5 py-2.5 wrap-anywhere whitespace-normal text-neutral-700 first:pl-5 last:pr-5",
+                        numeric.has(index) && "text-right text-neutral-950 tabular-nums",
+                        row[index] === null && "text-neutral-300",
+                      )}
+                    >
+                      {href && row[index] != null ? (
+                        <Link href={href} className="font-medium text-brand-900 hover:underline">
+                          {formatCell(row[index])}
+                        </Link>
+                      ) : (
+                        formatCell(row[index] ?? null)
+                      )}
+                    </TableCell>
+                  );
+                })}
               </TableRow>
             ))}
           </TableBody>

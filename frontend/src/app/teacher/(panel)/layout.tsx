@@ -7,6 +7,8 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { PanelFallback } from "@/features/admin/dashboard-parts";
+import { LiveRefresh } from "@/features/live/live-refresh";
+import { MaintenanceBanner } from "@/features/settings/maintenance-banner";
 import { verifyTeacherSession } from "@/features/teacher-auth/session";
 
 const SIDEBAR_STATE_COOKIE = "teacher_sidebar_state";
@@ -32,6 +34,7 @@ export default async function TeacherPanelLayout({
       >
         <TeacherSidebar teacher={teacher} />
         <SidebarInset className="min-w-0 bg-neutral-50">
+          <MaintenanceBanner />
           <TeacherHeader />
           <div className="w-full flex-1 p-4 sm:p-5 lg:px-6 lg:py-6">
             <TeacherPageBack />
@@ -39,6 +42,7 @@ export default async function TeacherPanelLayout({
           </div>
         </SidebarInset>
       </SidebarProvider>
+      <LiveRefresh />
       <Toaster theme="light" position="top-right" richColors closeButton />
     </TooltipProvider>
   );

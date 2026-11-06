@@ -28,8 +28,8 @@ export default async function AdminNewTeacherPage({
         sections={sections.sections}
         classTeacherSlots={classTeacherSlots}
         action={createAdminTeacherAction.bind(null, school.id)}
-        cancelHref={`/admin/schools/${school.id}`}
-        successHref={`/admin/teachers?schoolId=${school.id}`}
+        cancelHref={`/admin/teachers?school=${school.id}`}
+        successHref={`/admin/teachers?school=${school.id}`}
       />
     </>
   );

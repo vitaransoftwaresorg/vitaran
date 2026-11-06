@@ -49,7 +49,7 @@ export type SectionStrength = {
 
 export type SectionInput = {
   classLevel: number;
-  /** Blank / omit = whole class with no section. */
+  /** Blank / omit = Section A. */
   name?: string | null;
   programId: string;
   studentCount: number;

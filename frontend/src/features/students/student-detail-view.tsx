@@ -7,11 +7,14 @@ import { useTransition } from "react";
 import { BookOpen, Contact, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { CredentialMailBar } from "@/features/auth/credential-mail-bar";
+import { classWithSectionLabel, displaySectionName } from "@/features/schools/section-label";
 import { capitalizeWords } from "@/features/schools/schema";
 import { deleteStudentInPlaceAction } from "@/features/students/actions";
 import { deleteAdminStudentInPlaceAction } from "@/features/students/admin-student-actions";
-import type { StudentDetail } from "@/types/student";
+import type { StudentDetail, StudentTestResult } from "@/types/student";
+import type { PerformancePortal } from "./performance-actions";
+import { StudentPerformance } from "./student-performance";
+import { StudentPerformanceLoader } from "./student-performance-loader";
 
 const EMPTY = "—";
 
@@ -61,8 +64,11 @@ type StudentDetailViewProps = {
   /** Admin flat URLs — delete by student id only. */
   adminFlat?: boolean;
   afterDeleteHref?: string;
-  showCredentials?: boolean;
   showActions?: boolean;
+  /** Server-loaded test results. */
+  performance?: StudentTestResult[];
+  /** Load results in the browser when the page has none (in-page roster views). */
+  performancePortal?: PerformancePortal;
 };
 
 export function StudentDetailView({
@@ -72,17 +78,16 @@ export function StudentDetailView({
   onDeleted,
   adminFlat = false,
   afterDeleteHref,
-  showCredentials = true,
   showActions,
+  performance,
+  performancePortal,
 }: StudentDetailViewProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const canEdit = Boolean(onEdit || editHref);
-  const canDelete = Boolean(onDeleted || adminFlat);
+  const canDelete = Boolean(onDeleted || adminFlat || afterDeleteHref);
   const actionsVisible = showActions ?? (canEdit || canDelete);
-  const classLabel = student.sectionName
-    ? `Class ${student.classLevel}-${student.sectionName}`
-    : `Class ${student.classLevel}`;
+  const classLabel = classWithSectionLabel(student.classLevel, student.sectionName);
 
   return (
     <div className="space-y-3">
@@ -120,7 +125,9 @@ export function StudentDetailView({
                         } else {
                           await deleteStudentInPlaceAction(student.id);
                           toast.success("Student deleted");
-                          onDeleted?.();
+                          if (afterDeleteHref) router.push(afterDeleteHref);
+                          else onDeleted?.();
+                          router.refresh();
                         }
                       } catch {
                         toast.error("Could not delete student");
@@ -159,9 +166,11 @@ export function StudentDetailView({
           <Field label="Full name">{capitalizeWords(student.name)}</Field>
           <Field label="Registration number">{student.rollNo}</Field>
           <Field label="Status">{student.status === "ACTIVE" ? "Active" : "Inactive"}</Field>
-          <Field label="Parent / guardian email" span={2}>
-            {student.email}
+          <Field label="Parent / guardian name" span={2}>
+            {student.parentName ? capitalizeWords(student.parentName) : null}
           </Field>
+          <Field label="Parent mobile">{student.parentPhone}</Field>
+          <Field label="Parent / guardian email">{student.email}</Field>
           <Field label="School" span={2}>
             {student.school.name}
           </Field>
@@ -172,25 +181,14 @@ export function StudentDetailView({
             {student.programName}
           </Field>
           <Field label="Class">{classLabel}</Field>
-          <Field label="Section">{student.sectionName ?? "Whole class"}</Field>
+          <Field label="Section">{displaySectionName(student.sectionName)}</Field>
         </Panel>
       </div>
 
-      {showCredentials ? (
-        <CredentialMailBar
-          loginEmail={student.email ?? ""}
-          loginLabel="Registration number"
-          loginValue={student.rollNo}
-          password={student.password || null}
-          setPasswordHref={editHref}
-          onSetPassword={onEdit}
-          recipientLabel="student"
-          target={
-            adminFlat
-              ? { kind: "admin-student", id: student.id }
-              : { kind: "school-student", id: student.id }
-          }
-        />
+      {performance ? (
+        <StudentPerformance results={performance} />
+      ) : performancePortal ? (
+        <StudentPerformanceLoader portal={performancePortal} studentId={student.id} />
       ) : null}
     </div>
   );

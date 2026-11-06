@@ -138,7 +138,7 @@ export function getSchoolFormSchema(mode: "create" | "edit") {
 }
 
 export type SchoolFormMode = Parameters<typeof getSchoolFormSchema>[0];
-export type SchoolFormField = keyof z.input<typeof schoolFields>;
+export type SchoolFormField = keyof z.input<typeof schoolFields> | "logo";
 
 export function toSchoolInput({
   password,

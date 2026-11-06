@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { ADMIN_BASE_PATH, SCHOOL_BASE_PATH, TEACHER_BASE_PATH } from "@/constants/auth";
 import { deleteDocument, publishDocument, saveDocument } from "@/features/documents/save";
+import { ApiError } from "@/services/api-client";
 import * as resultService from "@/services/results";
 import { SCHOOL_RESULTS_PATH, TEACHER_RESULTS_PATH } from "./constants";
 import {
@@ -54,6 +55,22 @@ export async function uploadResultAction(
   });
   if (result?.status === "success") revalidateResultViews();
   return result;
+}
+
+export async function saveManualResultAction(input: resultService.ManualResultSheetInput) {
+  try {
+    const resultSet = await resultService.saveManualResultSheet(input);
+    revalidateResultViews();
+    return { ok: true as const, resultSet };
+  } catch (error) {
+    const message =
+      error instanceof ApiError
+        ? error.message
+        : error instanceof Error
+          ? error.message
+          : "Couldn't save results";
+    return { ok: false as const, message };
+  }
 }
 
 export async function updateResultAction(

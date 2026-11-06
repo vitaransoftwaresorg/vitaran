@@ -19,10 +19,21 @@ import {
   updateStudentAction,
   type StudentFormState,
 } from "@/features/students/actions";
-import { capitalizeWords } from "@/features/schools/schema";
+import { displaySectionName } from "@/features/schools/section-label";
+import { capitalizeWords, toPhoneDigits } from "@/features/schools/schema";
 import type { SchoolProgramOffering } from "@/types/program";
 import type { SchoolSection } from "@/types/section";
 import type { StudentDetail } from "@/types/student";
+
+type StudentFormField =
+  | "name"
+  | "rollNo"
+  | "email"
+  | "parentName"
+  | "parentPhone"
+  | "programId"
+  | "classLevel"
+  | "sectionId";
 
 type StudentFormAction = (
   state: StudentFormState,
@@ -77,15 +88,22 @@ export function StudentForm({
     name: student?.name ?? "",
     rollNo: student?.rollNo ?? "",
     email: student?.email ?? "",
+    parentName: student?.parentName ?? "",
+    parentPhone: student?.parentPhone ?? "",
     programId: student?.programId ?? defaults?.programId ?? "",
     classLevel: student?.classLevel ?? defaults?.classLevel,
     sectionId: student?.sectionId ?? defaults?.sectionId ?? null,
-    password: student?.password ?? "",
   };
 
   const [name, setName] = useState(state.values?.name ?? initial.name);
   const [rollNo, setRollNo] = useState(state.values?.rollNo ?? initial.rollNo);
   const [email, setEmail] = useState((state.values?.email ?? initial.email) || "");
+  const [parentName, setParentName] = useState(
+    state.values?.parentName ?? initial.parentName,
+  );
+  const [parentPhone, setParentPhone] = useState(
+    toPhoneDigits(state.values?.parentPhone ?? initial.parentPhone),
+  );
   const [programId, setProgramId] = useState(state.values?.programId ?? initial.programId);
   const [classLevel, setClassLevel] = useState<number | undefined>(
     state.values?.classLevel ?? initial.classLevel,
@@ -95,26 +113,19 @@ export function StudentForm({
       ? state.values.sectionId
       : initial.sectionId) ?? NONE,
   );
-  const [password, setPassword] = useState(
-    state.values?.password ?? (isEdit ? initial.password : ""),
+  const [clientErrors, setClientErrors] = useState<Partial<Record<StudentFormField, string>>>(
+    {},
   );
-  const [clientErrors, setClientErrors] = useState<
-    Partial<
-      Record<
-        "name" | "rollNo" | "email" | "programId" | "classLevel" | "sectionId" | "password",
-        string
-      >
-    >
-  >({});
 
   const [baseline] = useState(() => ({
     name: initial.name,
     rollNo: initial.rollNo,
     email: initial.email || "",
+    parentName: initial.parentName,
+    parentPhone: toPhoneDigits(initial.parentPhone),
     programId: initial.programId,
     classLevel: initial.classLevel,
     sectionId: initial.sectionId ?? NONE,
-    password: initial.password,
   }));
 
   const dirty =
@@ -122,10 +133,11 @@ export function StudentForm({
     name.trim() !== baseline.name ||
     rollNo.trim() !== baseline.rollNo ||
     email.trim() !== baseline.email ||
+    parentName.trim() !== baseline.parentName ||
+    parentPhone !== baseline.parentPhone ||
     programId !== baseline.programId ||
     classLevel !== baseline.classLevel ||
-    sectionId !== baseline.sectionId ||
-    password.trim() !== baseline.password;
+    sectionId !== baseline.sectionId;
 
   const programItems = useMemo(
     () => schoolPrograms.map((p) => ({ value: p.programId, label: p.programName })),
@@ -142,22 +154,48 @@ export function StudentForm({
     [classOptions],
   );
 
+  const placementReady = Boolean(programId) && classLevel != null;
+
   const sectionOptions = useMemo(() => {
-    if (!programId || classLevel == null) return [];
+    if (!placementReady) return [];
     return sections.filter(
       (s) => s.programId === programId && s.classLevel === classLevel,
     );
-  }, [sections, programId, classLevel]);
+  }, [sections, programId, classLevel, placementReady]);
+
+  const hasNamedSections = sectionOptions.length > 0;
+
+  // Whole class (no named sections) → Section A. Named sections → pick one (no blank "none").
+  useEffect(() => {
+    if (!placementReady) return;
+    if (!hasNamedSections) {
+      if (sectionId !== NONE) setSectionId(NONE);
+      return;
+    }
+    if (sectionId === NONE) return;
+    if (!sectionOptions.some((s) => s.id === sectionId)) {
+      setSectionId(NONE);
+    }
+  }, [placementReady, hasNamedSections, sectionOptions, sectionId]);
 
   const sectionItems = useMemo(() => {
-    if (!sectionOptions.length) {
-      return [{ value: NONE, label: "Whole class (no section)" }];
+    if (!placementReady) return [];
+    if (!hasNamedSections) {
+      return [{ value: NONE, label: `Section ${displaySectionName(null)}` }];
     }
     return sectionOptions.map((s) => ({
       value: s.id,
       label: `Section ${s.name}`,
     }));
-  }, [sectionOptions]);
+  }, [placementReady, hasNamedSections, sectionOptions]);
+
+  const sectionSelectValue = !placementReady
+    ? null
+    : hasNamedSections
+      ? sectionId === NONE
+        ? null
+        : sectionId
+      : NONE;
 
   const placementLabel = useMemo(() => {
     const program = schoolPrograms.find((p) => p.programId === programId);
@@ -165,7 +203,7 @@ export function StudentForm({
     return [
       program?.programName,
       classLevel != null ? `Class ${classLevel}` : null,
-      section ? `Section ${section.name}` : "Whole class",
+      `Section ${displaySectionName(section?.name)}`,
     ]
       .filter(Boolean)
       .join(" · ");
@@ -178,23 +216,20 @@ export function StudentForm({
           Object.entries(state.fieldErrors).map(([key, value]) => [key, value?.[0]]),
         )
       : {}),
-  } as Partial<
-    Record<
-      "name" | "rollNo" | "email" | "programId" | "classLevel" | "sectionId" | "password",
-      string
-    >
-  >;
+  } as Partial<Record<StudentFormField, string>>;
 
   function validateBeforeSubmit(): boolean {
     const next: typeof clientErrors = {};
     if (name.trim().length < 2) next.name = "Enter the student name";
     if (!rollNo.trim()) next.rollNo = "Enter the registration number";
+    if (parentName.trim().length < 2) next.parentName = "Enter the parent / guardian name";
+    if (!/^\d{10}$/.test(parentPhone)) next.parentPhone = "Enter a 10-digit mobile number";
     if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       next.email = "Enter a valid parent / guardian email";
     }
     if (!programId) next.programId = "Pick a program";
     if (classLevel == null) next.classLevel = "Pick a class";
-    if (sectionOptions.length > 0 && (sectionId === NONE || !sectionId)) {
+    if (hasNamedSections && (sectionId === NONE || !sectionId)) {
       next.sectionId = "Pick a section";
     }
     setClientErrors(next);
@@ -261,6 +296,41 @@ export function StudentForm({
             }}
           />
           {errors.rollNo ? <FieldError>{errors.rollNo}</FieldError> : null}
+        </Field>
+
+        <Field data-invalid={errors.parentName ? true : undefined}>
+          <FieldLabel htmlFor="parentName">Parent / guardian name *</FieldLabel>
+          <Input
+            id="parentName"
+            name="parentName"
+            value={parentName}
+            className="h-9"
+            onChange={(e) => {
+              setParentName(e.currentTarget.value);
+              setClientErrors((prev) => ({ ...prev, parentName: undefined }));
+            }}
+          />
+          {errors.parentName ? <FieldError>{errors.parentName}</FieldError> : null}
+        </Field>
+
+        <Field data-invalid={errors.parentPhone ? true : undefined}>
+          <FieldLabel htmlFor="parentPhone">Parent mobile number *</FieldLabel>
+          <Input
+            id="parentPhone"
+            name="parentPhone"
+            type="tel"
+            inputMode="numeric"
+            autoComplete="tel"
+            value={parentPhone}
+            className="h-9"
+            placeholder="10-digit mobile"
+            maxLength={10}
+            onChange={(e) => {
+              setParentPhone(toPhoneDigits(e.currentTarget.value));
+              setClientErrors((prev) => ({ ...prev, parentPhone: undefined }));
+            }}
+          />
+          {errors.parentPhone ? <FieldError>{errors.parentPhone}</FieldError> : null}
         </Field>
 
         <Field data-invalid={errors.email ? true : undefined} className="sm:col-span-2">
@@ -344,18 +414,28 @@ export function StudentForm({
             </Field>
 
             <Field data-invalid={errors.sectionId ? true : undefined} className="sm:col-span-2">
-              <FieldLabel>Section {sectionOptions.length ? "*" : "(optional)"}</FieldLabel>
+              <FieldLabel>
+                Section {hasNamedSections ? "*" : placementReady ? "(Section A)" : ""}
+              </FieldLabel>
               <Select
-                value={sectionId || null}
+                value={sectionSelectValue}
                 items={sectionItems}
                 onValueChange={(v) => {
                   setSectionId(v ?? NONE);
                   setClientErrors((prev) => ({ ...prev, sectionId: undefined }));
                 }}
-                disabled={!programId || classLevel == null}
+                disabled={!placementReady || (!hasNamedSections && placementReady)}
               >
                 <SelectTrigger className="h-9 w-full">
-                  <SelectValue placeholder="Select section" />
+                  <SelectValue
+                    placeholder={
+                      !placementReady
+                        ? "Pick program and class first"
+                        : hasNamedSections
+                          ? "Select section"
+                          : `Section ${displaySectionName(null)}`
+                    }
+                  />
                 </SelectTrigger>
                 <SelectContent>
                   {sectionItems.map((item) => (
@@ -369,23 +449,6 @@ export function StudentForm({
             </Field>
           </>
         ) : null}
-
-        <Field className="sm:col-span-2">
-          <FieldLabel htmlFor="password">
-            {isEdit ? "Password" : "Password (optional)"}
-          </FieldLabel>
-          <Input
-            id="password"
-            name="password"
-            type="text"
-            autoComplete="off"
-            spellCheck={false}
-            value={password}
-            className="h-9 font-mono"
-            placeholder={isEdit ? "Current password" : "Leave blank to auto-generate"}
-            onChange={(e) => setPassword(e.currentTarget.value)}
-          />
-        </Field>
       </FieldGroup>
 
       {dirty ? (

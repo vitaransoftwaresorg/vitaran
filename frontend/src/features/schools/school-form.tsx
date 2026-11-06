@@ -11,7 +11,7 @@ import {
 import Form from "next/form";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertCircle, ArrowLeft, ArrowRight, Loader2, Save } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowRight, ImagePlus, Loader2, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -207,6 +207,7 @@ export function SchoolForm({ school, catalog }: SchoolFormProps) {
       key={failed?.submittedAt ?? school?.updatedAt ?? "new"}
       mode={school ? "edit" : "create"}
       schoolId={school?.id}
+      hasLogo={Boolean(school?.hasLogo)}
       catalog={catalog}
       action={formAction}
       pending={pending}
@@ -224,6 +225,7 @@ export function SchoolForm({ school, catalog }: SchoolFormProps) {
 type SchoolFormWizardProps = {
   mode: SchoolFormMode;
   schoolId?: string;
+  hasLogo?: boolean;
   catalog: LearningProgram[];
   action: (formData: FormData) => void;
   pending: boolean;
@@ -240,6 +242,7 @@ type SchoolFormWizardProps = {
 function SchoolFormWizard({
   mode,
   schoolId,
+  hasLogo = false,
   catalog,
   action,
   pending,
@@ -505,6 +508,22 @@ function SchoolFormWizard({
                   <Input {...fieldProps("name")} {...capitalized} autoComplete="organization" placeholder="e.g. Delhi Public School, Banjara Hills" />
               {error("name")}
             </Field>
+
+            <SchoolLogoField
+              schoolId={schoolId}
+              hasLogo={hasLogo}
+              error={errors.logo?.[0]}
+              onDirty={() => {
+                if (isEdit) setDirty(true);
+              }}
+              onClearError={() =>
+                setClientErrors((prev) => {
+                  const next = { ...prev };
+                  delete next.logo;
+                  return next;
+                })
+              }
+            />
 
             <Field data-invalid={invalid("board")}>
               <FieldLabel htmlFor="board">Board *</FieldLabel>
@@ -780,6 +799,118 @@ function SchoolFormWizard({
     </Form>
     {unsaved.dialog}
     </>
+  );
+}
+
+function SchoolLogoField({
+  schoolId,
+  hasLogo,
+  error,
+  onDirty,
+  onClearError,
+}: {
+  schoolId?: string;
+  hasLogo: boolean;
+  error?: string;
+  onDirty?: () => void;
+  onClearError: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [fileName, setFileName] = useState("");
+  const [removeLogo, setRemoveLogo] = useState(false);
+
+  const existingSrc =
+    schoolId && hasLogo && !removeLogo && !preview
+      ? `/admin/schools/${schoolId}/logo`
+      : null;
+  const shownSrc = preview ?? existingSrc;
+
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
+
+  return (
+    <Field data-invalid={error ? true : undefined} className="md:col-span-2 lg:col-span-6">
+      <FieldLabel htmlFor="logo">School logo</FieldLabel>
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-dashed border-neutral-300 bg-neutral-50">
+          {shownSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element -- blob / auth-proxied logo
+            <img src={shownSrc} alt="School logo preview" className="size-full object-contain p-1" />
+          ) : (
+            <ImagePlus className="size-7 text-neutral-400" strokeWidth={1.75} />
+          )}
+        </div>
+        <div className="min-w-0 flex-1 space-y-2">
+          <input
+            ref={inputRef}
+            id="logo"
+            name="logo"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="sr-only"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0] ?? null;
+              if (preview) URL.revokeObjectURL(preview);
+              if (!file) {
+                setPreview(null);
+                setFileName("");
+                return;
+              }
+              setRemoveLogo(false);
+              setPreview(URL.createObjectURL(file));
+              setFileName(file.name);
+              onDirty?.();
+              onClearError();
+            }}
+          />
+          {removeLogo ? <input type="hidden" name="removeLogo" value="1" /> : null}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => inputRef.current?.click()}
+            >
+              <ImagePlus className="size-3.5" />
+              {shownSrc ? "Replace logo" : "Upload logo"}
+            </Button>
+            {shownSrc ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-neutral-600"
+                onClick={() => {
+                  if (preview) URL.revokeObjectURL(preview);
+                  setPreview(null);
+                  setFileName("");
+                  if (inputRef.current) inputRef.current.value = "";
+                  if (hasLogo) setRemoveLogo(true);
+                  onDirty?.();
+                  onClearError();
+                }}
+              >
+                <X className="size-3.5" />
+                Remove
+              </Button>
+            ) : null}
+          </div>
+          <p className="text-xs text-neutral-500">
+            {fileName
+              ? fileName
+              : removeLogo
+                ? "Logo will be removed on save"
+                : "PNG, JPEG, or WebP · max 2 MB"}
+          </p>
+        </div>
+      </div>
+      {error ? <FieldError>{error}</FieldError> : null}
+    </Field>
   );
 }
 

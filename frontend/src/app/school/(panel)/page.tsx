@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BookOpen, KeyRound, ScanLine, School2, Trophy, Users } from "lucide-react";
+import { BookOpen, GraduationCap, KeyRound, ScanLine, School2, Trophy, Users } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/features/admin/page-header";
 import { StatCard } from "@/features/admin/dashboard-parts";
@@ -12,6 +12,7 @@ import {
   regularCatalogIds,
 } from "@/features/teachers-resources/portal-programs";
 import { solutionBooks } from "@/features/teachers-resources/solution-books";
+import { getSchoolStudentCounts } from "@/services/students";
 import { getSchoolDashboard } from "@/services/teachers";
 import { cn } from "@/lib/utils";
 
@@ -25,7 +26,10 @@ function countResources(programCodes: string[], subjectIds: string[], names?: Re
 }
 
 export default async function SchoolDashboardPage() {
-  const stats = await getSchoolDashboard();
+  const [stats, studentCounts] = await Promise.all([
+    getSchoolDashboard(),
+    getSchoolStudentCounts(),
+  ]);
   const programNames = Object.fromEntries(stats.programLabels.map((row) => [row.code, row.name]));
   const ownProgramCodes = new Set(portalProgramIds(stats.programLabels.map((row) => row.code)));
   const ownPrograms = stats.programLabels.filter((program) => ownProgramCodes.has(program.code));
@@ -34,6 +38,7 @@ export default async function SchoolDashboardPage() {
     stats.subjectIds,
     programNames,
   );
+  const studentTotal = Object.values(studentCounts.byProgram).reduce((sum, n) => sum + n, 0);
 
   return (
     <>
@@ -54,6 +59,13 @@ export default async function SchoolDashboardPage() {
           hint={`${stats.teachers.active} active`}
           icon={Users}
           href="/school/teachers"
+        />
+        <StatCard
+          label="Students"
+          value={studentTotal}
+          hint={`${stats.classes} classes`}
+          icon={GraduationCap}
+          href="/school/students"
         />
         <StatCard
           label="Classes"
