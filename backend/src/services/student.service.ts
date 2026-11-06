@@ -1,19 +1,21 @@
-import { randomInt } from "node:crypto";
 import { StudentStatus } from "../generated/prisma/enums.js";
+import { displaySectionName } from "../utils/section-label.js";
 import * as schoolClassRepository from "../repositories/school-class.repository.js";
 import * as schoolRepository from "../repositories/school.repository.js";
 import * as sectionRepository from "../repositories/section.repository.js";
 import * as studentRepository from "../repositories/student.repository.js";
 import type {
   CreateStudentInput,
+  CreateStudentsBulkInput,
   ListStudentsQuery,
   UpdateStudentInput,
 } from "../schemas/student.schema.js";
 import { AppError } from "../utils/app-error.js";
-import { hashPassword } from "../utils/password.js";
-import { decryptSecret, encryptSecret } from "../utils/secret-box.js";
-import { sendStudentCredentialsEmail } from "./mail.service.js";
+import { notifyContentChanged } from "../utils/content-events.js";
+import { studentTestResults } from "./student-performance.service.js";
 import type { TeacherAccountDto } from "./teacher.service.js";
+
+const KIND = "students" as const;
 
 export type StudentDto = {
   id: string;
@@ -22,19 +24,21 @@ export type StudentDto = {
   name: string;
   rollNo: string;
   email: string | null;
+  parentName: string | null;
+  parentPhone: string | null;
   programId: string;
   programCode: string;
   programName: string;
   classLevel: number;
   sectionId: string | null;
-  sectionName: string | null;
+  /** Always set — whole class (no section row) displays as A. */
+  sectionName: string;
   status: StudentStatus;
   createdAt: string;
   updatedAt: string;
 };
 
 export type StudentDetailDto = StudentDto & {
-  password: string;
   school: { id: string; name: string; code: string };
 };
 
@@ -50,6 +54,8 @@ type StudentListRow = {
   name: string;
   rollNo: string;
   email: string | null;
+  parentName: string | null;
+  parentPhone: string | null;
   programId: string;
   classLevel: number;
   sectionId: string | null;
@@ -69,12 +75,14 @@ function toStudentDto(row: StudentListRow): StudentDto {
     name: row.name,
     rollNo: row.rollNo,
     email: row.email,
+    parentName: row.parentName,
+    parentPhone: row.parentPhone,
     programId: row.programId,
     programCode: row.program.code,
     programName: row.program.name,
     classLevel: row.classLevel,
     sectionId: row.sectionId,
-    sectionName: row.section?.name ?? null,
+    sectionName: displaySectionName(row.section?.name),
     status: row.status,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -93,25 +101,7 @@ export function toStudentAccountDto(row: StudentRecord): StudentAccountDto {
 }
 
 function toStudentDetailDto(row: StudentRecord): StudentDetailDto {
-  return {
-    ...toStudentAccountDto(row),
-    password: decryptSecret(row.passwordEncrypted) ?? "",
-  };
-}
-
-async function sealPassword(password: string) {
-  return {
-    passwordHash: await hashPassword(password),
-    passwordEncrypted: encryptSecret(password),
-  };
-}
-
-function generatePassword() {
-  const chunk = randomInt(0, 36 ** 4)
-    .toString(36)
-    .padStart(4, "0");
-  const digits = String(randomInt(1000, 10_000));
-  return `${chunk}${digits}`;
+  return toStudentAccountDto(row);
 }
 
 async function assertSchoolOffering(
@@ -141,6 +131,7 @@ async function assertSeatAvailable(
   classLevel: number,
   sectionId: string | null,
   excludeStudentId?: string,
+  seatsNeeded = 1,
 ) {
   if (sectionId) {
     const section = await sectionRepository.findSectionById(sectionId);
@@ -159,11 +150,11 @@ async function assertSeatAvailable(
       sectionId,
       ...(excludeStudentId ? { id: { not: excludeStudentId } } : {}),
     });
-    if (enrolled >= section.studentCount) {
+    if (enrolled + seatsNeeded > section.studentCount) {
       throw new AppError(
         400,
-        `Section ${section.name} is full (${enrolled}/${section.studentCount} seats).`,
-        [{ path: ["sectionId"], message: "No seats left in this section" }],
+        `Section ${section.name} needs ${seatsNeeded} seat${seatsNeeded === 1 ? "" : "s"} but only ${Math.max(0, section.studentCount - enrolled)} left (${enrolled}/${section.studentCount} used).`,
+        [{ path: ["sectionId"], message: "Not enough seats in this section" }],
       );
     }
     return;
@@ -193,11 +184,11 @@ async function assertSeatAvailable(
     sectionId: null,
     ...(excludeStudentId ? { id: { not: excludeStudentId } } : {}),
   });
-  if (enrolled >= whole.studentCount) {
+  if (enrolled + seatsNeeded > whole.studentCount) {
     throw new AppError(
       400,
-      `Class ${classLevel} is full (${enrolled}/${whole.studentCount} seats).`,
-      [{ path: ["classLevel"], message: "No seats left in this class" }],
+      `Class ${classLevel} needs ${seatsNeeded} seat${seatsNeeded === 1 ? "" : "s"} but only ${Math.max(0, whole.studentCount - enrolled)} left (${enrolled}/${whole.studentCount} used).`,
+      [{ path: ["classLevel"], message: "Not enough seats in this class" }],
     );
   }
 }
@@ -263,36 +254,80 @@ export async function createStudent(schoolId: string, input: CreateStudentInput)
   await assertUniqueRoll(schoolId, input.rollNo);
   await assertSeatAvailable(schoolId, input.programId, input.classLevel, sectionId);
 
-  const password = input.password?.trim() || generatePassword();
-  const sealed = await sealPassword(password);
-  const school = await schoolRepository.findSchoolById(schoolId);
-
   const student = await studentRepository.createStudent({
     schoolId,
     name: input.name,
     rollNo: input.rollNo.trim(),
     email: input.email?.trim().toLowerCase() || null,
+    parentName: input.parentName.trim(),
+    parentPhone: input.parentPhone,
     programId: input.programId,
     classLevel: input.classLevel,
     sectionId,
     status: input.status ?? StudentStatus.ACTIVE,
-    ...sealed,
   });
 
-  if (student.email) {
-    await sendStudentCredentialsEmail({
-      to: student.email,
-      studentName: student.name,
-      schoolName: school?.name ?? student.school.name,
-      schoolEmail: school?.accountEmail ?? null,
-      schoolCode: school?.code ?? student.school.code,
-      rollNo: student.rollNo,
-      password,
-      reason: "created",
-    });
+  notifyContentChanged({ kind: KIND, schoolId });
+  return toStudentDetailDto(student);
+}
+
+export async function createStudentsBulk(schoolId: string, input: CreateStudentsBulkInput) {
+  const sectionId = input.sectionId ?? null;
+  const rows = input.students;
+
+  await assertSchoolOffering(schoolId, input.programId, input.classLevel);
+  await assertSeatAvailable(
+    schoolId,
+    input.programId,
+    input.classLevel,
+    sectionId,
+    undefined,
+    rows.length,
+  );
+
+  const seen = new Set<string>();
+  for (const [index, row] of rows.entries()) {
+    const key = row.rollNo.trim().toLowerCase();
+    if (seen.has(key)) {
+      throw new AppError(400, `Duplicate registration number in row ${index + 1}`, [
+        { path: ["students", String(index), "rollNo"], message: "Duplicate registration number" },
+      ]);
+    }
+    seen.add(key);
   }
 
-  return toStudentDetailDto(student);
+  for (const [index, row] of rows.entries()) {
+    const taken = await studentRepository.isRollTaken(schoolId, row.rollNo);
+    if (taken) {
+      throw new AppError(409, `Registration number already exists (row ${index + 1})`, [
+        {
+          path: ["students", String(index), "rollNo"],
+          message: "Registration number already exists",
+        },
+      ]);
+    }
+  }
+
+  const created: StudentDetailDto[] = [];
+
+  for (const row of rows) {
+    const student = await studentRepository.createStudent({
+      schoolId,
+      name: row.name,
+      rollNo: row.rollNo.trim(),
+      email: row.email?.trim().toLowerCase() || null,
+      parentName: row.parentName.trim(),
+      parentPhone: row.parentPhone,
+      programId: input.programId,
+      classLevel: input.classLevel,
+      sectionId,
+      status: StudentStatus.ACTIVE,
+    });
+    created.push(toStudentDetailDto(student));
+  }
+
+  notifyContentChanged({ kind: KIND, schoolId });
+  return { items: created, count: created.length };
 }
 
 export async function updateStudent(
@@ -332,15 +367,14 @@ export async function updateStudent(
     );
   }
 
-  const sealed =
-    input.password !== undefined ? await sealPassword(input.password) : undefined;
-
   const student = await studentRepository.updateStudent(id, {
     ...(input.name !== undefined ? { name: input.name } : {}),
     ...(input.rollNo !== undefined ? { rollNo: nextRoll } : {}),
     ...(input.email !== undefined
       ? { email: input.email?.trim().toLowerCase() || null }
       : {}),
+    ...(input.parentName !== undefined ? { parentName: input.parentName.trim() } : {}),
+    ...(input.parentPhone !== undefined ? { parentPhone: input.parentPhone } : {}),
     ...(input.programId !== undefined ? { program: { connect: { id: nextProgramId } } } : {}),
     ...(input.classLevel !== undefined ? { classLevel: nextClassLevel } : {}),
     ...(input.sectionId !== undefined
@@ -349,9 +383,9 @@ export async function updateStudent(
         : { section: { disconnect: true } }
       : {}),
     ...(input.status !== undefined ? { status: input.status } : {}),
-    ...sealed,
   });
 
+  notifyContentChanged({ kind: KIND, schoolId: student.schoolId });
   return toStudentDetailDto(student);
 }
 
@@ -361,56 +395,8 @@ export async function setStudentStatus(id: string, status: StudentStatus, school
     throw new AppError(404, "Student not found");
   }
   const student = await studentRepository.updateStudent(id, { status });
+  notifyContentChanged({ kind: KIND, schoolId: student.schoolId });
   return toStudentDto(student);
-}
-
-export async function resetStudentPassword(id: string, password: string, schoolId?: string) {
-  const existing = await studentRepository.findStudentById(id);
-  if (!existing || (schoolId && existing.schoolId !== schoolId)) {
-    throw new AppError(404, "Student not found");
-  }
-  const sealed = await sealPassword(password);
-  const student = await studentRepository.updateStudent(id, sealed);
-
-  if (student.email) {
-    await sendStudentCredentialsEmail({
-      to: student.email,
-      studentName: student.name,
-      schoolName: student.school.name,
-      schoolEmail: student.school.accountEmail,
-      schoolCode: student.school.code,
-      rollNo: student.rollNo,
-      password,
-      reason: "password-reset",
-    });
-  }
-
-  return toStudentDetailDto(student);
-}
-
-export async function sendStudentCredentials(id: string, schoolId?: string) {
-  const student = await studentRepository.findStudentById(id);
-  if (!student || (schoolId && student.schoolId !== schoolId)) {
-    throw new AppError(404, "Student not found");
-  }
-  if (!student.email) {
-    throw new AppError(400, "This student has no email on file");
-  }
-  const password = decryptSecret(student.passwordEncrypted);
-  if (!password) throw new AppError(500, "Could not read stored password");
-
-  const sent = await sendStudentCredentialsEmail({
-    to: student.email,
-    studentName: student.name,
-    schoolName: student.school.name,
-    schoolEmail: student.school.accountEmail,
-    schoolCode: student.school.code,
-    rollNo: student.rollNo,
-    password,
-    reason: "resend",
-  });
-  if (!sent) throw new AppError(502, "Could not send credentials email");
-  return { ok: true as const };
 }
 
 export async function deleteStudent(id: string, schoolId?: string) {
@@ -419,6 +405,7 @@ export async function deleteStudent(id: string, schoolId?: string) {
     throw new AppError(404, "Student not found");
   }
   await studentRepository.deleteStudent(id);
+  notifyContentChanged({ kind: KIND, schoolId: existing.schoolId });
   return { ok: true as const };
 }
 
@@ -476,4 +463,47 @@ export async function listTeacherStudents(
       totalPages: Math.max(1, Math.ceil(total / query.pageSize)),
     },
   };
+}
+
+/** Class-teacher sections and subject assignments decide which students a teacher may open. */
+function teacherCanSee(
+  teacher: TeacherAccountDto,
+  student: { schoolId: string; programId: string; classLevel: number; sectionId: string | null },
+) {
+  if (student.schoolId !== teacher.schoolId) return false;
+  const assigned = teacher.assignments.some(
+    (row) => row.programId === student.programId && row.classLevel === student.classLevel,
+  );
+  if (assigned) return true;
+  return (teacher.classTeacherSections ?? []).some((slot) =>
+    slot.kind === "section"
+      ? slot.sectionId === student.sectionId
+      : slot.programId === student.programId && slot.classLevel === student.classLevel && !student.sectionId,
+  );
+}
+
+async function teacherStudent(id: string, teacher: TeacherAccountDto) {
+  const student = await studentRepository.findStudentById(id);
+  if (!student || !teacherCanSee(teacher, student)) throw new AppError(404, "Student not found");
+  return student;
+}
+
+/** A student profile, limited to the teacher's classes. */
+export async function getTeacherStudent(id: string, teacher: TeacherAccountDto) {
+  return toStudentAccountDto(await teacherStudent(id, teacher));
+}
+
+/** Admin sees every saved test; schools and teachers only published ones. */
+export async function getStudentPerformance(
+  id: string,
+  scope: { kind: "admin" } | { kind: "school"; schoolId: string } | { kind: "teacher"; teacher: TeacherAccountDto },
+) {
+  const student =
+    scope.kind === "teacher"
+      ? await teacherStudent(id, scope.teacher)
+      : await studentRepository.findStudentById(id);
+  if (!student || (scope.kind === "school" && student.schoolId !== scope.schoolId)) {
+    throw new AppError(404, "Student not found");
+  }
+  return studentTestResults(student, { publishedOnly: scope.kind !== "admin" });
 }

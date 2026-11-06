@@ -19,6 +19,15 @@ export const extractedSheetSchema = z.object({
   flags: z.array(z.object({ question: z.number().int().positive(), reason: z.string() })),
   markCount: z.number().int().min(0).max(100),
   confidence: z.number().min(0).max(1),
+  /** Bubble centres on the warped sheet image, used to draw the marked preview. */
+  bubbles: z
+    .object({
+      width: z.number().positive(),
+      height: z.number().positive(),
+      radius: z.number().positive(),
+      points: z.array(z.object({ question: z.number().int().positive(), option, x: z.number(), y: z.number() })),
+    })
+    .optional(),
 });
 
 export type ExtractedSheet = z.infer<typeof extractedSheetSchema>;

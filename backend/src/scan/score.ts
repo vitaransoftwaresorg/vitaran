@@ -30,6 +30,26 @@ export type SheetScore = {
   maxTotal: number;
 };
 
+export type QuestionResult = "correct" | "wrong" | "blank" | "unkeyed";
+
+/** More than one filled bubble is wrong unless the key itself has two options or is ADD. */
+export function questionResult(
+  marked: AnswerOption | AnswerOption[] | string | undefined,
+  expected: Parameters<typeof markedMatchesKey>[1] | undefined,
+): QuestionResult {
+  const filled = markedList(marked);
+  if (filled.length === 0) return "blank";
+  if (!expected) return "unkeyed";
+  if (isBonusKey(expected)) return "correct";
+  if (filled.length > 1 && !isMultiKey(expected)) return "wrong";
+  return markedMatchesKey(filled, expected) ? "correct" : "wrong";
+}
+
+/** A 75-question test ignores bubbles 76–100 on the 100-question sheet. */
+export function onPaper(score: Pick<SheetScore, "subjectScores">, question: number) {
+  return score.subjectScores.some((range) => question >= range.from && question <= range.to);
+}
+
 export function scoreSheet(
   marked: Record<string, AnswerOption | AnswerOption[] | string>,
   keyAnswers: unknown,
@@ -38,7 +58,10 @@ export function scoreSheet(
 ): SheetScore {
   const key = asAnswers(keyAnswers);
   const ranges = asSubjectRanges(rangesInput);
-  const bands: SubjectRange[] = ranges.length > 0 ? ranges : [{ subject: "TOTAL", from: 1, to: 100, maxMarks: 100 }];
+  const keyedLast = Math.max(0, ...Object.keys(key).map(Number).filter(Number.isFinite));
+  const fallbackTo = keyedLast || 100;
+  const bands: SubjectRange[] =
+    ranges.length > 0 ? ranges : [{ subject: "TOTAL", from: 1, to: fallbackTo, maxMarks: fallbackTo * marks.correctMarks }];
   const correctMarks = marks.correctMarks;
   const wrongMarks = marks.wrongMarks;
   const subjectScores = bands.map((range) => {
@@ -47,22 +70,12 @@ export function scoreSheet(
     let blank = 0;
     let total = 0;
     for (let question = range.from; question <= range.to; question += 1) {
-      const expected = key[String(question)];
-      const filled = markedList(marked[String(question)]);
-      if (filled.length === 0) {
-        blank += 1;
-        continue;
-      }
-      if (!expected) continue;
-      if (filled.length > 1 && !isMultiKey(expected) && !isBonusKey(expected)) {
-        wrong += 1;
-        total -= wrongMarks;
-        continue;
-      }
-      if (isBonusKey(expected) || markedMatchesKey(filled, expected)) {
+      const result = questionResult(marked[String(question)], key[String(question)]);
+      if (result === "blank") blank += 1;
+      else if (result === "correct") {
         correct += 1;
         total += correctMarks;
-      } else {
+      } else if (result === "wrong") {
         wrong += 1;
         total -= wrongMarks;
       }

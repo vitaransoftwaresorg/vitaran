@@ -16,7 +16,6 @@ export const uploadAnswerKeyQuerySchema = z.object({
     .transform((value) => (value ? value : undefined)),
   testNumber: z.coerce.number().int().min(1).max(18),
   classLevel: z.coerce.number().int().min(1).max(12),
-  fileName: z.string().trim().min(1).max(255).optional(),
 });
 
 export const updateAnswerKeyQuerySchema = uploadAnswerKeyQuerySchema;

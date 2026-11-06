@@ -53,6 +53,47 @@ export function upsertOmScan(
   });
 }
 
+export type ClassScanFilter = { schoolId: string; testNumber: number; classLevel: number; program?: string };
+
+function classScanWhere(filter: ClassScanFilter): Prisma.OmScanWhereInput {
+  return {
+    schoolId: filter.schoolId,
+    classLevel: filter.classLevel,
+    answerKey: { testNumber: filter.testNumber, ...(filter.program ? { programCode: filter.program } : {}) },
+  };
+}
+
+export function findClassScans(filter: ClassScanFilter) {
+  return prisma.omScan.findMany({
+    where: classScanWhere(filter),
+    select: { id: true, rollNo: true, studentName: true, total: true, maxTotal: true, updatedAt: true },
+    orderBy: { rollNo: "asc" },
+  });
+}
+
+/** Saved image bytes; scans saved before raw/preview existed fall back to the warped sheet. */
+export function findScanImages(where: Prisma.OmScanWhereInput) {
+  return prisma.omScan.findMany({
+    where,
+    select: {
+      id: true,
+      rollNo: true,
+      studentName: true,
+      schoolId: true,
+      testId: true,
+      total: true,
+      image: true,
+      rawImage: true,
+      previewImage: true,
+    },
+    orderBy: { total: "desc" },
+  });
+}
+
+export function findClassScanImages(filter: ClassScanFilter) {
+  return findScanImages(classScanWhere(filter));
+}
+
 export function findOmScans(where: Prisma.OmScanWhereInput) {
   return prisma.omScan.findMany({
     where,

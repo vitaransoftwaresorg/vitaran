@@ -3,19 +3,31 @@ import { StudentStatus } from "../generated/prisma/enums.js";
 
 const email = z.email().trim().toLowerCase().max(254);
 
-/** Any non-empty password is allowed; omit on create to auto-generate. */
-const password = z.string().min(1).max(128);
+const parentPhone = z
+  .string()
+  .transform((value) => value.replace(/[\s-]/g, ""))
+  .pipe(z.string().regex(/^\+?\d{10,14}$/, "Invalid mobile number"));
 
-export const createStudentSchema = z.object({
+const studentRowSchema = z.object({
   name: z.string().trim().min(2).max(120),
   rollNo: z.string().trim().min(1).max(64),
   email: email.optional().nullable(),
+  parentName: z.string().trim().min(2).max(120),
+  parentPhone,
+});
+
+export const createStudentSchema = studentRowSchema.extend({
   programId: z.uuid(),
   classLevel: z.number().int().min(1).max(12),
   sectionId: z.uuid().optional().nullable(),
   status: z.enum(StudentStatus).default(StudentStatus.ACTIVE),
-  /** Optional — server generates one when omitted. */
-  password: password.optional(),
+});
+
+export const createStudentsBulkSchema = z.object({
+  programId: z.uuid(),
+  classLevel: z.number().int().min(1).max(12),
+  sectionId: z.uuid().optional().nullable(),
+  students: z.array(studentRowSchema).min(1).max(100),
 });
 
 export const updateStudentSchema = z
@@ -23,11 +35,12 @@ export const updateStudentSchema = z
     name: z.string().trim().min(2).max(120),
     rollNo: z.string().trim().min(1).max(64),
     email: email.nullable(),
+    parentName: z.string().trim().min(2).max(120),
+    parentPhone,
     programId: z.uuid(),
     classLevel: z.number().int().min(1).max(12),
     sectionId: z.uuid().nullable(),
     status: z.enum(StudentStatus),
-    password,
   })
   .partial()
   .refine((value) => Object.keys(value).length > 0, {
@@ -58,10 +71,7 @@ export const setStudentStatusSchema = z.object({
   status: z.enum(StudentStatus),
 });
 
-export const resetStudentPasswordSchema = z.object({
-  password,
-});
-
 export type CreateStudentInput = z.infer<typeof createStudentSchema>;
+export type CreateStudentsBulkInput = z.infer<typeof createStudentsBulkSchema>;
 export type UpdateStudentInput = z.infer<typeof updateStudentSchema>;
 export type ListStudentsQuery = z.infer<typeof listStudentsQuerySchema>;

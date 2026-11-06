@@ -1,6 +1,7 @@
 import * as schoolClassRepository from "../repositories/school-class.repository.js";
 import * as schoolRepository from "../repositories/school.repository.js";
 import * as sectionRepository from "../repositories/section.repository.js";
+import * as studentRepository from "../repositories/student.repository.js";
 import * as teacherRepository from "../repositories/teacher.repository.js";
 import type {
   CreateSectionInput,
@@ -8,7 +9,11 @@ import type {
   UpdateSectionInput,
 } from "../schemas/section.schema.js";
 import { AppError } from "../utils/app-error.js";
+import { notifyContentChanged } from "../utils/content-events.js";
 import { TeacherStatus } from "../generated/prisma/enums.js";
+import { DEFAULT_SECTION_NAME } from "../utils/section-label.js";
+
+const KIND = "sections" as const;
 
 async function releaseClassLevelTeacher(
   schoolId: string,
@@ -218,37 +223,9 @@ export async function listClassOrganization(schoolId: string): Promise<ClassOrga
 export async function createSection(schoolId: string, input: CreateSectionInput) {
   await assertProgramOfferedForClass(schoolId, input.programId, input.classLevel);
 
-  const sectionName = input.name ?? null;
+  // Blank name → Section A (classes without other sections default to A).
+  const sectionName = input.name?.trim() || DEFAULT_SECTION_NAME;
 
-  // Whole class (no section name)
-  if (!sectionName) {
-    const existingSections = await sectionRepository.listSectionsBySchool(schoolId);
-    if (existingSections.some((row) => row.classLevel === input.classLevel)) {
-      throw new AppError(
-        400,
-        `Class ${input.classLevel} already has sections — add another section instead of a whole class`,
-      );
-    }
-
-    const existing = await schoolClassRepository.findSchoolClassByLevel(
-      schoolId,
-      input.classLevel,
-    );
-    if (existing) {
-      throw new AppError(409, `Class ${input.classLevel} is already set up without sections`);
-    }
-
-    await assertStrengthAllows(schoolId, input.studentCount);
-    const row = await schoolClassRepository.createSchoolClass({
-      schoolId,
-      classLevel: input.classLevel,
-      programId: input.programId,
-      studentCount: input.studentCount,
-    });
-    return { kind: "class" as const, class: toWholeClassDto(row) };
-  }
-
-  // Section mode — remove whole-class row for this level if present
   await assertStrengthAllows(schoolId, input.studentCount);
 
   const conflict = await sectionRepository.findSectionNameConflict(
@@ -260,9 +237,14 @@ export async function createSection(schoolId: string, input: CreateSectionInput)
     throw new AppError(409, `Section ${sectionName} already exists for class ${input.classLevel}`);
   }
 
+  const existingClassTeachers = await teacherRepository.listClassLevelTeachers(schoolId);
+  const priorClassTeacher = existingClassTeachers.find(
+    (row) => row.programId === input.programId && row.classLevel === input.classLevel,
+  );
+
   const classTeacherId = await assertClassTeacher(
     schoolId,
-    input.classTeacherId,
+    input.classTeacherId ?? priorClassTeacher?.teacherId ?? null,
     input.programId,
     input.classLevel,
   );
@@ -279,12 +261,21 @@ export async function createSection(schoolId: string, input: CreateSectionInput)
     classTeacherId,
   });
 
+  await studentRepository.assignWholeClassStudentsToSection(
+    schoolId,
+    input.programId,
+    input.classLevel,
+    row.id,
+  );
+
   if (input.applyTeacherToClass && classTeacherId) {
     await sectionRepository.applyTeacherToClassLevel(schoolId, input.classLevel, classTeacherId);
     const refreshed = await sectionRepository.findSectionById(row.id);
+    notifyContentChanged({ kind: KIND, schoolId });
     return { kind: "section" as const, section: toSectionDto(refreshed) };
   }
 
+  notifyContentChanged({ kind: KIND, schoolId });
   return { kind: "section" as const, section: toSectionDto(row) };
 }
 
@@ -338,9 +329,11 @@ export async function updateSection(schoolId: string, id: string, input: UpdateS
   if (input.applyTeacherToClass && classTeacherId) {
     await sectionRepository.applyTeacherToClassLevel(schoolId, nextClassLevel, classTeacherId);
     const refreshed = await sectionRepository.findSectionById(id);
+    notifyContentChanged({ kind: KIND, schoolId });
     return toSectionDto(refreshed);
   }
 
+  notifyContentChanged({ kind: KIND, schoolId });
   return toSectionDto(row);
 }
 
@@ -366,6 +359,7 @@ export async function updateSchoolClass(
     programId: input.programId,
     studentCount: input.studentCount,
   });
+  notifyContentChanged({ kind: KIND, schoolId });
   return toWholeClassDto(row);
 }
 
@@ -375,6 +369,7 @@ export async function deleteSection(schoolId: string, id: string) {
     throw new AppError(404, "Section not found");
   }
   await sectionRepository.deleteSection(id);
+  notifyContentChanged({ kind: KIND, schoolId });
 }
 
 export async function deleteSchoolClass(schoolId: string, id: string) {
@@ -384,6 +379,7 @@ export async function deleteSchoolClass(schoolId: string, id: string) {
   }
   await releaseClassLevelTeacher(schoolId, existing.programId, existing.classLevel);
   await schoolClassRepository.deleteSchoolClass(id);
+  notifyContentChanged({ kind: KIND, schoolId });
 }
 
 export async function setSectionClassTeacher(
@@ -415,5 +411,6 @@ export async function setSectionClassTeacher(
   }
 
   const refreshed = await sectionRepository.findSectionById(sectionId);
+  notifyContentChanged({ kind: KIND, schoolId });
   return toSectionDto(refreshed);
 }

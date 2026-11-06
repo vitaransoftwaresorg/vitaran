@@ -5,6 +5,8 @@ import {
   getResultSet,
   getResultSheet,
   getResultSheetFile,
+  getClassResultTemplate,
+  getRankCards,
   getResultStats,
   getSchoolResultSet,
   getSchoolResultSheet,
@@ -15,6 +17,7 @@ import {
   listResultSets,
   listSchoolResultSets,
   listTeacherResultSets,
+  saveManualResultSheet,
   setResultSetPublished,
   updateResultSet,
   uploadResultSet,
@@ -24,7 +27,9 @@ import { validate } from "../middleware/validate.js";
 import {
   CLASS_LEVELS,
   classFileField,
+  classResultTemplateQuerySchema,
   listResultSetsQuerySchema,
+  manualResultSheetSchema,
   resultSetFieldsSchema,
   resultSetIdParamsSchema,
   resultSheetParamsSchema,
@@ -49,6 +54,8 @@ resultRouter.use(requireAdmin);
 
 resultRouter.get("/", validate(listResultSetsQuerySchema, "query"), listResultSets);
 resultRouter.post("/", readClassFiles, validateFields, uploadResultSet);
+resultRouter.post("/manual", validate(manualResultSheetSchema), saveManualResultSheet);
+resultRouter.get("/class-template", validate(classResultTemplateQuerySchema, "query"), getClassResultTemplate);
 resultRouter.get("/stats", getResultStats);
 resultRouter.get("/:id", validateId, getResultSet);
 resultRouter.patch("/:id", validateId, readClassFiles, validateFields, updateResultSet);
@@ -56,6 +63,7 @@ resultRouter.delete("/:id", validateId, deleteResultSet);
 resultRouter.patch("/:id/publish", validateId, validate(publishBodySchema, "body"), setResultSetPublished);
 resultRouter.get("/:id/classes/:classLevel", validateSheet, getResultSheet);
 resultRouter.get("/:id/classes/:classLevel/file", validateSheet, getResultSheetFile);
+resultRouter.get("/:id/classes/:classLevel/rank-cards", validateSheet, getRankCards);
 
 /** Results as seen by a signed-in school: only its own. */
 export const schoolResultRouter = Router();

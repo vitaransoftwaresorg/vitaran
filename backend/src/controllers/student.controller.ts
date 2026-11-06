@@ -1,6 +1,7 @@
 import type { RequestHandler } from "express";
 import type {
   CreateStudentInput,
+  CreateStudentsBulkInput,
   ListStudentsQuery,
   UpdateStudentInput,
 } from "../schemas/student.schema.js";
@@ -81,18 +82,6 @@ export const deleteAdminStudent: RequestHandler<{ id: string }> = async (req, re
   sendSuccess(res, await studentService.deleteStudent(req.params.id));
 };
 
-export const resetAdminStudentPassword: RequestHandler<
-  { id: string },
-  unknown,
-  { password: string }
-> = async (req, res) => {
-  sendSuccess(res, await studentService.resetStudentPassword(req.params.id, req.body.password));
-};
-
-export const sendAdminStudentCredentials: RequestHandler<{ id: string }> = async (req, res) => {
-  sendSuccess(res, await studentService.sendStudentCredentials(req.params.id));
-};
-
 export const createStudent: RequestHandler<unknown, unknown, CreateStudentInput> = async (
   req,
   res,
@@ -101,12 +90,29 @@ export const createStudent: RequestHandler<unknown, unknown, CreateStudentInput>
   sendSuccess(res, await studentService.createStudent(school.id, req.body), 201);
 };
 
+export const createStudentsBulk: RequestHandler<
+  unknown,
+  unknown,
+  CreateStudentsBulkInput
+> = async (req, res) => {
+  const school = res.locals.school as SchoolAccountDto;
+  sendSuccess(res, await studentService.createStudentsBulk(school.id, req.body), 201);
+};
+
 export const createAdminSchoolStudent: RequestHandler<
   { schoolId: string },
   unknown,
   CreateStudentInput
 > = async (req, res) => {
   sendSuccess(res, await studentService.createStudent(req.params.schoolId, req.body), 201);
+};
+
+export const createAdminSchoolStudentsBulk: RequestHandler<
+  { schoolId: string },
+  unknown,
+  CreateStudentsBulkInput
+> = async (req, res) => {
+  sendSuccess(res, await studentService.createStudentsBulk(req.params.schoolId, req.body), 201);
 };
 
 export const updateStudent: RequestHandler<{ id: string }, unknown, UpdateStudentInput> = async (
@@ -140,23 +146,6 @@ export const setStudentStatus: RequestHandler<
   );
 };
 
-export const resetStudentPassword: RequestHandler<
-  { id: string },
-  unknown,
-  { password: string }
-> = async (req, res) => {
-  const school = res.locals.school as SchoolAccountDto | undefined;
-  sendSuccess(
-    res,
-    await studentService.resetStudentPassword(req.params.id, req.body.password, school?.id),
-  );
-};
-
-export const sendStudentCredentials: RequestHandler<{ id: string }> = async (req, res) => {
-  const school = res.locals.school as SchoolAccountDto | undefined;
-  sendSuccess(res, await studentService.sendStudentCredentials(req.params.id, school?.id));
-};
-
 export const deleteStudent: RequestHandler<{ id: string }> = async (req, res) => {
   const school = res.locals.school as SchoolAccountDto | undefined;
   sendSuccess(res, await studentService.deleteStudent(req.params.id, school?.id));
@@ -167,4 +156,22 @@ export const deleteAdminSchoolStudent: RequestHandler<{ schoolId: string; id: st
   res,
 ) => {
   sendSuccess(res, await studentService.deleteStudent(req.params.id, req.params.schoolId));
+};
+
+export const getAdminStudentPerformance: RequestHandler<{ id: string }> = async (req, res) => {
+  sendSuccess(res, await studentService.getStudentPerformance(req.params.id, { kind: "admin" }));
+};
+
+export const getStudentPerformance: RequestHandler<{ id: string }> = async (req, res) => {
+  const school = res.locals.school as SchoolAccountDto;
+  sendSuccess(res, await studentService.getStudentPerformance(req.params.id, { kind: "school", schoolId: school.id }));
+};
+
+export const getTeacherStudent: RequestHandler<{ id: string }> = async (req, res) => {
+  sendSuccess(res, await studentService.getTeacherStudent(req.params.id, res.locals.teacher as TeacherAccountDto));
+};
+
+export const getTeacherStudentPerformance: RequestHandler<{ id: string }> = async (req, res) => {
+  const teacher = res.locals.teacher as TeacherAccountDto;
+  sendSuccess(res, await studentService.getStudentPerformance(req.params.id, { kind: "teacher", teacher }));
 };

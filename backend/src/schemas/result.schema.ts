@@ -46,6 +46,22 @@ export const resultSheetParamsSchema = z.object({
   classLevel: z.coerce.number().int().min(1).max(12),
 });
 
+const resultCellSchema = z.union([z.string().max(200), z.number(), z.boolean(), z.null()]);
+
+/** Admin class table: the sheet's columns and one row of cells per student. */
+export const manualResultSheetSchema = resultSetFieldsSchema.omit({ removeClasses: true }).extend({
+  classLevel: z.coerce.number().int().min(1).max(12),
+  columns: z.array(z.string().trim().min(1).max(120)).min(1).max(60),
+  rows: z.array(z.array(resultCellSchema).max(60)).min(1, "Add at least one student").max(2000),
+  resultSetId: z.uuid().optional(),
+});
+
+export const classResultTemplateQuerySchema = resultSetFieldsSchema
+  .pick({ schoolId: true, program: true, programName: true, testNumber: true })
+  .extend({ classLevel: z.coerce.number().int().min(1).max(12) });
+
 export type ResultSetFields = z.infer<typeof resultSetFieldsSchema>;
 export type ListResultSetsQuery = z.infer<typeof listResultSetsQuerySchema>;
 export type ResultSheetParams = z.infer<typeof resultSheetParamsSchema>;
+export type ManualResultSheetInput = z.infer<typeof manualResultSheetSchema>;
+export type ClassResultTemplateQuery = z.infer<typeof classResultTemplateQuerySchema>;

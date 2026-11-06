@@ -11,10 +11,13 @@ import type {
   UpdateTeacherInput,
 } from "../schemas/teacher.schema.js";
 import { AppError } from "../utils/app-error.js";
+import { notifyContentChanged } from "../utils/content-events.js";
 import { hashPassword, verifyPassword } from "../utils/password.js";
 import { decryptSecret, encryptSecret } from "../utils/secret-box.js";
 import { sendTeacherCredentialsEmail } from "./mail.service.js";
 import * as sectionService from "./section.service.js";
+
+const KIND = "teachers" as const;
 import {
   toSchoolRef,
   type SchoolAccountDto,
@@ -360,6 +363,7 @@ export async function createTeacher(schoolId: string, input: CreateTeacherInput)
     reason: "created",
   });
 
+  notifyContentChanged({ kind: KIND, schoolId });
   return detail;
 }
 
@@ -424,6 +428,7 @@ export async function updateTeacher(id: string, input: UpdateTeacherInput, schoo
     });
   }
 
+  notifyContentChanged({ kind: KIND, schoolId: existing.schoolId });
   return detail;
 }
 
@@ -491,6 +496,7 @@ export async function setTeacherStatus(
   if (schoolId && existing.schoolId !== schoolId) throw new AppError(404, "Teacher not found");
 
   await teacherRepository.setTeacherStatus(id, input.status);
+  notifyContentChanged({ kind: KIND, schoolId: existing.schoolId });
   return {
     id: existing.id,
     schoolId: existing.schoolId,
@@ -510,6 +516,7 @@ export async function deleteTeacher(id: string, schoolId?: string) {
   if (!existing) throw new AppError(404, "Teacher not found");
   if (schoolId && existing.schoolId !== schoolId) throw new AppError(404, "Teacher not found");
   await teacherRepository.deleteTeacher(id);
+  notifyContentChanged({ kind: KIND, schoolId: existing.schoolId });
 }
 
 export async function getSchoolTeacherStats(schoolId: string) {
@@ -607,6 +614,9 @@ export async function setClassTeacher(schoolId: string, input: SetClassTeacherIn
     input.classLevel,
     input.teacherId,
   );
+
+  notifyContentChanged({ kind: KIND, schoolId });
+  notifyContentChanged({ kind: "sections", schoolId });
 
   return row
     ? {

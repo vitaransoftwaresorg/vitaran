@@ -42,14 +42,19 @@ export type PreparedSheet = {
   rgba: Rgba;
 };
 
-export async function prepareSheet(image: Buffer): Promise<PreparedSheet> {
+export async function prepareSheet(
+  image: Buffer,
+  options: { flat?: boolean } = {},
+): Promise<PreparedSheet> {
   const oriented = await sharp(image).rotate().removeAlpha().toBuffer();
-  const quality = paperQuality(await asGray(oriented));
-  if (!quality.ok) throw new AppError(422, quality.reason);
-  const rgba = await warpSheet(oriented);
+  if (!options.flat) {
+    const quality = paperQuality(await asGray(oriented));
+    if (!quality.ok) throw new AppError(422, quality.reason);
+  }
+  const rgba = await warpSheet(oriented, { flat: options.flat });
   const jpeg = await sharp(rgba.data, { raw: { width: rgba.width, height: rgba.height, channels: 4 } })
     .removeAlpha()
-    .jpeg({ quality: 82 })
+    .jpeg({ quality: 88 })
     .toBuffer();
   return { jpeg, rgba };
 }

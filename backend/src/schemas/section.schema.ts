@@ -20,7 +20,7 @@ const requiredSectionName = z
 
 export const createSectionSchema = z.object({
   classLevel: z.number().int().min(1).max(12),
-  /** Omit / blank = whole class (no section). */
+  /** Omit / blank = Section A (default when the class has no other sections). */
   name: optionalSectionName,
   programId: z.uuid(),
   studentCount: z.number().int().min(1).max(5000),

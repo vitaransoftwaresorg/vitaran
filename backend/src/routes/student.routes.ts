@@ -3,23 +3,25 @@ import { z } from "zod";
 import { getTeacherDashboard } from "../controllers/portal.controller.js";
 import {
   createAdminSchoolStudent,
+  createAdminSchoolStudentsBulk,
   createStudent,
+  createStudentsBulk,
   deleteAdminSchoolStudent,
   deleteAdminStudent,
   deleteStudent,
   getAdminSchoolStudent,
   getAdminStudent,
+  getAdminStudentPerformance,
   getStudent,
+  getStudentPerformance,
+  getTeacherStudent,
+  getTeacherStudentPerformance,
   getAdminSchoolStudentCounts,
   getSchoolStudentCounts,
   listAdminSchoolStudents,
   listAdminStudents,
   listStudents,
   listTeacherStudents,
-  resetAdminStudentPassword,
-  resetStudentPassword,
-  sendAdminStudentCredentials,
-  sendStudentCredentials,
   setStudentStatus,
   updateAdminSchoolStudent,
   updateAdminStudent,
@@ -29,8 +31,8 @@ import { requireAdmin, requireSchool, requireTeacher } from "../middleware/authe
 import { validate } from "../middleware/validate.js";
 import {
   createStudentSchema,
+  createStudentsBulkSchema,
   listStudentsQuerySchema,
-  resetStudentPasswordSchema,
   setStudentStatusSchema,
   studentIdParamsSchema,
   updateStudentSchema,
@@ -46,20 +48,15 @@ schoolStudentRouter.use(requireSchool);
 schoolStudentRouter.get("/counts", getSchoolStudentCounts);
 schoolStudentRouter.get("/", validate(listStudentsQuerySchema, "query"), listStudents);
 schoolStudentRouter.post("/", validate(createStudentSchema), createStudent);
+schoolStudentRouter.post("/bulk", validate(createStudentsBulkSchema), createStudentsBulk);
 schoolStudentRouter.get("/:id", validateStudentId, getStudent);
+schoolStudentRouter.get("/:id/performance", validateStudentId, getStudentPerformance);
 schoolStudentRouter.patch("/:id", validateStudentId, validate(updateStudentSchema), updateStudent);
 schoolStudentRouter.patch(
   "/:id/status",
   validateStudentId,
   validate(setStudentStatusSchema),
   setStudentStatus,
-);
-schoolStudentRouter.post("/:id/send-credentials", validateStudentId, sendStudentCredentials);
-schoolStudentRouter.post(
-  "/:id/reset-password",
-  validateStudentId,
-  validate(resetStudentPasswordSchema),
-  resetStudentPassword,
 );
 schoolStudentRouter.delete("/:id", validateStudentId, deleteStudent);
 
@@ -83,6 +80,12 @@ adminSchoolStudentRouter.post(
   validate(createStudentSchema),
   createAdminSchoolStudent,
 );
+adminSchoolStudentRouter.post(
+  "/bulk",
+  validate(schoolIdParams, "params"),
+  validate(createStudentsBulkSchema),
+  createAdminSchoolStudentsBulk,
+);
 adminSchoolStudentRouter.get(
   "/:id",
   validate(schoolStudentParams, "params"),
@@ -105,18 +108,14 @@ export const adminStudentRouter = Router();
 adminStudentRouter.use(requireAdmin);
 adminStudentRouter.get("/", validate(listStudentsQuerySchema, "query"), listAdminStudents);
 adminStudentRouter.get("/:id", validateStudentId, getAdminStudent);
+adminStudentRouter.get("/:id/performance", validateStudentId, getAdminStudentPerformance);
 adminStudentRouter.patch("/:id", validateStudentId, validate(updateStudentSchema), updateAdminStudent);
 adminStudentRouter.delete("/:id", validateStudentId, deleteAdminStudent);
-adminStudentRouter.post("/:id/send-credentials", validateStudentId, sendAdminStudentCredentials);
-adminStudentRouter.post(
-  "/:id/reset-password",
-  validateStudentId,
-  validate(resetStudentPasswordSchema),
-  resetAdminStudentPassword,
-);
 
 /** Teacher portal: roster for assigned / class-teacher classes. */
 export const teacherStudentRouter = Router();
 teacherStudentRouter.use(requireTeacher);
 teacherStudentRouter.get("/dashboard", getTeacherDashboard);
 teacherStudentRouter.get("/", validate(listStudentsQuerySchema, "query"), listTeacherStudents);
+teacherStudentRouter.get("/:id", validateStudentId, getTeacherStudent);
+teacherStudentRouter.get("/:id/performance", validateStudentId, getTeacherStudentPerformance);

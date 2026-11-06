@@ -8,7 +8,7 @@ import type { ExtractedSheet } from "./schema.js";
 
 const QUEUE_NAME = "omr-scan";
 
-type ReadJob = { image: string; fileName: string; rollNo?: string; testId?: string };
+type ReadJob = { image: string; fileName: string; rollNo?: string; testId?: string; flat?: boolean };
 type ReadOk = { ok: true; jpeg: string; sheet: ExtractedSheet };
 type ReadFail = { ok: false; statusCode: number; message: string };
 type ReadResult = ReadOk | ReadFail;
@@ -53,6 +53,7 @@ function withoutJpeg(read: SheetRead): ExtractedSheet {
     flags: read.flags,
     markCount: read.markCount,
     confidence: read.confidence,
+    bubbles: read.bubbles,
   };
 }
 
@@ -64,6 +65,7 @@ async function onJob(job: Job<ReadJob, ReadResult>) {
   return processRead(Buffer.from(job.data.image, "base64"), job.data.fileName, {
     rollNo: job.data.rollNo,
     testId: job.data.testId,
+    flat: job.data.flat,
   });
 }
 
@@ -101,7 +103,13 @@ export async function readQueued(image: Buffer, fileName: string, identity?: She
   }
   const job = await queue.add(
     "read",
-    { image: image.toString("base64"), fileName, rollNo: identity?.rollNo, testId: identity?.testId },
+    {
+      image: image.toString("base64"),
+      fileName,
+      rollNo: identity?.rollNo,
+      testId: identity?.testId,
+      flat: identity?.flat,
+    },
     { removeOnComplete: 40, removeOnFail: 40 },
   );
   const result = (await job.waitUntilFinished(events)) as ReadResult;

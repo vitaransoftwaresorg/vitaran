@@ -50,7 +50,8 @@ export const googleLoginRateLimit = rateLimit({
 
 export const omrScanRateLimit = rateLimit({
   windowMs: 5 * 60 * 1000,
-  limit: 60,
+  // Allow a full class PDF (~100 sheets) plus retries in one session.
+  limit: 250,
   standardHeaders: "draft-8",
   legacyHeaders: false,
   // A failed read should not lock the examiner out of the next attempt.

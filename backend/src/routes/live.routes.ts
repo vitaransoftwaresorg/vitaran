@@ -1,6 +1,15 @@
 import { Router } from "express";
-import { streamSchoolEvents, streamTeacherEvents } from "../controllers/live.controller.js";
-import { requireSchool, requireTeacher } from "../middleware/authenticate.js";
+import {
+  streamAdminEvents,
+  streamSchoolEvents,
+  streamTeacherEvents,
+} from "../controllers/live.controller.js";
+import { requireAdmin, requireSchool, requireTeacher } from "../middleware/authenticate.js";
+
+/** Live updates for a signed-in admin. */
+export const adminEventsRouter = Router();
+adminEventsRouter.use(requireAdmin);
+adminEventsRouter.get("/", streamAdminEvents);
 
 /** Live updates for a signed-in school. */
 export const schoolEventsRouter = Router();

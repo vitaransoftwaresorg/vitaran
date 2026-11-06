@@ -21,6 +21,7 @@ export function createApp() {
     cors({
       origin: getCorsOrigins(),
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      allowedHeaders: ["Authorization", "Content-Type", "Accept", "X-Test-Id"],
     }),
   );
   app.use(express.json({ limit: REQUEST_BODY_LIMIT }));

@@ -7,6 +7,7 @@ import {
 import type { TeacherAccountDto } from "../services/teacher.service.js";
 import type { SubjectRange } from "./answer-key-parse.js";
 import type { CellValue } from "./excel.js";
+import { classWithSectionLabel, displaySectionName } from "./section-label.js";
 
 export type RosterStudent = {
   name: string;
@@ -225,14 +226,14 @@ export function parseScoreRow(columns: string[], row: CellValue[]): ParsedScoreR
 }
 
 function classLabelFor(classLevel: number, sectionName: string | null) {
-  return sectionName ? `Class ${classLevel}-${sectionName}` : `Class ${classLevel}`;
+  return classWithSectionLabel(classLevel, sectionName);
 }
 
 function rewriteClassCell(row: CellValue[], columns: string[], student: RosterStudent) {
   const classCol = colIndex(columns, [/^class$/]);
   if (classCol < 0) return row;
   const next = [...row];
-  next[classCol] = student.section?.name ? `${student.classLevel}-${student.section.name}` : String(student.classLevel);
+  next[classCol] = `${student.classLevel}-${displaySectionName(student.section?.name)}`;
   return next;
 }
 
@@ -269,11 +270,11 @@ export function projectSheetForTeacher(
       row: rewriteClassCell(row, columns, student),
       access,
       classLevel: student.classLevel,
-      sectionName: student.section?.name ?? null,
+      sectionName: displaySectionName(student.section?.name),
     });
   }
 
-  const sections = [...new Set(kept.map((item) => item.sectionName).filter((name): name is string => Boolean(name)))];
+  const sections = [...new Set(kept.map((item) => item.sectionName))];
   const classLabel =
     kept.length > 0 && sections.length <= 1
       ? classLabelFor(kept[0]!.classLevel, sections[0] ?? null)

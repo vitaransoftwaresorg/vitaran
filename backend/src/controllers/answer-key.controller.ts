@@ -37,7 +37,7 @@ export const getAnswerKey: RequestHandler<IdParams> = async (req, res) => {
 export const uploadAnswerKey: RequestHandler = async (req, res) => {
   sendSuccess(
     res,
-    await answerKeyService.uploadAnswerKey(req.query as unknown as UploadAnswerKeyQuery, req.body),
+    await answerKeyService.uploadAnswerKey(req.query as unknown as UploadAnswerKeyQuery),
     201,
   );
 };
@@ -45,16 +45,8 @@ export const uploadAnswerKey: RequestHandler = async (req, res) => {
 export const updateAnswerKey: RequestHandler<IdParams> = async (req, res) => {
   sendSuccess(
     res,
-    await answerKeyService.updateAnswerKey(
-      req.params.id,
-      req.query as unknown as UpdateAnswerKeyQuery,
-      req.body,
-    ),
+    await answerKeyService.updateAnswerKey(req.params.id, req.query as unknown as UpdateAnswerKeyQuery),
   );
-};
-
-export const getAnswerKeyFile: RequestHandler<IdParams> = async (req, res) => {
-  sendPdf(res, await answerKeyService.getAnswerKeyFile(req.params.id));
 };
 
 export const listSchoolAnswerKeys: RequestHandler = async (_req, res) => {
@@ -71,11 +63,19 @@ export const getSchoolAnswerKey: RequestHandler<IdParams> = async (req, res) => 
   );
 };
 
-export const getSchoolAnswerKeyFile: RequestHandler<IdParams> = async (req, res) => {
+export const getSchoolAnswerKeyPdf: RequestHandler<IdParams> = async (req, res) => {
   sendPdf(
     res,
-    await answerKeyService.getAnswerKeyFile(req.params.id, res.locals.school as SchoolAccountDto),
+    await answerKeyService.getAnswerKeyPdf(req.params.id, {
+      kind: "school",
+      school: res.locals.school as SchoolAccountDto,
+    }),
   );
+};
+
+export const getTeacherAnswerKeyPdf: RequestHandler<IdParams> = async (req, res) => {
+  const actor: ContentActor = { kind: "teacher", teacher: res.locals.teacher as TeacherAccountDto };
+  sendPdf(res, await answerKeyService.getAnswerKeyPdf(req.params.id, actor));
 };
 
 export const listTeacherAnswerKeys: RequestHandler = async (_req, res) => {
@@ -86,11 +86,6 @@ export const listTeacherAnswerKeys: RequestHandler = async (_req, res) => {
 export const getTeacherAnswerKey: RequestHandler<IdParams> = async (req, res) => {
   const actor: ContentActor = { kind: "teacher", teacher: res.locals.teacher as TeacherAccountDto };
   sendSuccess(res, await answerKeyService.getVisibleAnswerKey(req.params.id, actor));
-};
-
-export const getTeacherAnswerKeyFile: RequestHandler<IdParams> = async (req, res) => {
-  const actor: ContentActor = { kind: "teacher", teacher: res.locals.teacher as TeacherAccountDto };
-  sendPdf(res, await answerKeyService.getAnswerKeyFile(req.params.id, actor));
 };
 
 export const setAnswerKeyPublished: RequestHandler<IdParams> = async (req, res) => {
@@ -117,6 +112,3 @@ export const saveAnswerKeyAnswers: RequestHandler<IdParams, unknown, SaveAnswerK
   sendSuccess(res, await answerKeyService.saveAnswerKeyAnswers(req.params.id, req.body));
 };
 
-export const reparseAnswerKey: RequestHandler<IdParams> = async (req, res) => {
-  sendSuccess(res, await answerKeyService.reparseAnswerKey(req.params.id));
-};

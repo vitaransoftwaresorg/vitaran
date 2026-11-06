@@ -87,13 +87,6 @@ export function findVisibleAnswerKey(id: string, access: Prisma.AnswerKeyWhereIn
   });
 }
 
-export function findAnswerKeyFile(where: Prisma.AnswerKeyWhereInput) {
-  return prisma.answerKey.findFirst({
-    where,
-    select: { fileName: true, data: true },
-  });
-}
-
 export function createAnswerKey(data: Prisma.AnswerKeyUncheckedCreateInput) {
   return prisma.answerKey.create({ data, select: answerKeyDetailSelect });
 }

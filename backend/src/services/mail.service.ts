@@ -262,65 +262,6 @@ export async function sendTeacherCredentialsEmail(input: {
   return teacherSent;
 }
 
-/**
- * School → parent/guardian: student registration number and password on file.
- */
-export async function sendStudentCredentialsEmail(input: {
-  to: string;
-  studentName: string;
-  schoolName: string;
-  schoolEmail?: string | null;
-  schoolCode: string;
-  rollNo: string;
-  password: string;
-  reason: "created" | "password-reset" | "resend";
-}) {
-  const brand = input.schoolName;
-  const schoolEmail = input.schoolEmail?.trim() || null;
-  const subject =
-    input.reason === "password-reset"
-      ? `Student password updated — ${input.schoolName}`
-      : `Student record — ${input.schoolName}`;
-  const greeting =
-    input.reason === "password-reset"
-      ? "Password updated"
-      : input.reason === "resend"
-        ? `Details for ${input.studentName}`
-        : `Welcome, ${input.studentName}`;
-  const intro =
-    input.reason === "password-reset"
-      ? `${input.schoolName} updated the password on file for ${input.studentName}.`
-      : `${input.schoolName} added ${input.studentName} as a student.`;
-
-  const loginId = input.rollNo;
-  const text = [
-    brand,
-    greeting,
-    "",
-    `School: ${input.schoolName}`,
-    `Registration number: ${input.rollNo}`,
-    `Password: ${input.password}`,
-  ].join("\n");
-
-  return sendMail({
-    to: input.to,
-    fromName: brand,
-    replyTo: schoolEmail,
-    cc: input.reason === "password-reset" && schoolEmail && schoolEmail !== input.to ? schoolEmail : null,
-    subject,
-    text,
-    html: credentialsHtml({
-      brand,
-      greeting,
-      intro,
-      loginId,
-      loginLabel: "Registration number",
-      password: input.password,
-      footerNote: `Sent by ${input.schoolName}. Reply to this email to reach your school.`,
-    }),
-  });
-}
-
 export async function sendPasswordResetOtpEmail(input: {
   to: string;
   brand: string;
@@ -339,4 +280,78 @@ export async function sendPasswordResetOtpEmail(input: {
     text: `Your password reset code is ${input.otp}. It expires in ${minutes} minutes.`,
     html: otpHtml({ brand: input.brand, otp: input.otp, minutes }),
   });
+}
+
+export async function sendObjectionAlertEmail(input: {
+  to: string[];
+  schoolName: string;
+  schoolCode: string;
+  raisedBy: string;
+  teacherName?: string | null;
+  programCode: string;
+  testNumber: number;
+  testId: string;
+  classLevel: number;
+  questionNumber: number | null;
+  subjectLabel: string | null;
+  proposedAnswer: string | null;
+  message: string;
+  adminObjectionsUrl: string;
+}) {
+  const recipients = [...new Set(input.to.map((row) => row.trim().toLowerCase()).filter(Boolean))];
+  if (recipients.length === 0) return false;
+
+  const who =
+    input.teacherName?.trim()
+      ? `${input.raisedBy} (${input.teacherName.trim()})`
+      : input.raisedBy;
+  const question =
+    input.questionNumber != null
+      ? `Q${input.questionNumber}${input.subjectLabel ? ` · ${input.subjectLabel}` : ""}`
+      : "General";
+  const claim =
+    input.proposedAnswer === "NONE"
+      ? "No right answer"
+      : input.proposedAnswer?.trim() || "—";
+
+  const subject = `Objection · Test ${input.testNumber} · ${question} · ${input.schoolName}`;
+  const lines = [
+    `School: ${input.schoolName} (${input.schoolCode})`,
+    `Raised by: ${who}`,
+    `Key: ${input.programCode} · Test ${input.testNumber}${input.testId ? ` · ${input.testId}` : ""} · Class ${input.classLevel}`,
+    `Question: ${question}`,
+    `Claims: ${claim}`,
+    "",
+    input.message.trim(),
+    "",
+    `Review: ${input.adminObjectionsUrl}`,
+  ];
+
+  const html = `
+    <div style="font-family:system-ui,sans-serif;line-height:1.5;color:#171717">
+      <p style="margin:0 0 12px"><strong>New answer key objection</strong></p>
+      <table style="border-collapse:collapse;font-size:14px">
+        <tr><td style="padding:4px 12px 4px 0;color:#737373">School</td><td>${escapeHtml(input.schoolName)} (${escapeHtml(input.schoolCode)})</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;color:#737373">Raised by</td><td>${escapeHtml(who)}</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;color:#737373">Key</td><td>${escapeHtml(input.programCode)} · Test ${input.testNumber}${input.testId ? ` · ${escapeHtml(input.testId)}` : ""} · Class ${input.classLevel}</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;color:#737373">Question</td><td>${escapeHtml(question)}</td></tr>
+        <tr><td style="padding:4px 12px 4px 0;color:#737373">Claims</td><td>${escapeHtml(claim)}</td></tr>
+      </table>
+      <p style="margin:16px 0 8px;white-space:pre-wrap">${escapeHtml(input.message.trim())}</p>
+      <p style="margin:16px 0 0"><a href="${escapeHtml(input.adminObjectionsUrl)}">Open objections inbox</a></p>
+    </div>
+  `;
+
+  const results = await Promise.all(
+    recipients.map((to) =>
+      sendMail({
+        to,
+        fromName: "Vitaran Learning",
+        subject,
+        text: lines.join("\n"),
+        html,
+      }),
+    ),
+  );
+  return results.some(Boolean);
 }

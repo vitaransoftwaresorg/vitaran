@@ -19,14 +19,13 @@ import {
   asSubjectRanges,
   defaultSubjectRanges,
   diffCorrections,
-  parseAnswerKeyPdf,
 } from "../utils/answer-key-parse.js";
 import { AppError } from "../utils/app-error.js";
 import { notifyContentChanged } from "../utils/content-events.js";
-import { logger } from "../utils/logger.js";
-import { readPdf, toPdfData } from "../utils/pdf.js";
 import { enteredTestId } from "../utils/test-id.js";
+import { renderAnswerKeyPdf } from "./answer-key.pdf.js";
 import { answerKeyAccessFilter, type ContentActor } from "./content-access.js";
+import { loadVitaranLogo } from "./rank-card.render.js";
 import { toSchoolRef, type SchoolAccountDto } from "./school.service.js";
 
 const KIND = "answer-keys";
@@ -75,43 +74,6 @@ type ParsedJsonFields = {
   printedExplanations: Prisma.InputJsonValue;
   subjectRanges: Prisma.InputJsonValue;
 };
-
-async function parsedFromPdf(pdf: Buffer): Promise<ParsedJsonFields> {
-  try {
-    const parsed = await parseAnswerKeyPdf(pdf);
-    if (Object.keys(parsed.answers).length === 0) {
-      throw new AppError(422, "Could not read answers from this PDF");
-    }
-    return {
-      answers: parsed.answers as Prisma.InputJsonValue,
-      explanations: parsed.explanations as Prisma.InputJsonValue,
-      printedAnswers: parsed.answers as Prisma.InputJsonValue,
-      printedExplanations: parsed.explanations as Prisma.InputJsonValue,
-      subjectRanges: parsed.subjectRanges as Prisma.InputJsonValue,
-    };
-  } catch (error) {
-    if (error instanceof AppError) throw error;
-    logger.warn({ err: error }, "Could not parse answer key PDF");
-    throw new AppError(422, "Could not read answers from this PDF");
-  }
-}
-
-async function withPrintedSnapshot(row: AnswerKeyDetail): Promise<AnswerKeyDetail> {
-  if (Object.keys(asAnswers(row.printedAnswers)).length > 0) return row;
-  const file = await answerKeyRepository.findAnswerKeyFile({ id: row.id });
-  if (!file || file.data.length === 0) return row;
-  try {
-    const parsed = await parseAnswerKeyPdf(Buffer.from(file.data));
-    if (Object.keys(parsed.answers).length === 0) return row;
-    return answerKeyRepository.updateAnswerKey(row.id, {
-      printedAnswers: parsed.answers as Prisma.InputJsonValue,
-      printedExplanations: parsed.explanations as Prisma.InputJsonValue,
-    });
-  } catch (error) {
-    logger.warn({ err: error, id: row.id }, "Could not snapshot printed KEY");
-    return row;
-  }
-}
 
 const classLevelIssue = (message: string) =>
   new AppError(400, message, [{ path: ["classLevel"], message }]);
@@ -293,7 +255,7 @@ export async function getAnswerKeyStats() {
 export async function getAnswerKey(id: string) {
   const answerKey = await answerKeyRepository.findAnswerKeyById(id);
   if (!answerKey) throw new AppError(404, "Answer key not found");
-  return toAnswerKeyDto(await withPrintedSnapshot(answerKey));
+  return toAnswerKeyDto(answerKey);
 }
 
 function emptyKeyFile() {
@@ -311,16 +273,11 @@ async function blankKeyFields(programCode: string): Promise<ParsedJsonFields> {
   };
 }
 
-export async function uploadAnswerKey(
-  { schoolId, fileName, program, ...meta }: UploadAnswerKeyQuery,
-  body: unknown,
-) {
-  const pdf = readPdf(body);
+export async function uploadAnswerKey({ schoolId, program, ...meta }: UploadAnswerKeyQuery) {
   const resolvedSchoolId = await resolveSchoolId(meta.type, schoolId);
   await assertProgramClass(meta.type, program, meta.classLevel, resolvedSchoolId);
   await assertUniqueTestId(meta.testId);
 
-  const parsed = pdf ? await parsedFromPdf(pdf) : await blankKeyFields(program);
   return toAnswerKeyDto(
     await answerKeyRepository.createAnswerKey({
       type: meta.type,
@@ -329,23 +286,17 @@ export async function uploadAnswerKey(
       classLevel: meta.classLevel,
       programCode: program,
       schoolId: resolvedSchoolId,
-      ...(pdf ? toPdfData(pdf, fileName ?? "answer-key.pdf") : emptyKeyFile()),
-      ...parsed,
+      ...emptyKeyFile(),
+      ...(await blankKeyFields(program)),
     }),
   );
 }
 
-export async function updateAnswerKey(
-  id: string,
-  { schoolId, fileName, program, ...meta }: UpdateAnswerKeyQuery,
-  body: unknown,
-) {
-  const pdf = readPdf(body);
+export async function updateAnswerKey(id: string, { schoolId, program, ...meta }: UpdateAnswerKeyQuery) {
   const resolvedSchoolId = await resolveSchoolId(meta.type, schoolId);
   await assertProgramClass(meta.type, program, meta.classLevel, resolvedSchoolId);
   await assertUniqueTestId(meta.testId, id);
 
-  const parsed = pdf ? await parsedFromPdf(pdf) : {};
   const answerKey = await answerKeyRepository.updateAnswerKey(id, {
     type: meta.type,
     ...(meta.testId ? { testId: meta.testId } : {}),
@@ -353,28 +304,10 @@ export async function updateAnswerKey(
     classLevel: meta.classLevel,
     programCode: program,
     schoolId: resolvedSchoolId,
-    ...(pdf && toPdfData(pdf, fileName ?? "answer-key.pdf")),
-    ...parsed,
   });
   // The key may have moved to another school, so tell every school.
   if (answerKey.published) notifyContentChanged({ kind: KIND, schoolId: null });
   return toAnswerKeyDto(answerKey);
-}
-
-function toContentActor(actor?: ContentActor | SchoolAccountDto): ContentActor | undefined {
-  if (!actor) return undefined;
-  if ("kind" in actor) return actor;
-  return { kind: "school", school: actor };
-}
-
-export async function getAnswerKeyFile(id: string, actor?: ContentActor | SchoolAccountDto) {
-  const contentActor = toContentActor(actor);
-  const file = await answerKeyRepository.findAnswerKeyFile({
-    id,
-    ...(contentActor && answerKeyAccessFilter(contentActor)),
-  });
-  if (!file || file.data.length === 0) throw new AppError(404, "Answer key not found");
-  return file;
 }
 
 export async function listVisibleAnswerKeys(actor: ContentActor) {
@@ -428,7 +361,6 @@ export async function setAnswerKeyTestId(id: string, testId: string) {
 export async function saveAnswerKeyAnswers(id: string, input: SaveAnswerKeyAnswersInput) {
   const existing = await answerKeyRepository.findAnswerKeyById(id);
   if (!existing) throw new AppError(404, "Answer key not found");
-  await withPrintedSnapshot(existing);
 
   const answers = asAnswers(input.answers);
   const explanations: Record<string, string> = {};
@@ -468,29 +400,43 @@ export async function saveAnswerKeyAnswers(id: string, input: SaveAnswerKeyAnswe
   return toAnswerKeyDto(answerKey);
 }
 
+/** Branded, printable answer key with Vitaran and the viewer's school logo. */
+export async function getAnswerKeyPdf(id: string, actor: ContentActor) {
+  const row = await answerKeyRepository.findVisibleAnswerKey(id, answerKeyAccessFilter(actor));
+  if (!row) throw new AppError(404, "Answer key not found");
+  const answers = asAnswers(row.answers);
+  if (Object.keys(answers).length === 0) throw new AppError(404, "No answers published for this test yet");
+
+  const school = actor.kind === "school" ? actor.school : actor.teacher.school;
+  const programName =
+    school.schoolPrograms.find((program) => program.programCode === row.programCode)?.programName ??
+    (await programRepository.findProgramByCode(row.programCode))?.name ??
+    row.programCode;
+  const [logo, vitaran] = await Promise.all([schoolRepository.findSchoolLogo(school.id), loadVitaranLogo()]);
+  const testId = enteredTestId(row.testId);
+
+  const data = await renderAnswerKeyPdf(
+    {
+      schoolName: school.name,
+      programName: programName === school.name ? `Class ${row.classLevel}` : programName,
+      testNumber: row.testNumber,
+      testId: testId ?? null,
+      classLevel: row.classLevel,
+      correctMarks: row.correctMarks ?? 1,
+      wrongMarks: row.wrongMarks ?? 0,
+      publishedAt: row.publishedAt ?? row.updatedAt,
+      answers,
+      explanations: asExplanations(row.explanations),
+      subjectRanges: asSubjectRanges(row.subjectRanges),
+    },
+    { vitaran, school: logo?.logoData ? Buffer.from(logo.logoData) : null },
+  );
+  const name = ["Answer-Key", `Class-${row.classLevel}`, `Test-${row.testNumber}`, testId].filter(Boolean).join("-");
+  return { fileName: `${name}.pdf`, data };
+}
+
 export async function getVisibleAnswerKey(id: string, actor: ContentActor) {
   const row = await answerKeyRepository.findVisibleAnswerKey(id, answerKeyAccessFilter(actor));
   if (!row) throw new AppError(404, "Answer key not found");
-  return toAnswerKeyDto(await withPrintedSnapshot(row));
-}
-
-/** Re-read the stored PDF into the editor. Does not write until admin clicks Save. */
-export async function reparseAnswerKey(id: string) {
-  const file = await answerKeyRepository.findAnswerKeyFile({ id });
-  if (!file || file.data.length === 0) {
-    throw new AppError(422, "This answer key has no PDF to parse");
-  }
-  const existing = await answerKeyRepository.findAnswerKeyById(id);
-  if (!existing) throw new AppError(404, "Answer key not found");
-  const parsed = await parseAnswerKeyPdf(Buffer.from(file.data));
-  if (Object.keys(parsed.answers).length === 0) {
-    throw new AppError(422, "Could not read answers from this PDF");
-  }
-  return toAnswerKeyDto({
-    ...existing,
-    answers: parsed.answers,
-    printedAnswers: parsed.answers,
-    explanations: existing.explanations,
-    subjectRanges: parsed.subjectRanges,
-  });
+  return toAnswerKeyDto(row);
 }

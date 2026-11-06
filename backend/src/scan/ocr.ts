@@ -101,6 +101,8 @@ function looksLikeDate(digits: string) {
 function isPlausibleTestId(value: string) {
   if (!/^\d{5,8}$/.test(value) || /^20\d{2}/.test(value) || /20(2[4-9]|3\d)/.test(value)) return false;
   if (value.length === 6 && looksLikeDate(value)) return false;
+  // All-same / trivial digit runs are almost never real test IDs.
+  if (/^(\d)\1+$/.test(value)) return false;
   return true;
 }
 

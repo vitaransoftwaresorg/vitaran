@@ -8,6 +8,7 @@ import {
   warpQuad,
   type Rgba,
 } from "../utils/omr-geometry.js";
+import { locateAnswerGrid, scoreAnswerGrid } from "../utils/omr-grid.js";
 import { layoutOmrBubbles } from "../utils/omr-layout.js";
 import { cv, matFromRgba, type CvMat } from "./cv.js";
 
@@ -252,12 +253,15 @@ function houghCircles(gray: CvMat) {
   return circles;
 }
 
-export async function warpSheet(image: Buffer): Promise<Rgba> {
+export async function warpSheet(image: Buffer, options: { flat?: boolean } = {}): Promise<Rgba> {
   const rgba = await asRgba(image);
-  const quad = findPaperQuad(rgba);
-  if (quad) {
-    const warped = await warpQuad(rgba, quad);
-    return warped.rgba;
+  // PDF pages are already flat scans — perspective warp often mis-finds corners and shifts bubbles.
+  if (!options.flat) {
+    const quad = findPaperQuad(rgba);
+    if (quad) {
+      const warped = await warpQuad(rgba, quad);
+      return warped.rgba;
+    }
   }
   const resized = await sharp(rgba.data, { raw: { width: rgba.width, height: rgba.height, channels: 4 } })
     .resize(CANONICAL_WIDTH, CANONICAL_HEIGHT, { fit: "fill" })
@@ -268,12 +272,59 @@ export async function warpSheet(image: Buffer): Promise<Rgba> {
 }
 
 export function readAnswerBubbles(rgba: Rgba) {
+  // Primary: grid fitted to the printed bubble circles on this sheet (handles margins, tilt, perspective).
+  try {
+    const grid = locateAnswerGrid(rgba);
+    if (grid && grid.snapped >= 320) {
+      const read = scoreAnswerGrid(rgba, grid);
+      return {
+        answers: read.answers,
+        markCount: Object.keys(read.answers).length,
+        flags: read.flags,
+        measured: true,
+        bubbles: bubbleMap(rgba, grid.radius, read.cells),
+      };
+    }
+  } catch {
+    // Fall through to the fixed-template layout.
+  }
   const layout = layoutOmrBubbles(rgba);
   const answers: Record<string, AnswerOption[]> = {};
   for (const [question, options] of Object.entries(layout.answers)) {
     if (options.length) answers[question] = options;
   }
-  return { answers, markCount: Object.keys(answers).length, flags: layout.flags, measured: layout.measured };
+  return {
+    answers,
+    markCount: Object.keys(answers).length,
+    flags: layout.flags,
+    measured: layout.measured,
+    bubbles: bubbleMap(rgba, layout.radius, layout.bubbles),
+  };
+}
+
+export type BubbleMap = {
+  width: number;
+  height: number;
+  radius: number;
+  points: Array<{ question: number; option: AnswerOption; x: number; y: number }>;
+};
+
+function bubbleMap(
+  rgba: Rgba,
+  radius: number,
+  cells: Array<{ question: number; option: AnswerOption; x: number; y: number }>,
+): BubbleMap {
+  return {
+    width: rgba.width,
+    height: rgba.height,
+    radius: Math.round(radius * 10) / 10,
+    points: cells.map(({ question, option, x, y }) => ({
+      question,
+      option,
+      x: Math.round(x * 10) / 10,
+      y: Math.round(y * 10) / 10,
+    })),
+  };
 }
 
 export function readRollBubbles(rgba: Rgba) {

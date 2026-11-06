@@ -20,7 +20,12 @@ export const schoolProgramInclude = {
   },
 } satisfies Prisma.SchoolInclude;
 
-export type SchoolWithPrograms = Prisma.SchoolGetPayload<{ include: typeof schoolProgramInclude }>;
+export type SchoolWithPrograms = Prisma.SchoolGetPayload<{
+  include: typeof schoolProgramInclude;
+  omit: { logoData: true };
+}>;
+
+const omitLogoBytes = { logoData: true } as const;
 
 /** Table / dashboard rows — no programs, address, or credentials. */
 export const schoolSummarySelect = {
@@ -35,6 +40,7 @@ export const schoolSummarySelect = {
   city: true,
   state: true,
   createdAt: true,
+  logoMimeType: true,
 } satisfies Prisma.SchoolSelect;
 
 export type SchoolSummaryRow = Prisma.SchoolGetPayload<{ select: typeof schoolSummarySelect }>;
@@ -66,6 +72,7 @@ export const schoolSessionSelect = {
   status: true,
   accountEmail: true,
   passwordHash: true,
+  logoMimeType: true,
   createdAt: true,
   updatedAt: true,
   schoolPrograms: {
@@ -131,7 +138,43 @@ export async function findSchools(query: ListSchoolsQuery) {
 }
 
 export function findSchoolById(id: string) {
-  return prisma.school.findUnique({ where: { id }, include: schoolProgramInclude });
+  return prisma.school.findUnique({
+    where: { id },
+    include: schoolProgramInclude,
+    omit: omitLogoBytes,
+  });
+}
+
+export function findSchoolLogo(id: string) {
+  return prisma.school.findUnique({
+    where: { id },
+    select: { id: true, logoData: true, logoMimeType: true, logoFileName: true },
+  });
+}
+
+export async function setSchoolLogo(
+  id: string,
+  logo: { logoData: Buffer; logoMimeType: string; logoFileName: string },
+) {
+  await prisma.school.update({
+    where: { id },
+    data: {
+      logoData: logo.logoData as unknown as Uint8Array<ArrayBuffer>,
+      logoMimeType: logo.logoMimeType,
+      logoFileName: logo.logoFileName,
+    },
+    select: { id: true },
+  });
+  return findSchoolById(id);
+}
+
+export async function clearSchoolLogo(id: string) {
+  await prisma.school.update({
+    where: { id },
+    data: { logoData: null, logoMimeType: null, logoFileName: null },
+    select: { id: true },
+  });
+  return findSchoolById(id);
 }
 
 export function findSchoolSessionById(id: string) {
@@ -210,6 +253,7 @@ export function createSchool(
       schoolPrograms: programNestedCreate(programs),
     },
     include: schoolProgramInclude,
+    omit: omitLogoBytes,
   });
 }
 
@@ -244,6 +288,7 @@ export async function updateSchool(
       where: { id },
       data: rest,
       include: schoolProgramInclude,
+      omit: omitLogoBytes,
     });
   });
 }

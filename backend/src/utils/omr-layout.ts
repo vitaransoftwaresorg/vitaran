@@ -17,16 +17,14 @@ const GROUP_SPLITS = [0.464, 0.572, 0.688];
 const SPLIT_SEARCH_X = 0.05;
 const SPLIT_SEARCH_Y = 0.035;
 /**
- * The darkest option in a row is the answer when it stands clear of the other three, so light
- * pencil still counts. Fills here are above the option's empty-bubble level on the same sheet.
+ * ~10% of the bubble core darker than paper counts as attempted. Prefer the darkest option
+ * in the row unless all four look empty.
  */
-const MARK_MIN = 0.04;
-const MARK_LEAD = 0.03;
-/** A printed letter never inks more of the core than this; above it the option is just popular. */
-const LETTER_INK_MAX = 0.15;
-/** Two options this dark and this close are both filled. */
-const MARK_FILL = 0.18;
-const MARK_GAP = 0.08;
+const MARK_ABS = 0.08;
+const MARK_LEAD = 0.004;
+const BLANK_SPREAD = 0.01;
+/** Two options this close both above MARK_ABS → multi-mark. */
+const MARK_GAP = 0.035;
 
 export type OmFlag = { question: number; reason: string };
 
@@ -210,6 +208,25 @@ function rowCentres(img: Gray, cell: Box, thr: number) {
   });
 }
 
+/** Mean darkness 0..1 inside the bubble interior. */
+function coreDarkness(img: Gray, cx: number, cy: number, radius: number) {
+  const r = Math.max(2, radius * 0.85);
+  const r2 = r * r;
+  let sum = 0;
+  let total = 0;
+  for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) {
+    for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
+      if ((x - cx) ** 2 + (y - cy) ** 2 > r2) continue;
+      sum += 255 - px(img, x, y);
+      total += 1;
+    }
+  }
+  return total ? sum / (total * 255) : 0;
+}
+
+/**
+ * Fraction of core pixels darker than `thr`. Soft thr (≈ paper×0.88) so light grey / 10% fills count.
+ */
 function coreFill(img: Gray, cx: number, cy: number, radius: number, thr: number) {
   const r2 = radius * radius;
   let dark = 0;
@@ -222,6 +239,62 @@ function coreFill(img: Gray, cx: number, cy: number, radius: number, thr: number
     }
   }
   return total ? dark / total : 0;
+}
+
+/**
+ * Also count pixels meaningfully darker than this bubble's own mean — catches faint pencil
+ * that sits just under a hard paper threshold.
+ */
+function softFill(img: Gray, cx: number, cy: number, radius: number) {
+  const r2 = radius * radius;
+  const values: number[] = [];
+  for (let y = Math.floor(cy - radius); y <= Math.ceil(cy + radius); y++) {
+    for (let x = Math.floor(cx - radius); x <= Math.ceil(cx + radius); x++) {
+      if ((x - cx) ** 2 + (y - cy) ** 2 > r2) continue;
+      values.push(px(img, x, y));
+    }
+  }
+  if (!values.length) return 0;
+  const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+  const thr = mean - 8;
+  return values.filter((v) => v < thr).length / values.length;
+}
+
+/**
+ * Nudge the sample centre — layout centres are often a few px off the ink blob.
+ * Score prioritises fill fraction so ~10% dark area registers.
+ */
+function sampleMark(
+  img: Gray,
+  cx: number,
+  cy: number,
+  radius: number,
+  width: number,
+  thr: number,
+) {
+  let best = 0;
+  let bestEven = 0;
+  let bestRing = 0;
+  const softThr = Math.max(thr, 40);
+  const step = Math.max(1, Math.round(radius * 0.28));
+  for (let dy = -3 * step; dy <= 3 * step; dy += step) {
+    for (let dx = -3 * step; dx <= 3 * step; dx += step) {
+      if (dx * dx + dy * dy > (3.1 * step) ** 2) continue;
+      const x = cx + dx;
+      const y = cy + dy;
+      const fill = Math.max(coreFill(img, x, y, radius, softThr), softFill(img, x, y, radius));
+      const dark = coreDarkness(img, x, y, radius);
+      const shape = ringShape(img, x, y, width, softThr);
+      // Fill fraction is the primary signal (user: 10% fill = attempted).
+      const score = Math.max(fill, dark * 0.65, shape.even * 0.7, shape.ring * 0.45);
+      if (score >= best) {
+        best = score;
+        bestEven = shape.even;
+        bestRing = shape.ring;
+      }
+    }
+  }
+  return { fill: best, even: bestEven, ring: bestRing };
 }
 
 const SECTORS = 8;
@@ -294,7 +367,9 @@ function localRowInk(img: Gray, x0: number, x1: number, yFrom: number) {
 function findGroupBands(img: Gray, x0: number, x1: number): Box[] | null {
   const W = img.width;
   const H = img.height;
-  const yFrom = Math.round(H * 0.01);
+  // Full Vitaran sheets have a tall header — start below it or registration/title bands win.
+  const fullSheet = H / W > 1.2;
+  const yFrom = Math.round(H * (fullSheet ? 0.3 : 0.01));
   const rows = localRowInk(img, x0, x1, yFrom);
   const bands: Band[] = [];
   let current: Band | null = null;
@@ -418,7 +493,7 @@ function measuredBlocks(img: Gray, bands: Box[]) {
     if (!columns) return null;
     columns.forEach((cell, c) => {
       const local = paperLevel(img, cell);
-      cells.push({ c, g, cell, ink: local * 0.82, dark: local * 0.66 });
+      cells.push({ c, g, cell, ink: local * 0.86, dark: local * 0.88 });
     });
   }
 
@@ -464,15 +539,31 @@ function measuredBlocks(img: Gray, bands: Box[]) {
 }
 
 function pickMarked(cells: Array<{ option: AnswerOption; fill: number }>) {
+  if (cells.length === 0) return { marked: [] as typeof cells };
   const ranked = [...cells].sort((a, b) => b.fill - a.fill);
-  const best = ranked[0];
+  const best = ranked[0]!;
   const second = ranked[1]?.fill ?? 0;
-  if (!best || best.fill < MARK_MIN) return { marked: [] as typeof cells };
-  if (second >= MARK_FILL && best.fill - second < MARK_GAP) {
-    return { marked: ranked.filter((cell) => cell.fill >= MARK_FILL) };
+  const lightest = Math.min(...cells.map((cell) => cell.fill));
+  const spread = best.fill - lightest;
+  const lead = best.fill - second;
+
+  // True blank: nothing near 10% fill and all four look the same.
+  if (best.fill < MARK_ABS && spread < BLANK_SPREAD) return { marked: [] as typeof cells };
+
+  // Two similar fills → multi-mark.
+  if (second >= MARK_ABS && lead < MARK_GAP && second >= best.fill * 0.8) {
+    return {
+      marked: ranked
+        .filter((cell) => cell.fill >= MARK_ABS * 0.85)
+        .map((cell) => ({ option: cell.option, fill: cell.fill })),
+    };
   }
-  if (best.fill < MARK_FILL && best.fill - second < MARK_LEAD) return { marked: [] as typeof cells };
-  return { marked: [best] };
+
+  // ~10% of bubble dark, or any detectable darkest option in the row.
+  if (best.fill >= MARK_ABS || lead >= MARK_LEAD || spread >= BLANK_SPREAD) {
+    return { marked: [{ option: best.option, fill: best.fill }] };
+  }
+  return { marked: [] as typeof cells };
 }
 
 export function layoutOmrBubbles(rgba: Rgba): OmLayout {
@@ -511,41 +602,28 @@ export function layoutOmrBubbles(rgba: Rgba): OmLayout {
         flags.push({ question, reason: "Could not locate the bubbles for this question" });
         continue;
       }
-      const radius = Math.max(3, fit.width * 0.36);
+      const radius = Math.max(3, fit.width * 0.42);
       radii.push(radius);
       const cy = rows[r]!;
-      const cells = xs.map((cx, i) => ({
-        option: ANSWER_OPTIONS[i]!,
-        x: cx,
-        y: cy,
-        fill: coreFill(img, cx, cy, radius, dark),
-        ...ringShape(img, cx, cy, fit.width, dark),
-      }));
+      const cells = xs.map((cx, i) => {
+        const mark = sampleMark(img, cx, cy, radius, fit.width, dark);
+        return {
+          option: ANSWER_OPTIONS[i]!,
+          x: cx,
+          y: cy,
+          fill: mark.fill,
+          ring: mark.ring,
+          even: mark.even,
+        };
+      });
       for (const cellRead of cells) bubbles.push({ question, ...cellRead });
     }
   }
 
-  // The printed letter inside an empty bubble carries ink of its own ("B" more than "C"), and
-  // light varies across a photo. Measure each option's empty level per printed column of 20
-  // questions and judge marks above it.
-  const columnOf = (question: number) => Math.floor((question - 1) / ROWS);
-  const baseline = new Map<string, number>();
-  for (let c = 0; c < COLS; c++) {
-    for (const option of ANSWER_OPTIONS) {
-      const fills = bubbles
-        .filter((b) => b.option === option && columnOf(b.question) === c)
-        .map((b) => b.fill)
-        .sort((a, b) => a - b);
-      baseline.set(`${c}${option}`, Math.min(LETTER_INK_MAX, fills[Math.floor(fills.length * 0.25)] ?? 0));
-    }
-  }
   const byQuestion = new Map<number, OmBubble[]>();
   for (const bubble of bubbles) byQuestion.set(bubble.question, [...(byQuestion.get(bubble.question) ?? []), bubble]);
   for (const [question, cells] of byQuestion) {
-    const c = columnOf(question);
-    const { marked } = pickMarked(
-      cells.map((cell) => ({ option: cell.option, fill: Math.max(0, cell.fill - (baseline.get(`${c}${cell.option}`) ?? 0)) })),
-    );
+    const { marked } = pickMarked(cells.map((cell) => ({ option: cell.option, fill: cell.fill })));
     if (marked.length) answers[String(question)] = marked.map((cell) => cell.option);
     if (marked.length > 1) flags.push({ question, reason: "More than one option is filled" });
   }
@@ -623,7 +701,7 @@ function fixedBlocks(img: Gray, search: Box): Block[] {
       const cell: Box = { ...column, y0: groupEdges[g]!, y1: groupEdges[g + 1]! };
       const local = paperLevel(img, cell);
       const ink = local * 0.82;
-      blocks.push({ c, g, cell, ink, dark: local * 0.66, fit: optionCentres(img, cell, ink), xs: null, ys: null });
+      blocks.push({ c, g, cell, ink, dark: local * 0.88, fit: optionCentres(img, cell, ink), xs: null, ys: null });
     }
   }
   return blocks;

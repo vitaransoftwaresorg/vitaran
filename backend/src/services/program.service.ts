@@ -2,7 +2,10 @@ import * as answerKeyRepository from "../repositories/answer-key.repository.js";
 import * as programRepository from "../repositories/program.repository.js";
 import type { CreateProgramInput, UpdateProgramInput } from "../schemas/program.schema.js";
 import { AppError } from "../utils/app-error.js";
+import { notifyContentChanged } from "../utils/content-events.js";
 import { prisma } from "../config/database.js";
+
+const KIND = "programs" as const;
 
 function toDto(program: Awaited<ReturnType<typeof programRepository.findProgramById>>) {
   if (!program) return null;
@@ -51,7 +54,7 @@ export async function createProgram(input: CreateProgramInput) {
     ]);
   }
 
-  return toDto(
+  const program = toDto(
     await programRepository.createProgram({
       code,
       name: input.name,
@@ -62,6 +65,8 @@ export async function createProgram(input: CreateProgramInput) {
       subjects: input.subjects,
     }),
   )!;
+  notifyContentChanged({ kind: KIND, schoolId: null });
+  return program;
 }
 
 export async function updateProgram(id: string, input: UpdateProgramInput) {
@@ -107,6 +112,7 @@ export async function updateProgram(id: string, input: UpdateProgramInput) {
     });
   }
 
+  notifyContentChanged({ kind: KIND, schoolId: null });
   return toDto(updated)!;
 }
 
@@ -131,4 +137,5 @@ export async function deleteProgram(id: string) {
   }
 
   await programRepository.deleteProgram(id);
+  notifyContentChanged({ kind: KIND, schoolId: null });
 }

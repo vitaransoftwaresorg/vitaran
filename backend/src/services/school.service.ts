@@ -18,10 +18,13 @@ import type {
   UpdateSchoolInput,
 } from "../schemas/school.schema.js";
 import { AppError } from "../utils/app-error.js";
+import { notifyContentChanged } from "../utils/content-events.js";
 import { subjectsForClassLevel } from "../utils/subject.js";
 import { hashPassword, verifyPassword } from "../utils/password.js";
 import { decryptSecret, encryptSecret } from "../utils/secret-box.js";
 import { sendSchoolCredentialsEmail } from "./mail.service.js";
+
+const KIND = "schools" as const;
 
 export type SchoolProgramClassDto = {
   classLevel: number;
@@ -52,6 +55,7 @@ export type SchoolSummaryDto = {
   city: string;
   state: string;
   createdAt: string;
+  hasLogo: boolean;
 };
 
 export type SchoolOptionDto = {
@@ -127,6 +131,7 @@ export function toSchoolSummaryDto(school: SchoolSummaryRow): SchoolSummaryDto {
     city: school.city,
     state: school.state,
     createdAt: school.createdAt.toISOString(),
+    hasLogo: Boolean(school.logoMimeType),
   };
 }
 
@@ -209,6 +214,7 @@ export function toSchoolSessionAccountDto(school: SchoolSessionRow): SchoolAccou
     accountPhone: null,
     schoolPrograms,
     programCodes: schoolPrograms.map((row) => row.programCode),
+    hasLogo: Boolean(school.logoMimeType),
     createdAt: school.createdAt.toISOString(),
     updatedAt: school.updatedAt.toISOString(),
   };
@@ -423,6 +429,7 @@ export async function createSchool({
     });
   }
 
+  notifyContentChanged({ kind: KIND, schoolId: school.id });
   return school;
 }
 
@@ -472,11 +479,13 @@ export async function updateSchool(
     });
   }
 
+  notifyContentChanged({ kind: KIND, schoolId: id });
   return dto;
 }
 
 export async function deleteSchool(id: string): Promise<void> {
   await schoolRepository.deleteSchool(id);
+  notifyContentChanged({ kind: KIND, schoolId: id });
 }
 
 /** Admin resends the current login email + password to the school account email. */
@@ -534,5 +543,60 @@ export async function getSchoolStats() {
     ...stats,
     inactive: stats.total - stats.active,
     recent: recent.map(toSchoolSummaryDto),
+  };
+}
+
+const LOGO_MAX_BYTES = 2 * 1024 * 1024;
+const LOGO_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+export async function uploadSchoolLogo(
+  id: string,
+  file: { buffer: Buffer; mimetype: string; originalname: string; size: number },
+) {
+  const school = await schoolRepository.findSchoolById(id);
+  if (!school) throw new AppError(404, "School not found");
+
+  if (!LOGO_MIME.has(file.mimetype)) {
+    throw new AppError(400, "Upload a PNG, JPEG, or WebP logo");
+  }
+  if (file.size <= 0 || file.size > LOGO_MAX_BYTES) {
+    throw new AppError(400, "Logo must be under 2 MB");
+  }
+
+  const updated = await schoolRepository.setSchoolLogo(id, {
+    logoData: file.buffer,
+    logoMimeType: file.mimetype,
+    logoFileName: file.originalname.slice(0, 255) || "logo",
+  });
+  if (!updated) throw new AppError(404, "School not found");
+  notifyContentChanged({ kind: KIND, schoolId: id });
+  return {
+    ...toSchoolDto(updated),
+    password: updated.passwordEncrypted ? decryptSecret(updated.passwordEncrypted) : null,
+  };
+}
+
+export async function getSchoolLogo(id: string) {
+  const row = await schoolRepository.findSchoolLogo(id);
+  if (!row?.logoData || !row.logoMimeType) {
+    throw new AppError(404, "School logo not found");
+  }
+  return {
+    data: Buffer.from(row.logoData),
+    mimeType: row.logoMimeType,
+    fileName: row.logoFileName ?? "logo",
+  };
+}
+
+export async function deleteSchoolLogo(id: string) {
+  const school = await schoolRepository.findSchoolById(id);
+  if (!school) throw new AppError(404, "School not found");
+  if (!school.logoMimeType) throw new AppError(404, "School logo not found");
+  const updated = await schoolRepository.clearSchoolLogo(id);
+  if (!updated) throw new AppError(404, "School not found");
+  notifyContentChanged({ kind: KIND, schoolId: id });
+  return {
+    ...toSchoolDto(updated),
+    password: updated.passwordEncrypted ? decryptSecret(updated.passwordEncrypted) : null,
   };
 }

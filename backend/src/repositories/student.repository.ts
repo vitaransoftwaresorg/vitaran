@@ -36,6 +36,8 @@ function listWhere(query: ListFilter): Prisma.StudentWhereInput {
         { name: { contains: query.q, mode: "insensitive" } },
         { rollNo: { contains: query.q, mode: "insensitive" } },
         { email: { contains: query.q, mode: "insensitive" } },
+        { parentName: { contains: query.q, mode: "insensitive" } },
+        { parentPhone: { contains: query.q, mode: "insensitive" } },
       ],
     });
   }
@@ -112,6 +114,8 @@ export const studentListSelect = {
   name: true,
   rollNo: true,
   email: true,
+  parentName: true,
+  parentPhone: true,
   programId: true,
   classLevel: true,
   sectionId: true,
@@ -122,6 +126,19 @@ export const studentListSelect = {
   program: { select: { code: true, name: true } },
   section: { select: { id: true, name: true } },
 } satisfies Prisma.StudentSelect;
+
+/** When a whole class is converted to a named section, attach existing students. */
+export function assignWholeClassStudentsToSection(
+  schoolId: string,
+  programId: string,
+  classLevel: number,
+  sectionId: string,
+) {
+  return prisma.student.updateMany({
+    where: { schoolId, programId, classLevel, sectionId: null },
+    data: { sectionId },
+  });
+}
 
 export async function findStudents(query: ListFilter) {
   const where = listWhere(query);
@@ -174,12 +191,12 @@ export function createStudent(data: {
   name: string;
   rollNo: string;
   email: string | null;
+  parentName: string;
+  parentPhone: string;
   programId: string;
   classLevel: number;
   sectionId: string | null;
   status: StudentStatus;
-  passwordHash: string;
-  passwordEncrypted: string;
 }) {
   return prisma.student.create({ data, include: studentInclude });
 }
@@ -231,6 +248,8 @@ export async function findStudentsForTeacher(
                 { name: { contains: query.q, mode: "insensitive" } },
                 { rollNo: { contains: query.q, mode: "insensitive" } },
                 { email: { contains: query.q, mode: "insensitive" } },
+                { parentName: { contains: query.q, mode: "insensitive" } },
+                { parentPhone: { contains: query.q, mode: "insensitive" } },
               ],
             },
           ],

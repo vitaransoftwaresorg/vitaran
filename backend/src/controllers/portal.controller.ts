@@ -67,7 +67,7 @@ export const getTeacherDashboard: RequestHandler = async (_req, res) => {
     classTeacherLabels: (teacher.classTeacherSections ?? []).map((row) =>
       row.kind === "section"
         ? `Class ${row.classLevel}-${row.sectionName}`
-        : `Class ${row.classLevel}`,
+        : `Class ${row.classLevel}-A`,
     ),
   });
 };

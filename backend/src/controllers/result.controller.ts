@@ -1,12 +1,15 @@
 import type { RequestHandler, Response } from "express";
 import type {
+  ClassResultTemplateQuery,
   ListResultSetsQuery,
+  ManualResultSheetInput,
   ResultSetFields,
   ResultSheetParams,
 } from "../schemas/result.schema.js";
 import type { PublishBody } from "../schemas/publish.schema.js";
 import * as resultService from "../services/result.service.js";
 import type { UploadedFiles } from "../services/result.service.js";
+import { getRankCards as getRankCardFiles } from "../services/rank-card.service.js";
 import type { ContentActor } from "../services/content-access.js";
 import type { SchoolAccountDto } from "../services/school.service.js";
 import type { TeacherAccountDto } from "../services/teacher.service.js";
@@ -49,6 +52,17 @@ export const uploadResultSet: RequestHandler = async (req, res) => {
   );
 };
 
+export const getClassResultTemplate: RequestHandler = async (req, res) => {
+  sendSuccess(
+    res,
+    await resultService.getClassResultTemplate(req.query as unknown as ClassResultTemplateQuery),
+  );
+};
+
+export const saveManualResultSheet: RequestHandler = async (req, res) => {
+  sendSuccess(res, await resultService.saveManualResultSheet(req.body as ManualResultSheetInput), 201);
+};
+
 export const updateResultSet: RequestHandler<IdParams> = async (req, res) => {
   sendSuccess(
     res,
@@ -68,6 +82,17 @@ export const deleteResultSet: RequestHandler<IdParams> = async (req, res) => {
 
 export const getResultSheet: RequestHandler = async (req, res) => {
   sendSuccess(res, await resultService.getResultSheet(sheetParams(req.params)));
+};
+
+export const getRankCards: RequestHandler = async (req, res) => {
+  const roll = typeof req.query.roll === "string" ? req.query.roll.trim().slice(0, 64) : "";
+  const format = req.query.format === "jpg" ? "jpg" : "pdf";
+  const file = await getRankCardFiles(sheetParams(req.params), { roll: roll || undefined, format });
+  res
+    .type(file.type)
+    .set("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(file.fileName)}`)
+    .set("Cache-Control", "private, no-store")
+    .send(file.data);
 };
 
 export const getResultSheetFile: RequestHandler = async (req, res) => {
