@@ -9,6 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { displaySectionName } from "@/features/schools/section-label";
 import { deleteStudentInPlaceAction } from "@/features/students/actions";
 import { deleteAdminStudentInPlaceAction } from "@/features/students/admin-student-actions";
+import { PROFILE_LINK_CLASS, ProfileLink, schoolProfileHref } from "@/components/shared/profile-link";
 import { cn } from "@/lib/utils";
 import type { Student } from "@/types/student";
 
@@ -89,18 +90,22 @@ export function StudentsTable({
               <tr key={student.id} className="border-b border-neutral-100 last:border-0">
                 {showSchool ? (
                   <td className="px-4 py-2.5 text-neutral-700">
-                    {student.schoolName ?? "—"}
+                    {student.schoolName ? (
+                      <ProfileLink href={mode === "admin" ? schoolProfileHref(student.schoolId) : null}>
+                        {student.schoolName}
+                      </ProfileLink>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                 ) : null}
                 <td className="px-4 py-2.5 font-medium text-neutral-950 tabular-nums">
                   {detail ? (
-                    <Link href={detail} className="text-brand-900 hover:underline">
-                      {student.rollNo}
-                    </Link>
+                    <ProfileLink href={detail}>{student.rollNo}</ProfileLink>
                   ) : onView ? (
                     <button
                       type="button"
-                      className="font-medium text-brand-900 hover:underline"
+                      className={PROFILE_LINK_CLASS}
                       onClick={() => onView(student.id)}
                     >
                       {student.rollNo}
@@ -111,13 +116,11 @@ export function StudentsTable({
                 </td>
                 <td className="px-4 py-2.5">
                   {detail ? (
-                    <Link href={detail} className="font-medium text-brand-900 hover:underline">
-                      {student.name}
-                    </Link>
+                    <ProfileLink href={detail}>{student.name}</ProfileLink>
                   ) : onView ? (
                     <button
                       type="button"
-                      className="font-medium text-brand-900 hover:underline"
+                      className={PROFILE_LINK_CLASS}
                       onClick={() => onView(student.id)}
                     >
                       {student.name}

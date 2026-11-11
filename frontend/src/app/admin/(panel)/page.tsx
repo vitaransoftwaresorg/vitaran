@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Suspense } from "react";
-import { CheckCircle2, KeyRound, Plus, School, Trophy, Upload } from "lucide-react";
+import { CheckCircle2, KeyRound, Plus, School, Trophy } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import {
   Empty,
@@ -19,16 +19,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ProfileLink, schoolProfileHref } from "@/components/shared/profile-link";
 import { cn } from "@/lib/utils";
 import {
   DashboardSkeleton,
   Meter,
   Panel,
+  STAT_GRID,
   StatCard,
   SummaryTile,
 } from "@/features/admin/dashboard-parts";
 import { PageHeader } from "@/features/admin/page-header";
-import { RESULT_UPLOAD_PATH } from "@/features/results/constants";
+import { RESULTS_PATH } from "@/features/results/constants";
 import { BOARD_LABELS, programLabel } from "@/features/schools/constants";
 import { SchoolStatusBadge } from "@/features/schools/school-status-badge";
 import { SchoolTypeBadge } from "@/features/schools/school-type-badge";
@@ -56,18 +58,21 @@ export default function AdminDashboardPage() {
         actions={
           <>
             <Link
-              href={RESULT_UPLOAD_PATH}
+              href={RESULTS_PATH}
               className={buttonVariants({
                 variant: "outline",
-                className: "h-10 rounded-lg border-brand-200 px-4 text-brand-900 hover:bg-brand-50",
+                className:
+                  "h-10 flex-1 rounded-lg border-brand-200 px-4 text-brand-900 hover:bg-brand-50 sm:flex-none",
               })}
             >
-              <Upload />
-              Upload results
+              <Trophy />
+              Enter results
             </Link>
             <Link
               href="/admin/schools/new"
-              className={buttonVariants({ className: "h-10 rounded-lg bg-brand-900 px-4 text-white hover:bg-brand-800" })}
+              className={buttonVariants({
+                className: "h-10 flex-1 rounded-lg bg-brand-900 px-4 text-white hover:bg-brand-800 sm:flex-none",
+              })}
             >
               <Plus />
               Register school
@@ -88,7 +93,7 @@ async function DashboardContent() {
 
   return (
     <>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className={cn(STAT_GRID, "xl:grid-cols-4")}>
         <StatCard
           label="Total schools"
           value={stats.total}
@@ -184,12 +189,12 @@ async function DashboardContent() {
                   {stats.recent.map((school) => (
                     <TableRow key={school.id} className="border-brand-100/70 hover:bg-brand-50/30">
                       <TableCell className="max-w-56 py-2 pl-4">
-                        <Link
-                          href={`/admin/schools/${school.id}`}
-                          className="block truncate text-xs font-semibold text-neutral-950 hover:underline"
+                        <ProfileLink
+                          href={schoolProfileHref(school.id)}
+                          className="block truncate text-xs font-semibold"
                         >
                           {school.name}
-                        </Link>
+                        </ProfileLink>
                         <span className="text-xs text-neutral-500">
                           {school.city}, {school.state}
                         </span>

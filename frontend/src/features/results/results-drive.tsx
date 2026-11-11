@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { wasEdited } from "@/features/documents/constants";
 import { DriveBrowser, type DriveCrumb, type DriveItem } from "@/features/documents/drive-browser";
 import { programLabel, TYPE_LABELS } from "@/features/schools/constants";
@@ -8,9 +7,8 @@ import type { DeleteResult } from "@/types/document";
 import type { LearningProgram } from "@/types/program";
 import type { ResultSet } from "@/types/result";
 import { formatDateTime, formatNumber } from "@/utils/format";
-import { RESULTS_PATH, resultEditHref, resultEnterHref, resultSetHref } from "./constants";
+import { RESULTS_PATH, resultEnterHref, resultSetHref } from "./constants";
 import { DRIVE_TESTS, type DrivePath, type DriveSchool } from "./drive-path";
-import { ResultUploadSheet } from "./result-upload-sheet";
 import { isRegularProgramCode, resultOfferingsForSchool } from "./school-program";
 
 export type { DrivePath, DriveSchool } from "./drive-path";
@@ -118,15 +116,10 @@ export function ResultsDrive({
   path,
   publishAction,
 }: ResultsDriveProps) {
-  const [uploadPath, setUploadPath] = useState<DrivePath | null>(null);
-
   const schoolId = path.schoolId;
   const currentSchool = schools.find((school) => school.id === schoolId);
   const link = (next: DrivePath, type?: DriveSchool["type"]) =>
     hrefFor(next, type ?? currentSchool?.type ?? schools.find((s) => s.id === next.schoolId)?.type);
-  const drivePath: DrivePath = { ...path, schoolId };
-
-  const activeSet = findResultSet(resultSets, drivePath);
 
   const breadcrumbs: DriveCrumb[] = [{ label: "Results", href: RESULTS_PATH }];
   if (schoolId) {
@@ -145,10 +138,6 @@ export function ResultsDrive({
   const atRoot = !schoolId;
   const inSchool = Boolean(schoolId);
   const inTest = inSchool && path.testNumber !== undefined;
-
-  const openUpload = (classLevel: number, program?: string) => {
-    setUploadPath({ ...drivePath, classLevel, program });
-  };
 
   const driveItems: DriveItem[] = [];
 
@@ -211,7 +200,6 @@ export function ResultsDrive({
         }
 
         const viewHref = resultSetHref(RESULTS_PATH, resultSet.id, entry.classLevel);
-        const editHref = resultEditHref(resultSet.id);
         return {
           id: `${resultSet.id}:${entry.classLevel}`,
           name: `Class ${entry.classLevel}`,
@@ -232,12 +220,6 @@ export function ResultsDrive({
           actions: [
             { label: "Enter marks", href: enterHref, icon: "edit" as const },
             { label: "View", href: viewHref, icon: "view" as const },
-            { label: "Update", href: editHref, icon: "edit" as const },
-            {
-              label: "Replace file",
-              onSelect: () => openUpload(entry.classLevel, entry.program),
-              icon: "upload" as const,
-            },
           ],
         };
       }),
@@ -251,27 +233,11 @@ export function ResultsDrive({
       : "No tests yet";
 
   return (
-    <>
-      <ResultUploadSheet
-        open={uploadPath !== null}
-        onOpenChange={(open) => {
-          if (!open) setUploadPath(null);
-        }}
-        path={uploadPath ?? drivePath}
-        schools={schools}
-        programs={programs}
-        resultSet={
-          uploadPath
-            ? findResultSet(resultSets, uploadPath)
-            : activeSet
-        }
-      />
-      <DriveBrowser
-        breadcrumbs={breadcrumbs}
-        items={driveItems}
-        emptyText={emptyText}
-        searchPlaceholder="Search in this folder"
-      />
-    </>
+    <DriveBrowser
+      breadcrumbs={breadcrumbs}
+      items={driveItems}
+      emptyText={emptyText}
+      searchPlaceholder="Search in this folder"
+    />
   );
 }

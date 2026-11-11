@@ -11,7 +11,7 @@ import {
 import Form from "next/form";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertCircle, ArrowLeft, ArrowRight, ImagePlus, Loader2, Save, X } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowRight, Crop, ImagePlus, Loader2, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -43,6 +43,7 @@ import { smoothScrollToElement, useSmoothWheelScroll } from "@/hooks/use-smooth-
 import {
   createSchoolAction,
   isEmailTakenAction,
+  isSchoolCodeTakenAction,
   updateSchoolAction,
 } from "./actions";
 import {
@@ -65,6 +66,7 @@ import {
 } from "./form-steps";
 import { clearSchoolDraft, saveSchoolDraft, useSchoolDraft } from "./school-draft";
 import { HintedInput } from "./hinted-input";
+import { LogoCropper } from "./logo-cropper";
 import { SchoolFormStepper } from "./school-form-stepper";
 import {
   capitalizeWords,
@@ -96,6 +98,8 @@ const EMAIL_FIELDS = ["accountEmail", "contactEmail"] as const;
 type EmailField = (typeof EMAIL_FIELDS)[number];
 const EMAIL_CHECK_DELAY_MS = 400;
 const normalizeEmail = (value = "") => value.trim().toLowerCase();
+const CODE_TAKEN = "This school ID already exists";
+const normalizeCode = (value = "") => value.trim().toUpperCase();
 
 const phoneInput = {
   type: "tel",
@@ -208,6 +212,7 @@ export function SchoolForm({ school, catalog }: SchoolFormProps) {
       mode={school ? "edit" : "create"}
       schoolId={school?.id}
       hasLogo={Boolean(school?.hasLogo)}
+      logoVersion={school?.updatedAt}
       catalog={catalog}
       action={formAction}
       pending={pending}
@@ -226,6 +231,8 @@ type SchoolFormWizardProps = {
   mode: SchoolFormMode;
   schoolId?: string;
   hasLogo?: boolean;
+  /** Changes whenever the school is saved, so the browser fetches a replaced logo. */
+  logoVersion?: string;
   catalog: LearningProgram[];
   action: (formData: FormData) => void;
   pending: boolean;
@@ -243,6 +250,7 @@ function SchoolFormWizard({
   mode,
   schoolId,
   hasLogo = false,
+  logoVersion,
   catalog,
   action,
   pending,
@@ -274,6 +282,8 @@ function SchoolFormWizard({
   const [maxReached, setMaxReached] = useState(() => getReachableStep(values, mode));
   const [clientErrors, setClientErrors] = useState<SchoolFormErrors>({});
   const [takenEmails, setTakenEmails] = useState<string[]>([]);
+  const [takenCodes, setTakenCodes] = useState<string[]>([]);
+  const codeCheckTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [dirty, setDirty] = useState(
     () => !!savedValues && !sameFormValues(initialValues, savedValues),
   );
@@ -282,7 +292,10 @@ function SchoolFormWizard({
 
   useEffect(() => {
     const timers = emailCheckTimers.current;
-    return () => Object.values(timers).forEach(clearTimeout);
+    return () => {
+      Object.values(timers).forEach(clearTimeout);
+      clearTimeout(codeCheckTimer.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -314,6 +327,8 @@ function SchoolFormWizard({
       const email = normalizeEmail(formValues[field]);
       if (email && takenEmails.includes(email)) formErrors[field] = [EMAIL_TAKEN];
     }
+    const code = normalizeCode(formValues.code);
+    if (code && takenCodes.includes(code)) formErrors.code = [CODE_TAKEN];
     return formErrors;
   };
 
@@ -334,6 +349,24 @@ function SchoolFormWizard({
       if (normalizeEmail(input?.value) === email) {
         setClientErrors((prev) => ({ ...prev, [field]: [EMAIL_TAKEN] }));
       }
+    }, EMAIL_CHECK_DELAY_MS);
+  };
+
+  /** Only speaks up when the ID is taken; a free ID shows nothing. */
+  const checkCodeTaken = (value: string) => {
+    clearTimeout(codeCheckTimer.current);
+    const code = normalizeCode(value);
+    if (!code) return;
+    if (takenCodes.includes(code)) {
+      setClientErrors((prev) => ({ ...prev, code: [CODE_TAKEN] }));
+      return;
+    }
+    codeCheckTimer.current = setTimeout(async () => {
+      const taken = await isSchoolCodeTakenAction(code, schoolId);
+      if (!taken) return;
+      setTakenCodes((prev) => [...prev, code]);
+      const input = formRef.current?.elements.namedItem("code") as HTMLInputElement | null;
+      if (normalizeCode(input?.value) === code) setClientErrors((prev) => ({ ...prev, code: [CODE_TAKEN] }));
     }, EMAIL_CHECK_DELAY_MS);
   };
 
@@ -497,7 +530,9 @@ function SchoolFormWizard({
                     {...fieldProps("code")}
                     autoComplete="off"
                     spellCheck={false}
-                    placeholder="e.g. VLS-0018"
+                    inputMode="numeric"
+                    placeholder="e.g. 1018"
+                    onInput={(event) => checkCodeTaken(event.currentTarget.value)}
                     className="font-mono"
                   />
                   {error("code")}
@@ -512,6 +547,7 @@ function SchoolFormWizard({
             <SchoolLogoField
               schoolId={schoolId}
               hasLogo={hasLogo}
+              logoVersion={logoVersion}
               error={errors.logo?.[0]}
               onDirty={() => {
                 if (isEdit) setDirty(true);
@@ -805,12 +841,14 @@ function SchoolFormWizard({
 function SchoolLogoField({
   schoolId,
   hasLogo,
+  logoVersion,
   error,
   onDirty,
   onClearError,
 }: {
   schoolId?: string;
   hasLogo: boolean;
+  logoVersion?: string;
   error?: string;
   onDirty?: () => void;
   onClearError: () => void;
@@ -819,10 +857,13 @@ function SchoolLogoField({
   const [preview, setPreview] = useState<string | null>(null);
   const [fileName, setFileName] = useState("");
   const [removeLogo, setRemoveLogo] = useState(false);
+  /** The uncropped image, so Crop can be redone from the full picture. */
+  const [original, setOriginal] = useState<{ url: string; name: string } | null>(null);
+  const [cropping, setCropping] = useState<string | null>(null);
 
   const existingSrc =
     schoolId && hasLogo && !removeLogo && !preview
-      ? `/admin/schools/${schoolId}/logo`
+      ? `/admin/schools/${schoolId}/logo${logoVersion ? `?v=${encodeURIComponent(logoVersion)}` : ""}`
       : null;
   const shownSrc = preview ?? existingSrc;
 
@@ -831,6 +872,36 @@ function SchoolLogoField({
       if (preview) URL.revokeObjectURL(preview);
     };
   }, [preview]);
+
+  const originalUrl = original?.url;
+  useEffect(() => {
+    return () => {
+      if (originalUrl) URL.revokeObjectURL(originalUrl);
+    };
+  }, [originalUrl]);
+
+  function applyCrop(file: File) {
+    const input = inputRef.current;
+    if (input) {
+      const files = new DataTransfer();
+      files.items.add(file);
+      input.files = files.files;
+    }
+    if (preview) URL.revokeObjectURL(preview);
+    setPreview(URL.createObjectURL(file));
+    setFileName(original?.name ?? file.name);
+    setRemoveLogo(false);
+    setCropping(null);
+    onDirty?.();
+    onClearError();
+  }
+
+  function cancelCrop() {
+    // A new pick that was never cropped is dropped, so the old logo stays.
+    if (!preview && inputRef.current) inputRef.current.value = "";
+    if (!preview) setOriginal(null);
+    setCropping(null);
+  }
 
   return (
     <Field data-invalid={error ? true : undefined} className="md:col-span-2 lg:col-span-6">
@@ -854,17 +925,12 @@ function SchoolLogoField({
             className="sr-only"
             onChange={(event) => {
               const file = event.currentTarget.files?.[0] ?? null;
+              if (!file) return;
               if (preview) URL.revokeObjectURL(preview);
-              if (!file) {
-                setPreview(null);
-                setFileName("");
-                return;
-              }
-              setRemoveLogo(false);
-              setPreview(URL.createObjectURL(file));
-              setFileName(file.name);
-              onDirty?.();
-              onClearError();
+              setPreview(null);
+              const url = URL.createObjectURL(file);
+              setOriginal({ url, name: file.name });
+              setCropping(url);
             }}
           />
           {removeLogo ? <input type="hidden" name="removeLogo" value="1" /> : null}
@@ -882,6 +948,18 @@ function SchoolLogoField({
             {shownSrc ? (
               <Button
                 type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setCropping(original?.url ?? shownSrc)}
+              >
+                <Crop className="size-3.5" />
+                Crop
+              </Button>
+            ) : null}
+            {shownSrc ? (
+              <Button
+                type="button"
                 variant="ghost"
                 size="sm"
                 className="gap-1.5 text-neutral-600"
@@ -889,6 +967,7 @@ function SchoolLogoField({
                   if (preview) URL.revokeObjectURL(preview);
                   setPreview(null);
                   setFileName("");
+                  setOriginal(null);
                   if (inputRef.current) inputRef.current.value = "";
                   if (hasLogo) setRemoveLogo(true);
                   onDirty?.();
@@ -910,6 +989,7 @@ function SchoolLogoField({
         </div>
       </div>
       {error ? <FieldError>{error}</FieldError> : null}
+      <LogoCropper src={cropping} onCancel={cancelCrop} onCrop={applyCrop} />
     </Field>
   );
 }

@@ -1,8 +1,8 @@
 import "server-only";
 import { ApiError } from "@/services/api-client";
-import { adminApi } from "@/services/admin-api";
-import { schoolApi } from "@/services/school-api";
-import { teacherApi } from "@/services/teacher-api";
+import { adminApi, adminFetch } from "@/services/admin-api";
+import { schoolApi, schoolFetch } from "@/services/school-api";
+import { teacherApi, teacherFetch } from "@/services/teacher-api";
 import type {
   CreateStudentInput,
   CreateStudentsBulkInput,
@@ -216,3 +216,28 @@ export async function findStudentIdByRoll(
 }
 
 export type { Student, StudentDetail, StudentTestResult };
+
+export function fetchAdminStudentPdf(id: string) {
+  return adminFetch(`/students/${encodeURIComponent(id)}/pdf`);
+}
+
+export function fetchSchoolStudentPdf(id: string) {
+  return schoolFetch(`/school/students/${encodeURIComponent(id)}/pdf`);
+}
+
+export function fetchTeacherStudentPdf(id: string) {
+  return teacherFetch(`/teacher/students/${encodeURIComponent(id)}/pdf`);
+}
+
+/** `ids` is a comma-separated list of student ids, in print order. */
+export function fetchAdminStudentProfilesPdf(ids: string) {
+  return adminFetch(`/students/profiles/pdf?ids=${encodeURIComponent(ids)}`);
+}
+
+export function fetchSchoolStudentProfilesPdf(ids: string) {
+  return schoolFetch(`/school/students/profiles/pdf?ids=${encodeURIComponent(ids)}`);
+}
+
+export function fetchTeacherStudentProfilesPdf(ids: string) {
+  return teacherFetch(`/teacher/students/profiles/pdf?ids=${encodeURIComponent(ids)}`);
+}

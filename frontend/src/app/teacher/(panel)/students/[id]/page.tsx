@@ -18,6 +18,7 @@ export default async function TeacherStudentDetailPage({ params }: { params: Pro
       student={student}
       showActions={false}
       performance={performance}
+      portal="teacher"
     />
   );
 }

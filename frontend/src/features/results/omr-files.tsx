@@ -20,12 +20,19 @@ type OmrKind = "preview" | "raw";
 
 const KIND_LABEL: Record<OmrKind, string> = { preview: "Evaluated", raw: "Original" };
 
-export function omrImageHref(scanId: string, kind: OmrKind, download = false) {
-  return `${RESULTS_PATH}/omr/${encodeURIComponent(scanId)}?kind=${kind}${download ? "&download=1" : ""}`;
+export function omrImageHref(scanId: string, kind: OmrKind, download = false, basePath = RESULTS_PATH) {
+  return `${basePath}/omr/${encodeURIComponent(scanId)}?kind=${kind}${download ? "&download=1" : ""}`;
 }
 
 /** View / download buttons for one student's saved OMR. */
-export function OmrCell({ scan }: { scan: ClassScan | undefined }) {
+export function OmrCell({
+  scan,
+  basePath = RESULTS_PATH,
+}: {
+  scan: ClassScan | undefined;
+  /** The portal's results section. */
+  basePath?: string;
+}) {
   const [kind, setKind] = useState<OmrKind>("preview");
   if (!scan) return <span className="text-neutral-300">—</span>;
   return (
@@ -60,7 +67,7 @@ export function OmrCell({ scan }: { scan: ClassScan | undefined }) {
                 ))}
               </div>
               <a
-                href={omrImageHref(scan.id, kind, true)}
+                href={omrImageHref(scan.id, kind, true, basePath)}
                 className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-neutral-200 px-2.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
               >
                 <Download className="size-3.5" />
@@ -76,7 +83,7 @@ export function OmrCell({ scan }: { scan: ClassScan | undefined }) {
             <div className="min-h-0 flex-1 p-3">
               <img
                 key={kind}
-                src={omrImageHref(scan.id, kind)}
+                src={omrImageHref(scan.id, kind, false, basePath)}
                 alt={`${KIND_LABEL[kind]} OMR of ${scan.studentName}`}
                 className="size-full object-contain"
               />
@@ -85,7 +92,7 @@ export function OmrCell({ scan }: { scan: ClassScan | undefined }) {
         </Dialog.Portal>
       </Dialog.Root>
       <a
-        href={omrImageHref(scan.id, "preview", true)}
+        href={omrImageHref(scan.id, "preview", true, basePath)}
         title="Download evaluated OMR"
         className="inline-flex size-8 items-center justify-center rounded-md text-brand-900 hover:bg-brand-50"
       >
@@ -99,9 +106,11 @@ export function OmrCell({ scan }: { scan: ClassScan | undefined }) {
 export function ClassOmrDownload({
   path,
   count,
+  basePath = RESULTS_PATH,
 }: {
   path: { schoolId: string; testNumber: number; classLevel: number; program?: string };
   count: number;
+  basePath?: string;
 }) {
   const href = (kind: OmrKind) => {
     const query = new URLSearchParams({
@@ -112,7 +121,7 @@ export function ClassOmrDownload({
       download: "1",
     });
     if (path.program) query.set("program", path.program);
-    return `${RESULTS_PATH}/omr/class?${query}`;
+    return `${basePath}/omr/class?${query}`;
   };
   return (
     <DropdownMenu>

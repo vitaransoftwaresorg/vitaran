@@ -11,6 +11,7 @@ import type {
   AnswerOption,
   SchoolTestOption,
   SubjectRange,
+  TestIdAvailability,
 } from "@/types/answer-key";
 import type {
   AnswerKeyObjection,
@@ -68,6 +69,12 @@ export function updateAnswerKey(id: string, input: AnswerKeyInput) {
 
 export function setAnswerKeyPublished(id: string, published: boolean) {
   return adminApi<AnswerKey>(`${itemPath(BASE, id)}/publish`, { method: "PATCH", body: { published } });
+}
+
+export function checkAnswerKeyTestId(testId: string, exceptId?: string) {
+  const query = new URLSearchParams({ testId });
+  if (exceptId) query.set("exceptId", exceptId);
+  return adminApi<TestIdAvailability>(`${BASE}/test-id/check?${query}`);
 }
 
 export function setAnswerKeyTestId(id: string, testId: string) {

@@ -2,7 +2,7 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { RETURN_TO_COOKIE, SCHOOL_HOME_PATH, safePortalReturnPath } from "@/constants/auth";
+import { RETURN_TO_COOKIE, SCHOOL_HOME_PATH } from "@/constants/auth";
 import { attemptLogin } from "@/features/auth/attempt-login";
 import type { LoginFormState } from "@/features/auth/schema";
 import { loginSchool } from "@/services/auth";
@@ -20,9 +20,8 @@ export async function schoolLogin(
   if (failure) return failure;
 
   const cookieStore = await cookies();
-  const returnTo = cookieStore.get(RETURN_TO_COOKIE)?.value;
   cookieStore.delete(RETURN_TO_COOKIE);
-  redirect(safePortalReturnPath(returnTo, "school", SCHOOL_HOME_PATH));
+  redirect(SCHOOL_HOME_PATH);
 }
 
 export async function schoolLogout() {

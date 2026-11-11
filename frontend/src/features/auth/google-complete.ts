@@ -9,7 +9,6 @@ import {
   SCHOOL_LOGIN_PATH,
   TEACHER_HOME_PATH,
   RETURN_TO_COOKIE,
-  safePortalReturnPath,
 } from "@/constants/auth";
 import { googleErrorCode } from "@/features/auth/google-errors";
 import { createSchoolSession } from "@/features/school-auth/session";
@@ -59,13 +58,12 @@ export async function completeGoogleSignIn(): Promise<never> {
       await createTeacherSession(result.token, result.expiresAt);
     }
 
-    const returnTo = cookieStore.get(RETURN_TO_COOKIE)?.value;
     await clearGoogleHandshakeCookies();
 
     if (result.role === "teacher") {
-      redirect(safePortalReturnPath(returnTo, "teacher", TEACHER_HOME_PATH));
+      redirect(TEACHER_HOME_PATH);
     }
-    redirect(safePortalReturnPath(returnTo, "school", SCHOOL_HOME_PATH));
+    redirect(SCHOOL_HOME_PATH);
   } catch (error) {
     unstable_rethrow(error);
     await clearGoogleHandshakeCookies();

@@ -80,3 +80,17 @@ export type SchoolTestOption = {
     classLevels: number[];
   }>;
 };
+
+/** Whether a 6-digit test ID is free for a new or edited answer key. */
+export type TestIdAvailability = {
+  testId: string;
+  available: boolean;
+  usedBy: {
+    id: string;
+    program: string;
+    type: "REGULAR" | "CUSTOMIZED";
+    classLevel: number;
+    testNumber: number;
+    school: string | null;
+  } | null;
+};

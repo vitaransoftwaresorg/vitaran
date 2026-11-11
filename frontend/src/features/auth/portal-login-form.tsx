@@ -61,7 +61,7 @@ export function PortalLoginForm({ googleError }: { googleError?: string | null }
       <CardHeader>
         <CardTitle className="text-2xl font-bold text-neutral-950">Portal sign in</CardTitle>
         <CardDescription>
-          Sign in with your school or teacher email (or phone) and password.
+          Sign in with your school or teacher 
         </CardDescription>
       </CardHeader>
 

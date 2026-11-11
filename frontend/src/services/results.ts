@@ -37,10 +37,6 @@ export function getResultSet(id: string) {
 }
 
 /** `form` carries the text fields and one `class_N` file per uploaded class. */
-export function uploadResultSet(form: FormData) {
-  return adminApi<ResultSet>(BASE, { method: "POST", body: form });
-}
-
 export type ManualResultSheetInput = {
   schoolId: string;
   program?: string;
@@ -76,10 +72,6 @@ export function getClassResultTemplate(query: {
   return adminApi<{ columns: string[] }>(`${BASE}/class-template?${params}`);
 }
 
-export function updateResultSet(id: string, form: FormData) {
-  return adminApi<ResultSet>(setPath(BASE, id), { method: "PATCH", body: form });
-}
-
 export function setResultSetPublished(id: string, published: boolean) {
   return adminApi<ResultSet>(`${setPath(BASE, id)}/publish`, { method: "PATCH", body: { published } });
 }
@@ -96,11 +88,33 @@ export function fetchResultSheetFile(id: string, classLevel: number) {
   return adminFetch(`${sheetPath(BASE, id, classLevel)}/file`);
 }
 
+/** The whole class in rank order as one printable PDF (notice board). */
+export function fetchClassResultPdf(id: string, classLevel: number, portal: "admin" | "school" | "teacher" = "admin") {
+  const [base, fetcher] =
+    portal === "school"
+      ? [SCHOOL_BASE, schoolFetch]
+      : portal === "teacher"
+        ? [TEACHER_BASE, teacherFetch]
+        : [BASE, adminFetch];
+  return fetcher(`${sheetPath(base, id, classLevel)}/result-pdf`);
+}
+
 /** Rank card(s): one student by roll number, or the whole class; PDF or a JPG preview. */
-export function fetchRankCards(id: string, classLevel: number, options: { roll?: string; format: "pdf" | "jpg" }) {
+export function fetchRankCards(
+  id: string,
+  classLevel: number,
+  options: { roll?: string; format: "pdf" | "jpg" },
+  portal: "admin" | "school" | "teacher" = "admin",
+) {
   const query = new URLSearchParams({ format: options.format });
   if (options.roll) query.set("roll", options.roll);
-  return adminFetch(`${sheetPath(BASE, id, classLevel)}/rank-cards?${query}`);
+  const [base, fetcher] =
+    portal === "school"
+      ? [SCHOOL_BASE, schoolFetch]
+      : portal === "teacher"
+        ? [TEACHER_BASE, teacherFetch]
+        : [BASE, adminFetch];
+  return fetcher(`${sheetPath(base, id, classLevel)}/rank-cards?${query}`);
 }
 
 /** Only the signed-in school's own results. */

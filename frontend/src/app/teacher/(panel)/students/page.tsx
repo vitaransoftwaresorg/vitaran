@@ -1,12 +1,12 @@
 import { PageHeader } from "@/features/admin/page-header";
-import { StudentsTable } from "@/features/students/students-table";
+import { StudentsByClass } from "@/features/students/class-profile-cards";
 import { verifyTeacherSession } from "@/features/teacher-auth/session";
 import { listTeacherStudents } from "@/services/students";
 
 export default async function TeacherStudentsPage() {
   const [teacher, list] = await Promise.all([
     verifyTeacherSession(),
-    listTeacherStudents({ pageSize: 50 }),
+    listTeacherStudents({ pageSize: 500 }),
   ]);
 
   const ctLabels = (teacher.classTeacherSections ?? []).map((row) =>
@@ -26,9 +26,9 @@ export default async function TeacherStudentsPage() {
         }
         count={list.pagination.total}
       />
-      <StudentsTable
+      <StudentsByClass
+        portal="teacher"
         students={list.items}
-        mode="teacher"
         emptyMessage="No students in your classes yet."
       />
     </>

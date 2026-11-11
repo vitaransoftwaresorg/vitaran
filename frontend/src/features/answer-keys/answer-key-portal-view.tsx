@@ -1,6 +1,5 @@
 "use client";
 
-import { Fragment } from "react";
 import { MessageSquareWarning } from "lucide-react";
 import { subjectLabel } from "@/features/schools/constants";
 import { cn } from "@/lib/utils";
@@ -104,20 +103,48 @@ function QuestionObjectionCard({
   );
 }
 
-const DESKTOP_ROWS = 10;
+/** Rows per block — Q1–5 down the first column, Q6–10 down the next, like the OMR sheet. */
+const BLOCK_ROWS = 5;
+const MOBILE_COLUMNS = 3;
+const DESKTOP_COLUMNS = 5;
 
-/** Column-wise: Q1–Q10 down col 1, Q11–Q20 down col 2, … */
-function columnWiseGrid(questions: number[], rows: number) {
-  const columns = Math.max(1, Math.ceil(questions.length / rows));
-  const grid: Array<Array<number | null>> = Array.from({ length: rows }, () =>
-    Array.from({ length: columns }, () => null),
+/** Splits questions into blocks of `BLOCK_ROWS × columns`, each filled column by column. */
+function columnBlocks(questions: number[], columns: number) {
+  const size = BLOCK_ROWS * columns;
+  return Array.from({ length: Math.ceil(questions.length / size) }, (_, index) =>
+    questions.slice(index * size, (index + 1) * size),
   );
-  questions.forEach((question, index) => {
-    const col = Math.floor(index / rows);
-    const row = index % rows;
-    grid[row]![col] = question;
-  });
-  return { grid, columns };
+}
+
+function KeyBlocks({
+  questions,
+  answers,
+  columns,
+  className,
+}: {
+  questions: number[];
+  answers: Record<string, KeyAnswer>;
+  columns: number;
+  className?: string;
+}) {
+  return (
+    <div className={cn("space-y-3 p-3 sm:p-4", className)}>
+      {columnBlocks(questions, columns).map((block) => (
+        <div
+          key={block[0]}
+          className="grid grid-flow-col gap-1.5"
+          style={{
+            gridTemplateRows: `repeat(${BLOCK_ROWS}, auto)`,
+            gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+          }}
+        >
+          {block.map((question) => (
+            <KeyCell key={question} question={question} answer={answers[String(question)]} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function KeyCell({
@@ -128,7 +155,7 @@ function KeyCell({
   answer?: KeyAnswer;
 }) {
   return (
-    <div className="flex items-center justify-between gap-2 rounded-md border border-neutral-200 bg-white px-2.5 py-1.5">
+    <div className="flex items-center justify-between gap-1.5 rounded-md border border-neutral-200 bg-white px-2 py-1.5">
       <span className="text-xs font-bold text-neutral-700 tabular-nums">{question}</span>
       <span className="text-sm font-bold text-neutral-950 tabular-nums">
         {answer ?? <span className="text-amber-700">—</span>}
@@ -144,8 +171,6 @@ function AnswerKeyTable({
   questions: number[];
   answers: Record<string, KeyAnswer>;
 }) {
-  const { grid, columns } = columnWiseGrid(questions, DESKTOP_ROWS);
-
   return (
     <section className="overflow-hidden rounded-xl border border-brand-200 bg-white shadow-[0_4px_16px_-8px_rgb(25_28_95/0.12)]">
       <header className="border-b border-brand-100 bg-brand-50/60 px-3 py-2.5 sm:px-4">
@@ -153,57 +178,8 @@ function AnswerKeyTable({
         <p className="text-xs text-neutral-500">{questions.length} questions · options only</p>
       </header>
 
-      {/* Mobile: compact 2-column cards, no horizontal scroll */}
-      <div className="grid grid-cols-2 gap-1.5 p-3 sm:hidden">
-        {questions.map((question) => (
-          <KeyCell
-            key={question}
-            question={question}
-            answer={answers[String(question)]}
-          />
-        ))}
-      </div>
-
-      {/* Desktop: column-wise table */}
-      <div className="hidden overflow-x-auto sm:block">
-        <table className="w-full min-w-[520px] border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-neutral-200 bg-neutral-50 text-left text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">
-              {Array.from({ length: columns }, (_, col) => (
-                <Fragment key={col}>
-                  <th className="px-3 py-2 w-12">Q</th>
-                  <th className="px-3 py-2 w-14">Key</th>
-                </Fragment>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {grid.map((row, rowIndex) => (
-              <tr key={rowIndex} className="border-b border-neutral-100 last:border-0">
-                {row.map((question, colIndex) =>
-                  question == null ? (
-                    <Fragment key={`empty-${colIndex}`}>
-                      <td className="border-r border-neutral-100 px-3 py-2" />
-                      <td className="border-r border-neutral-100 px-3 py-2 last:border-r-0" />
-                    </Fragment>
-                  ) : (
-                    <Fragment key={question}>
-                      <td className="border-r border-neutral-100 px-3 py-2 font-bold text-neutral-800 tabular-nums">
-                        {question}
-                      </td>
-                      <td className="border-r border-neutral-100 px-3 py-2 font-semibold text-neutral-950 tabular-nums last:border-r-0">
-                        {answers[String(question)] ?? (
-                          <span className="text-amber-700">—</span>
-                        )}
-                      </td>
-                    </Fragment>
-                  ),
-                )}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <KeyBlocks questions={questions} answers={answers} columns={MOBILE_COLUMNS} className="sm:hidden" />
+      <KeyBlocks questions={questions} answers={answers} columns={DESKTOP_COLUMNS} className="hidden sm:block" />
     </section>
   );
 }

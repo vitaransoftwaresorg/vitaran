@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { ProfileLink, schoolProfileHref } from "@/components/shared/profile-link";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -36,12 +36,9 @@ export function SchoolsTable({ schools }: { schools: SchoolSummary[] }) {
         {schools.map((school) => (
           <TableRow key={school.id}>
             <TableCell className="max-w-72 pl-4">
-              <Link
-                href={`/admin/schools/${school.id}`}
-                className="block truncate font-medium text-brand-900 hover:underline"
-              >
+              <ProfileLink href={schoolProfileHref(school.id)} className="block truncate">
                 {school.name}
-              </Link>
+              </ProfileLink>
               <span className="font-mono text-xs text-muted-foreground">{school.code}</span>
             </TableCell>
             <TableCell>

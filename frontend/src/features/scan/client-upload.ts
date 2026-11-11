@@ -30,7 +30,7 @@ export async function registerOmrPdfDirect(
   // Text field before file so multer always sees it; also pass as query (reliable).
   body.append("testId", testId);
   body.append("file", file);
-  const url = new URL(uploadUrl);
+  const url = new URL(uploadUrl, window.location.origin);
   url.searchParams.set("testId", testId);
   const response = await fetch(url, {
     method: "POST",
@@ -42,7 +42,7 @@ export async function registerOmrPdfDirect(
 
 /** Progress plus sheets finished from index `from` on. */
 export async function fetchPdfBatchDirect(batchesUrl: string, token: string, batchId: string, from: number) {
-  const url = new URL(`${batchesUrl}/${batchId}`);
+  const url = new URL(`${batchesUrl}/${batchId}`, window.location.origin);
   url.searchParams.set("from", String(from));
   return readApiJson<PdfBatchStatus>(await fetch(url, { headers: authHeaders(token), cache: "no-store" }));
 }

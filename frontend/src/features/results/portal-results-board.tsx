@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { Suspense, useCallback, useEffect, useState, useTransition } from "react";
 import { PageHeader } from "@/features/admin/page-header";
 import { useLiveContent } from "@/features/live/use-live-content";
 import { cn } from "@/lib/utils";
@@ -9,7 +9,7 @@ import {
   loadSchoolPortalResultsAction,
   loadTeacherPortalResultsAction,
 } from "./portal-results-action";
-import { SchoolResults } from "./school-results";
+import { PortalResultsDrive } from "./portal-results-drive";
 
 type PortalResultsBoardProps = {
   role: "school" | "teacher";
@@ -51,7 +51,7 @@ export function PortalResultsBoard({ role, basePath, description }: PortalResult
   if (resultSets === null) {
     return (
       <>
-        <PageHeader title="Results" description={description} />
+        <PageHeader title="Results and Ranks" description={description} />
         <div className="rounded-2xl border border-dashed border-neutral-200 bg-white p-10 text-center text-sm text-neutral-500">
           Loading results…
         </div>
@@ -61,13 +61,11 @@ export function PortalResultsBoard({ role, basePath, description }: PortalResult
 
   return (
     <>
-      <PageHeader title="Results" count={resultSets.length} description={description} />
+      <PageHeader title="Results and Ranks" count={resultSets.length} description={description} />
       <div className={cn(pending && "opacity-70 transition-opacity")}>
-        <SchoolResults
-          key={resultSets.map((set) => `${set.id}:${set.updatedAt}`).join("|")}
-          resultSets={resultSets}
-          basePath={basePath}
-        />
+        <Suspense>
+          <PortalResultsDrive resultSets={resultSets} basePath={basePath} />
+        </Suspense>
       </div>
     </>
   );

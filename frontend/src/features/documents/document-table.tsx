@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { programLabel } from "@/features/schools/constants";
+import { ProfileLink, schoolProfileHref } from "@/components/shared/profile-link";
 import { SchoolTypeBadge } from "@/features/schools/school-type-badge";
 import type { DeleteResult, PdfDocument, Publishable, SchoolRef } from "@/types/document";
 import type { SchoolType } from "@/types/school";
@@ -122,9 +123,13 @@ export function DocumentTable({
                 <TableCell className="hidden max-w-56 md:table-cell">
                   {item.school ? (
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-neutral-950" title={item.school.name}>
+                      <ProfileLink
+                        href={schoolProfileHref(item.school.id)}
+                        title={item.school.name}
+                        className="block truncate text-sm"
+                      >
                         {item.school.name}
-                      </p>
+                      </ProfileLink>
                       <p className="font-mono text-[11px] text-neutral-500">{item.school.code}</p>
                     </div>
                   ) : (

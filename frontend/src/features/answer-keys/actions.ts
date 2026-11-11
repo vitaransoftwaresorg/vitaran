@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { SCHOOL_BASE_PATH, TEACHER_BASE_PATH } from "@/constants/auth";
 import { deleteDocument, publishDocument, saveDocument } from "@/features/documents/save";
 import * as answerKeyService from "@/services/answer-keys";
-import type { SubjectRange } from "@/types/answer-key";
+import type { SubjectRange, TestIdAvailability } from "@/types/answer-key";
 import { ANSWER_KEY_NOUN, ANSWER_KEYS_PATH } from "./constants";
 import {
   ANSWER_KEY_FIELDS,
@@ -79,6 +79,17 @@ export async function createAnswerKeyAction(input: {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Could not create this answer key.";
     return { ok: false, message };
+  }
+}
+
+export async function checkAnswerKeyTestIdAction(
+  testId: string,
+  exceptId?: string,
+): Promise<({ ok: true } & TestIdAvailability) | { ok: false; message: string }> {
+  try {
+    return { ok: true, ...(await answerKeyService.checkAnswerKeyTestId(testId, exceptId)) };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Could not check this test ID." };
   }
 }
 

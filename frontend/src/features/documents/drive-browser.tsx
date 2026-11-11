@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ChevronRight,
+  Download,
   Eye,
   FileSpreadsheet,
   FileText,
@@ -13,6 +14,7 @@ import {
   MoreVertical,
   Pencil,
   Plus,
+  Printer,
   Search,
   Upload,
 } from "lucide-react";
@@ -37,7 +39,9 @@ export type DriveAction = {
   label: string;
   href?: string;
   onSelect?: () => void;
-  icon?: "view" | "edit" | "upload";
+  icon?: "view" | "edit" | "upload" | "download" | "print";
+  /** A file route (e.g. PDF download): plain link, not client navigation. */
+  download?: boolean;
 };
 
 export type DriveItem = {
@@ -170,13 +174,14 @@ export function DriveBrowser({
 
         <div className="flex items-center gap-1.5">
           {headerAction}
-          <label className="relative">
+          <label className="relative hidden sm:block">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-neutral-400" />
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={searchPlaceholder}
-              className="h-8 w-44 rounded-full border-neutral-200 bg-neutral-50 pr-3 pl-8 text-sm shadow-none sm:w-56"
+              aria-label={searchPlaceholder}
+              className="h-8 w-56 rounded-full border-neutral-200 bg-neutral-50 pr-3 pl-8 text-sm shadow-none"
             />
           </label>
           <Button
@@ -198,6 +203,20 @@ export function DriveBrowser({
             <LayoutGrid />
           </Button>
         </div>
+      </div>
+
+      <div className="border-b border-neutral-200 px-3 py-2.5 sm:hidden">
+        <label className="relative block">
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-neutral-400" />
+          <Input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={searchPlaceholder}
+            aria-label={searchPlaceholder}
+            className="h-10 w-full rounded-full border-neutral-200 bg-neutral-50 pr-3 pl-9 text-base shadow-none"
+          />
+        </label>
       </div>
 
       {filtered.length === 0 ? (
@@ -428,6 +447,8 @@ function FolderGlyph({ className }: { className?: string }) {
 function ActionIcon({ icon }: { icon?: DriveAction["icon"] }) {
   if (icon === "edit") return <Pencil />;
   if (icon === "upload") return <Upload />;
+  if (icon === "download") return <Download />;
+  if (icon === "print") return <Printer />;
   return <Eye />;
 }
 
@@ -482,7 +503,12 @@ function RowActions({ item }: { item: DriveItem }) {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-44">
           {actions.map((action) =>
-            action.href ? (
+            action.href && action.download ? (
+              <DropdownMenuItem key={action.label} render={<a href={action.href} />}>
+                <ActionIcon icon={action.icon} />
+                {action.label}
+              </DropdownMenuItem>
+            ) : action.href ? (
               <DropdownMenuItem key={action.label} render={<Link href={action.href} />}>
                 <ActionIcon icon={action.icon} />
                 {action.label}

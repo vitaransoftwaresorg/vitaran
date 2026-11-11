@@ -3,6 +3,7 @@ import type { ResultCell } from "@/types/result";
 
 /** Mirrors backend `utils/result-columns.ts` so the class table can show totals and ranks live. */
 export type ColumnRole =
+  | "serial"
   | "roll"
   | "name"
   | "class"
@@ -28,6 +29,7 @@ export function maxFromLabel(label: string) {
 
 export function columnRole(label: string): ColumnRole {
   const text = foldLabel(label);
+  if (/^((s|sl|sr)\.?\s*no\.?|serial(\s*(no\.?|number))?|#)$/.test(text)) return "serial";
   if (/section\s*rank/.test(text)) return "sectionRank";
   if (/class\s*rank|overall\s*rank|^rank$/.test(text)) return "classRank";
   if (/^(roll|regd?\.?\s*no|registration)/.test(text)) return "roll";
@@ -61,7 +63,7 @@ export function identityCell(
   return undefined;
 }
 
-/** Fills total, percentage and ranks in place order (no sorting). */
+/** Fills serial numbers, total, percentage and ranks in place order (no sorting). */
 export function computeRows(columns: string[], rows: ResultCell[][], classLevel: number) {
   const roles = columns.map(columnRole);
   const subjectCols = roles.flatMap((role, index) => (role === "subject" ? [index] : []));
@@ -71,12 +73,14 @@ export function computeRows(columns: string[], rows: ResultCell[][], classLevel:
   const classCol = roles.indexOf("class");
   const sectionRankCol = roles.indexOf("sectionRank");
   const classRankCol = roles.indexOf("classRank");
+  const serialCol = roles.indexOf("serial");
   const totalMax =
     (totalCol >= 0 ? maxFromLabel(columns[totalCol]!) : null) ??
     subjectCols.reduce((sum, index) => sum + (maxFromLabel(columns[index]!) ?? 0), 0);
 
-  const filled = rows.map((source) => {
+  const filled = rows.map((source, position) => {
     const row = [...source];
+    if (serialCol >= 0) row[serialCol] = position + 1;
     if (totalCol < 0) return row;
     const marks = subjectCols.map((index) => numberCell(row[index]));
     if (marks.some((mark) => mark != null)) {

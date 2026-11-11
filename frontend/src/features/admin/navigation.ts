@@ -4,6 +4,7 @@ import {
   GraduationCap,
   KeyRound,
   LayoutDashboard,
+  MessageSquareWarning,
   ScanLine,
   School,
   Settings,
@@ -43,6 +44,7 @@ export const adminNavGroups: AdminNavGroup[] = [
     label: "Content",
     items: [
       { title: "Answer Keys", href: "/admin/answer-keys", icon: KeyRound },
+      { title: "Key Objections", href: "/admin/objections", icon: MessageSquareWarning },
       { title: "Results and Ranks", href: "/admin/results", icon: Trophy },
       { title: "OMR Scan", href: "/admin/omr-scan", icon: ScanLine },
     ],
@@ -96,7 +98,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   edit: "Edit",
   answers: "Answers",
   "answer-keys": "Answer Keys",
-  objections: "Objections",
+  objections: "Key Objections",
   upload: "Upload",
   results: "Results and Ranks",
   "omr-scan": "OMR Scan",
@@ -147,7 +149,6 @@ function adminDriveParentHref(pathname: string, search: string): string | null {
 }
 
 export function getAdminParentHref(pathname: string, search = ""): string | null {
-  if (pathname === "/admin/answer-keys/objections") return "/admin/answer-keys";
   if (/^\/admin\/answer-keys\/[^/]+\/(edit|answers)$/.test(pathname)) {
     return readAnswerKeysReturnHref() ?? "/admin/answer-keys";
   }

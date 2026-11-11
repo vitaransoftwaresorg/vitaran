@@ -1,13 +1,15 @@
 "use client";
 
 import { Dialog } from "@base-ui/react/dialog";
-import { Award, Download, Eye, X } from "lucide-react";
+import { Award, Download, Eye, FileText, X } from "lucide-react";
+import { SharePdfButton } from "@/components/shared/share-pdf-button";
 import { Button } from "@/components/ui/button";
 import { RESULTS_PATH } from "./constants";
 
 /* eslint-disable @next/next/no-img-element -- authenticated proxy route, not a static asset */
 
-type CardTarget = { resultSetId: string; classLevel: number };
+/** `basePath` is the portal's results section; admin when omitted. */
+type CardTarget = { resultSetId: string; classLevel: number; basePath?: string };
 
 export function rankCardHref(target: CardTarget, options: { roll?: string; format: "pdf" | "jpg"; download?: boolean }) {
   const query = new URLSearchParams({
@@ -17,7 +19,7 @@ export function rankCardHref(target: CardTarget, options: { roll?: string; forma
   });
   if (options.roll) query.set("roll", options.roll);
   if (options.download) query.set("download", "1");
-  return `${RESULTS_PATH}/rank-cards?${query}`;
+  return `${target.basePath ?? RESULTS_PATH}/rank-cards?${query}`;
 }
 
 /** View / download one student's rank card. */
@@ -54,6 +56,15 @@ export function RankCardCell({
                 <Download className="size-3.5" />
                 Download PDF
               </a>
+              <SharePdfButton
+                href={rankCardHref(target, { roll, format: "pdf", download: true })}
+                fileName={`${roll}-rank-card.pdf`}
+                title={`rank card of ${name}`}
+                preload
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-neutral-200 px-2.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-60 [&_svg]:size-3.5"
+              >
+                Share
+              </SharePdfButton>
               <Dialog.Close
                 aria-label="Close"
                 className="inline-flex size-8 items-center justify-center rounded-full text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"
@@ -78,6 +89,51 @@ export function RankCardCell({
       >
         <Download className="size-4" />
       </a>
+      <SharePdfButton
+        href={rankCardHref(target, { roll, format: "pdf", download: true })}
+        fileName={`${roll}-rank-card.pdf`}
+        title={`rank card of ${name}`}
+        className="inline-flex size-8 items-center justify-center rounded-md text-violet-700 hover:bg-violet-50 disabled:opacity-60 [&_svg]:size-4"
+      />
+    </div>
+  );
+}
+
+export function classResultHref(target: CardTarget, download = false) {
+  const query = new URLSearchParams({ set: target.resultSetId, class: String(target.classLevel) });
+  if (download) query.set("download", "1");
+  return `${target.basePath ?? RESULTS_PATH}/class-pdf?${query}`;
+}
+
+/** The class result in rank order on A4, for printing and pinning on the notice board. */
+export function ClassResultPdfDownload({ target }: { target: CardTarget | null }) {
+  if (!target) {
+    return (
+      <Button type="button" variant="outline" size="sm" className="h-9 rounded-lg" disabled title="Save results first">
+        <FileText />
+        Result PDF
+      </Button>
+    );
+  }
+  return (
+    <div className="flex items-center gap-1">
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-9 rounded-lg"
+        title="Class result for the notice board (PDF)"
+        nativeButton={false}
+        render={<a href={classResultHref(target, true)} />}
+      >
+        <FileText />
+        Result PDF
+      </Button>
+      <SharePdfButton
+        href={classResultHref(target, true)}
+        fileName={`Class-${target.classLevel}-results.pdf`}
+        title={`Class ${target.classLevel} results`}
+        className="inline-flex size-9 items-center justify-center rounded-lg border border-input bg-background text-brand-800 hover:bg-brand-50 disabled:opacity-60 [&_svg]:size-4"
+      />
     </div>
   );
 }
@@ -93,15 +149,23 @@ export function ClassRankCardsDownload({ target }: { target: CardTarget | null }
     );
   }
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      className="h-9 rounded-lg"
-      nativeButton={false}
-      render={<a href={rankCardHref(target, { format: "pdf", download: true })} />}
-    >
-      <Award />
-      Rank cards
-    </Button>
+    <div className="flex items-center gap-1">
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-9 rounded-lg"
+        nativeButton={false}
+        render={<a href={rankCardHref(target, { format: "pdf", download: true })} />}
+      >
+        <Award />
+        Rank cards
+      </Button>
+      <SharePdfButton
+        href={rankCardHref(target, { format: "pdf", download: true })}
+        fileName={`Class-${target.classLevel}-rank-cards.pdf`}
+        title={`Class ${target.classLevel} rank cards`}
+        className="inline-flex size-9 items-center justify-center rounded-lg border border-input bg-background text-violet-700 hover:bg-violet-50 disabled:opacity-60 [&_svg]:size-4"
+      />
+    </div>
   );
 }

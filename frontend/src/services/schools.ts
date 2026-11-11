@@ -72,6 +72,12 @@ export function getAccountAvailability(email: string, excludeId?: string) {
   return adminApi<{ emailTaken: boolean }>(`/schools/account-availability?${query}`);
 }
 
+export function getCodeAvailability(code: string, excludeId?: string) {
+  const query = new URLSearchParams({ code });
+  if (excludeId) query.set("excludeId", excludeId);
+  return adminApi<{ codeTaken: boolean }>(`/schools/code-availability?${query}`);
+}
+
 export function createSchool(input: SchoolInput) {
   return adminApi<School>("/schools", { method: "POST", body: input });
 }

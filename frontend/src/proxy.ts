@@ -59,6 +59,19 @@ function schoolPortalPath(pathname: string): string {
   return SCHOOL_HOME_PATH;
 }
 
+/** Teacher-portal page for a legacy public content path. */
+function teacherPortalPath(pathname: string): string {
+  if (pathname.startsWith("/teachers-resources")) return "/teacher/resources";
+  if (pathname.startsWith("/answer-keys")) {
+    return `/teacher${pathname.replace(/^(\/answer-keys\/[^/]+)\/file$/, "$1/pdf")}`;
+  }
+  if (pathname.startsWith("/results")) return `/teacher${pathname}`;
+  return TEACHER_HOME_PATH;
+}
+
+/** Public marketing pages that signed-in schools and teachers skip. */
+const isLandingPage = (pathname: string) => pathname === "/" || pathname === "/contact";
+
 // Optimistic cookie checks only; pages verify the session with the API.
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -66,16 +79,25 @@ export function proxy(request: NextRequest) {
   const hasTeacher = request.cookies.has(TEACHER_SESSION_COOKIE);
 
   if (pathname.startsWith(ADMIN_BASE_PATH)) {
-    if (
-      pathname === ADMIN_LOGIN_PATH ||
-      pathname === ADMIN_LOGOUT_PATH ||
-      request.cookies.has(ADMIN_SESSION_COOKIE)
-    ) {
+    const hasAdmin = request.cookies.has(ADMIN_SESSION_COOKIE);
+    if (pathname === "/admin/login") {
+      return adminResponse(
+        NextResponse.redirect(new URL(hasAdmin ? ADMIN_BASE_PATH : ADMIN_LOGIN_PATH, request.nextUrl)),
+      );
+    }
+    if (pathname === ADMIN_LOGOUT_PATH || hasAdmin) {
       return adminResponse(NextResponse.next());
     }
     return adminResponse(
       NextResponse.redirect(new URL(ADMIN_LOGIN_PATH, request.nextUrl)),
     );
+  }
+
+  // Signed-in schools and teachers go straight to their portal, never the public site.
+  if (isLandingPage(pathname)) {
+    if (hasSchool) return NextResponse.redirect(new URL(SCHOOL_HOME_PATH, request.nextUrl));
+    if (hasTeacher) return NextResponse.redirect(new URL(TEACHER_HOME_PATH, request.nextUrl));
+    return NextResponse.next();
   }
 
   // Already signed in → never show the portal login form.
@@ -104,7 +126,9 @@ export function proxy(request: NextRequest) {
   }
 
   // Legacy public content pages → teacher portal, or school if only school is signed in.
-  if (hasTeacher) return NextResponse.next();
+  if (hasTeacher) {
+    return NextResponse.redirect(new URL(teacherPortalPath(pathname) + request.nextUrl.search, request.nextUrl));
+  }
   if (hasSchool) {
     return NextResponse.redirect(new URL(schoolPortalPath(pathname), request.nextUrl));
   }
@@ -113,6 +137,8 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
+    "/",
+    "/contact",
     "/admin",
     "/admin/:path*",
     "/school",

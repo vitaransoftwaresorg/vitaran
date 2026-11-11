@@ -20,7 +20,7 @@ import type { BulkStudentFormState, StudentFormState } from "@/features/students
 
 const studentSchema = z.object({
   name: z.string().trim().min(2, "Enter the student name"),
-  rollNo: z.string().trim().min(1, "Enter the registration number"),
+  rollNo: z.string().trim().regex(/^\d{7}$/, "Enter the 7-digit registration number"),
   email: z.union([z.literal(""), z.string().trim().email("Enter a valid email")]),
   parentName: z.string().trim().min(2, "Enter the parent / guardian name"),
   parentPhone: z
@@ -37,7 +37,7 @@ const studentSchema = z.object({
 
 const bulkRowSchema = z.object({
   name: z.string().trim().min(2, "Enter the student name"),
-  rollNo: z.string().trim().min(1, "Enter the registration number"),
+  rollNo: z.string().trim().regex(/^\d{7}$/, "Enter the 7-digit registration number"),
   email: z.union([z.literal(""), z.string().trim().email("Enter a valid email")]),
   parentName: z.string().trim().min(2, "Enter the parent / guardian name"),
   parentPhone: z

@@ -9,8 +9,10 @@ import { ThemesMarquee } from "@/features/home/themes-marquee";
 export default function HomePage() {
   return (
     <>
-      <Hero />
-      <ThemesMarquee />
+      <div className="flex flex-col">
+        <Hero />
+        <ThemesMarquee className="order-first mt-18 sm:order-0 sm:mt-0" />
+      </div>
       <About />
       <Services />
       <Process />

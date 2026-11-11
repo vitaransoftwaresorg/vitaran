@@ -1,6 +1,6 @@
 import "server-only";
 import { redirect } from "next/navigation";
-import { SCHOOL_LOGIN_PATH, SCHOOL_SESSION_COOKIE } from "@/constants/auth";
+import { PORTAL_SESSION_EXPIRED_PATH, SCHOOL_SESSION_COOKIE } from "@/constants/auth";
 import { createSession } from "@/lib/session";
 import { fetchCurrentSchool } from "@/services/auth";
 import type { SchoolAccount } from "@/types/school";
@@ -21,6 +21,6 @@ export const getSchoolSession = schoolSession.get;
  */
 export async function verifySchoolSession(): Promise<SchoolAccount> {
   const school = await getSchoolSession();
-  if (!school) redirect(SCHOOL_LOGIN_PATH);
+  if (!school) redirect(PORTAL_SESSION_EXPIRED_PATH);
   return school;
 }

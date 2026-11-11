@@ -63,7 +63,7 @@ export async function resolveObjectionAction(
 > {
   try {
     const objection = await resolveAdminAnswerKeyObjection(id, input);
-    revalidatePath(`${ANSWER_KEYS_PATH}/objections`);
+    revalidatePath("/admin/objections");
     revalidatePath(ANSWER_KEYS_PATH);
     return { ok: true, objection };
   } catch (error) {

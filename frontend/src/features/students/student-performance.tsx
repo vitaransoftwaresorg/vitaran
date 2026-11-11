@@ -13,7 +13,6 @@ import {
 } from "recharts";
 import { cn } from "@/lib/utils";
 import type { StudentTestResult } from "@/types/student";
-import { formatDate } from "@/utils/format";
 
 const SUBJECT_COLORS = ["#2f5bea", "#0f9f6e", "#e8622c", "#d63384", "#7048e8", "#0b93b8", "#c28a0a"];
 const TOTAL_COLOR = "#10133f";
@@ -230,7 +229,7 @@ export function StudentPerformance({ results }: { results: StudentTestResult[] }
         </header>
         <div className="overflow-x-auto">
           <table className="w-full min-w-[640px] text-sm">
-            <thead className="border-b border-brand-100 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">
+            <thead className="border-b border-brand-100 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase print:table-row-group">
               <tr>
                 <th className="px-4 py-2.5 text-left">Test</th>
                 {subjects.map((label) => (
@@ -242,7 +241,6 @@ export function StudentPerformance({ results }: { results: StudentTestResult[] }
                   </th>
                 ))}
                 <th className="px-3 py-2.5 text-right">Total</th>
-                <th className="px-3 py-2.5 text-right">%</th>
                 <th className="px-3 py-2.5 text-right">Class rank</th>
                 <th className="px-4 py-2.5 text-right">Section rank</th>
               </tr>
@@ -251,7 +249,7 @@ export function StudentPerformance({ results }: { results: StudentTestResult[] }
               {[...results].reverse().map((test) => (
                 <tr
                   key={`${test.resultSetId}-${test.classLevel}`}
-                  className="border-b border-neutral-100 last:border-0 hover:bg-brand-50/40"
+                  className="border-b border-neutral-100 last:border-0 hover:bg-brand-50/40 print:break-inside-avoid"
                 >
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
@@ -264,7 +262,7 @@ export function StudentPerformance({ results }: { results: StudentTestResult[] }
                           {test.testId ? `Test ID ${test.testId}` : `Test ${test.testNumber}`}
                         </p>
                         <p className="truncate text-xs text-neutral-500">
-                          {test.programName} · Class {test.classLevel} · {formatDate(test.date)}
+                          {test.programName} · Class {test.classLevel}
                           {test.published ? null : (
                             <span className="ml-1.5 rounded bg-amber-50 px-1.5 py-px text-[10px] font-semibold text-amber-800">
                               Not published
@@ -295,9 +293,9 @@ export function StudentPerformance({ results }: { results: StudentTestResult[] }
                   <td className="px-3 py-3 text-right tabular-nums">
                     <span className="font-bold text-neutral-950">{test.total ?? "—"}</span>
                     {test.totalMax ? <span className="text-neutral-400">/{test.totalMax}</span> : null}
-                  </td>
-                  <td className={cn("px-3 py-3 text-right font-bold tabular-nums", tone(test.percentage))}>
-                    {pct(test.percentage)}
+                    <span className={cn("block text-[11px] font-bold", tone(test.percentage))}>
+                      {pct(test.percentage)}
+                    </span>
                   </td>
                   <td className="px-3 py-3 text-right">
                     <RankBadge rank={test.classRank} />

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { IconRowActions } from "@/components/shared/icon-row-actions";
@@ -14,6 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ProfileLink, schoolProfileHref } from "@/components/shared/profile-link";
 import { subjectLabel } from "@/features/schools/constants";
 import { cn } from "@/lib/utils";
 import type { Teacher, TeacherStatus } from "@/types/teacher";
@@ -83,16 +83,18 @@ export function TeachersTable({
                 className="border-brand-100/70 hover:bg-brand-50/40"
               >
                 <TableCell className="py-3.5 pl-5">
-                  <Link href={`${editHrefBase}/${teacher.id}`} className="group block min-w-0">
-                    <p className="font-semibold text-neutral-950 group-hover:text-brand-800 group-hover:underline">
+                  <div className="min-w-0">
+                    <ProfileLink href={`${editHrefBase}/${teacher.id}`} className="font-semibold">
                       {teacher.name}
-                    </p>
+                    </ProfileLink>
                     <p className="mt-0.5 truncate text-xs text-neutral-500">{teacher.email}</p>
-                  </Link>
+                  </div>
                 </TableCell>
                 {showSchool && (
                   <TableCell className="text-sm text-neutral-700">
-                    <p className="font-medium text-neutral-900">{teacher.school.name}</p>
+                    <ProfileLink href={schoolProfileHref(teacher.school.id)}>
+                      {teacher.school.name}
+                    </ProfileLink>
                     <p className="mt-0.5 font-mono text-[11px] text-neutral-400">
                       {teacher.school.code}
                     </p>

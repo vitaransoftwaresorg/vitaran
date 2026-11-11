@@ -1,13 +1,17 @@
 "use client";
 
 import { useEffect } from "react";
-import { ADMIN_LOGIN_PATH } from "@/constants/auth";
+import { ADMIN_LOGOUT_PATH } from "@/constants/auth";
 
 const CHANNEL = "vitaran-admin-session";
 
+/**
+ * Goes through the logout route, never straight to login: the signing-out tab hears its own
+ * broadcast too, and jumping to login there would cancel the request that clears the cookie.
+ */
 function goToAdminLogin() {
-  if (window.location.pathname === ADMIN_LOGIN_PATH) return;
-  window.location.replace(ADMIN_LOGIN_PATH);
+  if (window.location.pathname === ADMIN_LOGOUT_PATH) return;
+  window.location.replace(ADMIN_LOGOUT_PATH);
 }
 
 /** Other admin tabs only — `storage` does not fire in the tab that signs out. */

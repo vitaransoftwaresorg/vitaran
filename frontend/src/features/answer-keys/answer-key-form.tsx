@@ -18,7 +18,8 @@ import { updateAnswerKeyAction, createAnswerKeyFormAction } from "./actions";
 import { ANSWER_KEYS_PATH } from "./constants";
 import type { AnswerKeyFormState, AnswerKeyFormValues } from "./schema";
 import type { AnswerKeySchoolOption } from "./school-options";
-import { enteredTestId } from "./test-id";
+import { enteredTestId, TEST_ID_LENGTH, testIdDigits } from "./test-id";
+import { TestIdStatus, useTestIdCheck } from "./test-id-status";
 import {
   classItemsFromLevels,
   classLevelsFromProgram,
@@ -96,6 +97,8 @@ function FormFields({ schools, programs, answerKey, values, errors, message, pen
   }));
   const [current, setCurrent] = useState(values);
   const customized = current.type === "CUSTOMIZED";
+  const testId = current.testId ?? "";
+  const testIdCheck = useTestIdCheck(testId, answerKey?.id);
 
   const selectedProgram = useMemo(
     () => programs.find((program) => program.code === current.program) ?? null,
@@ -236,14 +239,20 @@ function FormFields({ schools, programs, answerKey, values, errors, message, pen
             <Input
               id="testId"
               name="testId"
-              placeholder="e.g. T-2026-01"
-              defaultValue={values.testId}
-              onChange={(event) => setField("testId", event.currentTarget.value)}
-              aria-invalid={errors.testId?.length ? true : undefined}
-              maxLength={64}
-              className="h-11 rounded-lg border-neutral-200 bg-white px-3.5 font-mono text-sm shadow-xs hover:border-brand-300 focus-visible:border-brand-600 focus-visible:ring-brand-600/15"
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder="6 digits, e.g. 626304"
+              value={testId}
+              onChange={(event) => setField("testId", testIdDigits(event.currentTarget.value))}
+              aria-invalid={errors.testId?.length || testIdCheck.state === "taken" ? true : undefined}
+              maxLength={TEST_ID_LENGTH}
+              className="h-11 rounded-lg border-neutral-200 bg-white px-3.5 font-mono text-sm tracking-widest tabular-nums shadow-xs hover:border-brand-300 focus-visible:border-brand-600 focus-visible:ring-brand-600/15"
             />
-            {errors.testId?.length ? <FieldError>{errors.testId[0]}</FieldError> : null}
+            {errors.testId?.length && testId === (values.testId ?? "") ? (
+              <FieldError>{errors.testId[0]}</FieldError>
+            ) : (
+              <TestIdStatus check={testIdCheck} length={testId.length} />
+            )}
           </div>
           <SelectField
             key={`test-${current.program ?? "none"}-${current.testNumber ?? ""}`}

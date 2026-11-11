@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { Check, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
@@ -19,6 +19,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { documentAnswersHref } from "@/features/documents/constants";
 import { capitalizeWords } from "@/features/schools/schema";
 import { cn } from "@/lib/utils";
+import {
+  ProfileLink,
+  schoolProfileHref,
+  teacherProfileHref,
+} from "@/components/shared/profile-link";
 import type { AnswerKeyObjection, AnswerKeyObjectionStatus } from "@/types/answer-key-objection";
 import { ANSWER_KEYS_PATH, objectionImageHref } from "./constants";
 import { resolveObjectionAction } from "./objection-actions";
@@ -37,6 +42,7 @@ const FILTERS: Array<{ value: AnswerKeyObjectionStatus | "ALL"; label: string }>
 
 export function AdminObjectionsBoard({ initialItems }: AdminObjectionsBoardProps) {
   const [items, setItems] = useState(initialItems);
+  const [syncedItems, setSyncedItems] = useState(initialItems);
   const [filter, setFilter] = useState<AnswerKeyObjectionStatus | "ALL">("OPEN");
   const [reviewing, setReviewing] = useState<AnswerKeyObjection | null>(null);
   const [decision, setDecision] = useState<"RESOLVED" | "REJECTED">("RESOLVED");
@@ -44,9 +50,10 @@ export function AdminObjectionsBoard({ initialItems }: AdminObjectionsBoardProps
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  useEffect(() => {
+  if (syncedItems !== initialItems) {
+    setSyncedItems(initialItems);
     setItems(initialItems);
-  }, [initialItems]);
+  }
 
   const visible = useMemo(
     () => (filter === "ALL" ? items : items.filter((row) => row.status === filter)),
@@ -132,9 +139,9 @@ export function AdminObjectionsBoard({ initialItems }: AdminObjectionsBoardProps
                 {visible.map((row) => (
                   <tr key={row.id} className="border-b border-neutral-100 last:border-0">
                     <td className="px-4 py-3">
-                      <p className="font-medium text-neutral-950">
+                      <ProfileLink href={schoolProfileHref(row.school.id)}>
                         {capitalizeWords(row.school.name)}
-                      </p>
+                      </ProfileLink>
                       <p className="text-xs text-neutral-500">{row.school.code}</p>
                     </td>
                     <td className="px-4 py-3 text-neutral-700">
@@ -146,20 +153,21 @@ export function AdminObjectionsBoard({ initialItems }: AdminObjectionsBoardProps
                       </span>
                     </td>
                     <td className="px-4 py-3 text-neutral-700">
-                      {row.raisedBy === "TEACHER"
-                        ? capitalizeWords(row.teacher?.name ?? "Teacher")
-                        : "School"}
+                      {row.raisedBy === "TEACHER" ? (
+                        <ProfileLink
+                          href={row.teacher ? teacherProfileHref("admin", row.teacher.id) : null}
+                        >
+                          {capitalizeWords(row.teacher?.name ?? "Teacher")}
+                        </ProfileLink>
+                      ) : (
+                        "School"
+                      )}
                       {row.questionNumber != null ? (
                         <p className="text-xs text-neutral-500">Q{row.questionNumber}</p>
                       ) : null}
                     </td>
                     <td className="max-w-xs px-4 py-3 text-neutral-800">
-                      {row.proposedAnswer ? (
-                        <p className="mb-1 text-xs font-semibold text-brand-900">
-                          Claims{" "}
-                          {row.proposedAnswer === "NONE" ? "no right answer" : row.proposedAnswer}
-                        </p>
-                      ) : null}
+                      <AnswerChange row={row} className="mb-1" />
                       <p className="line-clamp-3">{row.message}</p>
                       {row.hasImage ? <ObjectionPhoto href={objectionImageHref("admin", row.id)} /> : null}
                       {row.resolutionNote ? (
@@ -226,14 +234,7 @@ export function AdminObjectionsBoard({ initialItems }: AdminObjectionsBoardProps
 
           {reviewing ? (
             <div className="space-y-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-800">
-              {reviewing.proposedAnswer ? (
-                <p className="text-xs font-semibold text-brand-900">
-                  Claims{" "}
-                  {reviewing.proposedAnswer === "NONE"
-                    ? "no right answer"
-                    : reviewing.proposedAnswer}
-                </p>
-              ) : null}
+              <AnswerChange row={reviewing} />
               <p>{reviewing.message}</p>
               {reviewing.hasImage ? (
                 <ObjectionPhoto href={objectionImageHref("admin", reviewing.id)} className="[&_img]:h-40" />
@@ -320,5 +321,27 @@ function StatusChip({ status }: { status: AnswerKeyObjectionStatus }) {
     <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase", styles)}>
       {label}
     </span>
+  );
+}
+
+/** Current key answer next to the claimed one, e.g. "Key B → Claims C". */
+function AnswerChange({ row, className }: { row: AnswerKeyObjection; className?: string }) {
+  if (!row.proposedAnswer && !row.currentAnswer) return null;
+  return (
+    <p className={cn("flex flex-wrap items-center gap-1.5 text-xs font-semibold", className)}>
+      {row.questionNumber != null ? (
+        <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-neutral-700">
+          Key {row.currentAnswer ?? "not set"}
+        </span>
+      ) : null}
+      {row.proposedAnswer ? (
+        <>
+          {row.questionNumber != null ? <span className="text-neutral-400">→</span> : null}
+          <span className="rounded bg-brand-50 px-1.5 py-0.5 text-brand-900">
+            Claims {row.proposedAnswer === "NONE" ? "no right answer" : row.proposedAnswer}
+          </span>
+        </>
+      ) : null}
+    </p>
   );
 }

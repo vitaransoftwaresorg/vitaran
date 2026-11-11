@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronRight, FileSpreadsheet, Loader2, Save } from "lucide-react";
+import { ChevronRight, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { DriveCrumb } from "@/features/documents/drive-browser";
+import { ProfileLink, studentProfileHref } from "@/components/shared/profile-link";
 import { programLabel } from "@/features/schools/constants";
 import { cn } from "@/lib/utils";
 import type { LearningProgram } from "@/types/program";
@@ -31,8 +32,7 @@ import type { ClassScan } from "@/types/scan";
 import type { Student } from "@/types/student";
 import { saveManualResultAction } from "./actions";
 import { ClassOmrDownload, OmrCell } from "./omr-files";
-import { ClassRankCardsDownload, RankCardCell } from "./rank-card-files";
-import { ResultUploadSheet } from "./result-upload-sheet";
+import { ClassRankCardsDownload, ClassResultPdfDownload, RankCardCell } from "./rank-card-files";
 import type { DrivePath, DriveSchool } from "./drive-path";
 import { resultProgramFields } from "./school-program";
 import {
@@ -200,7 +200,6 @@ export function ClassResultsBoard({
   const [rows, setRows] = useState(() =>
     buildRows(columns, students, sheet, path.classLevel),
   );
-  const [uploadOpen, setUploadOpen] = useState(false);
   const [pending, startTransition] = useTransition();
 
   const roles = useMemo(() => columns.map(columnRole), [columns]);
@@ -293,7 +292,11 @@ export function ClassResultsBoard({
         classLevel: path.classLevel,
         resultSetId: resultSet?.id,
         columns,
-        rows: rows.map((row) => row.cells.map(toCell)),
+        rows: rows.map((row, position) =>
+          row.cells.map((cell, index) =>
+            roles[index] === "serial" ? position + 1 : toCell(cell),
+          ),
+        ),
       });
       if (!result.ok) {
         toast.error(result.message);
@@ -307,18 +310,6 @@ export function ClassResultsBoard({
 
   return (
     <>
-      <ResultUploadSheet
-        open={uploadOpen}
-        onOpenChange={(open) => {
-          setUploadOpen(open);
-          if (!open) router.refresh();
-        }}
-        path={path}
-        schools={[school]}
-        programs={programs}
-        resultSet={resultSet ?? undefined}
-      />
-
       <section className="overflow-hidden rounded-2xl border border-brand-100 bg-white shadow-[0_12px_32px_-20px_rgb(25_28_95/0.35)]">
         <header className="flex flex-wrap items-center gap-3 border-b border-neutral-200 px-3 py-2.5 sm:px-4">
           <nav aria-label="Folder path" className="min-w-0 flex-1">
@@ -356,18 +347,9 @@ export function ClassResultsBoard({
             </ol>
           </nav>
           <div className="flex flex-wrap items-center gap-2">
+            <ClassResultPdfDownload target={savedRolls.size ? cardTarget : null} />
             <ClassRankCardsDownload target={savedRolls.size ? cardTarget : null} />
             <ClassOmrDownload path={path} count={scans.length} />
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-9 rounded-lg"
-              onClick={() => setUploadOpen(true)}
-            >
-              <FileSpreadsheet />
-              Import Excel
-            </Button>
             <Button
               type="button"
               size="sm"
@@ -461,12 +443,9 @@ export function ClassResultsBoard({
                           {(role === "name" || role === "roll") &&
                           cellText(value) &&
                           !row.key.startsWith("saved:") ? (
-                            <Link
-                              href={`/admin/schools/students/${row.key}`}
-                              className="font-medium text-brand-900 hover:underline"
-                            >
+                            <ProfileLink href={studentProfileHref("admin", row.key)}>
                               {cellText(value)}
-                            </Link>
+                            </ProfileLink>
                           ) : (
                             cellText(value) || <span className="text-neutral-300">—</span>
                           )}

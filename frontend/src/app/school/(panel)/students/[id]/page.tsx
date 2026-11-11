@@ -21,6 +21,7 @@ export default async function SchoolStudentDetailPage({ params }: Props) {
       editHref={`/school/students/${id}/edit`}
       afterDeleteHref="/school/students"
       performance={performance}
+      portal="school"
     />
   );
 }

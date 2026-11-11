@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/features/admin/page-header";
+import { ClassProfilesPdfActions } from "@/features/students/student-pdf-actions";
 import { StudentsDrive } from "@/features/students/students-drive";
 import { studentsForSchoolOfferings } from "@/features/students/school-roster";
 import { cn } from "@/lib/utils";
@@ -46,23 +47,20 @@ export default async function AdminAllStudentsPage({
     : [[], null];
 
   const inClass = Boolean(school && classLevel != null && section);
-  const title = school
-    ? inClass
-      ? `Class ${classLevel}-${section}`
-      : school.name
-    : "Students";
+  const title = school ? (inClass ? `Class ${classLevel}-${section}` : school.name) : "Students";
   const description = school
     ? inClass
       ? `${school.name} · students`
       : "Open a class section to view students"
     : "Open a school to view its classes";
-  const rosterCount = inClass
+  const roster = inClass
     ? students.filter(
         (student) =>
           student.classLevel === classLevel &&
           (student.sectionName?.trim().toUpperCase() || "A") === section,
-      ).length
-    : undefined;
+      )
+    : [];
+  const rosterCount = inClass ? roster.length : undefined;
 
   return (
     <>
@@ -72,17 +70,25 @@ export default async function AdminAllStudentsPage({
         count={school ? rosterCount : schools.length}
         actions={
           school ? (
-            <Link
-              href={
-                inClass
-                  ? `/admin/schools/${school.id}/students/new?class=${classLevel}&section=${encodeURIComponent(section!)}`
-                  : `/admin/schools/${school.id}/students/new`
-              }
-              className={cn(buttonVariants({ size: "sm" }), "h-8 gap-1.5 rounded-lg")}
-            >
-              <Plus className="size-4" />
-              Add student
-            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              {inClass ? (
+                <ClassProfilesPdfActions
+                  portal="admin"
+                  studentIds={roster.map((student) => student.id)}
+                />
+              ) : null}
+              <Link
+                href={
+                  inClass
+                    ? `/admin/schools/${school.id}/students/new?class=${classLevel}&section=${encodeURIComponent(section!)}`
+                    : `/admin/schools/${school.id}/students/new`
+                }
+                className={cn(buttonVariants({ size: "sm" }), "h-8 gap-1.5 rounded-lg")}
+              >
+                <Plus className="size-4" />
+                Add student
+              </Link>
+            </div>
           ) : null
         }
       />

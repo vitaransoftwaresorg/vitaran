@@ -1,20 +1,24 @@
 export const ADMIN_SESSION_COOKIE = "vitaran_admin_session";
 export const ADMIN_BASE_PATH = "/admin";
-export const ADMIN_LOGIN_PATH = "/admin/login";
 export const ADMIN_LOGOUT_PATH = "/admin/logout";
 
 export const SCHOOL_SESSION_COOKIE = "vitaran_school_session";
 export const SCHOOL_BASE_PATH = "/school";
 export const SCHOOL_LOGIN_PATH = "/school/login";
-/** After school login — resources is the landing page. */
-export const SCHOOL_HOME_PATH = "/school/resources";
+/** The admin signs in on the shared portal login. */
+export const ADMIN_LOGIN_PATH = SCHOOL_LOGIN_PATH;
+/** After school login — the dashboard is the landing page. */
+export const SCHOOL_HOME_PATH = "/school";
 
 export const TEACHER_SESSION_COOKIE = "vitaran_teacher_session";
 export const TEACHER_BASE_PATH = "/teacher";
 /** Same unified portal login as schools. */
 export const TEACHER_LOGIN_PATH = SCHOOL_LOGIN_PATH;
-/** After teacher login — resources is the landing page. */
-export const TEACHER_HOME_PATH = "/teacher/resources";
+/** After teacher login — the dashboard is the landing page. */
+export const TEACHER_HOME_PATH = "/teacher";
+
+/** Clears stale school/teacher cookies, then shows the portal login. */
+export const PORTAL_SESSION_EXPIRED_PATH = "/auth/session-expired";
 
 /** Page the user tried to open before being sent to login; read once after signing in. */
 export const RETURN_TO_COOKIE = "vitaran_return_to";

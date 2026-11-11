@@ -9,6 +9,7 @@ import { PageHeader } from "@/features/admin/page-header";
 import { BulkStudentForm } from "@/features/students/bulk-student-form";
 import { StudentDetailView } from "@/features/students/student-detail-view";
 import { StudentForm } from "@/features/students/student-form";
+import { ClassProfilesPdfActions } from "@/features/students/student-pdf-actions";
 import { StudentsTable } from "@/features/students/students-table";
 import { loadSchoolRosterAction, loadSchoolStudentAction } from "@/features/students/actions";
 import { SchoolClassesBoard } from "@/features/teachers/school-classes-board";
@@ -217,20 +218,26 @@ export function SchoolClassesWorkspace({
           description={description}
           count={enrolled}
           actions={
-            full ? (
-              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
-                Full ({seats} seats). Edit the class to add more seats.
-              </p>
-            ) : (
-              <Button
-                type="button"
-                className="gap-1.5"
-                onClick={() => setView({ name: "form", focus, student: null })}
-              >
-                <Plus className="size-4" />
-                Add student
-              </Button>
-            )
+            <div className="flex flex-wrap items-center gap-2">
+              <ClassProfilesPdfActions
+                portal="school"
+                studentIds={rosterStudents.map((student) => student.id)}
+              />
+              {full ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
+                  Full ({seats} seats). Edit the class to add more seats.
+                </p>
+              ) : (
+                <Button
+                  type="button"
+                  className="gap-1.5"
+                  onClick={() => setView({ name: "form", focus, student: null })}
+                >
+                  <Plus className="size-4" />
+                  Add student
+                </Button>
+              )}
+            </div>
           }
         />
         <StudentsTable

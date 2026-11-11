@@ -10,7 +10,8 @@ export type LiveContentKind =
   | "schools"
   | "sections"
   | "objections"
-  | "programs";
+  | "programs"
+  | "settings";
 
 const DEFAULT_LIVE_PATH = "/live";
 const REFRESH_DEBOUNCE_MS = 1_500;

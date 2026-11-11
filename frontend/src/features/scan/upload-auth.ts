@@ -6,8 +6,6 @@ import {
   SCHOOL_SESSION_COOKIE,
   TEACHER_SESSION_COOKIE,
 } from "@/constants/auth";
-import { API_V1_PREFIX } from "@/constants/api";
-import { getApiUrl } from "@/config/env";
 import type { ScanPortal } from "@/services/scans";
 
 /** Short-lived client upload credentials so large PDFs never enter the Next.js process. */
@@ -31,7 +29,8 @@ export async function getOmrUploadAuthAction(portal: ScanPortal): Promise<
       : portal === "teacher"
         ? "/teacher/omr-scans"
         : "/omr-scans";
-  const api = `${getApiUrl()}${API_V1_PREFIX}`;
+  // Same-origin path rewritten to the API in next.config.ts.
+  const api = "/omr-api";
 
   return {
     ok: true,

@@ -23,6 +23,7 @@ import { displaySectionName } from "@/features/schools/section-label";
 import { capitalizeWords, toPhoneDigits } from "@/features/schools/schema";
 import type { SchoolProgramOffering } from "@/types/program";
 import type { SchoolSection } from "@/types/section";
+import { capitalizeInput } from "@/lib/name-case";
 import type { StudentDetail } from "@/types/student";
 
 type StudentFormField =
@@ -221,7 +222,7 @@ export function StudentForm({
   function validateBeforeSubmit(): boolean {
     const next: typeof clientErrors = {};
     if (name.trim().length < 2) next.name = "Enter the student name";
-    if (!rollNo.trim()) next.rollNo = "Enter the registration number";
+    if (!/^\d{7}$/.test(rollNo.trim())) next.rollNo = "Enter the 7-digit registration number";
     if (parentName.trim().length < 2) next.parentName = "Enter the parent / guardian name";
     if (!/^\d{10}$/.test(parentPhone)) next.parentPhone = "Enter a 10-digit mobile number";
     if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
@@ -273,10 +274,11 @@ export function StudentForm({
           <Input
             id="name"
             name="name"
+            autoCapitalize="words"
             value={name}
             className="h-9"
             onChange={(e) => {
-              setName(e.currentTarget.value);
+              setName(capitalizeInput(e.currentTarget));
               setClientErrors((prev) => ({ ...prev, name: undefined }));
             }}
           />
@@ -289,9 +291,12 @@ export function StudentForm({
             id="rollNo"
             name="rollNo"
             value={rollNo}
+            inputMode="numeric"
+            maxLength={7}
+            placeholder="7 digits"
             className="h-9"
             onChange={(e) => {
-              setRollNo(e.currentTarget.value);
+              setRollNo(e.currentTarget.value.replace(/\D/g, "").slice(0, 7));
               setClientErrors((prev) => ({ ...prev, rollNo: undefined }));
             }}
           />
@@ -303,10 +308,11 @@ export function StudentForm({
           <Input
             id="parentName"
             name="parentName"
+            autoCapitalize="words"
             value={parentName}
             className="h-9"
             onChange={(e) => {
-              setParentName(e.currentTarget.value);
+              setParentName(capitalizeInput(e.currentTarget));
               setClientErrors((prev) => ({ ...prev, parentName: undefined }));
             }}
           />

@@ -11,7 +11,8 @@ import { cn } from "@/lib/utils";
 import type { AnswerKeyDetail, AnswerOption, KeyAnswer, SubjectRange } from "@/types/answer-key";
 import { isBonusKey, keyOptions } from "@/types/answer-key";
 import { saveAnswerKeyAnswersAction } from "./actions";
-import { enteredTestId } from "./test-id";
+import { enteredTestId, TEST_ID_LENGTH, TEST_ID_MESSAGE, TEST_ID_PATTERN, testIdDigits } from "./test-id";
+import { TestIdStatus, useTestIdCheck } from "./test-id-status";
 
 const OPTIONS: AnswerOption[] = ["A", "B", "C", "D"];
 const DEFAULT_CORRECT_MARKS = 1;
@@ -116,6 +117,8 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
     ),
   );
   const [printedAnswers, setPrintedAnswers] = useState(() => answerKey.printedAnswers ?? {});
+  const testIdCheck = useTestIdCheck(readOnly ? "" : testId, answerKey.id);
+  const testIdOk = TEST_ID_PATTERN.test(testId.trim()) && testIdCheck.state !== "taken";
 
   const dirty = useMemo(
     () => snapshot(answers, explanations, ranges, testId.trim(), correctMarks, wrongMarks) !== baseline,
@@ -139,8 +142,12 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
   function save() {
     if (!dirty) return;
     const nextTestId = testId.trim();
-    if (!nextTestId) {
-      toast.error("Enter the test ID");
+    if (!TEST_ID_PATTERN.test(nextTestId)) {
+      toast.error(TEST_ID_MESSAGE);
+      return;
+    }
+    if (testIdCheck.state === "taken") {
+      toast.error("This test ID is already used by another answer key.");
       return;
     }
     startSaving(async () => {
@@ -194,7 +201,7 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
           </p>
         ) : null}
         {!readOnly && (
-          <Button type="button" className="ml-auto" onClick={save} disabled={pending || !dirty || !testId.trim()}>
+          <Button type="button" className="ml-auto" onClick={save} disabled={pending || !dirty || !testIdOk}>
             {saving ? <Loader2 className="animate-spin" /> : <Save />}
             Save
           </Button>
@@ -213,15 +220,21 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
           <tbody>
             <tr>
               <td className="px-4 py-3">
-                <Input
-                  value={testId}
-                  disabled={pending || readOnly}
-                  maxLength={64}
-                  placeholder="Enter test ID"
-                  aria-label="Test ID"
-                  className="h-9 w-full max-w-56 bg-white font-mono text-sm"
-                  onChange={(event) => setTestId(event.currentTarget.value)}
-                />
+                <div className="flex flex-col gap-1.5">
+                  <Input
+                    value={testId}
+                    disabled={pending || readOnly}
+                    inputMode="numeric"
+                    autoComplete="off"
+                    maxLength={TEST_ID_LENGTH}
+                    placeholder="6 digits"
+                    aria-label="Test ID"
+                    aria-invalid={testIdCheck.state === "taken" ? true : undefined}
+                    className="h-9 w-full max-w-40 bg-white font-mono text-sm tracking-widest tabular-nums"
+                    onChange={(event) => setTestId(testIdDigits(event.currentTarget.value))}
+                  />
+                  {!readOnly ? <TestIdStatus check={testIdCheck} length={testId.trim().length} /> : null}
+                </div>
               </td>
               <td className="px-4 py-3">
                 <Input

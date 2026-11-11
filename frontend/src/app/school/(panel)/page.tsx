@@ -2,7 +2,7 @@ import Link from "next/link";
 import { BookOpen, GraduationCap, KeyRound, ScanLine, School2, Trophy, Users } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/features/admin/page-header";
-import { StatCard } from "@/features/admin/dashboard-parts";
+import { ActionBanner, Panel, STAT_GRID, StatCard } from "@/features/admin/dashboard-parts";
 import { programLabel, subjectLabel } from "@/features/schools/constants";
 import { capitalizeWords } from "@/features/schools/schema";
 import {
@@ -46,13 +46,13 @@ export default async function SchoolDashboardPage() {
         title="Dashboard"
         description={`${capitalizeWords(stats.schoolName)} · ${stats.schoolCode}`}
         actions={
-          <Link href="/school/teachers/new" className={cn(buttonVariants())}>
+          <Link href="/school/teachers/new" className={cn(buttonVariants(), "h-10 w-full sm:w-auto")}>
             Add teacher
           </Link>
         }
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className={cn(STAT_GRID, "sm:grid-cols-3 2xl:grid-cols-6")}>
         <StatCard
           label="Teachers"
           value={stats.teachers.total}
@@ -95,14 +95,21 @@ export default async function SchoolDashboardPage() {
           icon={Trophy}
           href="/school/results"
         />
-        <StatCard label="OMR Scan" hint="Camera scan a sheet" icon={ScanLine} href="/school/omr-scan" />
       </div>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-bold text-neutral-950">Your programs</h2>
-          <p className="mt-1 text-xs text-neutral-500">Assigned by Vitaran for this school.</p>
-          <ul className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-4">
+        <ActionBanner
+          href="/school/omr-scan"
+          icon={ScanLine}
+          title="OMR Scan"
+          description="Scan answer sheets with the phone camera or upload a PDF."
+          cta="Start scanning"
+        />
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <Panel compact title="Your programs" description="Assigned by Vitaran for this school.">
+          <ul className="flex flex-wrap gap-2">
             {ownPrograms.length > 0 ? (
               ownPrograms.map((program) => (
                 <li
@@ -116,12 +123,10 @@ export default async function SchoolDashboardPage() {
               <li className="text-sm text-neutral-500">No programs yet.</li>
             )}
           </ul>
-        </section>
+        </Panel>
 
-        <section className="rounded-2xl border border-neutral-200 bg-white p-5 shadow-sm">
-          <h2 className="text-sm font-bold text-neutral-950">Your subjects</h2>
-          <p className="mt-1 text-xs text-neutral-500">Teachers can only be assigned these subjects.</p>
-          <ul className="mt-4 flex flex-wrap gap-2">
+        <Panel compact title="Your subjects" description="Teachers can only be assigned these subjects.">
+          <ul className="flex flex-wrap gap-2">
             {stats.subjectIds.length > 0 ? (
               stats.subjectIds.map((subject) => (
                 <li
@@ -135,7 +140,7 @@ export default async function SchoolDashboardPage() {
               <li className="text-sm text-neutral-500">No subjects yet.</li>
             )}
           </ul>
-        </section>
+        </Panel>
       </div>
     </>
   );

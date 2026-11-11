@@ -6,7 +6,7 @@ export type SmeContact = {
 
 export type AppSettings = {
   maintenanceMode: boolean;
-  vitaranEmail: string | null;
+  vitaranEmails: string[];
   smeContacts: SmeContact[];
   updatedAt: string;
 };
@@ -17,6 +17,6 @@ export type PublicSettings = {
 
 export type UpdateAppSettingsInput = {
   maintenanceMode: boolean;
-  vitaranEmail?: string | null;
+  vitaranEmails: string[];
   smeContacts: SmeContact[];
 };

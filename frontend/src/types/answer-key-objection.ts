@@ -21,6 +21,8 @@ export type AnswerKeyObjection = {
   teacher: { id: string; name: string; email: string } | null;
   questionNumber: number | null;
   proposedAnswer: ProposedObjectionAnswer | null;
+  /** The key's answer for this question right now; null when no question or not set. */
+  currentAnswer: KeyAnswer | null;
   message: string;
   /** A photo was attached; load it from the portal's objection image route. */
   hasImage: boolean;

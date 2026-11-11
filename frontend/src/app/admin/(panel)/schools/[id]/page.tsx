@@ -129,7 +129,7 @@ export default async function SchoolDetailsPage({ params }: PageProps<"/admin/sc
             {school.hasLogo ? (
               // eslint-disable-next-line @next/next/no-img-element -- auth-proxied school logo
               <img
-                src={`/admin/schools/${school.id}/logo`}
+                src={`/admin/schools/${school.id}/logo?v=${encodeURIComponent(school.updatedAt)}`}
                 alt={`${school.name} logo`}
                 className="size-14 shrink-0 rounded-xl border border-white/20 bg-white object-contain p-1"
               />

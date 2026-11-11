@@ -1,6 +1,6 @@
 import "server-only";
 import { redirect } from "next/navigation";
-import { TEACHER_LOGIN_PATH, TEACHER_SESSION_COOKIE } from "@/constants/auth";
+import { PORTAL_SESSION_EXPIRED_PATH, TEACHER_SESSION_COOKIE } from "@/constants/auth";
 import { createSession } from "@/lib/session";
 import { fetchCurrentTeacher } from "@/services/auth";
 import type { TeacherAccount } from "@/types/teacher";
@@ -17,6 +17,6 @@ export const getTeacherSession = teacherSession.get;
 
 export async function verifyTeacherSession(): Promise<TeacherAccount> {
   const teacher = await getTeacherSession();
-  if (!teacher) redirect(TEACHER_LOGIN_PATH);
+  if (!teacher) redirect(PORTAL_SESSION_EXPIRED_PATH);
   return teacher;
 }

@@ -14,6 +14,7 @@ import { deleteAdminStudentInPlaceAction } from "@/features/students/admin-stude
 import type { StudentDetail, StudentTestResult } from "@/types/student";
 import type { PerformancePortal } from "./performance-actions";
 import { StudentPerformance } from "./student-performance";
+import { StudentPdfActions } from "./student-pdf-actions";
 import { StudentPerformanceLoader } from "./student-performance-loader";
 
 const EMPTY = "—";
@@ -69,6 +70,8 @@ type StudentDetailViewProps = {
   performance?: StudentTestResult[];
   /** Load results in the browser when the page has none (in-page roster views). */
   performancePortal?: PerformancePortal;
+  /** Portal that serves the printable profile PDF; defaults to `performancePortal`. */
+  portal?: PerformancePortal;
 };
 
 export function StudentDetailView({
@@ -81,6 +84,7 @@ export function StudentDetailView({
   showActions,
   performance,
   performancePortal,
+  portal = performancePortal,
 }: StudentDetailViewProps) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -105,9 +109,12 @@ export function StudentDetailView({
             </p>
           </div>
 
-          {actionsVisible ? (
-            <div className="flex shrink-0 gap-2">
-              {canDelete ? (
+          {actionsVisible || portal ? (
+            <div className="flex shrink-0 flex-wrap gap-2">
+              {portal ? (
+                <StudentPdfActions portal={portal} studentId={student.id} outlineClassName={INVERTED_OUTLINE} />
+              ) : null}
+              {actionsVisible && canDelete ? (
                 <button
                   type="button"
                   disabled={pending}
@@ -139,7 +146,7 @@ export function StudentDetailView({
                   Delete
                 </button>
               ) : null}
-              {editHref ? (
+              {!actionsVisible ? null : editHref ? (
                 <Link href={editHref} className={INVERTED_SOLID}>
                   <Pencil />
                   Edit

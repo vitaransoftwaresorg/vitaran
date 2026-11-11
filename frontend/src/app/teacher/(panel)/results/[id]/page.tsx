@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/features/admin/page-header";
 import { LiveRefresh } from "@/features/live/live-refresh";
 import { TEACHER_RESULTS_PATH } from "@/features/results/constants";
-import { ResultSetView, selectedClass } from "@/features/results/result-set-view";
+import { ResultSetView, classScanFilter, selectedClass } from "@/features/results/result-set-view";
+import { listClassScans } from "@/services/scans";
 import { getTeacherResultSet, getTeacherResultSheet } from "@/services/results";
 
 export default async function TeacherResultDetailPage({
@@ -15,7 +16,12 @@ export default async function TeacherResultDetailPage({
   const [{ id }, query] = await Promise.all([params, searchParams]);
   const resultSet = await getTeacherResultSet(id);
   const classLevel = resultSet && selectedClass(resultSet, query.class);
-  const sheet = classLevel ? await getTeacherResultSheet(id, classLevel) : null;
+  const [sheet, scans] = classLevel
+    ? await Promise.all([
+        getTeacherResultSheet(id, classLevel),
+        listClassScans("teacher", classScanFilter(resultSet, classLevel)),
+      ])
+    : [null, []];
   if (!resultSet || !sheet) notFound();
 
   return (
@@ -25,6 +31,7 @@ export default async function TeacherResultDetailPage({
       <ResultSetView
         resultSet={resultSet}
         sheet={sheet}
+        scans={scans}
         basePath={TEACHER_RESULTS_PATH}
         showDownload={false}
       />

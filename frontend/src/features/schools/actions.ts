@@ -178,6 +178,19 @@ export async function isEmailTakenAction(
   }
 }
 
+/** Fails open like the email check: saving still rejects a duplicate school ID. */
+export async function isSchoolCodeTakenAction(code: string, excludeId?: string): Promise<boolean> {
+  const value = code.trim();
+  if (!value || value.length > 64) return false;
+  try {
+    const { codeTaken } = await schoolService.getCodeAvailability(value, excludeId);
+    return codeTaken;
+  } catch (error) {
+    unstable_rethrow(error);
+    return false;
+  }
+}
+
 export async function deleteSchoolAction(
   schoolId: string,
 ): Promise<{ ok: true } | { ok: false; message: string }> {

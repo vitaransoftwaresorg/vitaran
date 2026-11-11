@@ -19,6 +19,7 @@ export default async function AdminStudentDetailPage({ params }: Props) {
       afterDeleteHref="/admin/schools/students"
       adminFlat
       performance={performance}
+      portal="admin"
     />
   );
 }

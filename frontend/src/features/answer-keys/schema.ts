@@ -5,6 +5,7 @@ import {
   type DocumentFormState,
 } from "@/features/documents/schema";
 import { SCHOOL_TYPES } from "@/types/school";
+import { TEST_ID_MESSAGE, TEST_ID_PATTERN } from "./test-id";
 
 export function getAnswerKeySchema() {
   return z
@@ -12,7 +13,7 @@ export function getAnswerKeySchema() {
       program: z.string().trim().min(1, "Select a program.").max(64),
       type: z.enum(SCHOOL_TYPES, { error: "Select a type." }),
       schoolId: z.string().trim().optional(),
-      testId: z.string().trim().min(1, "Enter the test ID.").max(64, "Keep the test ID under 64 characters."),
+      testId: z.string().trim().min(1, "Enter the test ID.").regex(TEST_ID_PATTERN, TEST_ID_MESSAGE),
       testNumber: testNumberField,
       classLevel: classLevelField,
     })

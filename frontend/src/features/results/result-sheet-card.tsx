@@ -13,10 +13,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ProfileLink } from "@/components/shared/profile-link";
 import { cn } from "@/lib/utils";
 import type { ResultCell, ResultSheet } from "@/types/result";
 import { studentCount } from "./constants";
-import { columnRole } from "./result-columns";
+import type { ClassScan } from "@/types/scan";
+import { ClassOmrDownload, OmrCell } from "./omr-files";
+import { ClassRankCardsDownload, ClassResultPdfDownload, RankCardCell } from "./rank-card-files";
+import { columnRole, foldRoll, maxFromLabel, numberCell, type ColumnRole } from "./result-columns";
 
 function formatCell(value: ResultCell) {
   if (value === null) return "—";
@@ -43,6 +47,28 @@ function splitColumns({ columns, rows }: Pick<ResultSheet, "columns" | "rows">) 
   return { shown, tags, numeric };
 }
 
+const SHORT_HEADINGS: Partial<Record<NonNullable<ColumnRole>, string>> = {
+  roll: "Reg No",
+  name: "Student",
+  classRank: "Rank",
+  sectionRank: "Sec Rank",
+  percentage: "%",
+};
+
+/** Phone headings: short names, with a subject's max marks on its own line. */
+function MobileHeading({ label, role }: { label: string; role: ColumnRole }) {
+  const max = maxFromLabel(label);
+  const text = (role && SHORT_HEADINGS[role]) || label.replace(/\s*\(\s*\d+(?:\.\d+)?\s*m?\s*\)\s*/i, " ").trim();
+  return (
+    <span className="inline-flex flex-col items-center sm:hidden">
+      <span>{text}</span>
+      {max != null && role !== "percentage" ? (
+        <span className="font-medium text-brand-700/70">{max}</span>
+      ) : null}
+    </span>
+  );
+}
+
 type ResultSheetCardProps = {
   sheet: ResultSheet;
   downloadHref: string;
@@ -50,6 +76,13 @@ type ResultSheetCardProps = {
   emptyMessage?: string;
   /** Roll and name cells link to `${base}/${roll}${query}`. */
   studentLink?: { base: string; query?: string };
+  /** Rank card and OMR columns, served from the portal's results section. */
+  files?: {
+    basePath: string;
+    resultSetId: string;
+    scans: ClassScan[];
+    path: { schoolId: string; testNumber: number; classLevel: number; program?: string };
+  };
 };
 
 /** A class's results: title, search and download in one header, then the students. */
@@ -59,9 +92,18 @@ export function ResultSheetCard({
   showDownload = true,
   emptyMessage = "No students from your classes in this result.",
   studentLink,
+  files,
 }: ResultSheetCardProps) {
   const roles = sheet.columns.map(columnRole);
   const rollCol = roles.indexOf("roll");
+  const nameCol = roles.indexOf("name");
+  const markCols = roles.flatMap((role, index) => (role === "subject" || role === "total" ? [index] : []));
+  const cardTarget = files
+    ? { resultSetId: files.resultSetId, classLevel: sheet.classLevel, basePath: files.basePath }
+    : null;
+  const scanByRoll = new Map((files?.scans ?? []).map((scan) => [foldRoll(scan.rollNo), scan]));
+  const rollOf = (row: ResultCell[]) => (rollCol >= 0 ? String(row[rollCol] ?? "").trim() : "");
+  const hasMarks = (row: ResultCell[]) => markCols.some((index) => numberCell(row[index]) != null);
   const studentHref = (row: ResultCell[]) => {
     const roll = rollCol >= 0 ? row[rollCol] : null;
     if (!studentLink || roll == null || String(roll).trim() === "") return null;
@@ -73,15 +115,19 @@ export function ResultSheetCard({
   // The sheet's last title line is the specific one, e.g. "TEST-3 9-SEP-2026 (Max. Marks: 300)".
   const detail = sheet.caption.at(-1);
 
+  // Rows come sorted by rank, so an uploaded serial number would read out of order.
+  const serialCol = roles.indexOf("serial");
+  const rows =
+    serialCol < 0 ? sheet.rows : sheet.rows.map((row, position) => row.map((cell, index) => (index === serialCol ? position + 1 : cell)));
   const visible = deferredQuery
-    ? sheet.rows.filter((row) =>
+    ? rows.filter((row) =>
         row.some((value) => value !== null && String(value).toLowerCase().includes(deferredQuery)),
       )
-    : sheet.rows;
+    : rows;
 
   return (
     <section className="overflow-hidden rounded-2xl border border-brand-100 bg-white shadow-[0_12px_32px_-20px_rgb(25_28_95/0.35)]">
-      <header className="flex flex-wrap items-center justify-between gap-4 border-b border-brand-100 px-5 py-4 sm:px-6">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-brand-100 px-4 py-3.5 sm:gap-4 sm:px-6 sm:py-4">
         <div className="min-w-0">
           <h2 className="text-lg font-bold text-neutral-950">
             {sheet.classLabel || sheet.label || `Class ${sheet.classLevel}`}
@@ -105,8 +151,8 @@ export function ResultSheetCard({
           </p>
         </div>
 
-        <div className="flex w-full items-center gap-2 sm:w-auto">
-          <InputGroup className="h-10 flex-1 bg-white sm:w-64 sm:flex-none">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+          <InputGroup className="h-10 w-full bg-white sm:w-64">
             <InputGroupAddon>
               <Search />
             </InputGroupAddon>
@@ -118,6 +164,13 @@ export function ResultSheetCard({
               aria-label="Search students"
             />
           </InputGroup>
+          {files ? (
+            <>
+              <ClassResultPdfDownload target={cardTarget} />
+              <ClassRankCardsDownload target={cardTarget} />
+              <ClassOmrDownload path={files.path} count={files.scans.length} basePath={files.basePath} />
+            </>
+          ) : null}
           {showDownload && (
             <Button
               nativeButton={false}
@@ -148,13 +201,24 @@ export function ResultSheetCard({
                 <TableHead
                   key={index}
                   className={cn(
-                    "h-auto px-2.5 py-3 text-left align-bottom text-[11px] leading-tight font-semibold tracking-wide whitespace-normal wrap-anywhere text-brand-900 uppercase first:pl-5 last:pr-5",
+                    "h-auto px-2.5 py-3 text-left align-top text-[11px] sm:align-bottom leading-tight font-semibold tracking-wide whitespace-nowrap text-brand-900 uppercase first:pl-4 last:pr-4 sm:whitespace-normal sm:wrap-anywhere sm:first:pl-5 sm:last:pr-5",
                     numeric.has(index) && "text-right",
                   )}
                 >
-                  {sheet.columns[index]}
+                  <MobileHeading label={sheet.columns[index]!} role={roles[index] ?? null} />
+                  <span className="hidden sm:inline">{sheet.columns[index]}</span>
                 </TableHead>
               ))}
+              {files ? (
+                <>
+                  <TableHead className="h-auto px-2.5 py-3 text-center align-top text-[11px] font-semibold tracking-wide whitespace-nowrap sm:align-bottom text-brand-900 uppercase">
+                    Rank card
+                  </TableHead>
+                  <TableHead className="h-auto px-2.5 py-3 pr-4 text-center align-top text-[11px] font-semibold tracking-wide whitespace-nowrap sm:align-bottom text-brand-900 uppercase sm:pr-5">
+                    OMR
+                  </TableHead>
+                </>
+              ) : null}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -166,21 +230,33 @@ export function ResultSheetCard({
                     <TableCell
                       key={index}
                       className={cn(
-                        "px-2.5 py-2.5 wrap-anywhere whitespace-normal text-neutral-700 first:pl-5 last:pr-5",
+                        "px-2.5 py-2.5 whitespace-nowrap text-neutral-700 first:pl-4 last:pr-4 sm:whitespace-normal sm:wrap-anywhere sm:first:pl-5 sm:last:pr-5",
                         numeric.has(index) && "text-right text-neutral-950 tabular-nums",
                         row[index] === null && "text-neutral-300",
                       )}
                     >
                       {href && row[index] != null ? (
-                        <Link href={href} className="font-medium text-brand-900 hover:underline">
-                          {formatCell(row[index])}
-                        </Link>
+                        <ProfileLink href={href}>{formatCell(row[index])}</ProfileLink>
                       ) : (
                         formatCell(row[index] ?? null)
                       )}
                     </TableCell>
                   );
                 })}
+                {files ? (
+                  <>
+                    <TableCell className="px-1.5 py-1 text-center">
+                      <RankCardCell
+                        target={hasMarks(row) ? cardTarget : null}
+                        roll={rollOf(row)}
+                        name={nameCol >= 0 ? formatCell(row[nameCol] ?? null) : rollOf(row)}
+                      />
+                    </TableCell>
+                    <TableCell className="px-1.5 py-1 pr-3 text-center sm:pr-4">
+                      <OmrCell scan={scanByRoll.get(foldRoll(rollOf(row)))} basePath={files.basePath} />
+                    </TableCell>
+                  </>
+                ) : null}
               </TableRow>
             ))}
           </TableBody>

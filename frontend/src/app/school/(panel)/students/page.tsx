@@ -6,6 +6,7 @@ import { PageHeader } from "@/features/admin/page-header";
 import { verifySchoolSession } from "@/features/school-auth/session";
 import { displaySectionName } from "@/features/schools/section-label";
 import { SchoolStudentsDrive } from "@/features/students/school-students-drive";
+import { ClassProfilesPdfActions } from "@/features/students/student-pdf-actions";
 import { cn } from "@/lib/utils";
 import { listSchoolClassOrganization } from "@/services/sections";
 import { listSchoolStudents } from "@/services/students";
@@ -46,13 +47,13 @@ export default async function SchoolStudentsPage({
   const description = inClass
     ? `${school.name} · students`
     : "Open a class section to view students";
-  const rosterCount = inClass
+  const roster = inClass
     ? students.filter(
         (student) =>
-          student.classLevel === classLevel &&
-          displaySectionName(student.sectionName) === section,
-      ).length
-    : students.length;
+          student.classLevel === classLevel && displaySectionName(student.sectionName) === section,
+      )
+    : [];
+  const rosterCount = inClass ? roster.length : students.length;
 
   return (
     <>
@@ -61,17 +62,25 @@ export default async function SchoolStudentsPage({
         description={description}
         count={rosterCount}
         actions={
-          <Link
-            href={
-              inClass
-                ? `/school/students/new?class=${classLevel}&section=${encodeURIComponent(section!)}`
-                : "/school/students/new"
-            }
-            className={cn(buttonVariants({ size: "sm" }), "h-8 gap-1.5 rounded-lg")}
-          >
-            <Plus className="size-4" />
-            Add student
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            {inClass ? (
+              <ClassProfilesPdfActions
+                portal="school"
+                studentIds={roster.map((student) => student.id)}
+              />
+            ) : null}
+            <Link
+              href={
+                inClass
+                  ? `/school/students/new?class=${classLevel}&section=${encodeURIComponent(section!)}`
+                  : "/school/students/new"
+              }
+              className={cn(buttonVariants({ size: "sm" }), "h-8 gap-1.5 rounded-lg")}
+            >
+              <Plus className="size-4" />
+              Add student
+            </Link>
+          </div>
         }
       />
       <SchoolStudentsDrive

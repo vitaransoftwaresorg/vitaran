@@ -1,49 +1,14 @@
 import { BookOpen, KeyRound, ScanLine, Trophy, Users } from "lucide-react";
 import { PageHeader } from "@/features/admin/page-header";
-import { StatCard } from "@/features/admin/dashboard-parts";
-import { ChipRow, QuickLinks } from "@/features/admin/quick-links";
+import { ActionBanner, Panel, STAT_GRID, StatCard } from "@/features/admin/dashboard-parts";
+import { ChipRow } from "@/features/admin/quick-links";
 import { subjectLabel } from "@/features/schools/constants";
 import { capitalizeWords } from "@/features/schools/schema";
 import { getTeacherDashboard } from "@/services/teachers";
+import { cn } from "@/lib/utils";
 
 export default async function TeacherDashboardPage() {
   const stats = await getTeacherDashboard();
-
-  const links = [
-    {
-      label: "Students",
-      href: "/teacher/students",
-      icon: Users,
-      count: stats.students,
-      hint: `${stats.students} in your classes`,
-    },
-    {
-      label: "Resources",
-      href: "/teacher/resources",
-      icon: BookOpen,
-      hint: "Solution books",
-    },
-    {
-      label: "Answer keys",
-      href: "/teacher/answer-keys",
-      icon: KeyRound,
-      count: stats.answerKeys,
-      hint: `${stats.answerKeys} published`,
-    },
-    {
-      label: "Results",
-      href: "/teacher/results",
-      icon: Trophy,
-      count: stats.results,
-      hint: `${stats.results} published`,
-    },
-    {
-      label: "OMR Scan",
-      href: "/teacher/omr-scan",
-      icon: ScanLine,
-      hint: "Scan a sheet",
-    },
-  ] as const;
 
   return (
     <>
@@ -52,7 +17,42 @@ export default async function TeacherDashboardPage() {
         description={`${stats.schoolName} · ${stats.schoolCode}`}
       />
 
-      <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+      <div className={cn(STAT_GRID, "lg:grid-cols-4")}>
+        <StatCard
+          label="Students"
+          value={stats.students}
+          hint="In your classes"
+          icon={Users}
+          href="/teacher/students"
+        />
+        <StatCard label="Resources" hint="Solution books" icon={BookOpen} href="/teacher/resources" />
+        <StatCard
+          label="Answer keys"
+          value={stats.answerKeys}
+          hint="Published"
+          icon={KeyRound}
+          href="/teacher/answer-keys"
+        />
+        <StatCard
+          label="Results"
+          value={stats.results}
+          hint="Published"
+          icon={Trophy}
+          href="/teacher/results"
+        />
+      </div>
+
+      <div className="mt-4">
+        <ActionBanner
+          href="/teacher/omr-scan"
+          icon={ScanLine}
+          title="OMR Scan"
+          description="Scan answer sheets with the phone camera or upload a PDF."
+          cta="Start scanning"
+        />
+      </div>
+
+      <Panel compact title="Your teaching" description="Classes and subjects assigned by your school." className="mt-4">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <ChipRow
             title="Classes"
@@ -70,24 +70,7 @@ export default async function TeacherDashboardPage() {
             empty="Not a class teacher for any section."
           />
         </div>
-      </section>
-
-      <div className="mt-4 md:hidden">
-        <QuickLinks items={[...links]} className="grid-cols-2" />
-      </div>
-
-      <div className="mt-4 hidden gap-4 md:grid md:grid-cols-2 xl:grid-cols-3">
-        {links.map((item) => (
-          <StatCard
-            key={item.href}
-            label={item.label}
-            value={"count" in item ? item.count : undefined}
-            hint={item.hint}
-            icon={item.icon}
-            href={item.href}
-          />
-        ))}
-      </div>
+      </Panel>
     </>
   );
 }

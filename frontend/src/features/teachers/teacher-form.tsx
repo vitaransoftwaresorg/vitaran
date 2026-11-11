@@ -23,6 +23,7 @@ import type { SchoolSection } from "@/types/section";
 import type { Subject } from "@/types/school";
 import type { ClassTeacherSlot, TeacherDetail } from "@/types/teacher";
 import { TEACHER_STATUS_LABELS } from "./constants";
+import { capitalizeInput } from "@/lib/name-case";
 import type { TeacherFormState, TeacherFormValues } from "./actions";
 
 type TeacherFormProps = {
@@ -252,7 +253,13 @@ function TeacherFormFields({
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-6">
           <Field data-invalid={errors?.name ? true : undefined} className="lg:col-span-3">
             <FieldLabel htmlFor="name">Full name *</FieldLabel>
-            <Input id="name" name="name" defaultValue={values.name} />
+            <Input
+              id="name"
+              name="name"
+              defaultValue={values.name}
+              autoCapitalize="words"
+              onChange={(e) => capitalizeInput(e.currentTarget)}
+            />
             {errors?.name && <FieldError>{errors.name[0]}</FieldError>}
           </Field>
           <Field data-invalid={errors?.status ? true : undefined} className="lg:col-span-3">

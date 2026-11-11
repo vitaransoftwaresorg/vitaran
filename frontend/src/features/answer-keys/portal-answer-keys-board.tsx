@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { Suspense, useCallback, useEffect, useState, useTransition } from "react";
 import { PageHeader } from "@/features/admin/page-header";
 import { useLiveContent } from "@/features/live/use-live-content";
 import { cn } from "@/lib/utils";
 import type { PdfDocument } from "@/types/document";
-import { PortalAnswerKeysBrowser } from "./portal-answer-keys-browser";
+import { PortalAnswerKeysDrive } from "./portal-answer-keys-drive";
 import {
   loadSchoolPortalAnswerKeysAction,
   loadTeacherPortalAnswerKeysAction,
@@ -74,13 +74,15 @@ export function PortalAnswerKeysBoard({
     <>
       <PageHeader title="Answer keys" count={documents.length} description={description} />
       <div className={cn(pending && "opacity-70 transition-opacity")}>
-        <PortalAnswerKeysBrowser
-          programIds={programIds}
-          programNames={programNames}
-          ownerLabel={ownerLabel}
-          documents={documents}
-          basePath={basePath}
-        />
+        <Suspense>
+          <PortalAnswerKeysDrive
+            programIds={programIds}
+            programNames={programNames}
+            ownerLabel={ownerLabel}
+            documents={documents}
+            basePath={basePath}
+          />
+        </Suspense>
       </div>
     </>
   );

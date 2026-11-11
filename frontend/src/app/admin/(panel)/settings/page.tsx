@@ -9,7 +9,7 @@ export default async function AdminSettingsPage() {
   const settings = await getAdminSettings();
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div className="w-full">
       <PageHeader
         title="Admin settings"
         description="Maintenance mode and objection email routing."
