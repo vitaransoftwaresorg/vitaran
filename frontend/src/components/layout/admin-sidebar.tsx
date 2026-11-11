@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronsUpDown, ExternalLink, LogOut } from "lucide-react";
@@ -29,18 +29,20 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { logout } from "@/features/admin-auth/actions";
+import { ADMIN_LOGOUT_PATH } from "@/constants/auth";
+import { broadcastAdminLogout } from "@/features/admin-auth/admin-session-guard";
 import { adminNavGroups, isNavItemActive } from "@/features/admin/navigation";
 import type { AdminProfile } from "@/types/auth";
 
 export function AdminSidebar({ admin }: { admin: AdminProfile }) {
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
-  const [signingOut, startSignOut] = useTransition();
+  const [signingOut, setSigningOut] = useState(false);
   const initials = admin.email.slice(0, 2).toUpperCase();
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="icon" side={isMobile ? "right" : "left"}>
+      {!isMobile && (
       <SidebarHeader>
         <SidebarMenu>
           <SidebarMenuItem>
@@ -64,6 +66,7 @@ export function AdminSidebar({ admin }: { admin: AdminProfile }) {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
+      )}
 
       <SidebarContent>
         {adminNavGroups.map((group) => (
@@ -80,7 +83,7 @@ export function AdminSidebar({ admin }: { admin: AdminProfile }) {
                       isActive={isNavItemActive(item.href, pathname)}
                       onClick={() => isMobile && setOpenMobile(false)}
                       render={<Link href={item.href} />}
-                      className="data-active:bg-white data-active:font-semibold data-active:text-brand-900"
+                      className="transition-colors duration-150 data-active:bg-white data-active:font-semibold data-active:text-brand-900"
                     >
                       <item.icon />
                       <span>{item.title}</span>
@@ -134,7 +137,7 @@ export function AdminSidebar({ admin }: { admin: AdminProfile }) {
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
-                  render={<a href="/" target="_blank" rel="noreferrer" />}
+                  render={<Link href="/" target="_blank" rel="noreferrer" />}
                 >
                   <ExternalLink />
                   View website
@@ -142,7 +145,12 @@ export function AdminSidebar({ admin }: { admin: AdminProfile }) {
                 <DropdownMenuItem
                   variant="destructive"
                   disabled={signingOut}
-                  onClick={() => startSignOut(() => logout())}
+                  onClick={() => {
+                    if (signingOut) return;
+                    setSigningOut(true);
+                    broadcastAdminLogout();
+                    window.location.replace(ADMIN_LOGOUT_PATH);
+                  }}
                 >
                   <LogOut />
                   {signingOut ? "Signing out…" : "Sign out"}

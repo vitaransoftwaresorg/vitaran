@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import {
   Atom,
   Calculator,
@@ -13,7 +14,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { programs } from "./content";
+import { classLabel } from "@/utils/format";
+import { portalPrograms } from "./portal-programs";
 import type { SolutionBook, Subject } from "./solution-books";
 
 const subjectIcons: Record<Subject, LucideIcon> = {
@@ -25,17 +27,35 @@ const subjectIcons: Record<Subject, LucideIcon> = {
 };
 
 type ProgramTabsProps = {
+  /** Programs to show, in the standard program order. */
+  programIds: string[];
+  programNames?: Record<string, string>;
   books: Record<string, SolutionBook[]>;
   label: string;
   emptyMessage: string;
 };
 
-export function ProgramTabs({ books: booksByProgram, label, emptyMessage }: ProgramTabsProps) {
+export function ProgramTabs({
+  programIds,
+  programNames,
+  books: booksByProgram,
+  label,
+  emptyMessage,
+}: ProgramTabsProps) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  const visiblePrograms = portalPrograms(programIds, programNames);
+
+  if (visiblePrograms.length === 0) {
+    return (
+      <p className="rounded-[2rem] border border-brand-200 bg-brand-50 p-6 text-center text-sm font-medium text-brand-700">
+        No programs have been assigned to your school yet. Please contact Vitaran.
+      </p>
+    );
+  }
 
   return (
     <ul className="space-y-4">
-      {programs.map((program, i) => {
+      {visiblePrograms.map((program, i) => {
         const open = openIndex === i;
         const panelId = `program-panel-${i}`;
         const books = booksByProgram[program.title] ?? [];
@@ -170,21 +190,20 @@ function BookBrowser({ books }: { books: SolutionBook[] }) {
                   .filter((b) => b.subject === subject)
                   .map((book) => (
                     <li key={book.href}>
-                      <a
+                      <Link
                         href={book.href}
                         target="_blank"
                         rel="noopener noreferrer"
+                        prefetch={false}
                         className="group flex items-center justify-between rounded-xl bg-white px-3 py-2 text-sm font-medium text-brand-800 ring-1 ring-brand-100 transition-all hover:bg-brand-800 hover:text-white hover:ring-brand-800 active:scale-[0.98]"
                       >
-                        <span>
-                          Class {book.grade}
-                        </span>
+                        <span>{classLabel(book.grade)}</span>
                         {book.external ? (
                           <ExternalLink className="size-3.5 opacity-60 group-hover:opacity-100" />
                         ) : (
                           <Download className="size-3.5 opacity-60 group-hover:opacity-100" />
                         )}
-                      </a>
+                      </Link>
                     </li>
                   ))}
               </ul>

@@ -1,34 +1,43 @@
 import type { Metadata } from "next";
-import { Trophy } from "lucide-react";
-import { Card } from "@/components/ui/card";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
 import { PageHeader } from "@/features/admin/page-header";
+import { parseListFilters } from "@/features/documents/list-filters";
+import { setResultPublishedAction } from "@/features/results/actions";
+import { ResultsDrive, type DrivePath } from "@/features/results/results-drive";
+import { listResultSets } from "@/services/results";
+import { listAdminPrograms } from "@/services/programs";
+import { listSchoolOptions } from "@/services/schools";
 
 export const metadata: Metadata = { title: "Results" };
 
-export default function AdminResultsPage() {
+export default async function AdminResultsPage({ searchParams }: PageProps<"/admin/results">) {
+  const [schools, programs] = await Promise.all([listSchoolOptions(), listAdminPrograms()]);
+  const filters = parseListFilters(await searchParams, {
+    programCodes: programs.map((program) => program.code),
+  });
+  const resultSets = await listResultSets({
+    testNumber: filters.testNumber,
+    type: filters.type,
+    schoolId: filters.schoolId,
+    limit: 100,
+  });
+
+  const path: DrivePath = {
+    schoolId: filters.schoolId,
+    testNumber: filters.testNumber,
+    // Program is only used when opening a class (enter / upload), not as a drive folder.
+    program: filters.program,
+  };
+
   return (
     <>
-      <PageHeader title="Results" description="Publish and manage exam results." />
-      <Card>
-        <Empty className="py-20">
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <Trophy />
-            </EmptyMedia>
-            <EmptyTitle>Coming soon</EmptyTitle>
-            <EmptyDescription>
-              Results management will be available here shortly.
-            </EmptyDescription>
-          </EmptyHeader>
-        </Empty>
-      </Card>
+      <PageHeader title="Results" />
+      <ResultsDrive
+        resultSets={resultSets}
+        programs={programs}
+        schools={schools}
+        path={path}
+        publishAction={setResultPublishedAction}
+      />
     </>
   );
 }

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { unstable_rethrow } from "next/navigation";
 import { z } from "zod";
-import { ADMIN_BASE_PATH } from "@/constants/auth";
+import { ADMIN_BASE_PATH, SCHOOL_BASE_PATH, TEACHER_BASE_PATH } from "@/constants/auth";
 import { ApiError } from "@/services/api-client";
 import * as schoolService from "@/services/schools";
 import type { SchoolInput } from "@/types/school";
@@ -19,13 +19,37 @@ import {
   type SchoolFormValues,
 } from "./schema";
 
+/** Program/class checks drive Classes, Resources, answer keys, and teacher views. */
+function revalidateSchoolPortalViews() {
+  revalidatePath(ADMIN_BASE_PATH, "layout");
+  revalidatePath(`${ADMIN_BASE_PATH}/programs`);
+  revalidatePath(SCHOOL_BASE_PATH, "layout");
+  revalidatePath(`${SCHOOL_BASE_PATH}/classes`);
+  revalidatePath(`${SCHOOL_BASE_PATH}/resources`);
+  revalidatePath(`${SCHOOL_BASE_PATH}/answer-keys`);
+  revalidatePath(`${SCHOOL_BASE_PATH}/teachers`);
+  revalidatePath(TEACHER_BASE_PATH, "layout");
+  revalidatePath(`${TEACHER_BASE_PATH}/resources`);
+  revalidatePath(`${TEACHER_BASE_PATH}/answer-keys`);
+}
+
+function mapApiField(path: unknown): SchoolFormField | undefined {
+  if (!Array.isArray(path) || typeof path[0] !== "string") return undefined;
+  const root = path[0];
+  if (root === "programs") return "offerings";
+  if (root === "customProgram") {
+    return path[1] === "classes" ? "customClasses" : "customProgramName";
+  }
+  return root as SchoolFormField;
+}
+
 function fieldErrorsFromApi(details: unknown) {
   if (!Array.isArray(details)) return undefined;
 
   const fieldErrors: SchoolFormErrors = {};
 
   for (const issue of details) {
-    const field = issue?.path?.[0] as SchoolFormField | undefined;
+    const field = mapApiField(issue?.path);
     if (field && typeof issue.message === "string") {
       (fieldErrors[field] ??= []).push(issue.message);
     }
@@ -48,6 +72,21 @@ function errorState(
   };
 }
 
+const LOGO_MAX_BYTES = 2 * 1024 * 1024;
+const LOGO_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+function logoFromForm(formData: FormData): File | null {
+  const logo = formData.get("logo");
+  if (!(logo instanceof File) || logo.size <= 0) return null;
+  return logo;
+}
+
+function logoFieldError(file: File): string | null {
+  if (!LOGO_TYPES.has(file.type)) return "Upload a PNG, JPEG, or WebP logo.";
+  if (file.size > LOGO_MAX_BYTES) return "Logo must be under 2 MB.";
+  return null;
+}
+
 async function saveSchool(
   formData: FormData,
   mode: SchoolFormMode,
@@ -55,27 +94,39 @@ async function saveSchool(
 ): Promise<SchoolFormState> {
   const values = readFormValues(formData);
   const parsed = getSchoolFormSchema(mode).safeParse(values);
+  const logo = logoFromForm(formData);
+  const removeLogo = String(formData.get("removeLogo") ?? "") === "1";
 
   if (!parsed.success) {
-    return errorState(mode, values, {
-      message: "Please fix the highlighted fields.",
-      fieldErrors: z.flattenError(parsed.error).fieldErrors,
-    });
+    return errorState(mode, values, { fieldErrors: z.flattenError(parsed.error).fieldErrors });
+  }
+
+  if (logo) {
+    const logoError = logoFieldError(logo);
+    if (logoError) {
+      return errorState(mode, values, { fieldErrors: { logo: [logoError] } });
+    }
   }
 
   try {
     const school = await save(toSchoolInput(parsed.data));
-    revalidatePath(ADMIN_BASE_PATH, "layout");
+    if (logo) {
+      await schoolService.uploadSchoolLogo(school.id, logo);
+    } else if (removeLogo && mode === "edit") {
+      try {
+        await schoolService.deleteSchoolLogo(school.id);
+      } catch (error) {
+        if (!(error instanceof ApiError && error.status === 404)) throw error;
+      }
+    }
+    revalidateSchoolPortalViews();
     return { status: "success", schoolId: school.id, submittedAt: Date.now() };
   } catch (error) {
     unstable_rethrow(error);
 
     if (error instanceof ApiError && (error.status === 400 || error.status === 409)) {
       const fieldErrors = fieldErrorsFromApi(error.details);
-      return errorState(mode, values, {
-        message: fieldErrors ? "Please fix the highlighted fields." : error.message,
-        fieldErrors,
-      });
+      return errorState(mode, values, fieldErrors ? { fieldErrors } : { message: error.message });
     }
 
     if (error instanceof ApiError && error.status === 404) {
@@ -127,20 +178,60 @@ export async function isEmailTakenAction(
   }
 }
 
+/** Fails open like the email check: saving still rejects a duplicate school ID. */
+export async function isSchoolCodeTakenAction(code: string, excludeId?: string): Promise<boolean> {
+  const value = code.trim();
+  if (!value || value.length > 64) return false;
+  try {
+    const { codeTaken } = await schoolService.getCodeAvailability(value, excludeId);
+    return codeTaken;
+  } catch (error) {
+    unstable_rethrow(error);
+    return false;
+  }
+}
+
 export async function deleteSchoolAction(
   schoolId: string,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   try {
     await schoolService.deleteSchool(schoolId);
-    revalidatePath(ADMIN_BASE_PATH, "layout");
+    revalidateSchoolPortalViews();
     return { ok: true };
   } catch (error) {
     unstable_rethrow(error);
 
     if (error instanceof ApiError && error.status === 404) {
-      revalidatePath(ADMIN_BASE_PATH, "layout");
+      revalidateSchoolPortalViews();
       return { ok: false, message: "This school was already deleted." };
     }
     return { ok: false, message: "We couldn't delete the school. Please try again." };
+  }
+}
+
+export async function sendSchoolCredentialsAction(schoolId: string) {
+  try {
+    const result = await schoolService.sendSchoolCredentials(schoolId);
+    return { ok: true as const, to: result.to };
+  } catch (error) {
+    unstable_rethrow(error);
+    if (error instanceof ApiError) {
+      return { ok: false as const, message: error.message };
+    }
+    return { ok: false as const, message: "Could not send credentials." };
+  }
+}
+
+export async function resetSchoolPasswordAction(schoolId: string, password: string) {
+  try {
+    const result = await schoolService.resetSchoolPassword(schoolId, password);
+    revalidatePath(`${ADMIN_BASE_PATH}/schools/${schoolId}`);
+    return { ok: true as const, to: result.to };
+  } catch (error) {
+    unstable_rethrow(error);
+    if (error instanceof ApiError) {
+      return { ok: false as const, message: error.message };
+    }
+    return { ok: false as const, message: "Could not reset password." };
   }
 }

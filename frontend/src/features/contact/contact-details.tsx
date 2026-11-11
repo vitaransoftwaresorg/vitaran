@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Clock, Mail, MapPin, Phone } from "lucide-react";
 import { contactDetails, offices } from "./content";
 
@@ -12,17 +13,17 @@ export function ContactDetails() {
 
       <div className="grid gap-4 sm:grid-cols-2">
         <DetailCard icon={Mail} title="Email">
-          <a
+          <Link
             href={`mailto:${contactDetails.email}`}
             className="break-all hover:text-white"
           >
             {contactDetails.email}
-          </a>
+          </Link>
         </DetailCard>
         <DetailCard icon={Phone} title="Phone">
-          <a href={contactDetails.phoneHref} className="hover:text-white">
+          <Link href={contactDetails.phoneHref} className="hover:text-white">
             {contactDetails.phone}
-          </a>
+          </Link>
         </DetailCard>
       </div>
 

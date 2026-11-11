@@ -8,15 +8,14 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
+import Form from "next/form";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertCircle, ArrowLeft, ArrowRight, Loader2, Save } from "lucide-react";
+import { AlertCircle, ArrowLeft, ArrowRight, Crop, ImagePlus, Loader2, Save, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Field,
-  FieldContent,
   FieldError,
   FieldLabel,
 } from "@/components/ui/field";
@@ -32,23 +31,30 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
-  PROGRAMS,
   SCHOOL_BOARDS,
   SCHOOL_STATUSES,
+  SCHOOL_TYPES,
   type SchoolDetail,
+  type SchoolType,
 } from "@/types/school";
+import type { LearningProgram } from "@/types/program";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { smoothScrollToElement, useSmoothWheelScroll } from "@/hooks/use-smooth-scroll";
 import {
   createSchoolAction,
   isEmailTakenAction,
+  isSchoolCodeTakenAction,
   updateSchoolAction,
 } from "./actions";
 import {
   BOARD_LABELS,
   INDIAN_STATES,
-  PROGRAM_LABELS,
   STATUS_LABELS,
+  TYPE_LABELS,
 } from "./constants";
+import { CustomSchoolProgramField } from "./custom-school-program-field";
+import { schoolProgramsToTokens } from "./offerings";
+import { ProgramOfferingsField } from "./program-offerings-field";
 import {
   LAST_STEP,
   SCHOOL_FORM_STEPS,
@@ -60,6 +66,7 @@ import {
 } from "./form-steps";
 import { clearSchoolDraft, saveSchoolDraft, useSchoolDraft } from "./school-draft";
 import { HintedInput } from "./hinted-input";
+import { LogoCropper } from "./logo-cropper";
 import { SchoolFormStepper } from "./school-form-stepper";
 import {
   capitalizeWords,
@@ -74,11 +81,13 @@ import {
   type SchoolFormMode,
   type SchoolFormState,
   type SchoolFormValues,
+  type TextField,
 } from "./schema";
 
-type SchoolFormProps = { school?: SchoolDetail };
+type SchoolFormProps = { school?: SchoolDetail; catalog: LearningProgram[] };
 
 const boardItems = SCHOOL_BOARDS.map((value) => ({ value, label: BOARD_LABELS[value] }));
+const typeItems = SCHOOL_TYPES.map((value) => ({ value, label: TYPE_LABELS[value] }));
 const statusItems = SCHOOL_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }));
 const stateItems = INDIAN_STATES.map((value) => ({ value, label: value }));
 
@@ -89,6 +98,8 @@ const EMAIL_FIELDS = ["accountEmail", "contactEmail"] as const;
 type EmailField = (typeof EMAIL_FIELDS)[number];
 const EMAIL_CHECK_DELAY_MS = 400;
 const normalizeEmail = (value = "") => value.trim().toLowerCase();
+const CODE_TAKEN = "This school ID already exists";
+const normalizeCode = (value = "") => value.trim().toUpperCase();
 
 const phoneInput = {
   type: "tel",
@@ -122,14 +133,36 @@ const ROOMY_CONTROLS =
 const BOLD_SECTION_HEADINGS =
   "[&_[data-slot=section-heading]]:text-sm [&_[data-slot=section-heading]]:font-bold [&_[data-slot=section-heading]]:text-neutral-950";
 
+function customOffering(school: SchoolDetail) {
+  return (
+    school.schoolPrograms.find((program) => program.type === "CUSTOMIZED") ??
+    (school.type === "CUSTOMIZED" ? school.schoolPrograms[0] : undefined)
+  );
+}
+
 function toFormValues(school?: SchoolDetail): SchoolFormValues {
-  if (!school) return { status: "ACTIVE", programs: [] };
+  if (!school) {
+    return {
+      type: "REGULAR",
+      status: "ACTIVE",
+      offerings: [],
+      customClasses: [],
+    };
+  }
+
+  const custom = customOffering(school);
 
   return {
+    code: school.code,
     name: school.name,
     board: school.board,
+    type: school.type,
     status: school.status,
-    programs: school.programs,
+    offerings: schoolProgramsToTokens(
+      school.schoolPrograms.filter((program) => (program.type ?? "REGULAR") === school.type),
+    ),
+    customProgramName: custom?.programName ?? (school.type === "CUSTOMIZED" ? school.name : ""),
+    customClasses: custom?.classes.map((row) => String(row.classLevel)) ?? [],
     principalName: school.principalName ?? "",
     contactName: school.contactName,
     contactEmail: school.contactEmail,
@@ -146,7 +179,7 @@ function toFormValues(school?: SchoolDetail): SchoolFormValues {
   };
 }
 
-export function SchoolForm({ school }: SchoolFormProps) {
+export function SchoolForm({ school, catalog }: SchoolFormProps) {
   const router = useRouter();
   const keepDraft = !school;
   const draft = useSchoolDraft(keepDraft);
@@ -178,6 +211,9 @@ export function SchoolForm({ school }: SchoolFormProps) {
       key={failed?.submittedAt ?? school?.updatedAt ?? "new"}
       mode={school ? "edit" : "create"}
       schoolId={school?.id}
+      hasLogo={Boolean(school?.hasLogo)}
+      logoVersion={school?.updatedAt}
+      catalog={catalog}
       action={formAction}
       pending={pending}
       initialValues={failed?.values ?? draft.values ?? toFormValues(school)}
@@ -194,6 +230,10 @@ export function SchoolForm({ school }: SchoolFormProps) {
 type SchoolFormWizardProps = {
   mode: SchoolFormMode;
   schoolId?: string;
+  hasLogo?: boolean;
+  /** Changes whenever the school is saved, so the browser fetches a replaced logo. */
+  logoVersion?: string;
+  catalog: LearningProgram[];
   action: (formData: FormData) => void;
   pending: boolean;
   initialValues: SchoolFormValues;
@@ -209,6 +249,9 @@ type SchoolFormWizardProps = {
 function SchoolFormWizard({
   mode,
   schoolId,
+  hasLogo = false,
+  logoVersion,
+  catalog,
   action,
   pending,
   initialValues,
@@ -226,6 +269,12 @@ function SchoolFormWizard({
   // Inputs are uncontrolled, so their defaults must stay fixed after mount;
   // the parent re-reads the saved draft on every render.
   const [values] = useState(initialValues);
+  const [offerings, setOfferings] = useState(initialValues.offerings ?? []);
+  const [customClasses, setCustomClasses] = useState(initialValues.customClasses ?? []);
+  const [schoolType, setSchoolType] = useState<SchoolType>(
+    initialValues.type === "CUSTOMIZED" ? "CUSTOMIZED" : "REGULAR",
+  );
+  const typeCatalog = catalog.filter((program) => (program.type ?? "REGULAR") === schoolType);
   const [step, setStep] = useState(() =>
     resolveInitialStep(searchParams.get(STEP_SEARCH_PARAM), values, serverErrors, mode),
   );
@@ -233,15 +282,30 @@ function SchoolFormWizard({
   const [maxReached, setMaxReached] = useState(() => getReachableStep(values, mode));
   const [clientErrors, setClientErrors] = useState<SchoolFormErrors>({});
   const [takenEmails, setTakenEmails] = useState<string[]>([]);
+  const [takenCodes, setTakenCodes] = useState<string[]>([]);
+  const codeCheckTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [dirty, setDirty] = useState(
     () => !!savedValues && !sameFormValues(initialValues, savedValues),
   );
+  const unsaved = useUnsavedChanges(isEdit && dirty, formRef);
   const emailCheckTimers = useRef<Partial<Record<EmailField, ReturnType<typeof setTimeout>>>>({});
 
   useEffect(() => {
     const timers = emailCheckTimers.current;
-    return () => Object.values(timers).forEach(clearTimeout);
+    return () => {
+      Object.values(timers).forEach(clearTimeout);
+      clearTimeout(codeCheckTimer.current);
+    };
   }, []);
+
+  useEffect(() => {
+    if (schoolType !== "CUSTOMIZED") return;
+    const programName = formRef.current?.elements.namedItem("customProgramName") as HTMLInputElement | null;
+    const schoolName = formRef.current?.elements.namedItem("name") as HTMLInputElement | null;
+    if (programName && !programName.value.trim() && schoolName?.value.trim()) {
+      programName.value = capitalizeWords(schoolName.value.trim());
+    }
+  }, [schoolType]);
 
   const errors: SchoolFormErrors = { ...serverErrors, ...clientErrors };
   const isLast = step === LAST_STEP;
@@ -263,6 +327,8 @@ function SchoolFormWizard({
       const email = normalizeEmail(formValues[field]);
       if (email && takenEmails.includes(email)) formErrors[field] = [EMAIL_TAKEN];
     }
+    const code = normalizeCode(formValues.code);
+    if (code && takenCodes.includes(code)) formErrors.code = [CODE_TAKEN];
     return formErrors;
   };
 
@@ -283,6 +349,24 @@ function SchoolFormWizard({
       if (normalizeEmail(input?.value) === email) {
         setClientErrors((prev) => ({ ...prev, [field]: [EMAIL_TAKEN] }));
       }
+    }, EMAIL_CHECK_DELAY_MS);
+  };
+
+  /** Only speaks up when the ID is taken; a free ID shows nothing. */
+  const checkCodeTaken = (value: string) => {
+    clearTimeout(codeCheckTimer.current);
+    const code = normalizeCode(value);
+    if (!code) return;
+    if (takenCodes.includes(code)) {
+      setClientErrors((prev) => ({ ...prev, code: [CODE_TAKEN] }));
+      return;
+    }
+    codeCheckTimer.current = setTimeout(async () => {
+      const taken = await isSchoolCodeTakenAction(code, schoolId);
+      if (!taken) return;
+      setTakenCodes((prev) => [...prev, code]);
+      const input = formRef.current?.elements.namedItem("code") as HTMLInputElement | null;
+      if (normalizeCode(input?.value) === code) setClientErrors((prev) => ({ ...prev, code: [CODE_TAKEN] }));
     }, EMAIL_CHECK_DELAY_MS);
   };
 
@@ -373,7 +457,7 @@ function SchoolFormWizard({
     setClientErrors((prev) => ({ ...prev, [field]: fieldErrors }));
   };
 
-  const fieldProps = (name: Exclude<SchoolFormField, "programs">) => ({
+  const fieldProps = (name: TextField) => ({
     id: name,
     name,
     defaultValue: values[name],
@@ -398,7 +482,8 @@ function SchoolFormWizard({
         };
 
   return (
-    <form
+    <>
+    <Form
       ref={formRef}
       action={action}
       onSubmit={handleSubmit}
@@ -439,57 +524,115 @@ function SchoolFormWizard({
             <div {...panel(0)}>
               {isEdit && <SectionHeading>School details</SectionHeading>}
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-6">
-                <Field data-invalid={invalid("name")} className="md:col-span-2">
+                <Field data-invalid={invalid("code")} className="md:col-span-1 lg:col-span-2">
+                  <FieldLabel htmlFor="code">School ID *</FieldLabel>
+                  <Input
+                    {...fieldProps("code")}
+                    autoComplete="off"
+                    spellCheck={false}
+                    inputMode="numeric"
+                    placeholder="e.g. 1018"
+                    onInput={(event) => checkCodeTaken(event.currentTarget.value)}
+                    className="font-mono"
+                  />
+                  {error("code")}
+                </Field>
+
+                <Field data-invalid={invalid("name")} className="md:col-span-2 lg:col-span-4">
                   <FieldLabel htmlFor="name" className="capitalize">School name *</FieldLabel>
                   <Input {...fieldProps("name")} {...capitalized} autoComplete="organization" placeholder="e.g. Delhi Public School, Banjara Hills" />
-                  {error("name")}
-                </Field>
+              {error("name")}
+            </Field>
 
-                <Field data-invalid={invalid("board")}>
-                  <FieldLabel htmlFor="board">Board *</FieldLabel>
+            <SchoolLogoField
+              schoolId={schoolId}
+              hasLogo={hasLogo}
+              logoVersion={logoVersion}
+              error={errors.logo?.[0]}
+              onDirty={() => {
+                if (isEdit) setDirty(true);
+              }}
+              onClearError={() =>
+                setClientErrors((prev) => {
+                  const next = { ...prev };
+                  delete next.logo;
+                  return next;
+                })
+              }
+            />
+
+            <Field data-invalid={invalid("board")}>
+              <FieldLabel htmlFor="board">Board *</FieldLabel>
                   <Select name="board" items={boardItems} defaultValue={values.board ?? null} onValueChange={saveDraftSoon}>
-                    <SelectTrigger id="board" className="w-full" aria-invalid={invalid("board")}>
-                      <SelectValue placeholder="Select a board" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {boardItems.map((item) => (
-                        <SelectItem key={item.value} value={item.value}>
-                          {item.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {error("board")}
-                </Field>
+                <SelectTrigger id="board" className="w-full" aria-invalid={invalid("board")}>
+                  <SelectValue placeholder="Select a board" />
+                </SelectTrigger>
+                <SelectContent>
+                  {boardItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {error("board")}
+            </Field>
 
-                <Field data-invalid={invalid("status")}>
-                  <FieldLabel htmlFor="status">Status *</FieldLabel>
-                  <Select name="status" items={statusItems} defaultValue={values.status ?? "ACTIVE"} onValueChange={saveDraftSoon}>
-                    <SelectTrigger id="status" className="w-full" aria-invalid={invalid("status")}>
+                <Field data-invalid={invalid("type")}>
+                  <FieldLabel htmlFor="type">Type *</FieldLabel>
+                  <Select
+                    name="type"
+                    items={typeItems}
+                    defaultValue={values.type ?? "REGULAR"}
+                    onValueChange={(next) => {
+                      const type = next as SchoolType;
+                      setSchoolType(type);
+                      setOfferings([]);
+                      saveDraftSoon();
+                    }}
+                  >
+                    <SelectTrigger id="type" className="w-full" aria-invalid={invalid("type")}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {statusItems.map((item) => (
+                      {typeItems.map((item) => (
                         <SelectItem key={item.value} value={item.value}>
                           {item.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {error("status")}
-                </Field>
+                  {error("type")}
+            </Field>
 
-                <Field data-invalid={invalid("principalName")}>
-                  <FieldLabel htmlFor="principalName">Principal name</FieldLabel>
+            <Field data-invalid={invalid("status")}>
+              <FieldLabel htmlFor="status">Status *</FieldLabel>
+                  <Select name="status" items={statusItems} defaultValue={values.status ?? "ACTIVE"} onValueChange={saveDraftSoon}>
+                <SelectTrigger id="status" className="w-full" aria-invalid={invalid("status")}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {statusItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {error("status")}
+            </Field>
+
+                <Field data-invalid={invalid("principalName")} className="lg:col-span-3">
+              <FieldLabel htmlFor="principalName">Principal name</FieldLabel>
                   <Input {...fieldProps("principalName")} {...capitalized} placeholder="Optional" />
-                  {error("principalName")}
-                </Field>
+              {error("principalName")}
+            </Field>
 
-                <Field data-invalid={invalid("studentStrength")}>
-                  <FieldLabel htmlFor="studentStrength">Student strength</FieldLabel>
-                  <Input {...fieldProps("studentStrength")} inputMode="numeric" placeholder="e.g. 1200" />
-                  {error("studentStrength")}
-                </Field>
+                <Field data-invalid={invalid("studentStrength")} className="lg:col-span-3">
+              <FieldLabel htmlFor="studentStrength">Student strength</FieldLabel>
+              <Input {...fieldProps("studentStrength")} inputMode="numeric" placeholder="e.g. 1200" />
+              {error("studentStrength")}
+            </Field>
               </div>
 
               <FormSection title="Sign-in details">
@@ -508,11 +651,11 @@ function SchoolFormWizard({
                   <Field data-invalid={invalid("accountPhone")}>
                     <FieldLabel htmlFor="accountPhone">School phone number *</FieldLabel>
                     <HintedInput {...fieldProps("accountPhone")} {...phoneInput} error={error("accountPhone")} autoComplete="off" />
-                  </Field>
+                </Field>
                   <Field data-invalid={invalid("password")}>
                     <FieldLabel htmlFor="password">
                       {isEdit ? "Password" : "Password *"}
-                    </FieldLabel>
+              </FieldLabel>
                     <Input
                       {...fieldProps("password")}
                       type="text"
@@ -527,37 +670,58 @@ function SchoolFormWizard({
             </div>
 
             <div {...panel(1)}>
-              {isEdit && <SectionHeading>Programs</SectionHeading>}
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {PROGRAMS.map((program) => (
-                  <FieldLabel key={program} htmlFor={`program-${program}`}>
-                    <Field orientation="horizontal" className="py-1">
-                      <Checkbox
-                        id={`program-${program}`}
-                        name="programs"
-                        value={program}
-                        defaultChecked={values.programs?.includes(program) ?? false}
-                        onCheckedChange={saveDraftSoon}
-                      />
-                      <FieldContent>
-                        <span className="text-sm font-medium">{PROGRAM_LABELS[program]}</span>
-                      </FieldContent>
-                    </Field>
-                  </FieldLabel>
-                ))}
-              </div>
+              <FormSection title="Programs & classes">
+                <p className="-mt-1 text-sm text-neutral-500">
+                  {schoolType === "CUSTOMIZED"
+                    ? "Enter the program name and select classes. Subjects follow the regular catalog (1–5 Science, 6–10 Physics / Chemistry / Biology)."
+                    : "Select a program, then check the classes this school offers."}
+                </p>
+                {schoolType === "CUSTOMIZED" ? (
+                  <CustomSchoolProgramField
+                    name={values.customProgramName ?? ""}
+                    classes={customClasses}
+                    onClassesChange={(next) => {
+                      setCustomClasses(next);
+                      if (savedValues) {
+                        setDirty(
+                          !sameFormValues({ ...readValues(), customClasses: next }, savedValues),
+                        );
+                      }
+                      saveDraftSoon();
+                    }}
+                    errors={{
+                      customProgramName: errors.customProgramName?.[0],
+                      customClasses: errors.customClasses?.[0],
+                    }}
+                  />
+                ) : (
+                  <ProgramOfferingsField
+                    key={schoolType}
+                    catalog={typeCatalog}
+                    value={offerings}
+                    onChange={(next) => {
+                      setOfferings(next);
+                      if (savedValues) {
+                        setDirty(!sameFormValues({ ...readValues(), offerings: next }, savedValues));
+                      }
+                      saveDraftSoon();
+                    }}
+                    error={errors.offerings?.[0]}
+                  />
+                )}
+              </FormSection>
             </div>
 
             <div {...panel(2)}>
               <FormSection title="Contact person">
                 <div className="grid gap-4 md:grid-cols-3">
-                  <Field data-invalid={invalid("contactName")}>
-                    <FieldLabel htmlFor="contactName">Full name *</FieldLabel>
+            <Field data-invalid={invalid("contactName")}>
+              <FieldLabel htmlFor="contactName">Full name *</FieldLabel>
                     <Input {...fieldProps("contactName")} {...capitalized} autoComplete="name" />
-                    {error("contactName")}
-                  </Field>
-                  <Field data-invalid={invalid("contactEmail")}>
-                    <FieldLabel htmlFor="contactEmail">Email *</FieldLabel>
+              {error("contactName")}
+            </Field>
+            <Field data-invalid={invalid("contactEmail")}>
+              <FieldLabel htmlFor="contactEmail">Email *</FieldLabel>
                     <HintedInput
                       {...fieldProps("contactEmail")}
                       {...emailInput}
@@ -566,64 +730,68 @@ function SchoolFormWizard({
                       autoComplete="email"
                       placeholder="name@example.com"
                     />
-                  </Field>
-                  <Field data-invalid={invalid("contactPhone")}>
-                    <FieldLabel htmlFor="contactPhone">Phone *</FieldLabel>
+            </Field>
+            <Field data-invalid={invalid("contactPhone")}>
+              <FieldLabel htmlFor="contactPhone">Phone *</FieldLabel>
                     <HintedInput {...fieldProps("contactPhone")} {...phoneInput} error={error("contactPhone")} autoComplete="tel" />
-                  </Field>
+            </Field>
                 </div>
               </FormSection>
 
               <FormSection title="Address">
                 <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
-                  <Field data-invalid={invalid("addressLine")} className="md:col-span-3">
-                    <FieldLabel htmlFor="addressLine">Street address *</FieldLabel>
+            <Field data-invalid={invalid("addressLine")} className="md:col-span-3">
+              <FieldLabel htmlFor="addressLine">Street address *</FieldLabel>
                     <Input {...fieldProps("addressLine")} {...capitalized} autoComplete="street-address" />
-                    {error("addressLine")}
-                  </Field>
-                  <Field data-invalid={invalid("city")}>
-                    <FieldLabel htmlFor="city">City *</FieldLabel>
+              {error("addressLine")}
+            </Field>
+            <Field data-invalid={invalid("city")}>
+              <FieldLabel htmlFor="city">City *</FieldLabel>
                     <Input {...fieldProps("city")} {...capitalized} autoComplete="address-level2" />
-                    {error("city")}
-                  </Field>
-                  <Field data-invalid={invalid("state")}>
-                    <FieldLabel htmlFor="state">State *</FieldLabel>
+              {error("city")}
+            </Field>
+            <Field data-invalid={invalid("state")}>
+              <FieldLabel htmlFor="state">State *</FieldLabel>
                     <Select name="state" items={stateItems} defaultValue={values.state || null} onValueChange={saveDraftSoon}>
-                      <SelectTrigger id="state" className="w-full" aria-invalid={invalid("state")}>
-                        <SelectValue placeholder="Select a state" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {stateItems.map((item) => (
-                          <SelectItem key={item.value} value={item.value}>
-                            {item.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {error("state")}
-                  </Field>
-                  <Field data-invalid={invalid("pincode")}>
-                    <FieldLabel htmlFor="pincode">Pincode *</FieldLabel>
-                    <Input {...fieldProps("pincode")} inputMode="numeric" maxLength={6} autoComplete="postal-code" />
-                    {error("pincode")}
-                  </Field>
+                <SelectTrigger id="state" className="w-full" aria-invalid={invalid("state")}>
+                  <SelectValue placeholder="Select a state" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stateItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {error("state")}
+            </Field>
+            <Field data-invalid={invalid("pincode")}>
+              <FieldLabel htmlFor="pincode">Pincode *</FieldLabel>
+              <Input {...fieldProps("pincode")} inputMode="numeric" maxLength={6} autoComplete="postal-code" />
+              {error("pincode")}
+            </Field>
                 </div>
               </FormSection>
 
               <FormSection title="Internal notes">
-                <Field data-invalid={invalid("notes")}>
+          <Field data-invalid={invalid("notes")}>
                   <Textarea {...fieldProps("notes")} rows={3} aria-label="Internal notes" placeholder="Optional. Not visible to the school." />
-                  {error("notes")}
-                </Field>
+            {error("notes")}
+          </Field>
               </FormSection>
             </div>
           </div>
 
           {isEdit ? (
             <footer className="sticky bottom-0 z-10 flex min-h-17 items-center justify-between gap-2 border-t border-neutral-200 bg-white/95 px-5 py-3 backdrop-blur md:px-8">
-              <Link href={cancelHref} className={buttonVariants({ variant: "ghost" })}>
-                Cancel
-              </Link>
+          <Link
+                href={cancelHref}
+                className={buttonVariants({ variant: "ghost" })}
+                onClick={unsaved.guardCancelClick(cancelHref)}
+          >
+            Cancel
+          </Link>
               {dirty && (
                 <Button
                   type="submit"
@@ -655,16 +823,174 @@ function SchoolFormWizard({
               )}
               {isLast && (
                 <Button type="submit" data-intent="submit" disabled={pending}>
-                  {pending ? <Loader2 className="animate-spin" /> : <Save />}
+            {pending ? <Loader2 className="animate-spin" /> : <Save />}
                   Register school
-                </Button>
+          </Button>
               )}
             </div>
           </footer>
           )}
         </div>
+        </div>
+    </Form>
+    {unsaved.dialog}
+    </>
+  );
+}
+
+function SchoolLogoField({
+  schoolId,
+  hasLogo,
+  logoVersion,
+  error,
+  onDirty,
+  onClearError,
+}: {
+  schoolId?: string;
+  hasLogo: boolean;
+  logoVersion?: string;
+  error?: string;
+  onDirty?: () => void;
+  onClearError: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [fileName, setFileName] = useState("");
+  const [removeLogo, setRemoveLogo] = useState(false);
+  /** The uncropped image, so Crop can be redone from the full picture. */
+  const [original, setOriginal] = useState<{ url: string; name: string } | null>(null);
+  const [cropping, setCropping] = useState<string | null>(null);
+
+  const existingSrc =
+    schoolId && hasLogo && !removeLogo && !preview
+      ? `/admin/schools/${schoolId}/logo${logoVersion ? `?v=${encodeURIComponent(logoVersion)}` : ""}`
+      : null;
+  const shownSrc = preview ?? existingSrc;
+
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview);
+    };
+  }, [preview]);
+
+  const originalUrl = original?.url;
+  useEffect(() => {
+    return () => {
+      if (originalUrl) URL.revokeObjectURL(originalUrl);
+    };
+  }, [originalUrl]);
+
+  function applyCrop(file: File) {
+    const input = inputRef.current;
+    if (input) {
+      const files = new DataTransfer();
+      files.items.add(file);
+      input.files = files.files;
+    }
+    if (preview) URL.revokeObjectURL(preview);
+    setPreview(URL.createObjectURL(file));
+    setFileName(original?.name ?? file.name);
+    setRemoveLogo(false);
+    setCropping(null);
+    onDirty?.();
+    onClearError();
+  }
+
+  function cancelCrop() {
+    // A new pick that was never cropped is dropped, so the old logo stays.
+    if (!preview && inputRef.current) inputRef.current.value = "";
+    if (!preview) setOriginal(null);
+    setCropping(null);
+  }
+
+  return (
+    <Field data-invalid={error ? true : undefined} className="md:col-span-2 lg:col-span-6">
+      <FieldLabel htmlFor="logo">School logo</FieldLabel>
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-dashed border-neutral-300 bg-neutral-50">
+          {shownSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element -- blob / auth-proxied logo
+            <img src={shownSrc} alt="School logo preview" className="size-full object-contain p-1" />
+          ) : (
+            <ImagePlus className="size-7 text-neutral-400" strokeWidth={1.75} />
+          )}
+        </div>
+        <div className="min-w-0 flex-1 space-y-2">
+          <input
+            ref={inputRef}
+            id="logo"
+            name="logo"
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            className="sr-only"
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0] ?? null;
+              if (!file) return;
+              if (preview) URL.revokeObjectURL(preview);
+              setPreview(null);
+              const url = URL.createObjectURL(file);
+              setOriginal({ url, name: file.name });
+              setCropping(url);
+            }}
+          />
+          {removeLogo ? <input type="hidden" name="removeLogo" value="1" /> : null}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => inputRef.current?.click()}
+            >
+              <ImagePlus className="size-3.5" />
+              {shownSrc ? "Replace logo" : "Upload logo"}
+            </Button>
+            {shownSrc ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setCropping(original?.url ?? shownSrc)}
+              >
+                <Crop className="size-3.5" />
+                Crop
+              </Button>
+            ) : null}
+            {shownSrc ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="gap-1.5 text-neutral-600"
+                onClick={() => {
+                  if (preview) URL.revokeObjectURL(preview);
+                  setPreview(null);
+                  setFileName("");
+                  setOriginal(null);
+                  if (inputRef.current) inputRef.current.value = "";
+                  if (hasLogo) setRemoveLogo(true);
+                  onDirty?.();
+                  onClearError();
+                }}
+              >
+                <X className="size-3.5" />
+                Remove
+              </Button>
+            ) : null}
+          </div>
+          <p className="text-xs text-neutral-500">
+            {fileName
+              ? fileName
+              : removeLogo
+                ? "Logo will be removed on save"
+                : "PNG, JPEG, or WebP · max 2 MB"}
+          </p>
+        </div>
       </div>
-    </form>
+      {error ? <FieldError>{error}</FieldError> : null}
+      <LogoCropper src={cropping} onCancel={cancelCrop} onCrop={applyCrop} />
+    </Field>
   );
 }
 

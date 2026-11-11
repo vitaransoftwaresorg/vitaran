@@ -1,8 +1,11 @@
 import { existsSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
-if (existsSync(".env")) {
-  process.loadEnvFile(".env");
+const envPath = resolve(dirname(fileURLToPath(import.meta.url)), "../../.env");
+if (existsSync(envPath)) {
+  process.loadEnvFile(envPath);
 }
 
 const envSchema = z.object({
@@ -24,6 +27,21 @@ const envSchema = z.object({
   ADMIN_EMAIL: z.email().toLowerCase().optional(),
   ADMIN_PASSWORD: z.string().min(1).optional(),
   CORS_ORIGIN: z.string().min(1).default("http://localhost:3000"),
+  /** Public app URL used in credential emails (defaults to first CORS origin). */
+  APP_URL: z.url().optional(),
+  SMTP_HOST: z.string().trim().min(1).optional(),
+  SMTP_PORT: z.coerce.number().int().positive().default(465),
+  SMTP_USER: z.string().trim().min(1).optional(),
+  SMTP_PASS: z.string().min(1).optional(),
+  SMTP_FROM: z.string().trim().min(1).optional(),
+  /** Google OAuth client ID — must match Auth.js AUTH_GOOGLE_ID. */
+  GOOGLE_CLIENT_ID: z.string().trim().min(1).optional(),
+  /** Redis for BullMQ OMR batch jobs. When unset, sheets are processed in-process. */
+  REDIS_URL: z.string().trim().min(1).optional(),
+  /** Google Cloud Storage bucket for PDFs, OMR images, logos. When unset, bytes stay in Postgres. */
+  GCS_BUCKET: z.string().trim().min(1).optional(),
+  /** Optional GCP project id (ADC / Cloud Run usually supply this). */
+  GCS_PROJECT_ID: z.string().trim().min(1).optional(),
 });
 
 const parsed = envSchema.safeParse({
@@ -38,6 +56,19 @@ const parsed = envSchema.safeParse({
   ADMIN_EMAIL: process.env.ADMIN_EMAIL?.trim() || undefined,
   ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || undefined,
   CORS_ORIGIN: process.env.CORS_ORIGIN?.trim() || undefined,
+  APP_URL: process.env.APP_URL?.trim() || undefined,
+  SMTP_HOST: process.env.SMTP_HOST?.trim() || undefined,
+  SMTP_PORT: process.env.SMTP_PORT?.trim() || undefined,
+  SMTP_USER: process.env.SMTP_USER?.trim() || undefined,
+  SMTP_PASS: process.env.SMTP_PASS || undefined,
+  SMTP_FROM: process.env.SMTP_FROM?.trim() || undefined,
+  GOOGLE_CLIENT_ID:
+    process.env.GOOGLE_CLIENT_ID?.trim() ||
+    process.env.AUTH_GOOGLE_ID?.trim() ||
+    undefined,
+  REDIS_URL: process.env.REDIS_URL?.trim() || undefined,
+  GCS_BUCKET: process.env.GCS_BUCKET?.trim() || undefined,
+  GCS_PROJECT_ID: process.env.GCS_PROJECT_ID?.trim() || process.env.GOOGLE_CLOUD_PROJECT?.trim() || undefined,
 });
 
 if (!parsed.success) {

@@ -18,7 +18,7 @@ type ApiRequestOptions = Omit<RequestInit, "body"> & {
   body?: unknown;
 };
 
-function buildApiUrl(path: string): string {
+export function buildApiUrl(path: string): string {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return `${getApiUrl()}${API_V1_PREFIX}${normalizedPath}`;
 }
@@ -34,15 +34,31 @@ export async function apiClient<T>(
     requestHeaders.set("Accept", "application/json");
   }
 
-  if (body !== undefined && !requestHeaders.has("Content-Type")) {
+  // Files and multipart forms are sent as-is; everything else is JSON.
+  const isBinary = body instanceof Blob || body instanceof FormData;
+
+  if (body !== undefined && !isBinary && !requestHeaders.has("Content-Type")) {
     requestHeaders.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(buildApiUrl(path), {
-    ...init,
-    headers: requestHeaders,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+  const url = buildApiUrl(path);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      headers: requestHeaders,
+      body: body === undefined ? undefined : isBinary ? body : JSON.stringify(body),
+    });
+  } catch (error) {
+    const cause =
+      error instanceof Error && error.cause instanceof Error
+        ? error.cause.message
+        : error instanceof Error
+          ? error.message
+          : "network error";
+    throw new ApiError(`Could not reach the API: ${cause}`, 503);
+  }
 
   if (response.status === 204) {
     return undefined as T;

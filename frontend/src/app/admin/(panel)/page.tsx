@@ -1,24 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import {
-  ArrowRight,
-  BookOpenCheck,
-  CheckCircle2,
-  KeyRound,
-  Plus,
-  School,
-  type LucideIcon,
-} from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Suspense } from "react";
+import { CheckCircle2, KeyRound, Plus, School, Trophy } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import {
   Empty,
   EmptyContent,
@@ -27,7 +11,6 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty";
-import { Progress, ProgressLabel } from "@/components/ui/progress";
 import {
   Table,
   TableBody,
@@ -36,178 +19,233 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { ProfileLink, schoolProfileHref } from "@/components/shared/profile-link";
+import { cn } from "@/lib/utils";
+import {
+  DashboardSkeleton,
+  Meter,
+  Panel,
+  STAT_GRID,
+  StatCard,
+  SummaryTile,
+} from "@/features/admin/dashboard-parts";
 import { PageHeader } from "@/features/admin/page-header";
-import { BOARD_LABELS, PROGRAM_LABELS } from "@/features/schools/constants";
+import { RESULTS_PATH } from "@/features/results/constants";
+import { BOARD_LABELS, programLabel } from "@/features/schools/constants";
 import { SchoolStatusBadge } from "@/features/schools/school-status-badge";
-import { answerKeys, solutionBooks } from "@/features/teachers-resources/solution-books";
-import { getSchoolStats } from "@/services/schools";
-import { formatDate, formatNumber } from "@/utils/format";
+import { SchoolTypeBadge } from "@/features/schools/school-type-badge";
+import { getAdminDashboard } from "@/services/schools";
+import { formatDate } from "@/utils/format";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
-const countFiles = (books: Record<string, unknown[]>) =>
-  Object.values(books).reduce((sum, list) => sum + list.length, 0);
+const HEAD = "h-10 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase";
 
-type StatCardProps = {
-  label: string;
-  value: number;
-  hint: string;
-  icon: LucideIcon;
-  href: string;
-};
+/** One colour per program, in the brand's blues. */
+const PROGRAM_COLORS = ["bg-brand-900", "bg-blue-600", "bg-sky-400", "bg-indigo-500", "bg-brand-400"];
 
-function StatCard({ label, value, hint, icon: Icon, href }: StatCardProps) {
-  return (
-    <Card className="transition-shadow hover:shadow-md">
-      <CardHeader>
-        <CardDescription>{label}</CardDescription>
-        <CardTitle className="text-3xl font-bold text-brand-900">
-          {formatNumber(value)}
-        </CardTitle>
-        <CardAction>
-          <span className="flex size-10 items-center justify-center rounded-lg bg-brand-800 text-white">
-            <Icon className="size-5" />
-          </span>
-        </CardAction>
-      </CardHeader>
-      <CardContent className="flex items-center justify-between text-xs text-muted-foreground">
-        {hint}
-        <Link href={href} className="inline-flex items-center gap-1 font-medium text-brand-700 hover:underline">
-          View
-          <ArrowRight className="size-3" />
-        </Link>
-      </CardContent>
-    </Card>
-  );
-}
+const VIEW_ALL =
+  "inline-flex h-8 items-center rounded-lg border border-brand-200 px-3 text-xs font-semibold text-brand-900 transition-colors hover:bg-brand-50";
 
-export default async function AdminDashboardPage() {
-  const stats = await getSchoolStats();
-  const resourceCount = countFiles(solutionBooks);
-  const answerKeyCount = countFiles(answerKeys);
-  const percent = (count: number) => (stats.total === 0 ? 0 : Math.round((count / stats.total) * 100));
+const hiddenCount = ({ total, published }: { total: number; published: number }) => total - published;
 
+export default function AdminDashboardPage() {
   return (
     <>
       <PageHeader
         title="Dashboard"
-        description="An overview of schools and published content."
+        description="Live overview of schools and the content shared with them."
         actions={
-          <Link href="/admin/schools/new" className={buttonVariants()}>
-            <Plus />
-            Register school
-          </Link>
+          <>
+            <Link
+              href={RESULTS_PATH}
+              className={buttonVariants({
+                variant: "outline",
+                className:
+                  "h-10 flex-1 rounded-lg border-brand-200 px-4 text-brand-900 hover:bg-brand-50 sm:flex-none",
+              })}
+            >
+              <Trophy />
+              Enter results
+            </Link>
+            <Link
+              href="/admin/schools/new"
+              className={buttonVariants({
+                className: "h-10 flex-1 rounded-lg bg-brand-900 px-4 text-white hover:bg-brand-800 sm:flex-none",
+              })}
+            >
+              <Plus />
+              Register school
+            </Link>
+          </>
         }
       />
+      <Suspense fallback={<DashboardSkeleton />}>
+        <DashboardContent />
+      </Suspense>
+    </>
+  );
+}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Total schools" value={stats.total} hint={`${stats.inactive} inactive`} icon={School} href="/admin/schools" />
-        <StatCard label="Active schools" value={stats.active} hint={`${percent(stats.active)}% of all schools`} icon={CheckCircle2} href="/admin/schools?status=ACTIVE" />
-        <StatCard label="Teacher resources" value={resourceCount} hint="Solution books" icon={BookOpenCheck} href="/admin/teacher-resources" />
-        <StatCard label="Answer keys" value={answerKeyCount} hint="Published files" icon={KeyRound} href="/admin/answer-keys" />
+async function DashboardContent() {
+  const { schools: stats, answerKeys, results } = await getAdminDashboard();
+  const activeShare = stats.total === 0 ? 0 : Math.round((stats.active / stats.total) * 100);
+
+  return (
+    <>
+      <div className={cn(STAT_GRID, "xl:grid-cols-4")}>
+        <StatCard
+          label="Total schools"
+          value={stats.total}
+          hint={`${stats.active} active · ${stats.inactive} inactive`}
+          icon={School}
+          href="/admin/schools"
+        />
+        <StatCard
+          label="Active schools"
+          value={stats.active}
+          hint={`${activeShare}% of all schools`}
+          icon={CheckCircle2}
+          href="/admin/schools?status=ACTIVE"
+        />
+        <StatCard
+          label="Answer keys"
+          value={answerKeys.total}
+          hint={`${answerKeys.published} published · ${hiddenCount(answerKeys)} hidden`}
+          icon={KeyRound}
+          href="/admin/answer-keys"
+        />
+        <StatCard
+          label="Results"
+          value={results.total}
+          hint={`${results.published} published · ${hiddenCount(results)} hidden`}
+          icon={Trophy}
+          href="/admin/results"
+        />
       </div>
 
-      <div className="mt-6 grid gap-6 xl:grid-cols-3">
-        <Card className="xl:col-span-2">
-          <CardHeader>
-            <CardTitle>Recently registered</CardTitle>
-            <CardDescription>The latest schools added to the platform.</CardDescription>
-            <CardAction>
-              <Link href="/admin/schools" className={buttonVariants({ variant: "outline", size: "sm" })}>
-                View all
-              </Link>
-            </CardAction>
-          </CardHeader>
-          <CardContent className="px-0">
-            {stats.recent.length > 0 ? (
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <Panel compact title="School overview" description="Status and type of every registered school.">
+          <div className="mb-3 space-y-2.5">
+            <Meter label="Active" value={stats.active} max={stats.total} color="bg-brand-900" />
+            <Meter label="Inactive" value={stats.inactive} max={stats.total} color="bg-neutral-400" />
+            <Meter label="Regular" value={stats.regular} max={stats.total} color="bg-blue-600" />
+            <Meter label="Customized" value={stats.customized} max={stats.total} color="bg-sky-400" />
+          </div>
+          <div className="mt-auto grid grid-cols-2 gap-2 border-t border-neutral-200 pt-3">
+            <SummaryTile label="Published answer keys" value={answerKeys.published} />
+            <SummaryTile label="Published results" value={results.published} />
+          </div>
+        </Panel>
+
+        <Panel
+          compact
+          title="Program enrolment"
+          description="Schools enrolled in each program."
+          action={
+            <span className="rounded-full border border-brand-100 bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-800">
+              {stats.byProgram.length} programs
+            </span>
+          }
+        >
+          <div className="flex flex-1 flex-col justify-between gap-2.5">
+            {stats.byProgram.map((row, index) => (
+              <Meter
+                key={row.program}
+                label={programLabel(row.program, row.programName)}
+                value={row.count}
+                max={stats.total}
+                color={PROGRAM_COLORS[index % PROGRAM_COLORS.length]}
+              />
+            ))}
+          </div>
+        </Panel>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <Panel
+          compact
+          title="Recently registered"
+          description="The latest schools added to the platform."
+          action={
+            <Link href="/admin/schools" className={VIEW_ALL}>
+              View all
+            </Link>
+          }
+        >
+          {stats.recent.length > 0 ? (
+            <div className="-mx-4 -mb-4">
               <Table>
-                <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="pl-4">School</TableHead>
-                    <TableHead className="hidden sm:table-cell">Board</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="hidden pr-4 md:table-cell">Registered</TableHead>
+                <TableHeader className="bg-neutral-50/80">
+                  <TableRow className="border-brand-100 hover:bg-transparent">
+                    <TableHead className={cn(HEAD, "h-8 pl-4")}>School</TableHead>
+                    <TableHead className={cn(HEAD, "hidden h-8 2xl:table-cell")}>Board</TableHead>
+                    <TableHead className={cn(HEAD, "hidden h-8 md:table-cell")}>Type</TableHead>
+                    <TableHead className={cn(HEAD, "h-8")}>Status</TableHead>
+                    <TableHead className={cn(HEAD, "hidden h-8 pr-4 md:table-cell")}>Registered</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {stats.recent.map((school) => (
-                    <TableRow key={school.id}>
-                      <TableCell className="max-w-64 pl-4">
-                        <Link href={`/admin/schools/${school.id}`} className="block truncate font-medium text-brand-900 hover:underline">
+                    <TableRow key={school.id} className="border-brand-100/70 hover:bg-brand-50/30">
+                      <TableCell className="max-w-56 py-2 pl-4">
+                        <ProfileLink
+                          href={schoolProfileHref(school.id)}
+                          className="block truncate text-xs font-semibold"
+                        >
                           {school.name}
-                        </Link>
-                        <span className="text-xs text-muted-foreground">
+                        </ProfileLink>
+                        <span className="text-xs text-neutral-500">
                           {school.city}, {school.state}
                         </span>
                       </TableCell>
-                      <TableCell className="hidden sm:table-cell">
-                        <Badge variant="secondary">{BOARD_LABELS[school.board]}</Badge>
+                      <TableCell className="hidden py-2 text-xs text-neutral-700 2xl:table-cell">
+                        {BOARD_LABELS[school.board]}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden py-2 md:table-cell">
+                        <SchoolTypeBadge type={school.type} size="sm" />
+                      </TableCell>
+                      <TableCell className="py-2">
                         <SchoolStatusBadge status={school.status} />
                       </TableCell>
-                      <TableCell className="hidden pr-4 text-muted-foreground md:table-cell">
+                      <TableCell className="hidden py-2 pr-4 text-xs text-neutral-600 md:table-cell">
                         {formatDate(school.createdAt)}
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-            ) : (
-              <Empty className="py-10">
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <School />
-                  </EmptyMedia>
-                  <EmptyTitle>No schools yet</EmptyTitle>
-                  <EmptyDescription>Registered schools will appear here.</EmptyDescription>
-                </EmptyHeader>
-                <EmptyContent>
-                  <Link href="/admin/schools/new" className={buttonVariants({ size: "sm" })}>
-                    <Plus />
-                    Register school
-                  </Link>
-                </EmptyContent>
-              </Empty>
-            )}
-          </CardContent>
-        </Card>
+            </div>
+          ) : (
+            <Empty className="py-8">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <School />
+                </EmptyMedia>
+                <EmptyTitle>No schools yet</EmptyTitle>
+                <EmptyDescription>Registered schools will appear here.</EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <Link href="/admin/schools/new" className={buttonVariants({ size: "sm" })}>
+                  <Plus />
+                  Register school
+                </Link>
+              </EmptyContent>
+            </Empty>
+          )}
+        </Panel>
 
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Schools by board</CardTitle>
-              <CardDescription>Distribution across curricula.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {stats.byBoard.length > 0 ? (
-                stats.byBoard.map((row) => (
-                  <Progress key={row.board} value={percent(row.count)}>
-                    <ProgressLabel>{BOARD_LABELS[row.board]}</ProgressLabel>
-                    <span className="ml-auto text-sm text-muted-foreground tabular-nums">{row.count}</span>
-                  </Progress>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground">No data yet.</p>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Program enrolment</CardTitle>
-              <CardDescription>Schools enrolled in each program.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {stats.byProgram.map((row) => (
-                <Progress key={row.program} value={percent(row.count)}>
-                  <ProgressLabel className="truncate">{PROGRAM_LABELS[row.program]}</ProgressLabel>
-                  <span className="ml-auto text-sm text-muted-foreground tabular-nums">{row.count}</span>
-                </Progress>
+        <Panel compact title="Schools by board" description="Distribution across curricula.">
+          {stats.byBoard.length > 0 ? (
+            <div className="flex flex-1 flex-col justify-between gap-2.5">
+              {stats.byBoard.map((row) => (
+                <Meter key={row.board} label={BOARD_LABELS[row.board]} value={row.count} max={stats.total} />
               ))}
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          ) : (
+            <p className="text-sm text-neutral-500">No schools yet.</p>
+          )}
+        </Panel>
       </div>
     </>
   );

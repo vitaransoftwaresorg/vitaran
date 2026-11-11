@@ -18,46 +18,494 @@ enum SchoolBoard {
   OTHER
 }
 
+enum SchoolType {
+  REGULAR
+  CUSTOMIZED
+}
+
 enum SchoolStatus {
   ACTIVE
   INACTIVE
 }
 
-enum Program {
-  INTEGRATED
-  ADVANCED
-  REVISED_ADVANCED
-  OLYMPIAD
-  OLYMPIAD_PRIMARY
+enum TeacherStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+}
+
+/// Admin-managed catalog: name, year, class range and subjects. Fully dynamic.
+model LearningProgram {
+  id        String    @id @default(uuid()) @db.Uuid
+  /// Stable key used on answer keys / results / solution books (e.g. INTEGRATED).
+  code      String    @unique @db.VarChar(64)
+  name      String    @db.VarChar(120)
+  /// Regular = shared track; Customized = for customized schools.
+  type      SchoolType @default(REGULAR)
+  year      Int
+  classFrom Int       @map("class_from") @db.SmallInt
+  classTo   Int       @map("class_to") @db.SmallInt
+  /// Catalog subject codes for this program (e.g. MATHEMATICS, ENGLISH).
+  subjects  String[]
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  schoolPrograms     SchoolProgram[]
+  teacherAssignments TeacherAssignment[]
+  sections           SchoolSection[]
+  classTeachers      ClassTeacher[]
+  schoolClasses      SchoolClass[]
+  students           Student[]
+
+  @@index([year])
+  @@index([type])
+  @@index([createdAt])
+  @@map("learning_programs")
 }
 
 model School {
-  id              String       @id @default(uuid()) @db.Uuid
-  serial          Int          @unique @default(autoincrement())
-  name            String       @db.VarChar(200)
-  board           SchoolBoard
-  status          SchoolStatus @default(ACTIVE)
-  programs        Program[]
-  principalName   String?      @map("principal_name") @db.VarChar(120)
-  contactName     String       @map("contact_name") @db.VarChar(120)
-  contactEmail    String       @map("contact_email") @db.VarChar(254)
-  contactPhone    String       @map("contact_phone") @db.VarChar(20)
-  addressLine     String       @map("address_line") @db.VarChar(300)
-  city            String       @db.VarChar(100)
-  state           String       @db.VarChar(100)
-  pincode         String       @db.VarChar(6)
-  studentStrength Int?         @map("student_strength")
-  notes           String?      @db.VarChar(1000)
-  accountEmail    String?      @unique @map("account_email") @db.VarChar(254)
-  accountPhone    String?      @unique @map("account_phone") @db.VarChar(20)
-  passwordHash    String?      @map("password_hash") @db.VarChar(255)
+  id                String       @id @default(uuid()) @db.Uuid
+  serial            Int          @unique @default(autoincrement())
+  /// Freeform school ID shown to admins (no format restriction).
+  code              String       @unique @db.VarChar(64)
+  name              String       @db.VarChar(200)
+  board             SchoolBoard
+  type              SchoolType   @default(REGULAR)
+  status            SchoolStatus @default(ACTIVE)
+  principalName     String?      @map("principal_name") @db.VarChar(120)
+  contactName       String       @map("contact_name") @db.VarChar(120)
+  contactEmail      String       @map("contact_email") @db.VarChar(254)
+  contactPhone      String       @map("contact_phone") @db.VarChar(20)
+  addressLine       String       @map("address_line") @db.VarChar(300)
+  city              String       @db.VarChar(100)
+  state             String       @db.VarChar(100)
+  pincode           String       @db.VarChar(6)
+  studentStrength   Int?         @map("student_strength")
+  notes             String?      @db.VarChar(1000)
+  accountEmail      String?      @unique @map("account_email") @db.VarChar(254)
+  accountPhone      String?      @unique @map("account_phone") @db.VarChar(20)
+  passwordHash      String?      @map("password_hash") @db.VarChar(255)
   /// AES-256-GCM so admins can view the password; sign-in always checks the hash.
-  passwordEncrypted String?    @map("password_encrypted") @db.VarChar(512)
-  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  passwordEncrypted String?      @map("password_encrypted") @db.VarChar(512)
+  /// Optional school logo (PNG / JPEG / WebP); bytes omitted from list/detail queries.
+  logoMimeType      String?      @map("logo_mime_type") @db.VarChar(64)
+  logoFileName      String?      @map("logo_file_name") @db.VarChar(255)
+  logoData          Bytes?       @map("logo_data")
+  createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  answerKeys        AnswerKey[]
+  answerKeyObjections AnswerKeyObjection[]
+  resultSets        ResultSet[]
+  teachers          Teacher[]
+  schoolPrograms    SchoolProgram[]
+  sections          SchoolSection[]
+  classTeachers     ClassTeacher[]
+  schoolClasses     SchoolClass[]
+  students          Student[]
+  omScans           OmScan[]
 
   @@index([status])
   @@index([board])
   @@index([createdAt])
   @@map("schools")
+}
+
+/// A school enrolled in a catalog program, with per-class subject selections.
+model SchoolProgram {
+  id        String              @id @default(uuid()) @db.Uuid
+  schoolId  String              @map("school_id") @db.Uuid
+  programId String              @map("program_id") @db.Uuid
+  school    School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  program   LearningProgram     @relation(fields: [programId], references: [id], onDelete: Restrict)
+  classes   SchoolProgramClass[]
+  createdAt DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([schoolId, programId])
+  @@index([programId])
+  @@map("school_programs")
+}
+
+model SchoolProgramClass {
+  id              String        @id @default(uuid()) @db.Uuid
+  schoolProgramId String        @map("school_program_id") @db.Uuid
+  classLevel      Int           @map("class_level") @db.SmallInt
+  subjects        String[]
+  schoolProgram   SchoolProgram @relation(fields: [schoolProgramId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolProgramId, classLevel])
+  @@map("school_program_classes")
+}
+
+/// A teacher belongs to one school and only sees content for their class/subject assignments.
+model Teacher {
+  id                String              @id @default(uuid()) @db.Uuid
+  schoolId          String              @map("school_id") @db.Uuid
+  school            School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name              String              @db.VarChar(120)
+  email             String              @unique @db.VarChar(254)
+  phone             String              @unique @db.VarChar(20)
+  status            TeacherStatus       @default(ACTIVE)
+  passwordHash      String              @map("password_hash") @db.VarChar(255)
+  /// AES-256-GCM so school/admin can view the password; sign-in always checks the hash.
+  passwordEncrypted String              @map("password_encrypted") @db.VarChar(512)
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  assignments            TeacherAssignment[]
+  classTeacherOf         SchoolSection[]
+  classTeacherOfClasses  ClassTeacher[]
+  omScans                OmScan[]
+  answerKeyObjections    AnswerKeyObjection[]
+
+  @@index([schoolId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("teachers")
+}
+
+/// One program + class + subject the teacher is allowed to see.
+model TeacherAssignment {
+  id         String          @id @default(uuid()) @db.Uuid
+  teacherId  String          @map("teacher_id") @db.Uuid
+  programId  String          @map("program_id") @db.Uuid
+  teacher    Teacher         @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  program    LearningProgram @relation(fields: [programId], references: [id], onDelete: Restrict)
+  classLevel Int             @map("class_level") @db.SmallInt
+  subject    String          @db.VarChar(64)
+
+  @@unique([teacherId, programId, classLevel, subject])
+  @@index([teacherId])
+  @@index([programId])
+  @@map("teacher_assignments")
+}
+
+/// Whole class (no sections): program + seats for an admin-enabled class level.
+model SchoolClass {
+  id           String          @id @default(uuid()) @db.Uuid
+  schoolId     String          @map("school_id") @db.Uuid
+  classLevel   Int             @map("class_level") @db.SmallInt
+  programId    String          @map("program_id") @db.Uuid
+  studentCount Int             @map("student_count") @db.SmallInt
+  school       School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  program      LearningProgram @relation(fields: [programId], references: [id], onDelete: Restrict)
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([schoolId, classLevel])
+  @@index([programId])
+  @@map("school_classes")
+}
+
+/// Class-level class teacher when the school has not created sections for that program+class.
+model ClassTeacher {
+  id         String          @id @default(uuid()) @db.Uuid
+  schoolId   String          @map("school_id") @db.Uuid
+  programId  String          @map("program_id") @db.Uuid
+  classLevel Int             @map("class_level") @db.SmallInt
+  teacherId  String          @map("teacher_id") @db.Uuid
+  school     School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  program    LearningProgram @relation(fields: [programId], references: [id], onDelete: Restrict)
+  teacher    Teacher         @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([schoolId, programId, classLevel])
+  @@index([teacherId])
+  @@map("class_teachers")
+}
+
+/// School-defined section (e.g. Class 6-A) with program, strength, and optional class teacher.
+model SchoolSection {
+  id             String          @id @default(uuid()) @db.Uuid
+  schoolId       String          @map("school_id") @db.Uuid
+  classLevel     Int             @map("class_level") @db.SmallInt
+  name           String          @db.VarChar(32)
+  programId      String          @map("program_id") @db.Uuid
+  studentCount   Int             @map("student_count") @db.SmallInt
+  classTeacherId String?         @map("class_teacher_id") @db.Uuid
+  school         School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  program        LearningProgram @relation(fields: [programId], references: [id], onDelete: Restrict)
+  classTeacher   Teacher?        @relation(fields: [classTeacherId], references: [id], onDelete: SetNull)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([schoolId, classLevel, name])
+  @@index([schoolId, classLevel])
+  @@index([programId])
+  @@index([classTeacherId])
+  students       Student[]
+  @@map("school_sections")
+}
+
+/// Student roster: registration no identifies the student; no sign-in.
+model Student {
+  id                String        @id @default(uuid()) @db.Uuid
+  schoolId          String        @map("school_id") @db.Uuid
+  school            School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  name              String        @db.VarChar(120)
+  /// Unique within the school — used with school code to sign in.
+  rollNo            String        @map("roll_no") @db.VarChar(64)
+  email             String?       @db.VarChar(254)
+  parentName        String?       @map("parent_name") @db.VarChar(120)
+  parentPhone       String?       @map("parent_phone") @db.VarChar(20)
+  programId         String        @map("program_id") @db.Uuid
+  program           LearningProgram @relation(fields: [programId], references: [id], onDelete: Restrict)
+  classLevel        Int           @map("class_level") @db.SmallInt
+  /// Null = whole class (no section).
+  sectionId         String?       @map("section_id") @db.Uuid
+  section           SchoolSection? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  status            StudentStatus @default(ACTIVE)
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+  omScans           OmScan[]
+
+  @@unique([schoolId, rollNo])
+  @@index([schoolId, classLevel])
+  @@index([programId])
+  @@index([sectionId])
+  @@index([email])
+  @@index([status])
+  @@map("students")
+}
+
+/// Regular keys are shared by every school on the program; customized keys belong to one school.
+/// `programCode` matches LearningProgram.code.
+/// `testId` + `testNumber` link keys to results for the same school/program/class.
+model AnswerKey {
+  id          String     @id @default(uuid()) @db.Uuid
+  programCode String     @map("program_code") @db.VarChar(64)
+  type        SchoolType
+  schoolId    String?    @map("school_id") @db.Uuid
+  school      School?    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  /// Human-facing test ID (freeform), shared with results. Entered on the answers editor.
+  testId      String?    @map("test_id") @db.VarChar(64)
+  /// Ordinal test number (1–30).
+  testNumber  Int        @map("test_number") @db.SmallInt
+  classLevel  Int        @map("class_level") @db.SmallInt
+  fileName    String     @map("file_name") @db.VarChar(255)
+  fileSize    Int        @map("file_size")
+  /// PDF bytes; never selected in list queries.
+  data        Bytes
+  /// Current A–D options, keyed by question number ("1" → "B").
+  answers       Json? @map("answers")
+  /// Per-question explanation text, keyed by question number.
+  explanations  Json? @map("explanations")
+  /// KEY table as printed in the PDF. Admin edits never overwrite this.
+  printedAnswers Json? @map("printed_answers")
+  /// Explanations as first parsed from the PDF (usually empty for scanned keys).
+  printedExplanations Json? @map("printed_explanations")
+  /// Subject bands in paper order: MPC (75) or MPCB (100), 25 questions each.
+  subjectRanges Json? @map("subject_ranges")
+  /// Marks awarded for a matching option (and for ADD if attempted).
+  correctMarks Int @default(1) @map("correct_marks")
+  /// Marks deducted for a wrong option. Blank stays 0.
+  wrongMarks   Int @default(0) @map("wrong_marks")
+  /// Schools only see published answer keys.
+  published   Boolean    @default(false)
+  publishedAt DateTime?  @map("published_at") @db.Timestamptz(3)
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  omScans     OmScan[]
+  objections  AnswerKeyObjection[]
+
+  @@unique([testId])
+  @@index([createdAt])
+  @@index([schoolId])
+  @@index([programCode])
+  @@index([testId, testNumber])
+  @@map("answer_keys")
+}
+
+enum AnswerKeyObjectionStatus {
+  OPEN
+  RESOLVED
+  REJECTED
+}
+
+enum AnswerKeyObjectionRaisedBy {
+  SCHOOL
+  TEACHER
+}
+
+/// School or teacher flags a published answer key (optional question) for admin review.
+model AnswerKeyObjection {
+  id             String                     @id @default(uuid()) @db.Uuid
+  answerKeyId    String                     @map("answer_key_id") @db.Uuid
+  answerKey      AnswerKey                  @relation(fields: [answerKeyId], references: [id], onDelete: Cascade)
+  schoolId       String                     @map("school_id") @db.Uuid
+  school         School                     @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  raisedBy       AnswerKeyObjectionRaisedBy @map("raised_by")
+  teacherId      String?                    @map("teacher_id") @db.Uuid
+  teacher        Teacher?                   @relation(fields: [teacherId], references: [id], onDelete: SetNull)
+  /// Optional question number the objection is about.
+  questionNumber Int?                       @map("question_number") @db.SmallInt
+  /// What school/teacher claims is correct: A–D, dual ("B/C"), ADD, or NONE (no right answer).
+  proposedAnswer String?                    @map("proposed_answer") @db.VarChar(16)
+  message        String                     @db.VarChar(2000)
+  /// Optional photo attached by the school/teacher (resized JPEG); never selected in lists.
+  imageData      Bytes?                     @map("image_data")
+  imageMimeType  String?                    @map("image_mime_type") @db.VarChar(64)
+  status         AnswerKeyObjectionStatus   @default(OPEN)
+  /// Admin note when resolving or rejecting.
+  resolutionNote String?                    @map("resolution_note") @db.VarChar(2000)
+  resolvedAt     DateTime?                  @map("resolved_at") @db.Timestamptz(3)
+  createdAt      DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([answerKeyId])
+  @@index([schoolId])
+  @@index([status, createdAt])
+  @@index([teacherId])
+  @@map("answer_key_objections")
+}
+
+/// One captured sheet. Saved only after the operator confirms the preview.
+/// Identity comes from the sheet — no student roster is required.
+model OmScan {
+  id             String    @id @default(uuid()) @db.Uuid
+  schoolId       String    @map("school_id") @db.Uuid
+  school         School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  studentId      String?   @map("student_id") @db.Uuid
+  student        Student?  @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  studentName    String    @map("student_name") @db.VarChar(120)
+  classLevel     Int       @map("class_level") @db.SmallInt
+  sectionName    String?   @map("section_name") @db.VarChar(32)
+  programName    String?   @map("program_name") @db.VarChar(120)
+  answerKeyId    String    @map("answer_key_id") @db.Uuid
+  answerKey      AnswerKey @relation(fields: [answerKeyId], references: [id], onDelete: Cascade)
+  testId         String    @map("test_id") @db.VarChar(64)
+  rollNo         String    @map("roll_no") @db.VarChar(64)
+  examDate       DateTime? @map("exam_date") @db.Date
+  answers        Json
+  flags          Json
+  subjectScores  Json      @map("subject_scores")
+  correct        Int
+  wrong          Int
+  blank          Int
+  total          Int
+  maxTotal       Int       @map("max_total")
+  confidence     Float
+  fileName       String    @map("file_name") @db.VarChar(255)
+  fileSize       Int       @map("file_size")
+  image          Bytes
+  /// Original upload (photo or PDF page) as JPEG.
+  rawImage       Bytes?    @map("raw_image")
+  /// Evaluated sheet: score table + green/red bubbles, as shown before saving.
+  previewImage   Bytes?    @map("preview_image")
+  actor          String    @db.VarChar(16)
+  scannedById    String?   @map("scanned_by_id") @db.Uuid
+  scannedBy      Teacher?  @relation(fields: [scannedById], references: [id], onDelete: SetNull)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([schoolId, rollNo, testId, classLevel])
+  @@index([schoolId, testId])
+  @@index([answerKeyId])
+  @@map("om_scans")
+}
+
+/// One test's results for one school and program; each class is uploaded as its own sheet.
+model ResultSet {
+  id          String        @id @default(uuid()) @db.Uuid
+  schoolId    String        @map("school_id") @db.Uuid
+  school      School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  /// Regular schools pick a catalog program code.
+  programCode String?       @map("program_code") @db.VarChar(64)
+  /// Customized schools type their own program name.
+  programName String?       @map("program_name") @db.VarChar(120)
+  /// `programCode`, or the lowercased custom name; keeps one set per school, program and test.
+  programKey  String        @map("program_key") @db.VarChar(130)
+  /// Human-facing test ID (freeform).
+  testId      String        @map("test_id") @db.VarChar(64)
+  /// Ordinal test number (1–30).
+  testNumber  Int           @map("test_number") @db.SmallInt
+  /// Schools only see published results.
+  published   Boolean       @default(false)
+  publishedAt DateTime?     @map("published_at") @db.Timestamptz(3)
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  sheets      ResultSheet[]
+
+  @@unique([schoolId, programKey, testNumber])
+  @@index([updatedAt])
+  @@index([programCode])
+  @@map("result_sets")
+}
+
+/// One class's uploaded spreadsheet: its header row, the original file, and one row per student.
+model ResultSheet {
+  id          String      @id @default(uuid()) @db.Uuid
+  resultSetId String      @map("result_set_id") @db.Uuid
+  resultSet   ResultSet   @relation(fields: [resultSetId], references: [id], onDelete: Cascade)
+  classLevel  Int         @map("class_level") @db.SmallInt
+  /// Title lines above the header row, e.g. "TEST-3 9-SEP-2026 (Max. Marks: 300)".
+  caption     String[]    @default([])
+  /// Header labels, in column order.
+  columns     Json
+  rowCount    Int         @map("row_count")
+  fileName    String      @map("file_name") @db.VarChar(255)
+  fileSize    Int         @map("file_size")
+  /// Original .xlsx bytes for download; never selected in list queries.
+  data        Bytes
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  rows        ResultRow[]
+
+  @@unique([resultSetId, classLevel])
+  @@map("result_sheets")
+}
+
+model ResultRow {
+  sheetId  String      @map("sheet_id") @db.Uuid
+  sheet    ResultSheet @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  /// 1-based order within the sheet.
+  position Int
+  /// Cell values aligned with the sheet's `columns`: string, number, boolean or null.
+  values   Json
+
+  @@id([sheetId, position])
+  @@map("result_rows")
+}
+
+enum PasswordResetRole {
+  SCHOOL
+  TEACHER
+  STUDENT
+}
+
+/// Singleton platform settings (id is always "default").
+model AppSettings {
+  id               String   @id @db.VarChar(32)
+  maintenanceMode  Boolean  @default(false) @map("maintenance_mode")
+  /// Inboxes for every answer-key objection.
+  vitaranEmails    String[] @default([]) @map("vitaran_emails") @db.VarChar(254)
+  /// SME contacts: [{ "name": "…", "subject": "MATHEMATICS", "email": "…" }]
+  smeContacts      Json     @default("[]") @map("sme_contacts")
+  /// Already sent the objection-list welcome: "vitaran|email" or "sme|email|SUBJECT".
+  objectionWelcomed String[] @default([]) @map("objection_welcomed") @db.VarChar(320)
+  /// Signed above "Vitaran Learning" on rank cards.
+  vitaranSignatureData     Bytes?  @map("vitaran_signature_data")
+  vitaranSignatureMimeType String? @map("vitaran_signature_mime_type") @db.VarChar(64)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("app_settings")
+}
+
+/// One-time codes for portal forgot-password (school or teacher).
+model PasswordResetOtp {
+  id         String            @id @default(uuid()) @db.Uuid
+  role       PasswordResetRole
+  accountId  String            @map("account_id") @db.Uuid
+  email      String            @db.VarChar(254)
+  codeHash   String            @map("code_hash") @db.VarChar(128)
+  expiresAt  DateTime          @map("expires_at") @db.Timestamptz(3)
+  attempts   Int               @default(0)
+  consumedAt DateTime?         @map("consumed_at") @db.Timestamptz(3)
+  createdAt  DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([email, role])
+  @@index([expiresAt])
+  @@map("password_reset_otps")
 }

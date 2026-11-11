@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState, type MouseEvent } from "react";
+import { useEffect, useState, useTransition, type MouseEvent } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowRight, Menu, X } from "lucide-react";
+import { LogIn, LogOut, Menu, X } from "lucide-react";
 import { Logo } from "@/components/shared/logo";
+import { SCHOOL_LOGIN_PATH } from "@/constants/auth";
+import { portalLogout } from "@/features/auth/portal-logout";
 import { navLinks } from "@/features/home/content";
 import { cn } from "@/lib/utils";
 
@@ -24,17 +26,78 @@ function scrollToHash(href: string) {
   history.replaceState(null, "", href);
 }
 
-export function SiteHeader() {
+const authButtonClasses =
+  "hidden h-10 cursor-pointer items-center gap-2 rounded-full bg-brand-900 px-5 text-sm font-semibold text-white select-none disabled:pointer-events-none disabled:opacity-60 sm:inline-flex";
+
+const mobileAuthClasses =
+  "flex w-full items-center gap-3 rounded-xl bg-brand-900 px-4 py-3.5 text-lg font-medium text-white select-none disabled:opacity-60";
+
+const authIconClasses = "size-4";
+
+type SiteSession = {
+  kind: "school" | "teacher";
+};
+
+/** Log in when signed out; portal + log out when a school/teacher session exists. */
+function AuthControl({
+  session,
+  className,
+  onNavigate,
+}: {
+  session: SiteSession | null;
+  className: string;
+  onNavigate?: () => void;
+}) {
+  const [pending, startTransition] = useTransition();
+
+  if (session) {
+    return (
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => {
+          onNavigate?.();
+          startTransition(() => portalLogout());
+        }}
+        className={className}
+      >
+        <LogOut className={authIconClasses} />
+        <span>{pending ? "Logging out…" : "Log out"}</span>
+      </button>
+    );
+  }
+
+  return (
+    <Link href={SCHOOL_LOGIN_PATH} onClick={onNavigate} className={className}>
+      <LogIn className={authIconClasses} />
+      <span>Log in</span>
+    </Link>
+  );
+}
+
+export function SiteHeader({ session }: { session: SiteSession | null }) {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<string | null>(null);
   const pathname = usePathname();
   const onHome = pathname === "/";
 
-  const resolveHref = (href: string) =>
-    isHash(href) && !onHome ? `/${href}` : href;
+  /** When a school is signed in, content links open the school portal. */
+  const contentHref = (href: string) => {
+    if (!session || session.kind !== "school") return href;
+    if (href === "/teacher/resources") return "/school/resources";
+    if (href === "/teacher/answer-keys") return "/school/answer-keys";
+    if (href === "/teacher/results") return "/school/results";
+    return href;
+  };
+
+  const resolveHref = (href: string) => {
+    if (isHash(href)) return !onHome ? `/${href}` : href;
+    return contentHref(href);
+  };
+
   const isActive = (href: string) =>
-    isHash(href) ? onHome && active === href : pathname === href;
+    isHash(href) ? onHome && active === href : pathname === contentHref(href);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -124,14 +187,7 @@ export function SiteHeader() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <Link
-            href="/contact"
-            onClick={() => setOpen(false)}
-            className="group hidden h-10 cursor-pointer items-center gap-2 rounded-full bg-brand-800 px-5 text-sm font-semibold text-white transition-all duration-200 select-none hover:bg-brand-700 active:scale-95 sm:inline-flex"
-          >
-            Get in touch
-            <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
-          </Link>
+          <AuthControl session={session} className={authButtonClasses} />
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
@@ -174,6 +230,13 @@ export function SiteHeader() {
                 </li>
               );
             })}
+            <li className="border-t border-brand-100 pt-2">
+              <AuthControl
+                session={session}
+                className={mobileAuthClasses}
+                onNavigate={() => setOpen(false)}
+              />
+            </li>
           </ul>
         </nav>
       </div>

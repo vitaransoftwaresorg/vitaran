@@ -16,8 +16,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SCHOOL_BOARDS, SCHOOL_STATUSES } from "@/types/school";
-import { BOARD_LABELS, STATUS_LABELS } from "./constants";
+import { SCHOOL_BOARDS, SCHOOL_STATUSES, SCHOOL_TYPES } from "@/types/school";
+import { BOARD_LABELS, STATUS_LABELS, TYPE_LABELS } from "./constants";
 
 const ALL = "ALL";
 const SEARCH_DEBOUNCE_MS = 350;
@@ -30,6 +30,16 @@ const boardItems = [
   { value: ALL, label: "All boards" },
   ...SCHOOL_BOARDS.map((value) => ({ value, label: BOARD_LABELS[value] })),
 ];
+const typeItems = [
+  { value: ALL, label: "All types" },
+  ...SCHOOL_TYPES.map((value) => ({ value, label: TYPE_LABELS[value] })),
+];
+
+const FILTERS = [
+  { key: "status", label: "Filter by status", items: statusItems },
+  { key: "type", label: "Filter by type", items: typeItems },
+  { key: "board", label: "Filter by board", items: boardItems },
+] as const;
 
 export function SchoolsFilters() {
   const router = useRouter();
@@ -38,9 +48,9 @@ export function SchoolsFilters() {
   const [pending, startTransition] = useTransition();
   const [search, setSearch] = useState(searchParams.get("search") ?? "");
 
-  const status = searchParams.get("status") ?? ALL;
-  const board = searchParams.get("board") ?? ALL;
-  const hasFilters = Boolean(searchParams.get("search")) || status !== ALL || board !== ALL;
+  const valueOf = (key: string) => searchParams.get(key) ?? ALL;
+  const hasFilters =
+    Boolean(searchParams.get("search")) || FILTERS.some(({ key }) => valueOf(key) !== ALL);
 
   const updateParams = (updates: Record<string, string | null>) => {
     const params = new URLSearchParams(searchParams);
@@ -78,40 +88,26 @@ export function SchoolsFilters() {
         />
       </InputGroup>
 
-      <div className="flex gap-3">
-        <Select
-          items={statusItems}
-          value={status}
-          onValueChange={(value) => updateParams({ status: value as string })}
-        >
-          <SelectTrigger className="w-40 bg-white" aria-label="Filter by status">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {statusItems.map((item) => (
-              <SelectItem key={item.value} value={item.value}>
-                {item.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select
-          items={boardItems}
-          value={board}
-          onValueChange={(value) => updateParams({ board: value as string })}
-        >
-          <SelectTrigger className="w-40 bg-white" aria-label="Filter by board">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {boardItems.map((item) => (
-              <SelectItem key={item.value} value={item.value}>
-                {item.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="flex flex-wrap gap-3">
+        {FILTERS.map(({ key, label, items }) => (
+          <Select
+            key={key}
+            items={items}
+            value={valueOf(key)}
+            onValueChange={(value) => updateParams({ [key]: value as string })}
+          >
+            <SelectTrigger className="w-40 bg-white" aria-label={label}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {items.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ))}
       </div>
 
       {hasFilters && (
@@ -119,7 +115,7 @@ export function SchoolsFilters() {
           variant="ghost"
           onClick={() => {
             setSearch("");
-            updateParams({ search: null, status: null, board: null });
+            updateParams({ search: null, ...Object.fromEntries(FILTERS.map(({ key }) => [key, null])) });
           }}
         >
           <X />

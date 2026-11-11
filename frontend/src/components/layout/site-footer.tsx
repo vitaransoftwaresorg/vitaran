@@ -44,18 +44,15 @@ export function SiteFooter() {
             </li>
             <li className="flex items-start gap-2 text-sm">
               <Mail className="mt-0.5 size-4 shrink-0 text-brand-400" />
-              <a
-                href={`mailto:${contactDetails.email}`}
-                className="hover:text-white"
-              >
+              <Link href={`mailto:${contactDetails.email}`} className="hover:text-white">
                 {contactDetails.email}
-              </a>
+              </Link>
             </li>
             <li className="flex items-start gap-2 text-sm">
               <Phone className="mt-0.5 size-4 shrink-0 text-brand-400" />
-              <a href={contactDetails.phoneHref} className="hover:text-white">
+              <Link href={contactDetails.phoneHref} className="hover:text-white">
                 {contactDetails.phone}
-              </a>
+              </Link>
             </li>
             <li className="flex items-start gap-2 text-sm">
               <Briefcase className="mt-0.5 size-4 shrink-0 text-brand-400" />
@@ -69,12 +66,12 @@ export function SiteFooter() {
         <div className="mt-16 flex flex-col gap-4 border-t border-white/10 pt-8 text-xs text-brand-400 sm:flex-row sm:items-center sm:justify-between">
           <p>© {year} Vitaran Learning. All rights reserved.</p>
           <div className="flex gap-6">
-            <a href="#" className="hover:text-white">
+            <Link href="/contact" className="hover:text-white">
               Terms &amp; Conditions
-            </a>
-            <a href="#" className="hover:text-white">
+            </Link>
+            <Link href="/contact" className="hover:text-white">
               Privacy
-            </a>
+            </Link>
           </div>
         </div>
       </div>

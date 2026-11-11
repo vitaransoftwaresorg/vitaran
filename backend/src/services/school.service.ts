@@ -1,34 +1,222 @@
-import type { School } from "../generated/prisma/client.js";
+import * as programRepository from "../repositories/program.repository.js";
 import * as schoolRepository from "../repositories/school.repository.js";
 import type {
+  SchoolOptionRow,
+  SchoolSessionRow,
+  SchoolSummaryRow,
+  SchoolWithPrograms,
+} from "../repositories/school.repository.js";
+import * as teacherRepository from "../repositories/teacher.repository.js";
+import { SchoolType } from "../generated/prisma/enums.js";
+import type {
   AccountAvailabilityQuery,
+  CodeAvailabilityQuery,
   CreateSchoolInput,
+  CustomProgramInput,
+  ListSchoolOptionsQuery,
   ListSchoolsQuery,
+  SchoolProgramInput,
   UpdateSchoolInput,
 } from "../schemas/school.schema.js";
 import { AppError } from "../utils/app-error.js";
+import { notifyContentChanged } from "../utils/content-events.js";
+import { subjectsForClassLevel } from "../utils/subject.js";
 import { hashPassword, verifyPassword } from "../utils/password.js";
 import { decryptSecret, encryptSecret } from "../utils/secret-box.js";
+import { sendSchoolCredentialsEmail } from "./mail.service.js";
+import { deleteObject, getObject, replaceObject } from "./object-storage.js";
 
-export type SchoolDto = Omit<
-  School,
-  "serial" | "passwordHash" | "passwordEncrypted" | "createdAt" | "updatedAt"
-> & {
+const KIND = "schools" as const;
+
+export type SchoolProgramClassDto = {
+  classLevel: number;
+  subjects: string[];
+};
+
+export type SchoolProgramDto = {
+  programId: string;
+  programCode: string;
+  programName: string;
+  type: SchoolWithPrograms["type"];
+  year: number;
+  classFrom: number;
+  classTo: number;
+  catalogSubjects: string[];
+  classes: SchoolProgramClassDto[];
+};
+
+export type SchoolSummaryDto = {
+  id: string;
   code: string;
+  name: string;
+  board: SchoolWithPrograms["board"];
+  type: SchoolWithPrograms["type"];
+  status: SchoolWithPrograms["status"];
+  contactName: string;
+  contactEmail: string;
+  city: string;
+  state: string;
   createdAt: string;
+  hasLogo: boolean;
+};
+
+export type SchoolOptionDto = {
+  id: string;
+  name: string;
+  code: string;
+  type: SchoolWithPrograms["type"];
+  programs: string[];
+  programLabels: Record<string, string>;
+  offerings: { code: string; name: string; classLevels: number[] }[];
+};
+
+export type SchoolDto = SchoolSummaryDto & {
+  principalName: string | null;
+  contactPhone: string;
+  addressLine: string;
+  pincode: string;
+  studentStrength: number | null;
+  notes: string | null;
+  accountEmail: string | null;
+  accountPhone: string | null;
+  schoolPrograms: SchoolProgramDto[];
+  /** Convenience: catalog codes the school is enrolled in. */
+  programCodes: string[];
   updatedAt: string;
 };
 
 export type SchoolDetailDto = SchoolDto & { password: string | null };
 
-export function toSchoolDto(school: School): SchoolDto {
-  const { serial, passwordHash, passwordEncrypted, ...rest } = school;
-  void passwordHash;
-  void passwordEncrypted;
+export const toSchoolRef = ({ id, name, code }: { id: string; name: string; code: string }) => ({
+  id,
+  name,
+  code,
+});
 
+async function assertSchoolCodeAvailable(code: string, excludeId?: string) {
+  const taken = await schoolRepository.findSchoolByCode(code, excludeId);
+  if (taken) {
+    throw new AppError(409, "School ID already in use", [
+      { path: ["code"], message: "This school ID is already used" },
+    ]);
+  }
+  return code.trim();
+}
+
+function toSchoolPrograms(school: SchoolWithPrograms): SchoolProgramDto[] {
+  return school.schoolPrograms.map((row) => ({
+    programId: row.programId,
+    programCode: row.program.code,
+    programName: row.program.name,
+    type: row.program.type,
+    year: row.program.year,
+    classFrom: row.program.classFrom,
+    classTo: row.program.classTo,
+    catalogSubjects: row.program.subjects,
+    classes: row.classes.map((cls) => ({
+      classLevel: cls.classLevel,
+      subjects: cls.subjects,
+    })),
+  }));
+}
+
+export function toSchoolSummaryDto(school: SchoolSummaryRow): SchoolSummaryDto {
   return {
-    ...rest,
-    code: `VLS-${String(serial).padStart(4, "0")}`,
+    id: school.id,
+    code: school.code,
+    name: school.name,
+    board: school.board,
+    type: school.type,
+    status: school.status,
+    contactName: school.contactName,
+    contactEmail: school.contactEmail,
+    city: school.city,
+    state: school.state,
+    createdAt: school.createdAt.toISOString(),
+    hasLogo: Boolean(school.logoMimeType),
+  };
+}
+
+export function toSchoolOptionDto(school: SchoolOptionRow): SchoolOptionDto {
+  const offerings = school.schoolPrograms.map((row) => ({
+    code: row.program.code,
+    name: row.program.name,
+    classLevels: row.classes.map((cls) => cls.classLevel),
+  }));
+  return {
+    id: school.id,
+    name: school.name,
+    code: school.code,
+    type: school.type,
+    programs: offerings.map((row) => row.code),
+    programLabels: Object.fromEntries(offerings.map((row) => [row.code, row.name])),
+    offerings,
+  };
+}
+
+export function toSchoolDto(school: SchoolWithPrograms): SchoolDto {
+  const schoolPrograms = toSchoolPrograms(school);
+  return {
+    ...toSchoolSummaryDto(school),
+    principalName: school.principalName,
+    contactPhone: school.contactPhone,
+    addressLine: school.addressLine,
+    pincode: school.pincode,
+    studentStrength: school.studentStrength,
+    notes: school.notes,
+    accountEmail: school.accountEmail,
+    accountPhone: school.accountPhone,
+    schoolPrograms,
+    programCodes: schoolPrograms.map((row) => row.programCode),
+    updatedAt: school.updatedAt.toISOString(),
+  };
+}
+
+export type SchoolAccountDto = Omit<SchoolDto, "notes">;
+
+export function toSchoolAccountDto(school: SchoolWithPrograms): SchoolAccountDto {
+  const { notes, ...rest } = toSchoolDto(school);
+  void notes;
+  return rest;
+}
+
+/** Nav + offerings for school portal session. No address, phones, or notes. */
+export function toSchoolSessionAccountDto(school: SchoolSessionRow): SchoolAccountDto {
+  const schoolPrograms: SchoolProgramDto[] = school.schoolPrograms.map((row) => ({
+    programId: row.programId,
+    programCode: row.program.code,
+    programName: row.program.name,
+    type: row.program.type,
+    year: row.program.year,
+    classFrom: row.program.classFrom,
+    classTo: row.program.classTo,
+    catalogSubjects: row.program.subjects,
+    classes: row.classes.map((cls) => ({
+      classLevel: cls.classLevel,
+      subjects: cls.subjects,
+    })),
+  }));
+  return {
+    id: school.id,
+    code: school.code,
+    name: school.name,
+    board: school.board,
+    type: school.type,
+    status: school.status,
+    principalName: null,
+    contactName: "",
+    contactEmail: "",
+    contactPhone: "",
+    addressLine: "",
+    city: "",
+    state: "",
+    pincode: "",
+    studentStrength: null,
+    accountEmail: school.accountEmail,
+    accountPhone: null,
+    schoolPrograms,
+    programCodes: schoolPrograms.map((row) => row.programCode),
+    hasLogo: Boolean(school.logoMimeType),
     createdAt: school.createdAt.toISOString(),
     updatedAt: school.updatedAt.toISOString(),
   };
@@ -41,7 +229,6 @@ async function sealPassword(password: string) {
   };
 }
 
-/** Re-sealing an unchanged password would rotate the hash and sign the school out. */
 async function passwordChanged(id: string, password: string) {
   const current = await schoolRepository.findSchoolById(id);
   if (!current?.passwordHash || !current.passwordEncrypted) return true;
@@ -52,7 +239,10 @@ export async function getAccountAvailability({ email, excludeId }: AccountAvaila
   return { emailTaken: await schoolRepository.isEmailUsedByOtherSchool(email, excludeId) };
 }
 
-/** Details mirror Zod issues so clients can map them onto form fields. */
+export async function getCodeAvailability({ code, excludeId }: CodeAvailabilityQuery) {
+  return { codeTaken: Boolean(await schoolRepository.findSchoolByCode(code, excludeId)) };
+}
+
 async function assertAccountAvailable(
   account: { accountEmail?: string; accountPhone?: string; contactEmail?: string },
   excludeId?: string,
@@ -79,11 +269,113 @@ async function assertAccountAvailable(
   }
 }
 
+function programCodeFromName(name: string) {
+  const code = name
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_|_$/g, "")
+    .replace(/^[0-9_]+/, "")
+    .slice(0, 64);
+  return code.length >= 2 ? code : "CUSTOM";
+}
+
+async function uniqueProgramCode(base: string) {
+  const root = base.replace(/_+$/, "") || "CUSTOM";
+  for (let n = 0; n < 100; n++) {
+    const suffix = n === 0 ? "" : `_${n + 1}`;
+    const code = `${root.slice(0, 64 - suffix.length)}${suffix}`;
+    if (!(await programRepository.findProgramByCode(code))) return code;
+  }
+  throw new AppError(409, "Could not generate a unique program code", [
+    { path: ["customProgramName"], message: "Pick a different program name" },
+  ]);
+}
+
+/** Create or update this school's customized catalog program, then enrol it. */
+async function attachNamedCustomProgram(
+  spec: CustomProgramInput,
+  existing: SchoolWithPrograms | null,
+) {
+  const classes = spec.classes.map((row) => ({
+    classLevel: row.classLevel,
+    subjects: subjectsForClassLevel(row.classLevel),
+  }));
+  const classLevels = classes.map((row) => row.classLevel).sort((a, b) => a - b);
+  const subjects = [...new Set(classes.flatMap((row) => row.subjects))];
+  const payload = {
+    name: spec.name.trim(),
+    year: new Date().getFullYear(),
+    classFrom: classLevels[0] ?? 1,
+    classTo: classLevels[classLevels.length - 1] ?? 12,
+    subjects: subjects.length > 0 ? subjects : ["MATHEMATICS"],
+  };
+
+  const current = existing?.schoolPrograms.find(
+    (row) => row.program.type === SchoolType.CUSTOMIZED,
+  )?.program;
+
+  const program = current
+    ? await programRepository.updateProgram(current.id, payload)
+    : await programRepository.createProgram({
+        code: await uniqueProgramCode(programCodeFromName(payload.name)),
+        type: SchoolType.CUSTOMIZED,
+        ...payload,
+      });
+
+  return [{ programId: program.id, classes }];
+}
+
+/** Regular schools take regular catalog programs; customized schools take customized ones. */
+async function offeringsForSchoolType(type: SchoolType, programs: SchoolProgramInput[]) {
+  const matched: SchoolProgramInput[] = [];
+  for (const row of programs) {
+    const catalog = await programRepository.findProgramById(row.programId);
+    if (!catalog) {
+      throw new AppError(400, "Unknown program", [
+        { path: ["programs"], message: "Select a valid program" },
+      ]);
+    }
+    if (catalog.type === type) matched.push(row);
+  }
+  return matched;
+}
+
+/** Offerings must stay inside each catalog program's class range and subject list. */
+async function assertProgramOfferings(programs: SchoolProgramInput[]) {
+  for (const row of programs) {
+    const catalog = await programRepository.findProgramById(row.programId);
+    if (!catalog) {
+      throw new AppError(400, "Unknown program", [
+        { path: ["programs"], message: "Select a valid program" },
+      ]);
+    }
+    const allowedSubjects = new Set(catalog.subjects);
+    for (const cls of row.classes) {
+      if (cls.classLevel < catalog.classFrom || cls.classLevel > catalog.classTo) {
+        throw new AppError(400, "Class is outside the program range", [
+          {
+            path: ["programs"],
+            message: `Class ${cls.classLevel} is outside ${catalog.name} (${catalog.classFrom}–${catalog.classTo})`,
+          },
+        ]);
+      }
+      for (const subject of cls.subjects) {
+        if (!allowedSubjects.has(subject)) {
+          throw new AppError(400, "Subject is not part of this program", [
+            { path: ["programs"], message: `${subject} is not offered in ${catalog.name}` },
+          ]);
+        }
+      }
+    }
+  }
+}
+
 export async function listSchools(query: ListSchoolsQuery) {
   const { items, total } = await schoolRepository.findSchools(query);
 
   return {
-    items: items.map(toSchoolDto),
+    items: items.map(toSchoolSummaryDto),
     pagination: {
       page: query.page,
       pageSize: query.pageSize,
@@ -93,13 +385,14 @@ export async function listSchools(query: ListSchoolsQuery) {
   };
 }
 
-/** Admin-only view: includes the school's sign-in password. */
+export async function listSchoolOptions(query: ListSchoolOptionsQuery) {
+  const items = await schoolRepository.findSchoolOptions(query);
+  return items.map(toSchoolOptionDto);
+}
+
 export async function getSchool(id: string): Promise<SchoolDetailDto> {
   const school = await schoolRepository.findSchoolById(id);
-
-  if (!school) {
-    throw new AppError(404, "School not found");
-  }
+  if (!school) throw new AppError(404, "School not found");
 
   return {
     ...toSchoolDto(school),
@@ -107,32 +400,146 @@ export async function getSchool(id: string): Promise<SchoolDetailDto> {
   };
 }
 
-export async function createSchool({ password, ...input }: CreateSchoolInput) {
+export async function createSchool({
+  password,
+  programs,
+  customProgram,
+  code,
+  ...input
+}: CreateSchoolInput) {
   await assertAccountAvailable(input);
+  const offerings =
+    input.type === SchoolType.CUSTOMIZED && customProgram
+      ? await attachNamedCustomProgram(customProgram, null)
+      : await offeringsForSchoolType(input.type, programs);
+  await assertProgramOfferings(offerings);
+  const schoolCode = await assertSchoolCodeAvailable(code);
 
-  return toSchoolDto(
-    await schoolRepository.createSchool({ ...input, ...(await sealPassword(password)) }),
+  const school = toSchoolDto(
+    await schoolRepository.createSchool({
+      ...input,
+      code: schoolCode,
+      programs: offerings,
+      ...(await sealPassword(password)),
+    }),
   );
+
+  if (school.accountEmail) {
+    await sendSchoolCredentialsEmail({
+      to: school.accountEmail,
+      schoolName: school.name,
+      loginEmail: school.accountEmail,
+      loginPhone: school.accountPhone,
+      password,
+      reason: "created",
+    });
+  }
+
+  notifyContentChanged({ kind: KIND, schoolId: school.id });
+  return school;
 }
 
 export async function updateSchool(
   id: string,
-  { password, ...input }: UpdateSchoolInput,
+  { password, programs, customProgram, code, ...input }: UpdateSchoolInput,
 ) {
   await assertAccountAvailable(input, id);
+  const current = await schoolRepository.findSchoolById(id);
+  if (!current) throw new AppError(404, "School not found");
+
+  const nextType = input.type ?? current.type;
+  let offerings = programs;
+  if (nextType === SchoolType.CUSTOMIZED && customProgram) {
+    offerings = await attachNamedCustomProgram(customProgram, current);
+    await assertProgramOfferings(offerings);
+  } else if (programs) {
+    offerings = await offeringsForSchoolType(nextType, programs);
+    await assertProgramOfferings(offerings);
+  }
 
   const seal = password && (await passwordChanged(id, password));
+  const schoolCode = code !== undefined ? await assertSchoolCodeAvailable(code, id) : undefined;
 
-  return toSchoolDto(
-    await schoolRepository.updateSchool(id, {
-      ...input,
-      ...(seal && password ? await sealPassword(password) : {}),
-    }),
-  );
+  const school = await schoolRepository.updateSchool(id, {
+    ...input,
+    ...(schoolCode !== undefined ? { code: schoolCode } : {}),
+    ...(offerings ? { programs: offerings } : {}),
+    ...(seal && password ? await sealPassword(password) : {}),
+  });
+
+  if (programs || customProgram) {
+    await teacherRepository.pruneAssignmentsOutsideSchoolOfferings(id);
+  }
+
+  const dto = toSchoolDto(school);
+
+  // Admin sets a new password → school receives it by email (forgot-password flow).
+  if (seal && password && dto.accountEmail) {
+    await sendSchoolCredentialsEmail({
+      to: dto.accountEmail,
+      schoolName: dto.name,
+      loginEmail: dto.accountEmail,
+      loginPhone: dto.accountPhone,
+      password,
+      reason: "password-reset",
+    });
+  }
+
+  notifyContentChanged({ kind: KIND, schoolId: id });
+  return dto;
 }
 
 export async function deleteSchool(id: string): Promise<void> {
   await schoolRepository.deleteSchool(id);
+  notifyContentChanged({ kind: KIND, schoolId: id });
+}
+
+/** Admin resends the current login email + password to the school account email. */
+export async function sendSchoolCredentials(id: string) {
+  const school = await getSchool(id);
+  if (!school.accountEmail) {
+    throw new AppError(400, "This school has no login email");
+  }
+  if (!school.password) {
+    throw new AppError(400, "Set a password before sending credentials");
+  }
+
+  const sent = await sendSchoolCredentialsEmail({
+    to: school.accountEmail,
+    schoolName: school.name,
+    loginEmail: school.accountEmail,
+    loginPhone: school.accountPhone,
+    password: school.password,
+    reason: "resend",
+  });
+  if (!sent) {
+    throw new AppError(502, "Could not send the email. Check SMTP settings and try again.");
+  }
+  return { ok: true as const, to: school.accountEmail };
+}
+
+/** Admin sets a new password and emails it to the school (forgot-password flow). */
+export async function resetSchoolPassword(id: string, password: string) {
+  const current = await schoolRepository.findSchoolById(id);
+  if (!current) throw new AppError(404, "School not found");
+  if (!current.accountEmail) {
+    throw new AppError(400, "This school has no login email");
+  }
+
+  await schoolRepository.updateSchool(id, await sealPassword(password));
+
+  const sent = await sendSchoolCredentialsEmail({
+    to: current.accountEmail,
+    schoolName: current.name,
+    loginEmail: current.accountEmail,
+    loginPhone: current.accountPhone,
+    password,
+    reason: "password-reset",
+  });
+  if (!sent) {
+    throw new AppError(502, "Password was saved but the email could not be sent. Try Send credentials.");
+  }
+  return { ok: true as const, to: current.accountEmail };
 }
 
 export async function getSchoolStats() {
@@ -141,6 +548,70 @@ export async function getSchoolStats() {
   return {
     ...stats,
     inactive: stats.total - stats.active,
-    recent: recent.map(toSchoolDto),
+    recent: recent.map(toSchoolSummaryDto),
+  };
+}
+
+const LOGO_MAX_BYTES = 2 * 1024 * 1024;
+const LOGO_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
+
+export async function uploadSchoolLogo(
+  id: string,
+  file: { buffer: Buffer; mimetype: string; originalname: string; size: number },
+) {
+  const school = await schoolRepository.findSchoolById(id);
+  if (!school) throw new AppError(404, "School not found");
+
+  if (!LOGO_MIME.has(file.mimetype)) {
+    throw new AppError(400, "Upload a PNG, JPEG, or WebP logo");
+  }
+  if (file.size <= 0 || file.size > LOGO_MAX_BYTES) {
+    throw new AppError(400, "Logo must be under 2 MB");
+  }
+
+  const previous = await schoolRepository.findSchoolLogo(id);
+  const logoData = await replaceObject(previous?.logoData, `schools/${id}/logo`, file.buffer, {
+    fileName: file.originalname.slice(0, 255) || "logo",
+    contentType: file.mimetype,
+  });
+  const updated = await schoolRepository.setSchoolLogo(id, {
+    logoData,
+    logoMimeType: file.mimetype,
+    logoFileName: file.originalname.slice(0, 255) || "logo",
+  });
+  if (!updated) throw new AppError(404, "School not found");
+  notifyContentChanged({ kind: KIND, schoolId: id });
+  return {
+    ...toSchoolDto(updated),
+    password: updated.passwordEncrypted ? decryptSecret(updated.passwordEncrypted) : null,
+  };
+}
+
+export async function getSchoolLogo(id: string) {
+  const row = await schoolRepository.findSchoolLogo(id);
+  if (!row?.logoData || !row.logoMimeType) {
+    throw new AppError(404, "School logo not found");
+  }
+  const data = await getObject(row.logoData);
+  if (!data) throw new AppError(404, "School logo not found");
+  return {
+    data,
+    mimeType: row.logoMimeType,
+    fileName: row.logoFileName ?? "logo",
+  };
+}
+
+export async function deleteSchoolLogo(id: string) {
+  const school = await schoolRepository.findSchoolById(id);
+  if (!school) throw new AppError(404, "School not found");
+  if (!school.logoMimeType) throw new AppError(404, "School logo not found");
+  const previous = await schoolRepository.findSchoolLogo(id);
+  await deleteObject(previous?.logoData);
+  const updated = await schoolRepository.clearSchoolLogo(id);
+  if (!updated) throw new AppError(404, "School not found");
+  notifyContentChanged({ kind: KIND, schoolId: id });
+  return {
+    ...toSchoolDto(updated),
+    password: updated.passwordEncrypted ? decryptSecret(updated.passwordEncrypted) : null,
   };
 }

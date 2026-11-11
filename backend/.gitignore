@@ -6,4 +6,5 @@ logs/
 *.log
 .env
 *.tsbuildinfo
+.omr-samples/
 .DS_Store

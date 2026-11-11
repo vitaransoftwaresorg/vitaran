@@ -17,8 +17,11 @@ export const SCHOOL_FORM_STEPS = [
     id: "school",
     title: "School",
     fields: [
+      "code",
       "name",
+      "logo",
       "board",
+      "type",
       "status",
       "principalName",
       "studentStrength",
@@ -29,8 +32,8 @@ export const SCHOOL_FORM_STEPS = [
   },
   {
     id: "programs",
-    title: "Programs",
-    fields: ["programs"],
+    title: "Programs & classes",
+    fields: ["offerings", "customProgramName", "customClasses"],
   },
   {
     id: "contact",

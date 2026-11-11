@@ -1,4 +1,4 @@
-import Link from "next/link";
+import { ProfileLink, schoolProfileHref } from "@/components/shared/profile-link";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -8,18 +8,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { School } from "@/types/school";
+import type { SchoolSummary } from "@/types/school";
 import { formatDate } from "@/utils/format";
 import { BOARD_LABELS } from "./constants";
 import { SchoolRowActions } from "./school-row-actions";
 import { SchoolStatusBadge } from "./school-status-badge";
+import { SchoolTypeBadge } from "./school-type-badge";
 
-export function SchoolsTable({ schools }: { schools: School[] }) {
+export function SchoolsTable({ schools }: { schools: SchoolSummary[] }) {
   return (
     <Table>
       <TableHeader>
         <TableRow className="hover:bg-transparent">
           <TableHead className="pl-4">School</TableHead>
+          <TableHead>Type</TableHead>
           <TableHead>Board</TableHead>
           <TableHead className="hidden lg:table-cell">Location</TableHead>
           <TableHead className="hidden md:table-cell">Contact</TableHead>
@@ -34,13 +36,13 @@ export function SchoolsTable({ schools }: { schools: School[] }) {
         {schools.map((school) => (
           <TableRow key={school.id}>
             <TableCell className="max-w-72 pl-4">
-              <Link
-                href={`/admin/schools/${school.id}`}
-                className="block truncate font-medium text-brand-900 hover:underline"
-              >
+              <ProfileLink href={schoolProfileHref(school.id)} className="block truncate">
                 {school.name}
-              </Link>
+              </ProfileLink>
               <span className="font-mono text-xs text-muted-foreground">{school.code}</span>
+            </TableCell>
+            <TableCell>
+              <SchoolTypeBadge type={school.type} />
             </TableCell>
             <TableCell>
               <Badge variant="secondary">{BOARD_LABELS[school.board]}</Badge>

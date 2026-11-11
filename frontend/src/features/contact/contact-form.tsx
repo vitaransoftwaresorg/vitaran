@@ -1,17 +1,30 @@
 "use client";
 
-import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
+import Form from "next/form";
 import { CheckCircle2, Paperclip, Send, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { interests } from "./content";
 
-const inputClasses =
-  "mt-2 w-full rounded-xl border border-brand-200 bg-brand-50/50 px-4 py-3 text-sm text-brand-900 outline-none transition focus:border-brand-600 focus:bg-white focus:ring-4 focus:ring-brand-100";
+const CONTROL = "h-11 rounded-xl";
 
 export function ContactForm() {
   const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [submitted, setSubmitted] = useState(false);
+  const [interest, setInterest] = useState("");
 
   const onFilesChange = (event: ChangeEvent<HTMLInputElement>) => {
     const selected = Array.from(event.target.files ?? []);
@@ -25,175 +38,194 @@ export function ContactForm() {
   const onCancel = () => {
     formRef.current?.reset();
     setFiles([]);
+    setInterest("");
   };
 
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submitContact = () => {
     setSubmitted(true);
   };
 
   if (submitted) {
     return (
-      <div className="flex min-h-96 flex-col items-center justify-center rounded-3xl bg-white p-8 text-center text-brand-900 shadow-2xl">
-        <div className="flex size-14 items-center justify-center rounded-full bg-brand-100 text-brand-800">
-          <CheckCircle2 className="size-7" />
-        </div>
-        <h3 className="mt-5 text-2xl font-bold">Thank you!</h3>
-        <p className="mt-2 max-w-xs text-muted-foreground">
-          We&apos;ve received your request and will be in touch soon.
-        </p>
-        <button
-          type="button"
-          onClick={() => {
-            onCancel();
-            setSubmitted(false);
-          }}
-          className="mt-6 text-sm font-semibold text-brand-700 underline-offset-4 hover:underline"
-        >
-          Send another message
-        </button>
-      </div>
+      <Card className="flex min-h-96 items-center justify-center rounded-3xl py-8 text-center shadow-2xl ring-0">
+        <CardContent className="flex flex-col items-center">
+          <div className="flex size-14 items-center justify-center rounded-full bg-brand-100 text-brand-800">
+            <CheckCircle2 className="size-7" />
+          </div>
+          <h3 className="mt-5 text-2xl font-bold">Thank you!</h3>
+          <p className="mt-2 max-w-xs text-muted-foreground">
+            We&apos;ve received your request and will be in touch soon.
+          </p>
+          <Button
+            type="button"
+            variant="link"
+            onClick={() => {
+              onCancel();
+              setSubmitted(false);
+            }}
+            className="mt-6 text-brand-700"
+          >
+            Send another message
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="rounded-3xl bg-white p-6 text-brand-900 shadow-2xl sm:p-8">
-      <h2 className="text-2xl font-bold">Drop us a line!</h2>
+    <Card className="rounded-3xl py-6 shadow-2xl ring-0 sm:py-8">
+      <CardHeader>
+        <CardTitle className="text-2xl font-bold">Drop us a line!</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Form ref={formRef} action={submitContact} className="space-y-5">
+          <FieldGroup>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="contact-name">
+                  Name <span className="text-brand-500">*</span>
+                </FieldLabel>
+                <Input
+                  id="contact-name"
+                  name="name"
+                  required
+                  autoComplete="name"
+                  className={CONTROL}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="contact-email">
+                  Work Email <span className="text-brand-500">*</span>
+                </FieldLabel>
+                <Input
+                  id="contact-email"
+                  name="email"
+                  type="email"
+                  required
+                  autoComplete="email"
+                  className={CONTROL}
+                />
+              </Field>
+            </div>
 
-      <form ref={formRef} onSubmit={onSubmit} className="mt-6 space-y-5">
-        <div className="grid gap-5 sm:grid-cols-2">
-          <label className="block">
-            <span className="text-sm font-medium">
-              Name <span className="text-brand-500">*</span>
-            </span>
-            <input
-              name="name"
-              required
-              autoComplete="name"
-              className={inputClasses}
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">
-              Work Email <span className="text-brand-500">*</span>
-            </span>
-            <input
-              name="email"
-              type="email"
-              required
-              autoComplete="email"
-              className={inputClasses}
-            />
-          </label>
-        </div>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <Field>
+                <FieldLabel htmlFor="contact-org">
+                  School / Organisation <span className="text-brand-500">*</span>
+                </FieldLabel>
+                <Input
+                  id="contact-org"
+                  name="organisation"
+                  required
+                  autoComplete="organization"
+                  className={CONTROL}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="contact-phone">Phone</FieldLabel>
+                <Input
+                  id="contact-phone"
+                  name="phone"
+                  type="tel"
+                  autoComplete="tel"
+                  className={CONTROL}
+                />
+              </Field>
+            </div>
 
-        <div className="grid gap-5 sm:grid-cols-2">
-          <label className="block">
-            <span className="text-sm font-medium">
-              School / Organisation <span className="text-brand-500">*</span>
-            </span>
-            <input
-              name="organisation"
-              required
-              autoComplete="organization"
-              className={inputClasses}
-            />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium">Phone</span>
-            <input
-              name="phone"
-              type="tel"
-              autoComplete="tel"
-              className={inputClasses}
-            />
-          </label>
-        </div>
+            <Field>
+              <FieldLabel htmlFor="contact-interest">Interested in</FieldLabel>
+              <Select
+                name="interest"
+                items={interests.map((item) => ({ value: item, label: item }))}
+                value={interest || null}
+                onValueChange={(value) => setInterest(String(value ?? ""))}
+              >
+                <SelectTrigger id="contact-interest" className={`${CONTROL} w-full`}>
+                  <SelectValue placeholder="Select a service" />
+                </SelectTrigger>
+                <SelectContent>
+                  {interests.map((item) => (
+                    <SelectItem key={item} value={item}>
+                      {item}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
 
-        <label className="block">
-          <span className="text-sm font-medium">Interested in</span>
-          <select name="interest" defaultValue="" className={inputClasses}>
-            <option value="" disabled>
-              Select a service
-            </option>
-            {interests.map((interest) => (
-              <option key={interest} value={interest}>
-                {interest}
-              </option>
-            ))}
-          </select>
-        </label>
+            <Field>
+              <FieldLabel htmlFor="contact-message">Message</FieldLabel>
+              <Textarea
+                id="contact-message"
+                name="message"
+                rows={4}
+                placeholder="Tell us about your requirements…"
+                className="min-h-24 rounded-xl"
+              />
+            </Field>
 
-        <label className="block">
-          <span className="text-sm font-medium">Message</span>
-          <textarea
-            name="message"
-            rows={4}
-            placeholder="Tell us about your requirements…"
-            className={`${inputClasses} resize-none`}
-          />
-        </label>
+            <Field>
+              <FieldLabel>Attach Files</FieldLabel>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => fileInputRef.current?.click()}
+                className="h-auto w-full gap-2 rounded-xl border-dashed border-brand-200 bg-brand-50/50 py-5 text-brand-700 hover:border-brand-400 hover:bg-brand-50"
+              >
+                <Paperclip className="size-4" />
+                Choose files
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                onChange={onFilesChange}
+                className="sr-only"
+                tabIndex={-1}
+              />
+              <p className="text-xs text-muted-foreground">Attachments ({files.length})</p>
+              {files.length > 0 ? (
+                <ul className="space-y-2">
+                  {files.map((file, i) => (
+                    <li
+                      key={`${file.name}-${i}`}
+                      className="flex items-center justify-between gap-3 rounded-lg bg-brand-50 px-3 py-2 text-sm"
+                    >
+                      <span className="truncate">{file.name}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() => removeFile(i)}
+                        aria-label={`Remove ${file.name}`}
+                        className="text-brand-500 hover:bg-brand-100 hover:text-brand-800"
+                      >
+                        <X className="size-3.5" />
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </Field>
 
-        <div>
-          <span className="text-sm font-medium">Attach Files</span>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-brand-200 bg-brand-50/50 px-4 py-5 text-sm font-medium text-brand-700 transition hover:border-brand-400 hover:bg-brand-50"
-          >
-            <Paperclip className="size-4" />
-            Choose files
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            onChange={onFilesChange}
-            className="sr-only"
-            tabIndex={-1}
-          />
-          <p className="mt-2 text-xs text-muted-foreground">
-            Attachments ({files.length})
-          </p>
-          {files.length > 0 && (
-            <ul className="mt-2 space-y-2">
-              {files.map((file, i) => (
-                <li
-                  key={`${file.name}-${i}`}
-                  className="flex items-center justify-between gap-3 rounded-lg bg-brand-50 px-3 py-2 text-sm"
-                >
-                  <span className="truncate">{file.name}</span>
-                  <button
-                    type="button"
-                    onClick={() => removeFile(i)}
-                    aria-label={`Remove ${file.name}`}
-                    className="shrink-0 rounded-full p-1 text-brand-500 hover:bg-brand-100 hover:text-brand-800"
-                  >
-                    <X className="size-3.5" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-
-        <div className="flex flex-col-reverse gap-3 pt-1 sm:flex-row">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="inline-flex flex-1 items-center justify-center rounded-full border border-brand-200 px-6 py-3.5 text-sm font-semibold text-brand-800 transition-all hover:bg-brand-50 active:scale-[0.98]"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="group inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-brand-800 px-6 py-3.5 text-sm font-semibold text-white transition-all hover:bg-brand-700 active:scale-[0.98]"
-          >
-            Send
-            <Send className="size-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-          </button>
-        </div>
-      </form>
-    </div>
+            <div className="flex flex-col-reverse gap-3 pt-1 sm:flex-row">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onCancel}
+                className="h-11 flex-1 rounded-full"
+              >
+                Cancel
+              </Button>
+              <Button type="submit" className="group h-11 flex-1 rounded-full bg-brand-800 hover:bg-brand-700">
+                Send
+                <Send className="size-4 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+              </Button>
+            </div>
+          </FieldGroup>
+        </Form>
+      </CardContent>
+    </Card>
   );
 }

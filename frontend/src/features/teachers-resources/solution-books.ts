@@ -1,9 +1,6 @@
-export type Subject =
-  | "Mathematics"
-  | "Physics"
-  | "Chemistry"
-  | "Biology"
-  | "Science";
+import type { SUBJECT_LABELS } from "@/features/schools/constants";
+
+export type Subject = (typeof SUBJECT_LABELS)[keyof typeof SUBJECT_LABELS];
 
 export type SolutionBook = {
   subject: Subject;
@@ -12,8 +9,6 @@ export type SolutionBook = {
   href: string;
   external?: boolean;
 };
-
-export const answerKeys: Record<string, SolutionBook[]> = {};
 
 export const solutionBooks: Record<string, SolutionBook[]> = {
   "Integrated Program": [

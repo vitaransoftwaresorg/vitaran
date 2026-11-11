@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import "tailwindcss" source("../");
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
@@ -184,10 +184,10 @@
   --chart-5: oklch(0.269 0 0);
   --radius: 0.625rem;
   --sidebar: #0a0c2e;
-  --sidebar-foreground: #b3b4cc;
+  --sidebar-foreground: #e6e7f5;
   --sidebar-primary: #ffffff;
   --sidebar-primary-foreground: #191c5f;
-  --sidebar-accent: #191c5f;
+  --sidebar-accent: #262a85;
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: rgb(255 255 255 / 0.08);
   --sidebar-ring: #8f95ff;

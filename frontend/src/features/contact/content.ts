@@ -9,8 +9,8 @@ export const offices = [
   {
     label: "Registered Office",
     address:
-      "Vitaran Learning, 841, KPHB Phase 2, Kukatpally, Hyderabad, Telangana, India - 500072",
-  },
+    "Vitaran Learning, 841, KPHB Phase 2, Kukatpally, Hyderabad, Telangana, India - 500072",
+},
   {
     label: "Branch Office",
     address:
