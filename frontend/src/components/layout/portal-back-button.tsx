@@ -3,6 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { useInPageBackHandler } from "@/components/layout/in-page-back";
+import { guardedLeave } from "@/lib/leave-guard";
 
 type PortalBackButtonProps = {
   getParentHref: (pathname: string, search?: string) => string | null;
@@ -39,7 +40,7 @@ export function PortalBackButton({
   return (
     <button
       type="button"
-      onClick={goBack}
+      onClick={() => guardedLeave(goBack)}
       className="inline-flex items-center gap-1.5 text-sm font-semibold text-brand-900 hover:opacity-70 active:opacity-60"
     >
       <ArrowLeft className="size-4" strokeWidth={2.25} />

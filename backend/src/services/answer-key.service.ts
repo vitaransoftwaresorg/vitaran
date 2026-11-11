@@ -20,11 +20,13 @@ import {
   defaultSubjectRanges,
   diffCorrections,
 } from "../utils/answer-key-parse.js";
+import { regradeScansForKey, scoringFingerprint } from "../scan/regrade.js";
 import { AppError } from "../utils/app-error.js";
 import { notifyContentChanged } from "../utils/content-events.js";
 import { enteredTestId } from "../utils/test-id.js";
 import { renderAnswerKeyPdf } from "./answer-key.pdf.js";
 import { answerKeyAccessFilter, type ContentActor } from "./content-access.js";
+import { getObject } from "./object-storage.js";
 import { loadVitaranLogo } from "./rank-card.render.js";
 import { toSchoolRef, type SchoolAccountDto } from "./school.service.js";
 
@@ -87,6 +89,25 @@ async function assertUniqueTestId(testId: string | undefined, exceptId?: string)
       { path: ["testId"], message: "This test ID is already used. Test numbers can repeat; test IDs cannot." },
     ]);
   }
+}
+
+/** Live check for the admin form: is this test ID free, and if not, which key holds it? */
+export async function checkAnswerKeyTestId(testId: string, exceptId?: string) {
+  const existing = await answerKeyRepository.findAnswerKeyByTestId(testId, exceptId);
+  return {
+    testId,
+    available: !existing,
+    usedBy: existing
+      ? {
+          id: existing.id,
+          program: existing.programCode,
+          type: existing.type,
+          classLevel: existing.classLevel,
+          testNumber: existing.testNumber,
+          school: existing.school?.name ?? null,
+        }
+      : null,
+  };
 }
 
 /**
@@ -278,18 +299,22 @@ export async function uploadAnswerKey({ schoolId, program, ...meta }: UploadAnsw
   await assertProgramClass(meta.type, program, meta.classLevel, resolvedSchoolId);
   await assertUniqueTestId(meta.testId);
 
-  return toAnswerKeyDto(
-    await answerKeyRepository.createAnswerKey({
-      type: meta.type,
-      ...(meta.testId ? { testId: meta.testId } : {}),
-      testNumber: meta.testNumber,
-      classLevel: meta.classLevel,
-      programCode: program,
-      schoolId: resolvedSchoolId,
-      ...emptyKeyFile(),
-      ...(await blankKeyFields(program)),
-    }),
-  );
+  const created = await answerKeyRepository.createAnswerKey({
+    type: meta.type,
+    ...(meta.testId ? { testId: meta.testId } : {}),
+    testNumber: meta.testNumber,
+    classLevel: meta.classLevel,
+    programCode: program,
+    schoolId: resolvedSchoolId,
+    ...emptyKeyFile(),
+    ...(await blankKeyFields(program)),
+  });
+  notifyContentChanged({
+    kind: KIND,
+    schoolId: created.school?.id ?? null,
+    adminOnly: !created.published,
+  });
+  return toAnswerKeyDto(created);
 }
 
 export async function updateAnswerKey(id: string, { schoolId, program, ...meta }: UpdateAnswerKeyQuery) {
@@ -306,7 +331,7 @@ export async function updateAnswerKey(id: string, { schoolId, program, ...meta }
     schoolId: resolvedSchoolId,
   });
   // The key may have moved to another school, so tell every school.
-  if (answerKey.published) notifyContentChanged({ kind: KIND, schoolId: null });
+  notifyContentChanged({ kind: KIND, schoolId: null, adminOnly: !answerKey.published });
   return toAnswerKeyDto(answerKey);
 }
 
@@ -343,7 +368,7 @@ export async function setAnswerKeyPublished(id: string, published: boolean) {
 
 export async function deleteAnswerKey(id: string) {
   const { schoolId, published } = await answerKeyRepository.deleteAnswerKey(id);
-  if (published) notifyContentChanged({ kind: KIND, schoolId });
+  notifyContentChanged({ kind: KIND, schoolId, adminOnly: !published });
 }
 
 export async function setAnswerKeyTestId(id: string, testId: string) {
@@ -397,6 +422,7 @@ export async function saveAnswerKeyAnswers(id: string, input: SaveAnswerKeyAnswe
     wrongMarks: input.wrongMarks,
   });
   notifyContentChanged({ kind: KIND, schoolId: answerKey.school?.id ?? null });
+  if (scoringFingerprint(answerKey) !== scoringFingerprint(existing)) regradeScansForKey(id);
   return toAnswerKeyDto(answerKey);
 }
 
@@ -429,7 +455,7 @@ export async function getAnswerKeyPdf(id: string, actor: ContentActor) {
       explanations: asExplanations(row.explanations),
       subjectRanges: asSubjectRanges(row.subjectRanges),
     },
-    { vitaran, school: logo?.logoData ? Buffer.from(logo.logoData) : null },
+    { vitaran, school: logo?.logoData ? await getObject(logo.logoData) : null },
   );
   const name = ["Answer-Key", `Class-${row.classLevel}`, `Test-${row.testNumber}`, testId].filter(Boolean).join("-");
   return { fileName: `${name}.pdf`, data };

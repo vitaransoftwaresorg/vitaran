@@ -24,7 +24,33 @@ export type AnswerGrid = {
   angle: number;
   /** How many of the 400 lattice points matched a detected circle. */
   snapped: number;
+  /**
+   * Worst gap between neighbouring bubbles (options in a block, rows in a group) relative to the
+   * usual gap. Clean reads stay under ~0.4; a lattice that slid onto the wrong circles collapses
+   * two points together or stretches a gap, reading ≥0.75 and shifting answers by an option.
+   */
+  spacingError: number;
 };
+
+/** Above this the grid is misaligned and answers would be read off the wrong bubbles. */
+export const MAX_SPACING_ERROR = 0.6;
+
+function spacingError(points: AnswerGrid["points"]) {
+  const across: number[] = [];
+  const down: number[] = [];
+  const gap = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(b.x - a.x, b.y - a.y);
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      if (col % OPTIONS !== OPTIONS - 1) across.push(gap(points[row]![col]!, points[row]![col + 1]!));
+      if (row % ROWS_PER_GROUP !== ROWS_PER_GROUP - 1) down.push(gap(points[row]![col]!, points[row + 1]![col]!));
+    }
+  }
+  const worst = (gaps: number[]) => {
+    const usual = median(gaps);
+    return usual > 0 ? Math.max(...gaps.map((g) => Math.abs(g - usual) / usual)) : Infinity;
+  };
+  return Math.max(worst(across), worst(down));
+}
 
 export type GridCell = {
   question: number;
@@ -255,7 +281,7 @@ export function locateAnswerGrid(rgba: Rgba): AnswerGrid | null {
       return guess;
     }),
   );
-  return { points, radius: r, angle: (angle * 180) / Math.PI, snapped };
+  return { points, radius: r, angle: (angle * 180) / Math.PI, snapped, spacingError: spacingError(points) };
 }
 
 /** The window of `count` consecutive clusters with the most even spacing pattern (4×5 rows). */
@@ -303,8 +329,7 @@ function paperNear(rgba: Rgba, x: number, y: number, r: number, channel: Channel
 }
 
 /** Share of the bubble interior that is clearly darker than the paper around it. */
-function interiorInk(rgba: Rgba, x: number, y: number, r: number, channel: Channel) {
-  const paper = paperNear(rgba, x, y, r, channel);
+function interiorInk(rgba: Rgba, x: number, y: number, r: number, channel: Channel, paper: number) {
   const thr = paper * 0.7;
   const inner = r * 0.62;
   let dark = 0;
@@ -337,8 +362,37 @@ function emptyLevels(raw: number[][]) {
   });
 }
 
+/** Paper within this many rows / option columns of a bubble backs up its own ring. */
+const PAPER_ROWS = 1;
+const PAPER_COLS = 2;
+/** Shadows can dim one bubble's ring slightly below its neighbours; only bigger drops are ink. */
+const PAPER_SLACK = 0.92;
+
+/**
+ * Paper level per bubble. Ink that spills past the circle darkens that bubble's own ring and
+ * would make a filled bubble look empty, so the neighbours' paper is a floor.
+ */
+function paperLevels(rgba: Rgba, grid: AnswerGrid, channel: Channel) {
+  const local = grid.points.map((row) => row.map((p) => paperNear(rgba, p.x, p.y, grid.radius, channel)));
+  return local.map((row, r) =>
+    row.map((own, c) => {
+      const around: number[] = [];
+      for (let dr = -PAPER_ROWS; dr <= PAPER_ROWS; dr++) {
+        for (let dc = -PAPER_COLS; dc <= PAPER_COLS; dc++) {
+          const value = local[r + dr]?.[c + dc];
+          if (value !== undefined) around.push(value);
+        }
+      }
+      return Math.max(own, median(around) * PAPER_SLACK);
+    }),
+  );
+}
+
 export function scoreAnswerGrid(rgba: Rgba, grid: AnswerGrid, channel: Channel = "min") {
-  const raw: number[][] = grid.points.map((row) => row.map((p) => interiorInk(rgba, p.x, p.y, grid.radius, channel)));
+  const paper = paperLevels(rgba, grid, channel);
+  const raw: number[][] = grid.points.map((row, r) =>
+    row.map((p, c) => interiorInk(rgba, p.x, p.y, grid.radius, channel, paper[r]![c]!)),
+  );
   const empty = emptyLevels(raw);
   const cells: GridCell[] = [];
   const answers: Record<string, AnswerOption[]> = {};

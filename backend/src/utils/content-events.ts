@@ -8,12 +8,15 @@ export type ContentKind =
   | "schools"
   | "sections"
   | "objections"
-  | "programs";
+  | "programs"
+  | "settings";
 
 export type ContentChange = {
   kind: ContentKind;
   /** Schools affected; `null` means every school (e.g. regular answer keys / catalog). */
   schoolId: string | null;
+  /** Only admin sessions hear it, e.g. edits to unpublished keys or results. */
+  adminOnly?: boolean;
 };
 
 /**

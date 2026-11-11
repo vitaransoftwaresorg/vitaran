@@ -23,20 +23,45 @@ export function removeScanBatchAt(index: number): ScanPreview[] {
   return items;
 }
 
+export function removeScanBatchById(previewId: string): ScanPreview[] {
+  items = items.filter((item) => item.previewId !== previewId);
+  emit();
+  return items;
+}
+
 export function clearScanBatch() {
   items = [];
   emit();
 }
 
-/** Test ID entered for this upload session, kept after failed scans and review round-trips. */
-let lastTestId = "";
+/** PDF being read on the server; its sheets are appended to the batch as they finish. */
+export type PdfJob = {
+  batchId: string;
+  fileName: string;
+  testId: string;
+  pageCount: number;
+  done: number;
+  finished: boolean;
+  /** Server items already pulled into the batch. */
+  next: number;
+  /** Sheets added to the batch from this PDF (some may be saved already). */
+  read: number;
+  /** Pages that could not be read and have not been scanned again yet. */
+  failures: PdfFailure[];
+  duplicates: number;
+};
 
-export function getLastTestId() {
-  return lastTestId;
+export type PdfFailure = { page: number; message: string; hasImage: boolean };
+
+let pdfJob: PdfJob | null = null;
+
+export function getPdfJob() {
+  return pdfJob;
 }
 
-export function setLastTestId(value: string) {
-  lastTestId = value;
+export function setPdfJob(next: PdfJob | null) {
+  pdfJob = next;
+  emit();
 }
 
 export function subscribeScanBatch(listener: () => void) {

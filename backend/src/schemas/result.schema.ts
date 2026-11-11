@@ -3,9 +3,6 @@ import { SchoolType } from "../generated/prisma/enums.js";
 
 export const CLASS_LEVELS = Array.from({ length: 12 }, (_, index) => index + 1);
 
-/** Multipart field carrying a class's spreadsheet, e.g. `class_3`. */
-export const classFileField = (level: number) => `class_${level}`;
-
 const emptyToUndefined = (value: unknown) => (value === "" ? undefined : value);
 
 /**

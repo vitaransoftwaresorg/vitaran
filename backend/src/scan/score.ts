@@ -50,6 +50,16 @@ export function onPaper(score: Pick<SheetScore, "subjectScores">, question: numb
   return score.subjectScores.some((range) => question >= range.from && question <= range.to);
 }
 
+/** Un-attempted questions plus the reader's own flags, limited to questions on this test's paper. */
+export function sheetFlags(score: SheetScore, readFlags: Array<{ question: number; reason: string }>) {
+  return [
+    ...score.unattempted
+      .filter((question) => !readFlags.some((flag) => flag.question === question))
+      .map((question) => ({ question, reason: "Un-attempted" })),
+    ...readFlags.filter((flag) => onPaper(score, flag.question)),
+  ].sort((a, b) => a.question - b.question);
+}
+
 export function scoreSheet(
   marked: Record<string, AnswerOption | AnswerOption[] | string>,
   keyAnswers: unknown,

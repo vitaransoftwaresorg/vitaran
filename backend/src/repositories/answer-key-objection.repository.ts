@@ -6,7 +6,7 @@ import {
 } from "../generated/prisma/enums.js";
 
 export const objectionInclude = {
-  school: { select: { id: true, name: true, code: true } },
+  school: { select: { id: true, name: true, code: true, accountEmail: true } },
   teacher: { select: { id: true, name: true, email: true } },
   answerKey: {
     select: {
@@ -17,6 +17,7 @@ export const objectionInclude = {
       classLevel: true,
       type: true,
       schoolId: true,
+      answers: true,
     },
   },
 } satisfies Prisma.AnswerKeyObjectionInclude;

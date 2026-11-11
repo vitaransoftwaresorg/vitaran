@@ -3,12 +3,19 @@ import { Redis } from "ioredis";
 import { env } from "../config/env.js";
 import { AppError } from "../utils/app-error.js";
 import { logger } from "../utils/logger.js";
-import { readSheet, type SheetIdentity, type SheetRead } from "./read-sheet.js";
+import { readSheet, type SheetCorners, type SheetIdentity, type SheetRead } from "./read-sheet.js";
 import type { ExtractedSheet } from "./schema.js";
 
 const QUEUE_NAME = "omr-scan";
 
-type ReadJob = { image: string; fileName: string; rollNo?: string; testId?: string; flat?: boolean };
+type ReadJob = {
+  image: string;
+  fileName: string;
+  rollNo?: string;
+  testId?: string;
+  flat?: boolean;
+  corners?: SheetCorners;
+};
 type ReadOk = { ok: true; jpeg: string; sheet: ExtractedSheet };
 type ReadFail = { ok: false; statusCode: number; message: string };
 type ReadResult = ReadOk | ReadFail;
@@ -66,6 +73,7 @@ async function onJob(job: Job<ReadJob, ReadResult>) {
     rollNo: job.data.rollNo,
     testId: job.data.testId,
     flat: job.data.flat,
+    corners: job.data.corners,
   });
 }
 
@@ -109,6 +117,7 @@ export async function readQueued(image: Buffer, fileName: string, identity?: She
       rollNo: identity?.rollNo,
       testId: identity?.testId,
       flat: identity?.flat,
+      corners: identity?.corners,
     },
     { removeOnComplete: 40, removeOnFail: 40 },
   );

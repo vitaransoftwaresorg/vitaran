@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import {
+  checkAnswerKeyTestId,
   deleteAnswerKey,
   getAnswerKey,
   getAnswerKeyStats,
@@ -35,6 +36,7 @@ import { requireAdmin, requireSchool, requireTeacher } from "../middleware/authe
 import { validate } from "../middleware/validate.js";
 import {
   answerKeyIdParamsSchema,
+  checkTestIdQuerySchema,
   listAnswerKeysQuerySchema,
   saveAnswerKeyAnswersSchema,
   schoolTestsQuerySchema,
@@ -66,6 +68,7 @@ answerKeyRouter.use(requireAdmin);
 answerKeyRouter.get("/", validate(listAnswerKeysQuerySchema, "query"), listAnswerKeys);
 answerKeyRouter.post("/", validate(uploadAnswerKeyQuerySchema, "query"), uploadAnswerKey);
 answerKeyRouter.get("/stats", getAnswerKeyStats);
+answerKeyRouter.get("/test-id/check", validate(checkTestIdQuerySchema, "query"), checkAnswerKeyTestId);
 answerKeyRouter.get("/school-tests", validate(schoolTestsQuerySchema, "query"), listSchoolTests);
 answerKeyRouter.get(
   "/objections",

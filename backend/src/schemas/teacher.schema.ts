@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { titleText } from "../utils/title-case.js";
 import { TeacherStatus } from "../generated/prisma/enums.js";
 import { subjectCodeSchema } from "../utils/subject.js";
 
@@ -31,7 +32,7 @@ const classTeacherSlotSchema = z.discriminatedUnion("kind", [
 ]);
 
 const teacherFields = {
-  name: z.string().trim().min(2).max(120),
+  name: titleText(2, 120),
   email,
   phone,
   status: z.enum(TeacherStatus),

@@ -8,6 +8,7 @@ import type { SchoolAccountDto } from "../services/school.service.js";
 import type { TeacherAccountDto } from "../services/teacher.service.js";
 import { sendSuccess } from "../utils/api-response.js";
 import { AppError } from "../utils/app-error.js";
+import { MAX_PDF_PAGES } from "./pdf-pages.js";
 import * as scanService from "./service.js";
 
 const IMAGE_MAX = 8 * 1024 * 1024;
@@ -44,6 +45,21 @@ const readPdf = multer({
   },
 }).single("file");
 
+const cornersSchema = z
+  .array(z.tuple([z.number().min(-0.05).max(1.05), z.number().min(-0.05).max(1.05)]))
+  .length(4);
+
+/** Phone scanner sends the confirmed sheet corners as JSON; anything else falls back to auto-detect. */
+function parseCorners(raw: unknown) {
+  if (typeof raw !== "string" || !raw) return undefined;
+  try {
+    const parsed = cornersSchema.safeParse(JSON.parse(raw));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function omrRouter(contextOf: (res: Response) => scanService.ScanContext) {
   const router = Router();
   router.get("/", async (_req, res) => {
@@ -52,16 +68,17 @@ function omrRouter(contextOf: (res: Response) => scanService.ScanContext) {
   router.post("/preview", omrScanRateLimit, readImage, async (req, res) => {
     const file = req.file;
     if (!file?.buffer) throw new AppError(400, "Attach an OMR sheet image");
-    const body = req.body as { rollNo?: string; testId?: string };
+    const body = req.body as { rollNo?: string; testId?: string; corners?: string };
     sendSuccess(
       res,
       await scanService.previewScan(contextOf(res), file.buffer, file.originalname, {
         rollNo: typeof body?.rollNo === "string" ? body.rollNo : "",
         testId: typeof body?.testId === "string" ? body.testId : "",
+        corners: parseCorners(body?.corners),
       }),
     );
   });
-  /** Store PDF; pages are rendered on demand via /batch-preview. */
+  /** Store the PDF and start reading every page in the background; poll /batches/:batchId for sheets. */
   router.post("/split-pdf", omrScanRateLimit, readPdf, async (req, res) => {
     const file = req.file;
     if (!file?.buffer) throw new AppError(400, "Attach a PDF of OMR sheets");
@@ -77,26 +94,31 @@ function omrRouter(contextOf: (res: Response) => scanService.ScanContext) {
       await scanService.registerOmrPdf(contextOf(res), file.buffer, file.originalname, { testId }),
     );
   });
+  router.get("/batches/active", (_req, res) => {
+    sendSuccess(res, scanService.activePdfBatch(contextOf(res)));
+  });
+  router.get("/batches/:batchId", (req, res) => {
+    const batchId = z.uuid().parse(req.params.batchId);
+    const from = z.coerce.number().int().min(0).max(MAX_PDF_PAGES).catch(0).parse(req.query.from);
+    sendSuccess(res, scanService.pdfBatchStatus(contextOf(res), batchId, from));
+  });
+  router.get("/batches/:batchId/pages/:page/image", (req, res) => {
+    const batchId = z.uuid().parse(req.params.batchId);
+    const page = z.coerce.number().int().min(1).max(MAX_PDF_PAGES).parse(req.params.page);
+    sendFile(res, scanService.getPdfBatchPageImage(contextOf(res), batchId, page), "image/jpeg");
+  });
+  router.delete("/batches/:batchId", (req, res) => {
+    sendSuccess(res, scanService.dismissPdfBatch(contextOf(res), z.uuid().parse(req.params.batchId)));
+  });
+  router.get("/previews/:previewId/image", (req, res) => {
+    const previewId = z.uuid().parse(req.params.previewId);
+    sendFile(res, scanService.getPreviewImage(contextOf(res), previewId, kindSchema.parse(req.query.kind)), "image/jpeg");
+  });
   router.post(
-    "/batch-preview",
-    omrScanRateLimit,
-    validate(
-      z.object({
-        batchId: z.uuid(),
-        page: z.coerce.number().int().min(1).max(120),
-        rollNo: z.string().trim().max(16).optional(),
-        testId: z.string().trim().max(32).optional(),
-      }),
-    ),
+    "/commit-many",
+    validate(z.object({ previewIds: z.array(z.uuid()).min(1).max(scanService.COMMIT_MANY_MAX) })),
     async (req, res) => {
-      const body = req.body as { batchId: string; page: number; rollNo?: string; testId?: string };
-      sendSuccess(
-        res,
-        await scanService.previewOmrPdfPage(contextOf(res), body.batchId, body.page, {
-          rollNo: typeof body.rollNo === "string" ? body.rollNo : "",
-          testId: typeof body.testId === "string" ? body.testId : "",
-        }),
-      );
+      sendSuccess(res, await scanService.commitScans(contextOf(res), (req.body as { previewIds: string[] }).previewIds));
     },
   );
   router.post("/commit", validate(commitSchema), async (req, res) => {

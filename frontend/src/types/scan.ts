@@ -57,3 +57,17 @@ export type OmScan = {
 };
 
 export type ScanPreview = { previewId: string; scan: OmScan };
+
+/** A PDF being read on the server, one student sheet per page. */
+export type PdfBatchSummary = {
+  batchId: string;
+  fileName: string;
+  testId: string;
+  pageCount: number;
+  done: number;
+  finished: boolean;
+};
+
+export type PdfBatchStatus = PdfBatchSummary & {
+  items: Array<{ page: number; error?: string; duplicateOf?: number; hasImage?: boolean; preview?: ScanPreview }>;
+};

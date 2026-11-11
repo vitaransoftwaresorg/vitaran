@@ -9,13 +9,10 @@ export const smeContactSchema = z.object({
 
 export const updateAppSettingsSchema = z.object({
   maintenanceMode: z.boolean(),
-  vitaranEmail: z
-    .union([
-      z.literal(""),
-      z.string().trim().email("Enter a valid Vitaran email").max(254),
-    ])
-    .optional()
-    .nullable(),
+  vitaranEmails: z
+    .array(z.string().trim().toLowerCase().email("Enter a valid Vitaran email").max(254))
+    .max(20)
+    .transform((emails) => [...new Set(emails)]),
   smeContacts: z.array(smeContactSchema).max(50),
 });
 

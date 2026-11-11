@@ -38,6 +38,10 @@ const envSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().trim().min(1).optional(),
   /** Redis for BullMQ OMR batch jobs. When unset, sheets are processed in-process. */
   REDIS_URL: z.string().trim().min(1).optional(),
+  /** Google Cloud Storage bucket for PDFs, OMR images, logos. When unset, bytes stay in Postgres. */
+  GCS_BUCKET: z.string().trim().min(1).optional(),
+  /** Optional GCP project id (ADC / Cloud Run usually supply this). */
+  GCS_PROJECT_ID: z.string().trim().min(1).optional(),
 });
 
 const parsed = envSchema.safeParse({
@@ -63,6 +67,8 @@ const parsed = envSchema.safeParse({
     process.env.AUTH_GOOGLE_ID?.trim() ||
     undefined,
   REDIS_URL: process.env.REDIS_URL?.trim() || undefined,
+  GCS_BUCKET: process.env.GCS_BUCKET?.trim() || undefined,
+  GCS_PROJECT_ID: process.env.GCS_PROJECT_ID?.trim() || process.env.GOOGLE_CLOUD_PROJECT?.trim() || undefined,
 });
 
 if (!parsed.success) {

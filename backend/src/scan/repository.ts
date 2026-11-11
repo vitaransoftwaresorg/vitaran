@@ -94,6 +94,34 @@ export function findClassScanImages(filter: ClassScanFilter) {
   return findScanImages(classScanWhere(filter));
 }
 
+export async function findScanIdsForKey(answerKeyId: string) {
+  const rows = await prisma.omScan.findMany({ where: { answerKeyId }, select: { id: true }, orderBy: { createdAt: "asc" } });
+  return rows.map((row) => row.id);
+}
+
+/** What re-marking needs: the stored answers and the straightened sheet the marks are drawn on. */
+export function findScanForRegrade(id: string) {
+  return prisma.omScan.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      schoolId: true,
+      studentName: true,
+      classLevel: true,
+      sectionName: true,
+      testId: true,
+      rollNo: true,
+      answers: true,
+      flags: true,
+      image: true,
+    },
+  });
+}
+
+export function updateScanScore(id: string, data: Prisma.OmScanUncheckedUpdateInput) {
+  return prisma.omScan.update({ where: { id }, data, select: { id: true } });
+}
+
 export function findOmScans(where: Prisma.OmScanWhereInput) {
   return prisma.omScan.findMany({
     where,

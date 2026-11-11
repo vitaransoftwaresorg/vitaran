@@ -362,3 +362,7 @@ export async function syncTeacherClassTeacherSlots(
     data: { classTeacherId: teacherId },
   });
 }
+
+export function setTeacherPasswordHash(id: string, passwordHash: string) {
+  return prisma.teacher.update({ where: { id }, data: { passwordHash }, select: { id: true } });
+}

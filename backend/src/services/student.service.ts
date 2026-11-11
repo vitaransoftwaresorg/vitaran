@@ -1,5 +1,5 @@
 import { StudentStatus } from "../generated/prisma/enums.js";
-import { displaySectionName } from "../utils/section-label.js";
+import { classWithSectionLabel, displaySectionName } from "../utils/section-label.js";
 import * as schoolClassRepository from "../repositories/school-class.repository.js";
 import * as schoolRepository from "../repositories/school.repository.js";
 import * as sectionRepository from "../repositories/section.repository.js";
@@ -12,7 +12,14 @@ import type {
 } from "../schemas/student.schema.js";
 import { AppError } from "../utils/app-error.js";
 import { notifyContentChanged } from "../utils/content-events.js";
-import { studentTestResults } from "./student-performance.service.js";
+import { getObject } from "./object-storage.js";
+import { loadVitaranLogo } from "./rank-card.render.js";
+import { schoolTestResultsIndex, studentTestResults } from "./student-performance.service.js";
+import {
+  renderStudentProfilePdf,
+  renderStudentProfilesPdf,
+  type StudentProfilePdfData,
+} from "./student-profile.pdf.js";
 import type { TeacherAccountDto } from "./teacher.service.js";
 
 const KIND = "students" as const;
@@ -493,11 +500,12 @@ export async function getTeacherStudent(id: string, teacher: TeacherAccountDto) 
   return toStudentAccountDto(await teacherStudent(id, teacher));
 }
 
-/** Admin sees every saved test; schools and teachers only published ones. */
-export async function getStudentPerformance(
-  id: string,
-  scope: { kind: "admin" } | { kind: "school"; schoolId: string } | { kind: "teacher"; teacher: TeacherAccountDto },
-) {
+type PerformanceScope =
+  | { kind: "admin" }
+  | { kind: "school"; schoolId: string }
+  | { kind: "teacher"; teacher: TeacherAccountDto };
+
+async function scopedStudent(id: string, scope: PerformanceScope) {
   const student =
     scope.kind === "teacher"
       ? await teacherStudent(id, scope.teacher)
@@ -505,5 +513,87 @@ export async function getStudentPerformance(
   if (!student || (scope.kind === "school" && student.schoolId !== scope.schoolId)) {
     throw new AppError(404, "Student not found");
   }
+  return student;
+}
+
+/** Admin sees every saved test; schools and teachers only published ones. */
+export async function getStudentPerformance(id: string, scope: PerformanceScope) {
+  const student = await scopedStudent(id, scope);
   return studentTestResults(student, { publishedOnly: scope.kind !== "admin" });
+}
+
+/** Printable profile: details, performance trend and every test. */
+export async function getStudentProfilePdf(id: string, scope: PerformanceScope) {
+  const student = toStudentAccountDto(await scopedStudent(id, scope));
+  const [results, logo, vitaran] = await Promise.all([
+    studentTestResults(student, { publishedOnly: scope.kind !== "admin" }),
+    schoolRepository.findSchoolLogo(student.schoolId),
+    loadVitaranLogo(),
+  ]);
+  const data = await renderStudentProfilePdf(profilePdfData(student, results), {
+    vitaran,
+    school: logo?.logoData ? await getObject(logo.logoData) : null,
+  });
+  return { fileName: `Student-Profile-${fileSafe(student.name) || "Student"}-${student.rollNo}.pdf`, data };
+}
+
+const fileSafe = (value: string) => value.trim().replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
+function profilePdfData(
+  student: StudentAccountDto,
+  results: StudentProfilePdfData["results"],
+): StudentProfilePdfData {
+  return {
+    student: {
+      name: student.name,
+      rollNo: student.rollNo,
+      status: student.status,
+      parentName: student.parentName,
+      parentPhone: student.parentPhone,
+      email: student.email,
+      programName: student.programName,
+      classLevel: student.classLevel,
+      sectionName: student.sectionName,
+      schoolName: student.school.name,
+    },
+    results,
+  };
+}
+
+/** One PDF with every listed student's profile (a class or section), in the given order. */
+export async function getStudentProfilesPdf(ids: string[], scope: PerformanceScope) {
+  const students: StudentAccountDto[] = [];
+  for (const id of [...new Set(ids)]) students.push(toStudentAccountDto(await scopedStudent(id, scope)));
+  if (students.length === 0) throw new AppError(404, "No students to print");
+
+  const schoolIds = [...new Set(students.map((student) => student.schoolId))];
+  const publishedOnly = scope.kind !== "admin";
+  const [indexes, logos, vitaran] = await Promise.all([
+    Promise.all(schoolIds.map((schoolId) => schoolTestResultsIndex(schoolId, { publishedOnly }))),
+    Promise.all(schoolIds.map((schoolId) => schoolRepository.findSchoolLogo(schoolId))),
+    loadVitaranLogo(),
+  ]);
+  const indexBySchool = new Map(schoolIds.map((schoolId, i) => [schoolId, indexes[i]!]));
+
+  const classes = [...new Set(students.map((student) => classWithSectionLabel(student.classLevel, student.sectionName)))];
+  const scopeLabel = classes.length === 1 ? classes[0]! : "Students";
+  const data = await renderStudentProfilesPdf(
+    students.map((student) => ({
+      schoolId: student.schoolId,
+      data: profilePdfData(student, indexBySchool.get(student.schoolId)!(student.rollNo)),
+    })),
+    {
+      vitaran,
+      schools: new Map(
+        await Promise.all(
+          schoolIds.map(async (schoolId, i) => {
+            const logo = logos[i]?.logoData;
+            return [schoolId, logo ? await getObject(logo) : null] as const;
+          }),
+        ),
+      ),
+    },
+    `Student profiles - ${scopeLabel}`,
+  );
+  return { fileName: `Student-Profiles-${fileSafe(scopeLabel)}.pdf`, data };
 }

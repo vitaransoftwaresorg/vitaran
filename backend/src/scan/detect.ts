@@ -6,9 +6,10 @@ import {
   CANONICAL_WIDTH,
   findPaperQuad,
   warpQuad,
+  type Quad,
   type Rgba,
 } from "../utils/omr-geometry.js";
-import { locateAnswerGrid, scoreAnswerGrid } from "../utils/omr-grid.js";
+import { locateAnswerGrid, MAX_SPACING_ERROR, scoreAnswerGrid } from "../utils/omr-grid.js";
 import { layoutOmrBubbles } from "../utils/omr-layout.js";
 import { cv, matFromRgba, type CvMat } from "./cv.js";
 
@@ -105,7 +106,7 @@ function digitsFromGrid(rgba: Rgba, xs: number[], ys: number[], radius: number, 
     if (digit < 0 || ranked[0]! < 0.08 || ranked[0]! - (ranked[1] ?? 0) < 0.04) continue;
     digits += String(digit);
   }
-  return /^\d{6,7}$/.test(digits) ? digits : "";
+  return /^\d{7}$/.test(digits) ? digits : "";
 }
 
 function axisProfile(
@@ -223,7 +224,7 @@ function rollFromHough(rgba: Rgba) {
 export function readRollBubbleCandidates(rgba: Rgba) {
   const found: string[] = [];
   const add = (value: string) => {
-    if (/^\d{6,7}$/.test(value) && !found.includes(value)) found.push(value);
+    if (/^\d{7}$/.test(value) && !found.includes(value)) found.push(value);
   };
   add(rollFromHough(rgba));
   for (const box of ROLL_WINDOWS) {
@@ -253,8 +254,18 @@ function houghCircles(gray: CvMat) {
   return circles;
 }
 
-export async function warpSheet(image: Buffer, options: { flat?: boolean } = {}): Promise<Rgba> {
+export async function warpSheet(
+  image: Buffer,
+  options: { flat?: boolean; corners?: [number, number][] } = {},
+): Promise<Rgba> {
   const rgba = await asRgba(image);
+  if (options.corners?.length === 4) {
+    const quad = options.corners.map(([x, y]) => ({
+      x: Math.max(0, Math.min(rgba.width - 1, x * (rgba.width - 1))),
+      y: Math.max(0, Math.min(rgba.height - 1, y * (rgba.height - 1))),
+    })) as Quad;
+    return (await warpQuad(rgba, quad)).rgba;
+  }
   // PDF pages are already flat scans — perspective warp often mis-finds corners and shifts bubbles.
   if (!options.flat) {
     const quad = findPaperQuad(rgba);
@@ -275,13 +286,14 @@ export function readAnswerBubbles(rgba: Rgba) {
   // Primary: grid fitted to the printed bubble circles on this sheet (handles margins, tilt, perspective).
   try {
     const grid = locateAnswerGrid(rgba);
-    if (grid && grid.snapped >= 320) {
+    if (grid && grid.snapped >= 320 && grid.spacingError <= MAX_SPACING_ERROR) {
       const read = scoreAnswerGrid(rgba, grid);
       return {
         answers: read.answers,
         markCount: Object.keys(read.answers).length,
         flags: read.flags,
         measured: true,
+        gridFound: true,
         bubbles: bubbleMap(rgba, grid.radius, read.cells),
       };
     }
@@ -298,6 +310,8 @@ export function readAnswerBubbles(rgba: Rgba) {
     markCount: Object.keys(answers).length,
     flags: layout.flags,
     measured: layout.measured,
+    /** False when the printed bubble grid wasn't found and the fixed template was guessed instead. */
+    gridFound: false,
     bubbles: bubbleMap(rgba, layout.radius, layout.bubbles),
   };
 }

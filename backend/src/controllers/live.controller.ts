@@ -36,9 +36,10 @@ function streamContentEvents(
   write(`: connected\n\n`);
   write(`retry: ${RETRY_MS}\n\n`);
 
-  const unsubscribe = onContentChanged(({ kind, schoolId: targetSchoolId }) => {
+  const unsubscribe = onContentChanged(({ kind, schoolId: targetSchoolId, adminOnly }) => {
     // Admin (`schoolId === null` listener) receives everything.
     // School/teacher only get their school or broadcast (`targetSchoolId === null`).
+    if (schoolId && adminOnly) return;
     if (schoolId && targetSchoolId && targetSchoolId !== schoolId) return;
     write(`event: change\ndata: ${JSON.stringify({ kind, schoolId: targetSchoolId })}\n\n`);
   });

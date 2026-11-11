@@ -12,8 +12,12 @@ import {
   recomputeSheet,
   subjectColumn,
 } from "../utils/result-columns.js";
-import { loadVitaranLogo, rankCardsPdf, renderRankCard, type RankCardData } from "./rank-card.render.js";
+import { renderClassResultPdf } from "./class-result.pdf.js";
+import { getObject } from "./object-storage.js";
+import { loadTitleFont, loadVitaranLogo, rankCardsPdf, renderRankCard, type RankCardData } from "./rank-card.render.js";
+import type { ContentActor } from "./content-access.js";
 import { getResultSet, getResultSheet } from "./result.service.js";
+import type { SchoolAccountDto } from "./school.service.js";
 
 type OmrSubjects = Map<number, { right: number; wrong: number; blank: number }>;
 
@@ -49,8 +53,10 @@ async function omrCounts(
   return { byRoll, testId: scans[0]?.testId ?? "" };
 }
 
-async function classCards(params: ResultSheetParams) {
-  const [resultSet, sheet] = await Promise.all([getResultSet(params.id), getResultSheet(params)]);
+type Viewer = ContentActor | SchoolAccountDto;
+
+async function classCards(params: ResultSheetParams, viewer?: Viewer) {
+  const [resultSet, sheet] = await Promise.all([getResultSet(params.id, viewer), getResultSheet(params, viewer)]);
   const columns = sheet.columns;
   const rows = recomputeSheet(columns, sheet.rows as CellValue[][], params.classLevel);
   const roles = columns.map(columnRole);
@@ -79,8 +85,9 @@ async function classCards(params: ResultSheetParams) {
     loadVitaranLogo(),
   ]);
 
-  // Manually entered sets carry a placeholder "T-<n>"; the answer key's test ID comes from saved OMRs.
-  const testId = /^T-\d+$/i.test(resultSet.testId) ? omr.testId : resultSet.testId;
+  // Each class has its own answer key, so its saved OMRs name the right test ID; the set's ID
+  // (or the "T-<n>" placeholder of manual sets) is only a fallback.
+  const testId = omr.testId || (/^T-\d+$/i.test(resultSet.testId) ? "" : resultSet.testId);
   const cards = rows.map((row): RankCardData => {
     const roll = cellText(row[at("roll")]);
     const counts = omr.byRoll.get(foldRoll(roll));
@@ -109,13 +116,20 @@ async function classCards(params: ResultSheetParams) {
       sectionRank: numberCell(row[at("sectionRank")]),
     };
   });
-  const logos = { vitaran, school: logo?.logoData ? Buffer.from(logo.logoData) : null };
+  const logos = {
+    vitaran,
+    school: logo?.logoData ? await getObject(logo.logoData) : null,
+  };
   return { cards, logos, resultSet };
 }
 
-/** One student's card (by roll number) or the whole class in rank order. */
-export async function getRankCards(params: ResultSheetParams, options: { roll?: string; format: "pdf" | "jpg" }) {
-  const { cards, logos, resultSet } = await classCards(params);
+/** One student's card (by roll number) or the whole class in rank order; portals only see their own sheet. */
+export async function getRankCards(
+  params: ResultSheetParams,
+  options: { roll?: string; format: "pdf" | "jpg" },
+  viewer?: Viewer,
+) {
+  const { cards, logos, resultSet } = await classCards(params, viewer);
   const withMarks = cards.filter((card) => card.total != null || card.subjects.some((row) => row.marks != null));
   const picked = options.roll
     ? withMarks.filter((card) => foldRoll(card.student.rollNo) === foldRoll(options.roll))
@@ -132,4 +146,39 @@ export async function getRankCards(params: ResultSheetParams, options: { roll?: 
   const images: Buffer[] = [];
   for (const card of picked) images.push(await renderRankCard(card, logos));
   return { data: await rankCardsPdf(images), fileName: `${safeName(base)}.pdf`, type: "application/pdf" };
+}
+
+/** The class result in rank order as one printable PDF, for the school notice board. */
+export async function getClassResultPdf(params: ResultSheetParams, viewer?: Viewer) {
+  const [{ cards, logos, resultSet }, titleFont] = await Promise.all([classCards(params, viewer), loadTitleFont()]);
+  const withMarks = cards.filter((card) => card.total != null || card.subjects.some((row) => row.marks != null));
+  if (!withMarks.length) throw new AppError(404, "No results saved for this class yet");
+  const first = withMarks[0]!;
+  const data = await renderClassResultPdf(
+    {
+      schoolName: first.schoolName,
+      programName: first.programName,
+      classLevel: params.classLevel,
+      testNumber: first.testNumber,
+      testId: first.testId,
+      subjects: first.subjects.map((subject) => ({ label: subject.label, max: subject.max })),
+      totalMax: first.totalMax,
+      rows: withMarks.map((card) => ({
+        rank: card.classRank,
+        sectionRank: card.sectionRank,
+        rollNo: card.student.rollNo,
+        name: card.student.name,
+        classLabel: card.student.classLabel,
+        marks: card.subjects.map((subject) => subject.marks),
+        total: card.total,
+        percentage: card.percentage,
+      })),
+    },
+    { vitaran: logos.vitaran, school: logos.school, titleFont },
+  );
+  return {
+    data,
+    fileName: `${safeName(`${first.schoolName}-Class-${params.classLevel}-Test-${resultSet.testNumber}-results`)}.pdf`,
+    type: "application/pdf",
+  };
 }

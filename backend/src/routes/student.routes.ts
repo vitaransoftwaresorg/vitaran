@@ -12,10 +12,16 @@ import {
   getAdminSchoolStudent,
   getAdminStudent,
   getAdminStudentPerformance,
+  getAdminStudentProfilePdf,
+  getAdminStudentProfilesPdf,
   getStudent,
   getStudentPerformance,
+  getStudentProfilePdf,
+  getStudentProfilesPdf,
   getTeacherStudent,
   getTeacherStudentPerformance,
+  getTeacherStudentProfilePdf,
+  getTeacherStudentProfilesPdf,
   getAdminSchoolStudentCounts,
   getSchoolStudentCounts,
   listAdminSchoolStudents,
@@ -35,10 +41,12 @@ import {
   listStudentsQuerySchema,
   setStudentStatusSchema,
   studentIdParamsSchema,
+  studentProfilesPdfQuerySchema,
   updateStudentSchema,
 } from "../schemas/student.schema.js";
 
 const validateStudentId = validate(studentIdParamsSchema, "params");
+const validateProfileIds = validate(studentProfilesPdfQuerySchema, "query");
 const schoolIdParams = z.object({ schoolId: z.uuid() });
 const schoolStudentParams = z.object({ schoolId: z.uuid(), id: z.uuid() });
 
@@ -49,8 +57,10 @@ schoolStudentRouter.get("/counts", getSchoolStudentCounts);
 schoolStudentRouter.get("/", validate(listStudentsQuerySchema, "query"), listStudents);
 schoolStudentRouter.post("/", validate(createStudentSchema), createStudent);
 schoolStudentRouter.post("/bulk", validate(createStudentsBulkSchema), createStudentsBulk);
+schoolStudentRouter.get("/profiles/pdf", validateProfileIds, getStudentProfilesPdf);
 schoolStudentRouter.get("/:id", validateStudentId, getStudent);
 schoolStudentRouter.get("/:id/performance", validateStudentId, getStudentPerformance);
+schoolStudentRouter.get("/:id/pdf", validateStudentId, getStudentProfilePdf);
 schoolStudentRouter.patch("/:id", validateStudentId, validate(updateStudentSchema), updateStudent);
 schoolStudentRouter.patch(
   "/:id/status",
@@ -107,8 +117,10 @@ adminSchoolStudentRouter.delete(
 export const adminStudentRouter = Router();
 adminStudentRouter.use(requireAdmin);
 adminStudentRouter.get("/", validate(listStudentsQuerySchema, "query"), listAdminStudents);
+adminStudentRouter.get("/profiles/pdf", validateProfileIds, getAdminStudentProfilesPdf);
 adminStudentRouter.get("/:id", validateStudentId, getAdminStudent);
 adminStudentRouter.get("/:id/performance", validateStudentId, getAdminStudentPerformance);
+adminStudentRouter.get("/:id/pdf", validateStudentId, getAdminStudentProfilePdf);
 adminStudentRouter.patch("/:id", validateStudentId, validate(updateStudentSchema), updateAdminStudent);
 adminStudentRouter.delete("/:id", validateStudentId, deleteAdminStudent);
 
@@ -117,5 +129,7 @@ export const teacherStudentRouter = Router();
 teacherStudentRouter.use(requireTeacher);
 teacherStudentRouter.get("/dashboard", getTeacherDashboard);
 teacherStudentRouter.get("/", validate(listStudentsQuerySchema, "query"), listTeacherStudents);
+teacherStudentRouter.get("/profiles/pdf", validateProfileIds, getTeacherStudentProfilesPdf);
 teacherStudentRouter.get("/:id", validateStudentId, getTeacherStudent);
 teacherStudentRouter.get("/:id/performance", validateStudentId, getTeacherStudentPerformance);
+teacherStudentRouter.get("/:id/pdf", validateStudentId, getTeacherStudentProfilePdf);

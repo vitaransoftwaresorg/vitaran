@@ -11,6 +11,8 @@ import { logger } from "./utils/logger.js";
 export function createApp() {
   const app = express();
 
+  // Cloud Run / load balancers terminate TLS and forward the client IP.
+  if (env.NODE_ENV === "production") app.set("trust proxy", 1);
   app.disable("x-powered-by");
   app.use(
     helmet({

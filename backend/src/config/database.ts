@@ -8,6 +8,9 @@ import { env } from "./env.js";
  * Neon hostnames are CNAMEs. On some Windows setups `dns.lookup` / getaddrinfo
  * returns ENOTFOUND while `resolve4` works — Prisma then reports P1001.
  * Prefer public resolvers and connect via an A-record IP with TLS servername.
+ *
+ * Cloud SQL on Cloud Run uses a unix socket:
+ *   postgresql://user:pass@localhost/db?host=/cloudsql/PROJECT:REGION:INSTANCE
  */
 function preferPublicDnsResolvers() {
   const preferred = ["8.8.8.8", "1.1.1.1"];
@@ -16,9 +19,21 @@ function preferPublicDnsResolvers() {
 }
 
 async function buildPoolConfig(connectionString: string): Promise<PoolConfig> {
+  const url = new URL(connectionString);
+  const socketHost = url.searchParams.get("host") ?? "";
+
+  // Cloud SQL Auth (unix socket) — do not rewrite host or force TCP SSL.
+  if (socketHost.startsWith("/cloudsql/") || socketHost.startsWith("/")) {
+    return {
+      connectionString,
+      connectionTimeoutMillis: 20_000,
+      idleTimeoutMillis: 30_000,
+      max: Number(process.env.DB_POOL_MAX ?? 10),
+    };
+  }
+
   preferPublicDnsResolvers();
 
-  const url = new URL(connectionString);
   const hostname = url.hostname;
   let host = hostname;
 
@@ -29,19 +44,23 @@ async function buildPoolConfig(connectionString: string): Promise<PoolConfig> {
     // Keep hostname; machines where getaddrinfo works still connect normally.
   }
 
+  const sslMode = url.searchParams.get("sslmode");
+  const useSsl = sslMode !== "disable" && env.NODE_ENV === "production" ? true : sslMode !== "disable";
+
   return {
     host,
     port: Number(url.port || 5432),
     user: decodeURIComponent(url.username),
     password: decodeURIComponent(url.password),
     database: decodeURIComponent(url.pathname.replace(/^\//, "")),
-    ssl:
-      host === hostname
+    ssl: useSsl
+      ? host === hostname
         ? { rejectUnauthorized: true }
-        : { rejectUnauthorized: true, servername: hostname },
+        : { rejectUnauthorized: true, servername: hostname }
+      : undefined,
     connectionTimeoutMillis: 20_000,
     idleTimeoutMillis: 30_000,
-    max: 10,
+    max: Number(process.env.DB_POOL_MAX ?? 10),
   };
 }
 

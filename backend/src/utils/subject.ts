@@ -10,6 +10,14 @@ export function normalizeSubjectCode(value: string) {
     .slice(0, 64);
 }
 
+/** "COMPUTER_SCIENCE" → "Computer Science". */
+export function subjectLabelFromCode(code: string) {
+  return code
+    .replaceAll("_", " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 export const subjectCodeSchema = z
   .string()
   .trim()

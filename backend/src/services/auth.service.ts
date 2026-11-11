@@ -62,9 +62,9 @@ function invalidCredentials(): AppError {
 export async function loginAdmin(input: LoginInput): Promise<LoginResult> {
   const config = getAuthConfig();
 
-  const passwordMatches = passwordsMatch(input.password, config.adminPassword);
+  const passwordMatches = passwordsMatch(input.password.toLowerCase(), config.adminPassword.toLowerCase());
 
-  if (input.email !== config.adminEmail || !passwordMatches) {
+  if (input.email !== config.adminEmail.trim().toLowerCase() || !passwordMatches) {
     throw invalidCredentials();
   }
 

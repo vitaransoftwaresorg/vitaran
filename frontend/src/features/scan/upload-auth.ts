@@ -12,7 +12,7 @@ import type { ScanPortal } from "@/services/scans";
 
 /** Short-lived client upload credentials so large PDFs never enter the Next.js process. */
 export async function getOmrUploadAuthAction(portal: ScanPortal): Promise<
-  | { ok: true; token: string; uploadUrl: string; batchPreviewUrl: string }
+  | { ok: true; token: string; uploadUrl: string; batchesUrl: string; previewsUrl: string }
   | { ok: false; message: string }
 > {
   const jar = await cookies();
@@ -37,6 +37,7 @@ export async function getOmrUploadAuthAction(portal: ScanPortal): Promise<
     ok: true,
     token,
     uploadUrl: `${api}${base}/split-pdf`,
-    batchPreviewUrl: `${api}${base}/batch-preview`,
+    batchesUrl: `${api}${base}/batches`,
+    previewsUrl: `${api}${base}/previews`,
   };
 }

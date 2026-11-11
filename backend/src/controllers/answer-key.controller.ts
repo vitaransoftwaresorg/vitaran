@@ -1,5 +1,6 @@
 import type { RequestHandler } from "express";
 import type {
+  CheckTestIdQuery,
   ListAnswerKeysQuery,
   SaveAnswerKeyAnswersInput,
   SchoolTestsQuery,
@@ -24,6 +25,11 @@ export const listAnswerKeys: RequestHandler = async (req, res) => {
 export const listSchoolTests: RequestHandler = async (req, res) => {
   const { schoolId } = req.query as unknown as SchoolTestsQuery;
   sendSuccess(res, await answerKeyService.listSchoolTestsForResults(schoolId));
+};
+
+export const checkAnswerKeyTestId: RequestHandler = async (req, res) => {
+  const { testId, exceptId } = req.query as unknown as CheckTestIdQuery;
+  sendSuccess(res, await answerKeyService.checkAnswerKeyTestId(testId, exceptId));
 };
 
 export const getAnswerKeyStats: RequestHandler = async (_req, res) => {

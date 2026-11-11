@@ -10,6 +10,7 @@ import * as teacherRepository from "../repositories/teacher.repository.js";
 import { SchoolType } from "../generated/prisma/enums.js";
 import type {
   AccountAvailabilityQuery,
+  CodeAvailabilityQuery,
   CreateSchoolInput,
   CustomProgramInput,
   ListSchoolOptionsQuery,
@@ -23,6 +24,7 @@ import { subjectsForClassLevel } from "../utils/subject.js";
 import { hashPassword, verifyPassword } from "../utils/password.js";
 import { decryptSecret, encryptSecret } from "../utils/secret-box.js";
 import { sendSchoolCredentialsEmail } from "./mail.service.js";
+import { deleteObject, getObject, replaceObject } from "./object-storage.js";
 
 const KIND = "schools" as const;
 
@@ -235,6 +237,10 @@ async function passwordChanged(id: string, password: string) {
 
 export async function getAccountAvailability({ email, excludeId }: AccountAvailabilityQuery) {
   return { emailTaken: await schoolRepository.isEmailUsedByOtherSchool(email, excludeId) };
+}
+
+export async function getCodeAvailability({ code, excludeId }: CodeAvailabilityQuery) {
+  return { codeTaken: Boolean(await schoolRepository.findSchoolByCode(code, excludeId)) };
 }
 
 async function assertAccountAvailable(
@@ -563,8 +569,13 @@ export async function uploadSchoolLogo(
     throw new AppError(400, "Logo must be under 2 MB");
   }
 
+  const previous = await schoolRepository.findSchoolLogo(id);
+  const logoData = await replaceObject(previous?.logoData, `schools/${id}/logo`, file.buffer, {
+    fileName: file.originalname.slice(0, 255) || "logo",
+    contentType: file.mimetype,
+  });
   const updated = await schoolRepository.setSchoolLogo(id, {
-    logoData: file.buffer,
+    logoData,
     logoMimeType: file.mimetype,
     logoFileName: file.originalname.slice(0, 255) || "logo",
   });
@@ -581,8 +592,10 @@ export async function getSchoolLogo(id: string) {
   if (!row?.logoData || !row.logoMimeType) {
     throw new AppError(404, "School logo not found");
   }
+  const data = await getObject(row.logoData);
+  if (!data) throw new AppError(404, "School logo not found");
   return {
-    data: Buffer.from(row.logoData),
+    data,
     mimeType: row.logoMimeType,
     fileName: row.logoFileName ?? "logo",
   };
@@ -592,6 +605,8 @@ export async function deleteSchoolLogo(id: string) {
   const school = await schoolRepository.findSchoolById(id);
   if (!school) throw new AppError(404, "School not found");
   if (!school.logoMimeType) throw new AppError(404, "School logo not found");
+  const previous = await schoolRepository.findSchoolLogo(id);
+  await deleteObject(previous?.logoData);
   const updated = await schoolRepository.clearSchoolLogo(id);
   if (!updated) throw new AppError(404, "School not found");
   notifyContentChanged({ kind: KIND, schoolId: id });

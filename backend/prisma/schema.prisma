@@ -479,10 +479,15 @@ enum PasswordResetRole {
 model AppSettings {
   id               String   @id @db.VarChar(32)
   maintenanceMode  Boolean  @default(false) @map("maintenance_mode")
-  /// Inbox for every answer-key objection.
-  vitaranEmail     String?  @map("vitaran_email") @db.VarChar(254)
+  /// Inboxes for every answer-key objection.
+  vitaranEmails    String[] @default([]) @map("vitaran_emails") @db.VarChar(254)
   /// SME contacts: [{ "name": "…", "subject": "MATHEMATICS", "email": "…" }]
   smeContacts      Json     @default("[]") @map("sme_contacts")
+  /// Already sent the objection-list welcome: "vitaran|email" or "sme|email|SUBJECT".
+  objectionWelcomed String[] @default([]) @map("objection_welcomed") @db.VarChar(320)
+  /// Signed above "Vitaran Learning" on rank cards.
+  vitaranSignatureData     Bytes?  @map("vitaran_signature_data")
+  vitaranSignatureMimeType String? @map("vitaran_signature_mime_type") @db.VarChar(64)
   updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("app_settings")

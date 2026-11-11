@@ -355,3 +355,7 @@ export async function getSchoolStats() {
     recent,
   };
 }
+
+export function setSchoolPasswordHash(id: string, passwordHash: string) {
+  return prisma.school.update({ where: { id }, data: { passwordHash }, select: { id: true } });
+}

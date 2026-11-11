@@ -8,8 +8,12 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import type { ScanPortal } from "@/services/scans";
 import type { ScanPreview, TestIdCheck } from "@/types/scan";
-import { registerOmrPdfDirect, previewOmrPdfPageDirect } from "./client-upload";
+import { registerOmrPdfDirect } from "./client-upload";
+import { startPdfJob } from "./pdf-batch";
 import { checkTestIdAction } from "./actions";
+import { DocumentScanner } from "./document-scanner";
+import { requestTiltPermission } from "./phone-tilt";
+import { FULL_PAGE_QUAD, type SheetQuad } from "./sheet-detect";
 import { getOmrUploadAuthAction } from "./upload-auth";
 import type { ScanQueueItem } from "./queue-item";
 
@@ -60,7 +64,7 @@ function isJpeg(source: Blob) {
   return source.type === "image/jpeg" || source.type === "image/jpg";
 }
 
-async function asJpegFile(source: Blob) {
+export async function asJpegFile(source: Blob) {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Could not read this photo.");
@@ -116,28 +120,23 @@ function toCheckState(
 export function ScanCamera({
   portal,
   onScanned,
-  onBatchScanned,
   onQueued,
   scanAction,
-  rollNo = "",
   testId = "",
-  onRollNo,
   onTestId,
 }: {
   portal: ScanPortal;
   onScanned: (result: ScanPreview) => void;
-  onBatchScanned?: (results: ScanPreview[]) => void;
   onQueued?: (items: ScanQueueItem[]) => void;
   scanAction: ScanFn;
-  rollNo?: string;
   testId?: string;
-  onRollNo?: (value: string) => void;
   onTestId?: (value: string) => void;
 }) {
   const phone = usePhone();
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const cameraRef = useRef<HTMLInputElement>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [testCheck, setTestCheck] = useState<TestCheckState | null>(null);
   const enteredTest = testId.trim();
   const testComplete = TEST_ID_PATTERN.test(enteredTest);
@@ -195,17 +194,21 @@ export function ScanCamera({
     <p className="text-[11px] font-medium text-red-700">{checked.message}</p>
   );
 
-  async function submit(source: Blob) {
+  async function readPhoto(source: Blob, corners?: SheetQuad) {
+    const file = await asJpegFile(source);
+    const form = new FormData();
+    form.append("file", file);
+    if (testId.trim()) form.append("testId", testId.trim());
+    if (corners) form.append("corners", JSON.stringify(corners.map((p) => [p.x, p.y])));
+    return scanAction(form);
+  }
+
+  async function submit(source: Blob, corners?: SheetQuad) {
     if (!(await verifyTestId())) return;
     setBusy(true);
     setStatus("Reading sheet…");
     try {
-      const file = await asJpegFile(source);
-      const form = new FormData();
-      form.append("file", file);
-      if (phone) form.append("rollNo", rollNo.trim());
-      if (testId.trim()) form.append("testId", testId.trim());
-      const result = await scanAction(form);
+      const result = await readPhoto(source, corners);
       if (!result.ok) {
         toast.error(result.message);
         return;
@@ -234,67 +237,23 @@ export function ScanCamera({
         toast.error(auth.message);
         return;
       }
-      const registered = await registerOmrPdfDirect(
-        auth.uploadUrl,
-        auth.token,
-        file,
-        forcedTestId,
-      );
-      const { batchId, pageCount } = registered;
+      const { batchId, pageCount } = await registerOmrPdfDirect(auth.uploadUrl, auth.token, file, forcedTestId);
       if (pageCount < 1) {
         toast.error("This PDF has no pages.");
         return;
       }
       toast.message(
-        pageCount === 1
-          ? "PDF ready · 1 student sheet"
-          : `Reading ${pageCount} student sheets · Test ID ${forcedTestId}`,
+        `Reading ${pageCount} student sheet${pageCount === 1 ? "" : "s"} · Test ID ${forcedTestId}`,
+        { description: "Reading carries on in the background. Review sheets as they appear." },
       );
-
-      const results: ScanPreview[] = [];
-      const failures: string[] = [];
-      const seenRolls = new Set<string>();
-      let duplicates = 0;
-      for (let page = 1; page <= pageCount; page += 1) {
-        setStatus(`Reading sheet ${page} of ${pageCount}…`);
-        try {
-          const preview = await previewOmrPdfPageDirect(
-            auth.batchPreviewUrl,
-            auth.token,
-            batchId,
-            page,
-            { testId: forcedTestId },
-          );
-          const roll = (preview.scan.rollNo || preview.scan.student.rollNo || "").replace(/\D/g, "");
-          if (roll && seenRolls.has(roll)) {
-            duplicates += 1;
-            continue;
-          }
-          if (roll) seenRolls.add(roll);
-          results.push(preview);
-        } catch (error) {
-          failures.push(
-            `Page ${page}: ${error instanceof Error ? error.message : "Could not read"}`,
-          );
-        }
-      }
-
-      if (!results.length) {
-        toast.error(failures[0] ?? "Could not read any sheets from this PDF.");
-        return;
-      }
-      const parts = [`${results.length} unique sheet${results.length === 1 ? "" : "s"}`];
-      if (duplicates) parts.push(`${duplicates} duplicate${duplicates === 1 ? "" : "s"} skipped`);
-      if (failures.length) parts.push(`${failures.length} failed`);
-      if (failures.length) {
-        toast.warning(`Read ${parts.join(" · ")}`, {
-          description: failures.slice(0, 6).join("\n") + (failures.length > 6 ? `\n+${failures.length - 6} more` : ""),
-          duration: 15000,
-          classNames: { description: "whitespace-pre-line" },
-        });
-      } else if (duplicates) toast.message(`Read ${parts.join(" · ")}`);
-      else toast.success(`Read all ${results.length} sheets`);
-      onBatchScanned?.(results);
+      await startPdfJob(portal, {
+        batchId,
+        fileName: file.name,
+        testId: forcedTestId,
+        pageCount,
+        done: 0,
+        finished: false,
+      });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not read this PDF.");
     } finally {
@@ -346,7 +305,7 @@ export function ScanCamera({
             maxLength={TEST_ID_LENGTH}
             value={testId}
             disabled={busy}
-            placeholder="6 digits, as on the answer key"
+            placeholder="6 digits, as on the OMR"
             className="h-11 rounded-xl px-3.5 text-base tracking-widest tabular-nums"
             onChange={(event) => onTestId?.(testIdInput(event.currentTarget.value))}
           />
@@ -380,8 +339,8 @@ export function ScanCamera({
             {busy ? status || "Working…" : testReady ? "Upload OMR photos or a PDF" : "Enter the test ID to upload"}
           </p>
           <p className="text-xs text-neutral-500">
-            One sheet, a photo batch, or one PDF with up to 120 students (one page each). After a PDF upload,
-            every sheet is listed together. JPEG, PNG, HEIC, or PDF.
+            One sheet, a photo batch, or one PDF with up to 300 students (one page each). A PDF is read in the
+            background — sheets are listed as they finish, even if you leave this page. JPEG, PNG, HEIC, or PDF.
           </p>
         </label>
       </div>
@@ -389,8 +348,8 @@ export function ScanCamera({
   }
 
   function openCamera() {
-    if (!/^\d{6,7}$/.test(rollNo.trim()) || !testComplete) {
-      toast.error("Enter the registration number and the 6-digit test ID.");
+    if (!testComplete) {
+      toast.error("Enter the 6-digit test ID from the answer key first.");
       return;
     }
     if (!checked) {
@@ -401,28 +360,29 @@ export function ScanCamera({
       toast.error(checked.message);
       return;
     }
-    cameraRef.current?.click();
+    if (typeof navigator.mediaDevices?.getUserMedia === "function") {
+      requestTiltPermission();
+      setScannerOpen(true);
+    } else cameraRef.current?.click();
   }
 
   return (
     <div className="space-y-3">
+      {scannerOpen ? (
+        <DocumentScanner
+          onClose={() => setScannerOpen(false)}
+          onUnavailable={() => {
+            setScannerOpen(false);
+            toast.message("Using the phone camera app instead.");
+            cameraRef.current?.click();
+          }}
+          onCapture={(file, cropped) => {
+            setScannerOpen(false);
+            void submit(file, cropped ? FULL_PAGE_QUAD : undefined);
+          }}
+        />
+      ) : null}
       <div className="space-y-3 rounded-2xl border border-neutral-200 bg-white p-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="scan-roll" className="text-xs font-semibold tracking-wider text-neutral-500 uppercase">
-            Registration number
-          </Label>
-          <Input
-            id="scan-roll"
-            inputMode="numeric"
-            autoComplete="off"
-            maxLength={7}
-            value={rollNo}
-            disabled={busy}
-            placeholder="6 or 7 digits"
-            className="h-11 rounded-xl px-3.5 text-base"
-            onChange={(event) => onRollNo?.(event.target.value.replace(/\D/g, "").slice(0, 7))}
-          />
-        </div>
         <div className="space-y-1.5">
           <Label htmlFor="scan-test" className="text-xs font-semibold tracking-wider text-neutral-500 uppercase">
             Test ID
@@ -434,7 +394,7 @@ export function ScanCamera({
             maxLength={TEST_ID_LENGTH}
             value={testId}
             disabled={busy}
-            placeholder="6 digits, as on the answer key"
+            placeholder="6 digits, as on the OMR"
             className="h-11 rounded-xl px-3.5 text-base tracking-widest tabular-nums"
             onChange={(event) => onTestId?.(testIdInput(event.target.value))}
           />
@@ -460,8 +420,8 @@ export function ScanCamera({
         )}
       >
         {busy ? <Loader2 className="size-8 animate-spin text-brand-800" /> : <Camera className="size-8 text-brand-800" />}
-        <p className="text-sm font-semibold text-neutral-900">{busy ? "Reading the 100 answers…" : "Scan OMR"}</p>
-        <p className="text-xs text-neutral-500">Opens the phone camera. The photo is used only for the 100 questions.</p>
+        <p className="text-sm font-semibold text-neutral-900">{busy ? status || "Reading the 100 answers…" : "Scan OMR"}</p>
+        {busy ? null : <p className="text-xs text-neutral-500">Tap here to scan the OMR sheet</p>}
       </button>
     </div>
   );

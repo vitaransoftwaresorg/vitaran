@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { titleCase, titleText } from "../utils/title-case.js";
 import {
   SchoolBoard,
   SchoolStatus,
@@ -60,7 +61,7 @@ const schoolCode = z.string().trim().min(1, "School ID is required").max(64, "Ke
 
 const schoolFields = {
   code: schoolCode,
-  name: requiredText(2, 200),
+  name: titleText(2, 200),
   board: z.enum(SchoolBoard),
   type: z.enum(SchoolType),
   status: z.enum(SchoolStatus),
@@ -73,12 +74,12 @@ const schoolFields = {
       return [...byId.values()];
     }),
   customProgram: customProgramSchema.optional(),
-  principalName: optionalText(120),
-  contactName: requiredText(2, 120),
+  principalName: optionalText(120).transform((value) => (value ? titleCase(value) : value)),
+  contactName: titleText(2, 120),
   contactEmail: email,
   contactPhone: phone,
   addressLine: requiredText(5, 300),
-  city: requiredText(2, 100),
+  city: titleText(2, 100),
   state: requiredText(2, 100),
   pincode: z
     .string()
@@ -129,6 +130,11 @@ export const accountAvailabilityQuerySchema = z.object({
   excludeId: z.uuid().optional(),
 });
 
+export const codeAvailabilityQuerySchema = z.object({
+  code: schoolCode,
+  excludeId: z.uuid().optional(),
+});
+
 export const listSchoolsQuerySchema = z.object({
   search: z.string().trim().max(100).optional(),
   status: z.enum(SchoolStatus).optional(),
@@ -150,5 +156,6 @@ export type UpdateSchoolInput = z.infer<typeof updateSchoolSchema>;
 export type ListSchoolsQuery = z.infer<typeof listSchoolsQuerySchema>;
 export type ListSchoolOptionsQuery = z.infer<typeof listSchoolOptionsQuerySchema>;
 export type AccountAvailabilityQuery = z.infer<typeof accountAvailabilityQuerySchema>;
+export type CodeAvailabilityQuery = z.infer<typeof codeAvailabilityQuerySchema>;
 export type SchoolProgramInput = z.infer<typeof schoolProgramSchema>;
 export type CustomProgramInput = z.infer<typeof customProgramSchema>;

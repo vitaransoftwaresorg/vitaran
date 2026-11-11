@@ -1,7 +1,10 @@
 import type { Prisma } from "../generated/prisma/client.js";
+import { notifyContentChanged } from "../utils/content-events.js";
 import * as settingsRepository from "../repositories/settings.repository.js";
 import type { UpdateAppSettingsInput } from "../schemas/settings.schema.js";
-import { normalizeSubjectCode } from "../utils/subject.js";
+import { logger } from "../utils/logger.js";
+import { normalizeSubjectCode, subjectLabelFromCode } from "../utils/subject.js";
+import { sendObjectionOnboardingEmail } from "./mail.service.js";
 
 export type SmeContact = {
   name: string;
@@ -11,7 +14,7 @@ export type SmeContact = {
 
 export type AppSettingsDto = {
   maintenanceMode: boolean;
-  vitaranEmail: string | null;
+  vitaranEmails: string[];
   smeContacts: SmeContact[];
   updatedAt: string;
 };
@@ -37,7 +40,7 @@ function asSmeContacts(value: unknown): SmeContact[] {
 function toDto(row: NonNullable<Awaited<ReturnType<typeof settingsRepository.findSettings>>>): AppSettingsDto {
   return {
     maintenanceMode: row.maintenanceMode,
-    vitaranEmail: row.vitaranEmail,
+    vitaranEmails: row.vitaranEmails,
     smeContacts: asSmeContacts(row.smeContacts),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -45,7 +48,7 @@ function toDto(row: NonNullable<Awaited<ReturnType<typeof settingsRepository.fin
 
 const EMPTY: AppSettingsDto = {
   maintenanceMode: false,
-  vitaranEmail: null,
+  vitaranEmails: [],
   smeContacts: [],
   updatedAt: new Date(0).toISOString(),
 };
@@ -61,22 +64,54 @@ export async function getPublicSettings() {
   return { maintenanceMode: settings.maintenanceMode };
 }
 
-export async function updateAppSettings(input: UpdateAppSettingsInput) {
-  const vitaranEmail =
-    !input.vitaranEmail || input.vitaranEmail.trim() === ""
-      ? null
-      : input.vitaranEmail.trim().toLowerCase();
+/**
+ * Welcomes each person once per role (an SME again only for a new subject). Removing someone and
+ * adding them back, or saving twice, sends nothing more.
+ */
+async function sendOnboardingEmails(after: AppSettingsDto) {
+  const vitaran = after.vitaranEmails.map((email) => email.toLowerCase());
+  const keyOf = (row: SmeContact) => `sme|${row.email}|${row.subject}`;
+  const fresh = new Set(
+    await settingsRepository.claimObjectionWelcomes([
+      ...vitaran.map((email) => `vitaran|${email}`),
+      ...after.smeContacts.map(keyOf),
+    ]),
+  );
+  const jobs = [
+    ...vitaran
+      .filter((email) => fresh.has(`vitaran|${email}`))
+      .map((email) => sendObjectionOnboardingEmail({ to: email, role: "vitaran" })),
+    ...after.smeContacts
+      .filter((row) => fresh.has(keyOf(row)))
+      .map((row) =>
+        sendObjectionOnboardingEmail({
+          to: row.email,
+          role: "sme",
+          name: row.name,
+          subjectLabel: subjectLabelFromCode(row.subject),
+        }),
+      ),
+  ];
+  await Promise.all(jobs);
+}
 
+export async function updateAppSettings(input: UpdateAppSettingsInput) {
   const row = await settingsRepository.upsertSettings({
     maintenanceMode: input.maintenanceMode,
-    vitaranEmail,
+    vitaranEmails: input.vitaranEmails,
     smeContacts: input.smeContacts.map((row) => ({
       name: row.name.trim(),
       subject: row.subject,
       email: row.email.trim().toLowerCase(),
     })) as Prisma.InputJsonValue,
   });
-  return toDto(row);
+  // Every portal shows the maintenance banner, so everyone hears it.
+  notifyContentChanged({ kind: "settings", schoolId: null });
+  const after = toDto(row);
+  void sendOnboardingEmails(after).catch((error) =>
+    logger.error({ err: error }, "Failed to send objection onboarding emails"),
+  );
+  return after;
 }
 
 /** SME emails whose subject matches the objection question's subject band. */

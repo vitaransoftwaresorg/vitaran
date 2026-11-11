@@ -3,13 +3,11 @@ import type {
   ClassResultTemplateQuery,
   ListResultSetsQuery,
   ManualResultSheetInput,
-  ResultSetFields,
   ResultSheetParams,
 } from "../schemas/result.schema.js";
 import type { PublishBody } from "../schemas/publish.schema.js";
 import * as resultService from "../services/result.service.js";
-import type { UploadedFiles } from "../services/result.service.js";
-import { getRankCards as getRankCardFiles } from "../services/rank-card.service.js";
+import { getClassResultPdf, getRankCards as getRankCardFiles } from "../services/rank-card.service.js";
 import type { ContentActor } from "../services/content-access.js";
 import type { SchoolAccountDto } from "../services/school.service.js";
 import type { TeacherAccountDto } from "../services/teacher.service.js";
@@ -44,14 +42,6 @@ export const getResultSet: RequestHandler<IdParams> = async (req, res) => {
   sendSuccess(res, await resultService.getResultSet(req.params.id));
 };
 
-export const uploadResultSet: RequestHandler = async (req, res) => {
-  sendSuccess(
-    res,
-    await resultService.uploadResultSet(req.body as ResultSetFields, req.files as UploadedFiles),
-    201,
-  );
-};
-
 export const getClassResultTemplate: RequestHandler = async (req, res) => {
   sendSuccess(
     res,
@@ -61,13 +51,6 @@ export const getClassResultTemplate: RequestHandler = async (req, res) => {
 
 export const saveManualResultSheet: RequestHandler = async (req, res) => {
   sendSuccess(res, await resultService.saveManualResultSheet(req.body as ManualResultSheetInput), 201);
-};
-
-export const updateResultSet: RequestHandler<IdParams> = async (req, res) => {
-  sendSuccess(
-    res,
-    await resultService.updateResultSet(req.params.id, req.body as ResultSetFields, req.files as UploadedFiles),
-  );
 };
 
 export const setResultSetPublished: RequestHandler<IdParams> = async (req, res) => {
@@ -84,16 +67,37 @@ export const getResultSheet: RequestHandler = async (req, res) => {
   sendSuccess(res, await resultService.getResultSheet(sheetParams(req.params)));
 };
 
-export const getRankCards: RequestHandler = async (req, res) => {
-  const roll = typeof req.query.roll === "string" ? req.query.roll.trim().slice(0, 64) : "";
-  const format = req.query.format === "jpg" ? "jpg" : "pdf";
-  const file = await getRankCardFiles(sheetParams(req.params), { roll: roll || undefined, format });
-  res
-    .type(file.type)
-    .set("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(file.fileName)}`)
-    .set("Cache-Control", "private, no-store")
-    .send(file.data);
-};
+function rankCardsHandler(viewerOf: (res: Response) => ContentActor | SchoolAccountDto | undefined): RequestHandler {
+  return async (req, res) => {
+    const roll = typeof req.query.roll === "string" ? req.query.roll.trim().slice(0, 64) : "";
+    const format = req.query.format === "jpg" ? "jpg" : "pdf";
+    const file = await getRankCardFiles(sheetParams(req.params), { roll: roll || undefined, format }, viewerOf(res));
+    res
+      .type(file.type)
+      .set("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(file.fileName)}`)
+      .set("Cache-Control", "private, no-store")
+      .send(file.data);
+  };
+}
+
+function classResultPdfHandler(viewerOf: (res: Response) => ContentActor | SchoolAccountDto | undefined): RequestHandler {
+  return async (req, res) => {
+    const file = await getClassResultPdf(sheetParams(req.params), viewerOf(res));
+    res
+      .type(file.type)
+      .set("Content-Disposition", `inline; filename*=UTF-8''${encodeURIComponent(file.fileName)}`)
+      .set("Cache-Control", "private, no-store")
+      .send(file.data);
+  };
+}
+
+export const getClassResultPdfFile = classResultPdfHandler(() => undefined);
+export const getSchoolClassResultPdf = classResultPdfHandler(signedInSchool);
+export const getTeacherClassResultPdf = classResultPdfHandler(signedInTeacher);
+
+export const getRankCards = rankCardsHandler(() => undefined);
+export const getSchoolRankCards = rankCardsHandler(signedInSchool);
+export const getTeacherRankCards = rankCardsHandler(signedInTeacher);
 
 export const getResultSheetFile: RequestHandler = async (req, res) => {
   sendExcel(res, await resultService.getResultSheetFile(sheetParams(req.params)));

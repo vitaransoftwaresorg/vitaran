@@ -13,7 +13,11 @@ export type SheetIdentity = {
   testId?: string;
   /** PDF pages are already flat — skip perspective warp that mis-aligns bubbles. */
   flat?: boolean;
+  /** Sheet corners confirmed in the phone scanner (TL, TR, BR, BL as 0–1 fractions of the photo). */
+  corners?: SheetCorners;
 };
+
+export type SheetCorners = [number, number][];
 
 export type SheetRead = {
   rollNo: string;
@@ -71,7 +75,7 @@ function shiftedDown(digits: string) {
 }
 
 export function pickRollNo(candidates: string[], knownRolls: string[]) {
-  const values = unique(candidates.filter((value) => /^\d{6,7}$/.test(value)));
+  const values = unique(candidates.filter((value) => /^\d{7}$/.test(value)));
   if (!values.length) return "";
   const long = values.filter((value) => value.length === 7);
   const pool = long.length ? long : values;
@@ -113,7 +117,7 @@ function levenshtein(a: string, b: string) {
 
 function cleanRoll(value?: string) {
   const digits = (value ?? "").replace(/\D/g, "");
-  return /^\d{6,7}$/.test(digits) ? digits : "";
+  return /^\d{7}$/.test(digits) ? digits : "";
 }
 
 function cleanTest(value?: string) {
@@ -129,8 +133,16 @@ function cleanTest(value?: string) {
  * BullMQ runs this job for a batch of sheets (see queue.ts).
  */
 export async function readSheet(image: Buffer, identity: SheetIdentity = {}): Promise<SheetRead> {
-  const prepared = await prepareSheet(image, { flat: identity.flat });
+  const prepared = await prepareSheet(image, { flat: identity.flat, corners: identity.corners });
   const bubbles = readAnswerBubbles(prepared.rgba);
+  // On photos the template guess misreads shadows and creases as answers; PDF pages are flat and keep it.
+  if (!identity.flat && !bubbles.gridFound) {
+    logger.warn({ markCount: bubbles.markCount, flags: bubbles.flags.length }, "answer grid not found in photo");
+    throw new AppError(
+      422,
+      "The answer bubbles aren't clear in this photo. Scan again with the whole sheet flat, sharp and in good light.",
+    );
+  }
   const givenRoll = cleanRoll(identity.rollNo);
   const givenTest = cleanTest(identity.testId);
   // When the examiner typed the test ID, skip header OCR entirely (bubbles only).
@@ -138,7 +150,7 @@ export async function readSheet(image: Buffer, identity: SheetIdentity = {}): Pr
     ? { name: "", testId: givenTest, testCandidates: [givenTest], examDate: "" }
     : await readPrintedDetails(prepared.rgba);
   const rollCandidates = givenRoll ? [givenRoll] : readRollBubbleCandidates(prepared.rgba);
-  const rollNo = givenRoll || rollCandidates.find((value) => /^\d{6,7}$/.test(value)) || "";
+  const rollNo = givenRoll || rollCandidates.find((value) => /^\d{7}$/.test(value)) || "";
   if (!rollNo) {
     logger.warn({ rollCandidates, markCount: bubbles.markCount }, "registration bubbles missed");
     throw new AppError(422, "Could not read the registration number. Fill the registration bubbles.");

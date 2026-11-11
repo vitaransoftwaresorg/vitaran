@@ -5,6 +5,7 @@ import {
   deleteSchool,
   deleteSchoolLogo,
   getAccountAvailability,
+  getCodeAvailability,
   getSchool,
   getSchoolLogo,
   getSchoolStats,
@@ -19,6 +20,7 @@ import { requireAdmin } from "../middleware/authenticate.js";
 import { validate } from "../middleware/validate.js";
 import {
   accountAvailabilityQuerySchema,
+  codeAvailabilityQuerySchema,
   createSchoolSchema,
   listSchoolOptionsQuerySchema,
   listSchoolsQuerySchema,
@@ -47,6 +49,11 @@ schoolRouter.get(
   "/account-availability",
   validate(accountAvailabilityQuerySchema, "query"),
   getAccountAvailability,
+);
+schoolRouter.get(
+  "/code-availability",
+  validate(codeAvailabilityQuerySchema, "query"),
+  getCodeAvailability,
 );
 schoolRouter.post("/", validate(createSchoolSchema), createSchool);
 schoolRouter.get("/:id", validate(schoolIdParamsSchema, "params"), getSchool);

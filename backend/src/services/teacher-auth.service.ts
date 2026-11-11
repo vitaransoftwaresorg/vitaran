@@ -6,7 +6,7 @@ import * as teacherRepository from "../repositories/teacher.repository.js";
 import type { TeacherRecord } from "../repositories/teacher.repository.js";
 import type { SchoolLoginInput } from "../schemas/auth.schema.js";
 import { AppError } from "../utils/app-error.js";
-import { hashPassword, verifyPassword } from "../utils/password.js";
+import { hashPassword, passwordNeedsRehash, verifyPassword } from "../utils/password.js";
 import { toTeacherAccountDto, type TeacherAccountDto } from "./teacher.service.js";
 
 const JWT_ALGORITHM = "HS256";
@@ -50,6 +50,11 @@ export async function loginTeacher(input: SchoolLoginInput): Promise<TeacherLogi
 
   if (!teacher?.passwordHash || !passwordMatches) {
     throw new AppError(401, "Invalid email, phone or password");
+  }
+
+  if (passwordNeedsRehash(teacher.passwordHash)) {
+    teacher.passwordHash = await hashPassword(input.password);
+    await teacherRepository.setTeacherPasswordHash(teacher.id, teacher.passwordHash);
   }
 
   return issueTeacherLogin(teacher, secret);

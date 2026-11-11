@@ -8,8 +8,6 @@ import type {
 } from "../repositories/result.repository.js";
 import * as schoolRepository from "../repositories/school.repository.js";
 import {
-  CLASS_LEVELS,
-  classFileField,
   type ClassResultTemplateQuery,
   type ListResultSetsQuery,
   type ManualResultSheetInput,
@@ -19,7 +17,7 @@ import {
 import { AppError } from "../utils/app-error.js";
 import { notifyContentChanged } from "../utils/content-events.js";
 import ExcelJS from "exceljs";
-import { ExcelParseError, parseResultSheet, type CellValue } from "../utils/excel.js";
+import type { CellValue } from "../utils/excel.js";
 import {
   columnRole,
   foldRoll,
@@ -29,6 +27,7 @@ import {
   recomputeSheet,
   standardColumns,
   subjectColumn,
+  withRankColumns,
 } from "../utils/result-columns.js";
 import * as answerKeyRepository from "../repositories/answer-key.repository.js";
 import * as studentRepository from "../repositories/student.repository.js";
@@ -43,11 +42,10 @@ import {
   resultSheetClassFilter,
   type ContentActor,
 } from "./content-access.js";
+import { getObject, putObject } from "./object-storage.js";
 import { toSchoolRef, type SchoolAccountDto } from "./school.service.js";
 
 const KIND = "results";
-
-export type UploadedFiles = Partial<Record<string, Express.Multer.File[]>>;
 
 type FieldIssue = { path: [string]; message: string };
 
@@ -117,34 +115,6 @@ async function resolveMeta({
   throw fieldError(400, "program", "Select a program");
 }
 
-/** Parses every uploaded class file, reporting all bad files at once. */
-async function readSheets(files: UploadedFiles = {}): Promise<NewResultSheet[]> {
-  const sheets: NewResultSheet[] = [];
-  const issues: FieldIssue[] = [];
-
-  for (const classLevel of CLASS_LEVELS) {
-    const field = classFileField(classLevel);
-    const file = files[field]?.[0];
-    if (!file || file.size === 0) continue;
-
-    try {
-      sheets.push({
-        classLevel,
-        fileName: file.originalname.slice(0, 255),
-        fileSize: file.size,
-        data: new Uint8Array(file.buffer),
-        ...(await parseResultSheet(file.buffer)),
-      });
-    } catch (error) {
-      if (!(error instanceof ExcelParseError)) throw error;
-      issues.push({ path: [field], message: error.message });
-    }
-  }
-
-  if (issues.length > 0) throw new AppError(400, "Some class files couldn't be read", issues);
-  return sheets;
-}
-
 function duplicateTest(error: unknown, testNumber: number) {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
     return fieldError(
@@ -204,18 +174,6 @@ export async function getResultSet(id: string, actor?: ContentActor | SchoolAcco
     throw new AppError(404, "Result not found");
   }
   return dto;
-}
-
-export async function uploadResultSet(fields: ResultSetFields, files?: UploadedFiles) {
-  const meta = await resolveMeta(fields);
-  const sheets = await readSheets(files);
-  requireClasses(sheets.length);
-
-  try {
-    return toResultSetDto(await resultRepository.createResultSet(meta, sheets));
-  } catch (error) {
-    throw duplicateTest(error, meta.testNumber);
-  }
 }
 
 async function sheetToXlsx(classLevel: number, caption: string[], columns: string[], rows: CellValue[][]) {
@@ -309,12 +267,16 @@ async function writeClassSheet(
   rows: CellValue[][],
   fileName: string,
 ) {
-  const data = await sheetToXlsx(classLevel, caption, columns, rows);
+  const xlsx = await sheetToXlsx(classLevel, caption, columns, rows);
+  const stored = await putObject(`results/${meta.schoolId}/test-${meta.testNumber}/class-${classLevel}`, xlsx, {
+    fileName,
+    contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
   const sheet: NewResultSheet = {
     classLevel,
     fileName,
-    fileSize: data.length,
-    data: new Uint8Array(data),
+    fileSize: xlsx.length,
+    data: new Uint8Array(stored),
     caption,
     columns,
     rows,
@@ -323,7 +285,7 @@ async function writeClassSheet(
     const resultSet = existingId
       ? await resultRepository.updateResultSet(existingId, meta, [sheet], [], requireClasses)
       : await resultRepository.createResultSet(meta, [sheet]);
-    if (resultSet.published) notifyContentChanged({ kind: KIND, schoolId: resultSet.school.id });
+    notifyContentChanged({ kind: KIND, schoolId: resultSet.school.id, adminOnly: !resultSet.published });
     return resultSet;
   } catch (error) {
     throw duplicateTest(error, meta.testNumber);
@@ -339,7 +301,7 @@ export async function getClassResultTemplate(query: ClassResultTemplateQuery) {
   const { sheet } = await findClassSheet(meta, query.classLevel);
   const saved = (sheet?.columns as string[] | undefined) ?? [];
   const hasSubjects = saved.some((label) => columnRole(label) === "subject");
-  if (saved.length && hasSubjects) return { columns: saved };
+  if (saved.length && hasSubjects) return { columns: withRankColumns(saved, [], query.classLevel).columns };
   return { columns: standardColumns(await classSubjects(meta, query.classLevel)) };
 }
 
@@ -449,24 +411,9 @@ export async function recordOmrResult(entry: OmrResultEntry) {
   );
 }
 
-export async function updateResultSet(id: string, fields: ResultSetFields, files?: UploadedFiles) {
-  const meta = await resolveMeta(fields);
-  const sheets = await readSheets(files);
-
-  let resultSet: ResultSetSummary;
-  try {
-    resultSet = await resultRepository.updateResultSet(id, meta, sheets, fields.removeClasses, requireClasses);
-  } catch (error) {
-    throw duplicateTest(error, meta.testNumber);
-  }
-  // The set may have moved to another school, so tell every school.
-  if (resultSet.published) notifyContentChanged({ kind: KIND, schoolId: null });
-  return toResultSetDto(resultSet);
-}
-
 export async function deleteResultSet(id: string) {
   const { schoolId, published } = await resultRepository.deleteResultSet(id);
-  if (published) notifyContentChanged({ kind: KIND, schoolId });
+  notifyContentChanged({ kind: KIND, schoolId, adminOnly: !published });
 }
 
 const sheetWhere = ({ id, classLevel }: ResultSheetParams, actor?: ContentActor) => ({
@@ -508,9 +455,10 @@ export async function getResultSheet(params: ResultSheetParams, actor?: ContentA
   const ranges = resultSet ? await paperRangesForTest(resultSet.testId) : [];
 
   const { rows, columns, updatedAt, caption, ...rest } = sheet;
-  let parsedColumns = columns as string[];
-  let parsedRows = byRank(parsedColumns, rows.map(({ values }) => values as CellValue[]));
-  let parsedCaption = caption;
+  const ranked = withRankColumns(columns as string[], rows.map(({ values }) => values as CellValue[]), params.classLevel);
+  let parsedColumns = ranked.columns;
+  let parsedRows = byRank(parsedColumns, ranked.rows);
+  const parsedCaption = caption;
   if (contentActor?.kind === "teacher") {
     const roster = await studentRepository.listSchoolRoster(contentActor.teacher.schoolId);
     const scoped = projectSheetForTeacher(parsedColumns, parsedRows, contentActor.teacher, roster);
@@ -545,7 +493,9 @@ export async function getResultSheetFile(
   assertSheetClassAllowed(params.classLevel, contentActor);
   const file = await resultRepository.findResultSheetFile(sheetWhere(params, contentActor));
   if (!file) throw new AppError(404, "Result not found");
-  return file;
+  const data = await getObject(file.data);
+  if (!data) throw new AppError(404, "Result file not found");
+  return { fileName: file.fileName, data };
 }
 
 export async function listVisibleResultSets(actor: ContentActor) {

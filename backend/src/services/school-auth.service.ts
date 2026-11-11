@@ -6,7 +6,7 @@ import * as schoolRepository from "../repositories/school.repository.js";
 import type { SchoolWithPrograms } from "../repositories/school.repository.js";
 import type { SchoolLoginInput } from "../schemas/auth.schema.js";
 import { AppError } from "../utils/app-error.js";
-import { hashPassword, verifyPassword } from "../utils/password.js";
+import { hashPassword, passwordNeedsRehash, verifyPassword } from "../utils/password.js";
 import {
   toSchoolAccountDto,
   toSchoolSessionAccountDto,
@@ -56,6 +56,11 @@ export async function loginSchool(input: SchoolLoginInput): Promise<SchoolLoginR
 
   if (!school?.passwordHash || !passwordMatches) {
     throw new AppError(401, "Invalid email, phone or password");
+  }
+
+  if (passwordNeedsRehash(school.passwordHash)) {
+    school.passwordHash = await hashPassword(input.password);
+    await schoolRepository.setSchoolPasswordHash(school.id, school.passwordHash);
   }
 
   return issueSchoolLogin(school, secret);

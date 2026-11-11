@@ -7,8 +7,8 @@ import { logger } from "./utils/logger.js";
 startScanWorker();
 const app = createApp();
 
-const server = app.listen(env.PORT, () => {
-  logger.info({ port: env.PORT }, "Server listening");
+const server = app.listen(env.PORT, "0.0.0.0", () => {
+  logger.info({ port: env.PORT, storage: env.GCS_BUCKET ? "gcs" : "postgres" }, "Server listening");
 });
 // Scanned answer-key OCR can run past a minute; don't drop the socket mid-parse.
 server.requestTimeout = 10 * 60 * 1000;

@@ -4,6 +4,9 @@ import { subjectCodeSchema } from "../utils/subject.js";
 
 const programCode = z.string().trim().min(1).max(64);
 
+const TEST_ID_MESSAGE = "Test ID must be exactly 6 digits";
+const testIdField = z.string().trim().regex(/^\d{6}$/, TEST_ID_MESSAGE);
+
 export const uploadAnswerKeyQuerySchema = z.object({
   program: programCode,
   type: z.enum(SchoolType),
@@ -11,9 +14,9 @@ export const uploadAnswerKeyQuerySchema = z.object({
   testId: z
     .string()
     .trim()
-    .max(64)
     .optional()
-    .transform((value) => (value ? value : undefined)),
+    .transform((value) => (value ? value : undefined))
+    .refine((value) => value === undefined || /^\d{6}$/.test(value), TEST_ID_MESSAGE),
   testNumber: z.coerce.number().int().min(1).max(18),
   classLevel: z.coerce.number().int().min(1).max(12),
 });
@@ -57,13 +60,19 @@ export const saveAnswerKeyAnswersSchema = z.object({
       }),
     )
     .default([]),
-  testId: z.string().trim().min(1, "Enter the test ID").max(64, "Keep the test ID under 64 characters").optional(),
+  testId: testIdField.optional(),
   correctMarks: z.coerce.number().int().min(0).max(100).default(1),
   wrongMarks: z.coerce.number().int().min(0).max(100).default(0),
 });
 
 export const setAnswerKeyTestIdSchema = z.object({
-  testId: z.string().trim().min(1, "Enter the test ID").max(64, "Keep the test ID under 64 characters"),
+  testId: testIdField,
+});
+
+export const checkTestIdQuerySchema = z.object({
+  testId: testIdField,
+  /** The key being edited, so its own ID does not count as taken. */
+  exceptId: z.uuid().optional(),
 });
 
 export type UploadAnswerKeyQuery = z.infer<typeof uploadAnswerKeyQuerySchema>;
@@ -72,3 +81,4 @@ export type ListAnswerKeysQuery = z.infer<typeof listAnswerKeysQuerySchema>;
 export type SchoolTestsQuery = z.infer<typeof schoolTestsQuerySchema>;
 export type SaveAnswerKeyAnswersInput = z.infer<typeof saveAnswerKeyAnswersSchema>;
 export type SetAnswerKeyTestIdInput = z.infer<typeof setAnswerKeyTestIdSchema>;
+export type CheckTestIdQuery = z.infer<typeof checkTestIdQuerySchema>;

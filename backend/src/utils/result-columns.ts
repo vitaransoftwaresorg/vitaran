@@ -1,5 +1,6 @@
 import type { CellValue } from "./excel.js";
 import { displaySectionName } from "./section-label.js";
+import { titleCase } from "./title-case.js";
 
 export type ColumnRole =
   | "roll"
@@ -94,16 +95,14 @@ export function recomputeSheet(columns: string[], rows: CellValue[][], classLeve
   const subjectCols = roles.flatMap((role, index) => (role === "subject" ? [index] : []));
   const totalCol = roles.indexOf("total");
   const percentCol = roles.indexOf("percentage");
-  const sectionCol = roles.indexOf("section");
-  const classCol = roles.indexOf("class");
-  const sectionRankCol = roles.indexOf("sectionRank");
-  const classRankCol = roles.indexOf("classRank");
+  const nameCol = roles.indexOf("name");
   const subjectMaxes = subjectCols.map((index) => maxFromLabel(columns[index]!) ?? 0);
   const totalMax =
     (totalCol >= 0 ? maxFromLabel(columns[totalCol]!) : null) ?? subjectMaxes.reduce((sum, max) => sum + max, 0);
 
   const filled = rows.map((source) => {
     const row = columns.map((_, index) => source[index] ?? null);
+    if (nameCol >= 0 && typeof row[nameCol] === "string") row[nameCol] = titleCase(row[nameCol]);
     for (const index of subjectCols) row[index] = numberCell(row[index]) ?? (row[index] === "" ? null : row[index]!);
     if (totalCol < 0) return row;
     const marks = subjectCols.map((index) => numberCell(row[index]));
@@ -119,6 +118,30 @@ export function recomputeSheet(columns: string[], rows: CellValue[][], classLeve
     return row;
   });
 
+  return rankRows(columns, filled, classLevel);
+}
+
+/** Sheets uploaded without rank columns still show Section Rank and Class Rank, from the totals. */
+export function withRankColumns(columns: string[], rows: CellValue[][], classLevel: number) {
+  const roles = columns.map(columnRole);
+  const added = [
+    ...(roles.includes("sectionRank") ? [] : ["Section Rank"]),
+    ...(roles.includes("classRank") ? [] : ["Class Rank"]),
+  ];
+  if (!roles.includes("total") || added.length === 0) return { columns, rows };
+  const next = [...columns, ...added];
+  const padded = rows.map((row) => [...columns.map((_, index) => row[index] ?? null), ...added.map(() => null)]);
+  return { columns: next, rows: rankRows(next, padded, classLevel) };
+}
+
+/** Rows by total, highest first, with section/class ranks filled; equal totals share a rank. */
+function rankRows(columns: string[], filled: CellValue[][], classLevel: number) {
+  const roles = columns.map(columnRole);
+  const totalCol = roles.indexOf("total");
+  const sectionCol = roles.indexOf("section");
+  const classCol = roles.indexOf("class");
+  const sectionRankCol = roles.indexOf("sectionRank");
+  const classRankCol = roles.indexOf("classRank");
   if (totalCol < 0) return filled;
   const totalOf = (row: CellValue[]) => numberCell(row[totalCol]) ?? -Infinity;
   const sectionOf = (row: CellValue[]) => {

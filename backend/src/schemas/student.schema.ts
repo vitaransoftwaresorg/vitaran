@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { titleText } from "../utils/title-case.js";
 import { StudentStatus } from "../generated/prisma/enums.js";
 
 const email = z.email().trim().toLowerCase().max(254);
@@ -9,10 +10,10 @@ const parentPhone = z
   .pipe(z.string().regex(/^\+?\d{10,14}$/, "Invalid mobile number"));
 
 const studentRowSchema = z.object({
-  name: z.string().trim().min(2).max(120),
-  rollNo: z.string().trim().min(1).max(64),
+  name: titleText(2, 120),
+  rollNo: z.string().trim().regex(/^\d{7}$/, "Registration number must be 7 digits"),
   email: email.optional().nullable(),
-  parentName: z.string().trim().min(2).max(120),
+  parentName: titleText(2, 120),
   parentPhone,
 });
 
@@ -27,15 +28,15 @@ export const createStudentsBulkSchema = z.object({
   programId: z.uuid(),
   classLevel: z.number().int().min(1).max(12),
   sectionId: z.uuid().optional().nullable(),
-  students: z.array(studentRowSchema).min(1).max(100),
+  students: z.array(studentRowSchema).min(1).max(300),
 });
 
 export const updateStudentSchema = z
   .object({
-    name: z.string().trim().min(2).max(120),
-    rollNo: z.string().trim().min(1).max(64),
+    name: titleText(2, 120),
+    rollNo: z.string().trim().regex(/^\d{7}$/, "Registration number must be 7 digits"),
     email: email.nullable(),
-    parentName: z.string().trim().min(2).max(120),
+    parentName: titleText(2, 120),
     parentPhone,
     programId: z.uuid(),
     classLevel: z.number().int().min(1).max(12),
@@ -65,6 +66,14 @@ export const listStudentsQuerySchema = z.object({
 
 export const studentIdParamsSchema = z.object({
   id: z.uuid(),
+});
+
+/** `ids` is a comma-separated list, in print order. */
+export const studentProfilesPdfQuerySchema = z.object({
+  ids: z
+    .string()
+    .transform((value) => value.split(",").map((id) => id.trim()).filter(Boolean))
+    .pipe(z.array(z.uuid()).min(1).max(300)),
 });
 
 export const setStudentStatusSchema = z.object({

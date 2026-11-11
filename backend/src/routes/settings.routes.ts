@@ -1,9 +1,5 @@
 import { Router } from "express";
-import {
-  getAdminSettings,
-  getPublicSettings,
-  updateAdminSettings,
-} from "../controllers/settings.controller.js";
+import { getAdminSettings, getPublicSettings, updateAdminSettings } from "../controllers/settings.controller.js";
 import { requireAdmin } from "../middleware/authenticate.js";
 import { validate } from "../middleware/validate.js";
 import { updateAppSettingsSchema } from "../schemas/settings.schema.js";

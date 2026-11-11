@@ -9,6 +9,7 @@ import type { SchoolAccountDto } from "../services/school.service.js";
 import * as studentService from "../services/student.service.js";
 import type { TeacherAccountDto } from "../services/teacher.service.js";
 import { sendSuccess } from "../utils/api-response.js";
+import { sendPdf } from "../utils/pdf.js";
 import { StudentStatus } from "../generated/prisma/enums.js";
 
 export const listStudents: RequestHandler = async (req, res) => {
@@ -174,4 +175,34 @@ export const getTeacherStudent: RequestHandler<{ id: string }> = async (req, res
 export const getTeacherStudentPerformance: RequestHandler<{ id: string }> = async (req, res) => {
   const teacher = res.locals.teacher as TeacherAccountDto;
   sendSuccess(res, await studentService.getStudentPerformance(req.params.id, { kind: "teacher", teacher }));
+};
+
+export const getAdminStudentProfilePdf: RequestHandler<{ id: string }> = async (req, res) => {
+  sendPdf(res, await studentService.getStudentProfilePdf(req.params.id, { kind: "admin" }));
+};
+
+export const getStudentProfilePdf: RequestHandler<{ id: string }> = async (req, res) => {
+  const school = res.locals.school as SchoolAccountDto;
+  sendPdf(res, await studentService.getStudentProfilePdf(req.params.id, { kind: "school", schoolId: school.id }));
+};
+
+export const getTeacherStudentProfilePdf: RequestHandler<{ id: string }> = async (req, res) => {
+  const teacher = res.locals.teacher as TeacherAccountDto;
+  sendPdf(res, await studentService.getStudentProfilePdf(req.params.id, { kind: "teacher", teacher }));
+};
+
+const profileIds = (req: { query: unknown }) => (req.query as { ids: string[] }).ids;
+
+export const getAdminStudentProfilesPdf: RequestHandler = async (req, res) => {
+  sendPdf(res, await studentService.getStudentProfilesPdf(profileIds(req), { kind: "admin" }));
+};
+
+export const getStudentProfilesPdf: RequestHandler = async (req, res) => {
+  const school = res.locals.school as SchoolAccountDto;
+  sendPdf(res, await studentService.getStudentProfilesPdf(profileIds(req), { kind: "school", schoolId: school.id }));
+};
+
+export const getTeacherStudentProfilesPdf: RequestHandler = async (req, res) => {
+  const teacher = res.locals.teacher as TeacherAccountDto;
+  sendPdf(res, await studentService.getStudentProfilesPdf(profileIds(req), { kind: "teacher", teacher }));
 };

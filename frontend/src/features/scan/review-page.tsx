@@ -1,14 +1,24 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Check, Loader2, RotateCcw } from "lucide-react";
+import { Camera, Check, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useRegisterInPageBack } from "@/components/layout/in-page-back";
 import { Button } from "@/components/ui/button";
 import { subjectLabel } from "@/features/schools/constants";
+import { cn } from "@/lib/utils";
 import { commitScanAction } from "./actions";
-import { getScanBatch, removeScanBatchAt, subscribeScanBatch } from "./batch-store";
+import { fetchOriginalSheetDirect } from "./client-upload";
+import { getOmrUploadAuthAction } from "./upload-auth";
+import {
+  clearScanBatch,
+  getPdfJob,
+  getScanBatch,
+  removeScanBatchAt,
+  subscribeScanBatch,
+} from "./batch-store";
 import type { ScanPortal } from "@/services/scans";
 
 const BASE: Record<ScanPortal, string> = {
@@ -22,9 +32,17 @@ export function ScanReviewPage({ portal }: { portal: ScanPortal }) {
   const searchParams = useSearchParams();
   const base = BASE[portal];
   const [batch, setBatch] = useState(() => getScanBatch());
+  const [pdfJob, setPdfJob] = useState(() => getPdfJob());
   const [saving, startSaving] = useTransition();
 
-  useEffect(() => subscribeScanBatch(() => setBatch(getScanBatch())), []);
+  useEffect(
+    () =>
+      subscribeScanBatch(() => {
+        setBatch(getScanBatch());
+        setPdfJob(getPdfJob());
+      }),
+    [],
+  );
 
   const raw = Number(searchParams.get("i") ?? "0");
   const index = Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : 0;
@@ -42,9 +60,35 @@ export function ScanReviewPage({ portal }: { portal: ScanPortal }) {
     }
   }, [batch, index, router, base]);
 
-  function goBack() {
+  // A PDF still being read can have one sheet so far; it is still a batch.
+  const single = batch.length === 1 && !pdfJob;
+
+  const goBack = useCallback(() => {
+    if (single) clearScanBatch();
     router.push(base);
-  }
+  }, [single, router, base]);
+  useRegisterInPageBack(goBack);
+
+  const goTo = useCallback(
+    (next: number) => {
+      if (next < 0 || next >= batch.length) return;
+      router.replace(`${base}/review?i=${next}`, { scroll: false });
+    },
+    [batch.length, router, base],
+  );
+
+  // Left / right arrow keys move between sheets too (not while typing in a field).
+  useEffect(() => {
+    if (single) return;
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable=true]") || saving) return;
+      if (event.key === "ArrowLeft") goTo(resolvedIndex - 1);
+      if (event.key === "ArrowRight") goTo(resolvedIndex + 1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [single, saving, goTo, resolvedIndex]);
 
   function saveOne() {
     if (!active) return;
@@ -81,29 +125,21 @@ export function ScanReviewPage({ portal }: { portal: ScanPortal }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button type="button" variant="outline" onClick={goBack}>
-          <ArrowLeft />
-          Back to list
-        </Button>
-        <p className="text-sm text-neutral-600">
-          Sheet {resolvedIndex + 1} of {batch.length}
-        </p>
-      </div>
-
       <section className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
         <header className="flex flex-wrap items-start justify-between gap-3 border-b border-neutral-100 px-5 py-4">
           <div className="min-w-0">
             <p className="text-xs font-semibold tracking-wider text-brand-700 uppercase">Check then save</p>
+            <p className="mt-1 text-[11px] font-semibold tracking-wider text-neutral-400 uppercase">Student Name</p>
             <h1 className="text-2xl font-bold text-neutral-950">{scan.student.name}</h1>
             <p className="mt-1 text-sm text-neutral-600">
               Registration no {scan.student.rollNo} · {scan.student.schoolName} · {scan.student.programName} ·
-              Class {scan.student.classLevel}-{scan.student.sectionName?.trim() || "A"} · Test ID {scan.testId}
+              Class {scan.student.classLevel}-{scan.student.sectionName?.trim() || "A"} · Test No{" "}
+              {scan.testNumber} · Test ID {scan.testId}
               {scan.examDate ? ` · ${scan.examDate}` : ""}
             </p>
           </div>
           <div className="text-right">
-            <p className="text-[10px] font-semibold tracking-wider text-neutral-400 uppercase">Score vs key</p>
+            <p className="text-[10px] font-semibold tracking-wider text-neutral-400 uppercase">Score vs Total</p>
             <p className="text-4xl font-bold tabular-nums text-brand-900">
               {scan.total}
               <span className="text-lg font-semibold text-neutral-500">/{scan.maxTotal}</span>
@@ -112,17 +148,9 @@ export function ScanReviewPage({ portal }: { portal: ScanPortal }) {
         </header>
 
         <div className="grid gap-4 p-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-          <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-2">
-            {scan.sheetImage ? (
-              <img
-                src={scan.sheetImage}
-                alt="Scanned OMR sheet"
-                className="mx-auto max-h-[70vh] w-full object-contain"
-              />
-            ) : (
-              <p className="p-8 text-center text-sm text-neutral-500">No sheet image</p>
-            )}
-          </div>
+          {active ? (
+            <SheetImage key={active.previewId} portal={portal} previewId={active.previewId} marked={scan.sheetImage} />
+          ) : null}
 
           <div className="space-y-4">
             <dl className="grid grid-cols-3 gap-2 text-center text-sm">
@@ -156,16 +184,108 @@ export function ScanReviewPage({ portal }: { portal: ScanPortal }) {
             <div className="flex flex-wrap gap-2 pt-1">
               <Button type="button" onClick={saveOne} disabled={saving}>
                 {saving ? <Loader2 className="animate-spin" /> : <Check />}
-                {batch.length > 1 ? "Save this sheet" : "OK, save"}
+                {single ? "OK, save" : "Save this sheet"}
               </Button>
-              <Button type="button" variant="outline" onClick={goBack} disabled={saving}>
-                <RotateCcw />
-                Back to list
-              </Button>
+              {single ? (
+                <Button type="button" variant="outline" onClick={goBack} disabled={saving}>
+                  <Camera />
+                  Scan again
+                </Button>
+              ) : (
+                <>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="size-9"
+                    aria-label="Previous sheet"
+                    disabled={saving || resolvedIndex === 0}
+                    onClick={() => goTo(resolvedIndex - 1)}
+                  >
+                    <ChevronLeft />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="size-9"
+                    aria-label="Next sheet"
+                    disabled={saving || resolvedIndex >= batch.length - 1}
+                    onClick={() => goTo(resolvedIndex + 1)}
+                  >
+                    <ChevronRight />
+                  </Button>
+                  <span className="self-center text-sm text-neutral-600 tabular-nums">
+                    Sheet {resolvedIndex + 1} of {batch.length}
+                  </span>
+                </>
+              )}
             </div>
           </div>
         </div>
       </section>
+    </div>
+  );
+}
+
+/** Original uploads fetched once per sheet; kept while the batch is open. */
+const originals = new Map<string, string>();
+
+/** Marked sheet (answers checked against the key) or the photo / PDF page exactly as uploaded. */
+function SheetImage({ portal, previewId, marked }: { portal: ScanPortal; previewId: string; marked?: string }) {
+  const [view, setView] = useState<"marked" | "original">("marked");
+  const [original, setOriginal] = useState(() => originals.get(previewId) ?? null);
+  const [loading, setLoading] = useState(false);
+
+  async function showOriginal() {
+    setView("original");
+    if (original) return;
+    setLoading(true);
+    try {
+      const auth = await getOmrUploadAuthAction(portal);
+      if (!auth.ok) throw new Error(auth.message);
+      const url = await fetchOriginalSheetDirect(auth.previewsUrl, auth.token, previewId);
+      originals.set(previewId, url);
+      setOriginal(url);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not load the original OMR.");
+      setView("marked");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const src = view === "original" ? original : marked;
+  const tab = (active: boolean) =>
+    cn(
+      "rounded-md px-3 py-1 text-xs font-semibold transition-colors",
+      active ? "bg-white text-neutral-950 shadow-sm" : "text-neutral-500 hover:text-neutral-800",
+    );
+  return (
+    <div className="space-y-2 rounded-xl border border-neutral-200 bg-neutral-50 p-2">
+      <div className="flex justify-center">
+        <div className="inline-flex rounded-lg bg-neutral-200/70 p-0.5">
+          <button type="button" className={tab(view === "marked")} onClick={() => setView("marked")}>
+            Evaluated
+          </button>
+          <button type="button" className={tab(view === "original")} onClick={() => void showOriginal()}>
+            Original OMR
+          </button>
+        </div>
+      </div>
+      {loading ? (
+        <div className="flex h-64 items-center justify-center">
+          <Loader2 className="size-6 animate-spin text-brand-700" />
+        </div>
+      ) : src ? (
+        <img
+          src={src}
+          alt={view === "original" ? "Original OMR sheet" : "Evaluated OMR sheet"}
+          className="mx-auto max-h-[70vh] w-full object-contain"
+        />
+      ) : (
+        <p className="p-8 text-center text-sm text-neutral-500">No sheet image</p>
+      )}
     </div>
   );
 }
