@@ -1,7 +1,19 @@
+import { prisma } from "../config/database.js";
+import { logger } from "../utils/logger.js";
+
 export type HealthStatus = {
-  status: "ok";
+  status: "ok" | "degraded";
+  backend: "ok";
+  database: "ok" | "error";
 };
 
-export function getHealthStatus(): HealthStatus {
-  return { status: "ok" };
+/** Liveness for Cloud Run: API process + a cheap DB round-trip. */
+export async function getHealthStatus(): Promise<HealthStatus> {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    return { status: "ok", backend: "ok", database: "ok" };
+  } catch (error) {
+    logger.error({ err: error }, "Health check: database unreachable");
+    return { status: "degraded", backend: "ok", database: "error" };
+  }
 }
