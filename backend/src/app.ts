@@ -4,9 +4,15 @@ import helmet from "helmet";
 import { pinoHttp } from "pino-http";
 import { env, getCorsOrigins } from "./config/env.js";
 import { API_PREFIX, REQUEST_BODY_LIMIT } from "./constants/http.js";
+import { getHealth } from "./controllers/health.controller.js";
 import { errorHandler, notFoundHandler } from "./middleware/error-handler.js";
 import { apiRouter } from "./routes/index.js";
 import { logger } from "./utils/logger.js";
+
+function isHealthPath(url: string | undefined) {
+  const path = (url ?? "").split("?")[0];
+  return path === "/health" || path === `${API_PREFIX}/health`;
+}
 
 export function createApp() {
   const app = express();
@@ -34,7 +40,7 @@ export function createApp() {
       quietReqLogger: true,
       quietResLogger: true,
       autoLogging: {
-        ignore: (req) => req.url === `${API_PREFIX}/health`,
+        ignore: (req) => isHealthPath(req.url),
       },
       customLogLevel: (_req, res, error) => {
         if (error || res.statusCode >= 500) return "error";
@@ -51,6 +57,8 @@ export function createApp() {
         `${req.method} ${req.originalUrl ?? req.url} ${res.statusCode} ${error.message}`,
     }),
   );
+  // Cloud Run default probe often hits /health; API clients use /api/v1/health.
+  app.get("/health", getHealth);
   app.use(API_PREFIX, apiRouter);
   app.use(notFoundHandler);
   app.use(errorHandler);
