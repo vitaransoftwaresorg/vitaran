@@ -11,6 +11,25 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.dirname(fileURLToPath(import.meta.url)),
   },
+  // Old marketing-site URLs (GoDaddy/Wix) still appear in Google — send them to the new app.
+  async redirects() {
+    return [
+      { source: "/about", destination: "/", permanent: true },
+      { source: "/about-us", destination: "/", permanent: true },
+      { source: "/who-we-are", destination: "/", permanent: true },
+      { source: "/who-we-are/:path*", destination: "/", permanent: true },
+      { source: "/services", destination: "/", permanent: true },
+      { source: "/services/:path*", destination: "/", permanent: true },
+      { source: "/careers", destination: "/contact", permanent: true },
+      { source: "/careers/:path*", destination: "/contact", permanent: true },
+      { source: "/teacher-resources", destination: "/teachers-resources", permanent: true },
+      { source: "/teacher-resources/:path*", destination: "/teachers-resources", permanent: true },
+      { source: "/teachers-resource", destination: "/teachers-resources", permanent: true },
+      { source: "/terms", destination: "/", permanent: true },
+      { source: "/terms-and-conditions", destination: "/", permanent: true },
+      { source: "/home", destination: "/", permanent: true },
+    ];
+  },
   // OMR uploads and sheet images go browser → this site → API, so phones on the ngrok/site URL never
   // need to reach the API host (localhost on the dev Mac) or pass its CORS list.
   async rewrites() {
