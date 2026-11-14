@@ -13,6 +13,8 @@ const envSchema = z.object({
     .enum(["development", "test", "production"])
     .default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
+  /** Bind address. Use 127.0.0.1 behind Nginx on the VPS. */
+  HOST: z.string().trim().min(1).default("0.0.0.0"),
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z
     .string()
@@ -42,11 +44,26 @@ const envSchema = z.object({
   GCS_BUCKET: z.string().trim().min(1).optional(),
   /** Optional GCP project id (ADC / Cloud Run usually supply this). */
   GCS_PROJECT_ID: z.string().trim().min(1).optional(),
+  /** SeaweedFS / S3-compatible object storage (preferred on the VPS). */
+  S3_ENDPOINT: z.string().trim().min(1).optional(),
+  S3_BUCKET: z.string().trim().min(1).optional(),
+  S3_ACCESS_KEY: z.string().trim().min(1).optional(),
+  S3_SECRET_KEY: z.string().min(1).optional(),
+  S3_REGION: z.string().trim().min(1).default("us-east-1"),
+  S3_FORCE_PATH_STYLE: z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .transform((value) => {
+      if (typeof value === "boolean") return value;
+      if (value == null || value === "") return true;
+      return !["0", "false", "no"].includes(value.toLowerCase());
+    }),
 });
 
 const parsed = envSchema.safeParse({
   NODE_ENV: process.env.NODE_ENV,
   PORT: process.env.PORT?.trim() || undefined,
+  HOST: process.env.HOST?.trim() || undefined,
   DATABASE_URL: process.env.DATABASE_URL?.trim() || undefined,
   JWT_SECRET: process.env.JWT_SECRET?.trim() || undefined,
   JWT_EXPIRES_IN_HOURS: process.env.JWT_EXPIRES_IN_HOURS?.trim() || undefined,
@@ -69,6 +86,12 @@ const parsed = envSchema.safeParse({
   REDIS_URL: process.env.REDIS_URL?.trim() || undefined,
   GCS_BUCKET: process.env.GCS_BUCKET?.trim() || undefined,
   GCS_PROJECT_ID: process.env.GCS_PROJECT_ID?.trim() || process.env.GOOGLE_CLOUD_PROJECT?.trim() || undefined,
+  S3_ENDPOINT: process.env.S3_ENDPOINT?.trim() || undefined,
+  S3_BUCKET: process.env.S3_BUCKET?.trim() || undefined,
+  S3_ACCESS_KEY: process.env.S3_ACCESS_KEY?.trim() || undefined,
+  S3_SECRET_KEY: process.env.S3_SECRET_KEY || undefined,
+  S3_REGION: process.env.S3_REGION?.trim() || undefined,
+  S3_FORCE_PATH_STYLE: process.env.S3_FORCE_PATH_STYLE?.trim() || undefined,
 });
 
 if (!parsed.success) {
