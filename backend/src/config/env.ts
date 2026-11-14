@@ -13,6 +13,8 @@ const envSchema = z.object({
     .enum(["development", "test", "production"])
     .default("development"),
   PORT: z.coerce.number().int().positive().default(4000),
+  /** Bind address. Use 127.0.0.1 behind Nginx on the VPS. */
+  HOST: z.string().trim().min(1).default("0.0.0.0"),
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z
     .string()
@@ -47,6 +49,7 @@ const envSchema = z.object({
 const parsed = envSchema.safeParse({
   NODE_ENV: process.env.NODE_ENV,
   PORT: process.env.PORT?.trim() || undefined,
+  HOST: process.env.HOST?.trim() || undefined,
   DATABASE_URL: process.env.DATABASE_URL?.trim() || undefined,
   JWT_SECRET: process.env.JWT_SECRET?.trim() || undefined,
   JWT_EXPIRES_IN_HOURS: process.env.JWT_EXPIRES_IN_HOURS?.trim() || undefined,
