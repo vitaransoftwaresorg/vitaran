@@ -2,6 +2,7 @@ import { createApp } from "./app.js";
 import { disconnectDatabase } from "./config/database.js";
 import { env } from "./config/env.js";
 import { startScanWorker, stopScanWorker } from "./scan/queue.js";
+import { objectStorageMode } from "./services/object-storage.js";
 import { logger } from "./utils/logger.js";
 
 startScanWorker();
@@ -9,7 +10,7 @@ const app = createApp();
 
 const server = app.listen(env.PORT, env.HOST, () => {
   logger.info(
-    { host: env.HOST, port: env.PORT, storage: env.GCS_BUCKET ? "gcs" : "postgres" },
+    { host: env.HOST, port: env.PORT, storage: objectStorageMode() },
     "Server listening",
   );
 });
