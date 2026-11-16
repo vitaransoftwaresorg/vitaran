@@ -197,23 +197,10 @@ async function findClassSheet(meta: ResultSetMeta, classLevel: number, resultSet
   return { resultSet, sheet };
 }
 
-const DEFAULT_SUBJECT_NAMES = ["MATHEMATICS", "PHYSICS", "CHEMISTRY", "BIOLOGY"];
-const DEFAULT_TOTAL_MARKS = 100;
-
-/** Split total marks evenly across subjects (remainder goes to the first subjects). */
-function equalSubjectMaxes(subjects: string[], totalMax: number) {
-  const count = subjects.length;
-  if (count === 0) return [] as Array<{ subject: string; maxMarks: number }>;
-  const base = Math.floor(totalMax / count);
-  let rem = totalMax - base * count;
-  return subjects.map((subject) => {
-    const maxMarks = base + (rem > 0 ? 1 : 0);
-    if (rem > 0) rem -= 1;
-    return { subject, maxMarks };
-  });
-}
-
-const DEFAULT_SUBJECTS = equalSubjectMaxes(DEFAULT_SUBJECT_NAMES, DEFAULT_TOTAL_MARKS);
+const DEFAULT_SUBJECTS = ["MATHEMATICS", "PHYSICS", "CHEMISTRY", "BIOLOGY"].map((subject) => ({
+  subject,
+  maxMarks: 100,
+}));
 
 /** Subjects set for this class in the school setup (falls back to the program's subjects). */
 async function classSetupSubjects(meta: ResultSetMeta, classLevel: number) {
@@ -228,23 +215,19 @@ async function classSetupSubjects(meta: ResultSetMeta, classLevel: number) {
 }
 
 /**
- * Subject columns for a class table come from the school's class setup; max marks are an equal
- * share of the paper total (answer-key subject totals when present, else 100).
+ * Subject columns for a class table come from the school's class setup; max marks come from the
+ * answer key when it has that subject, else 100 per subject.
  */
 async function classSubjects(meta: ResultSetMeta, classLevel: number) {
   const [setup, keyed] = await Promise.all([
     classSetupSubjects(meta, classLevel),
     answerKeySubjects(meta, classLevel),
   ]);
-  const subjects =
-    setup.length > 0
-      ? setup
-      : keyed.length > 0
-        ? keyed.map((row) => row.subject)
-        : DEFAULT_SUBJECT_NAMES;
-  const totalMax =
-    keyed.reduce((sum, row) => sum + row.maxMarks, 0) || DEFAULT_TOTAL_MARKS;
-  return equalSubjectMaxes(subjects, totalMax);
+  if (setup.length === 0) return keyed;
+  return setup.map((subject) => ({
+    subject,
+    maxMarks: keyed.find((row) => row.subject === subject)?.maxMarks ?? 100,
+  }));
 }
 
 /**

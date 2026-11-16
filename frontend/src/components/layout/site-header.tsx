@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition, type MouseEvent } from "react";
+import { Suspense, useEffect, useState, useTransition, type MouseEvent } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogOut, Menu, X } from "lucide-react";
@@ -200,7 +200,9 @@ export function SiteHeader({ session }: { session: SiteSession | null }) {
           {session ? (
             <LogoutButton className={logoutButtonClasses} />
           ) : (
-            <LoginDropdown />
+            <Suspense fallback={null}>
+              <LoginDropdown />
+            </Suspense>
           )}
           <button
             type="button"

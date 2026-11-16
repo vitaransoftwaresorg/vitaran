@@ -69,17 +69,22 @@ function teacherPortalPath(pathname: string): string {
   return TEACHER_HOME_PATH;
 }
 
-/** Public marketing pages that signed-in schools and teachers skip. */
-const isLandingPage = (pathname: string) => pathname === "/" || pathname === "/contact";
+/** Public marketing site — signed-in admin/school/teacher must log out to see these. */
+const isMarketingPage = (pathname: string) =>
+  pathname === "/" ||
+  pathname === "/contact" ||
+  pathname.startsWith("/teachers-resources") ||
+  pathname.startsWith("/answer-keys") ||
+  pathname.startsWith("/results");
 
 // Optimistic cookie checks only; pages verify the session with the API.
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const hasAdmin = request.cookies.has(ADMIN_SESSION_COOKIE);
   const hasSchool = request.cookies.has(SCHOOL_SESSION_COOKIE);
   const hasTeacher = request.cookies.has(TEACHER_SESSION_COOKIE);
 
   if (pathname.startsWith(ADMIN_BASE_PATH)) {
-    const hasAdmin = request.cookies.has(ADMIN_SESSION_COOKIE);
     if (pathname === "/admin/login") {
       return adminResponse(
         NextResponse.redirect(new URL(hasAdmin ? ADMIN_BASE_PATH : ADMIN_LOGIN_PATH, request.nextUrl)),
@@ -93,15 +98,39 @@ export function proxy(request: NextRequest) {
     );
   }
 
-  // Signed-in schools and teachers go straight to their portal, never the public site.
-  if (isLandingPage(pathname)) {
-    if (hasSchool) return NextResponse.redirect(new URL(SCHOOL_HOME_PATH, request.nextUrl));
-    if (hasTeacher) return NextResponse.redirect(new URL(TEACHER_HOME_PATH, request.nextUrl));
+  // Signed-in users go straight to their portal — never the public landing site.
+  if (isMarketingPage(pathname)) {
+    if (hasAdmin) return NextResponse.redirect(new URL(ADMIN_BASE_PATH, request.nextUrl));
+    if (hasSchool) {
+      return NextResponse.redirect(
+        new URL(
+          pathname.startsWith("/teachers-resources") ||
+            pathname.startsWith("/answer-keys") ||
+            pathname.startsWith("/results")
+            ? schoolPortalPath(pathname)
+            : SCHOOL_HOME_PATH,
+          request.nextUrl,
+        ),
+      );
+    }
+    if (hasTeacher) {
+      return NextResponse.redirect(
+        new URL(
+          pathname.startsWith("/teachers-resources") ||
+            pathname.startsWith("/answer-keys") ||
+            pathname.startsWith("/results")
+            ? teacherPortalPath(pathname) + request.nextUrl.search
+            : TEACHER_HOME_PATH,
+          request.nextUrl,
+        ),
+      );
+    }
     return NextResponse.next();
   }
 
   // Already signed in → never show the portal login form.
   if (pathname === PORTAL_LOGIN_PATH || pathname === "/teacher/login") {
+    if (hasAdmin) return NextResponse.redirect(new URL(ADMIN_BASE_PATH, request.nextUrl));
     if (hasSchool) {
       return NextResponse.redirect(new URL(SCHOOL_HOME_PATH, request.nextUrl));
     }

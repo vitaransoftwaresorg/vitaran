@@ -7,8 +7,8 @@ import sharp, { type OverlayOptions } from "sharp";
 /** A4 at 150 dpi. */
 const W = 1240;
 const H = 1754;
-const SANS = "'Helvetica Neue', Helvetica, Arial, sans-serif";
-const SERIF = "Georgia, 'Times New Roman', serif";
+/** Fallback only when the bundled font fails to load. */
+const FALLBACK_FONT = "DejaVu Sans, Liberation Sans, Arial, sans-serif";
 
 const NAVY = "#141a52";
 const INK = "#1c2033";
@@ -16,6 +16,9 @@ const MUTED = "#7a7f99";
 const GOLD = "#c9a227";
 const GOLD_DARK = "#8a6a10";
 const SUBJECT_COLORS = ["#2f5bea", "#0f9f6e", "#e8622c", "#d63384", "#7048e8", "#0b93b8", "#c28a0a"];
+
+/** Set for the duration of one cardSvg() call so every label uses glyph outlines. */
+let paintFont: Font | null = null;
 
 export type RankCardSubject = {
   label: string;
@@ -46,10 +49,18 @@ export type RankCardLogos = { vitaran: Buffer | null; school: Buffer | null };
 const esc = (value: string) =>
   value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-const fit = (value: string, max: number) => (value.length > max ? `${value.slice(0, max - 1)}…` : value);
+const fit = (value: string, max: number) => (value.length > max ? `${value.slice(0, max - 1)}...` : value);
 
 const num = (value: number | null | undefined, digits = 2) =>
-  value == null ? "—" : String(Math.round(value * 10 ** digits) / 10 ** digits);
+  value == null ? "-" : String(Math.round(value * 10 ** digits) / 10 ** digits);
+
+/** Cinzel may lack fancy punctuation — keep printable glyphs only. */
+const forFont = (value: string) =>
+  value
+    .replace(/[—–]/g, "-")
+    .replace(/[“”«»]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\u201C/g, '"');
 
 const ordinalSuffix = (rank: number) => {
   const tail = rank % 100;
@@ -57,12 +68,59 @@ const ordinalSuffix = (rank: number) => {
   return ["th", "st", "nd", "rd"][rank % 10] ?? "th";
 };
 
+/** Call sites use SVG pixel letter-spacing; opentype expects em fractions. */
+function trackingEm(spacingPx: number | undefined, size: number) {
+  if (!spacingPx || size <= 0) return 0;
+  return spacingPx / size;
+}
+
+function measureText(font: Font | null, value: string, size: number) {
+  if (font) return font.getAdvanceWidth(value, size);
+  return value.length * size * 0.55;
+}
+
+/** Word-wrap a sentence so path text stays inside the remark card. */
+function wrapLines(font: Font | null, value: string, size: number, maxWidth: number) {
+  const words = value.split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [] as string[];
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (current && measureText(font, next, size) > maxWidth) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
 /** Rank number with a raised, smaller "st / nd / rd / th". */
 function rankText(x: number, y: number, rank: number | null, size: number, options: TextOptions = {}) {
-  if (rank == null) return text(x, y, "—", size, options);
+  if (rank == null) return text(x, y, "-", size, options);
   const value = String(Math.round(rank));
   const suffix = ordinalSuffix(Math.round(rank));
-  return `<text x="${x}" y="${y}" font-family="${options.font ?? SANS}" font-size="${size}" font-weight="${options.weight ?? 700}" fill="${options.color ?? INK}" text-anchor="${options.anchor ?? "middle"}">${value}<tspan font-size="${Math.round(size * 0.42)}" font-family="${SANS}" font-weight="800" dx="${Math.round(size * 0.04)}" dy="${-Math.round(size * 0.46)}">${suffix}</tspan></text>`;
+  const suffixSize = Math.round(size * 0.42);
+  if (paintFont) {
+    const tracking = trackingEm(options.spacing, size);
+    const valueWidth = paintFont.getAdvanceWidth(value, size, { letterSpacing: tracking });
+    const suffixWidth = paintFont.getAdvanceWidth(suffix, suffixSize, { letterSpacing: tracking });
+    const gap = Math.round(size * 0.04);
+    const total = valueWidth + gap + suffixWidth;
+    const anchor = options.anchor ?? "middle";
+    const startX = anchor === "middle" ? x - total / 2 : anchor === "end" ? x - total : x;
+    const color = options.color ?? INK;
+    const opacity = options.opacity != null ? ` fill-opacity="${options.opacity}"` : "";
+    const valuePath = paintFont.getPath(value, startX, y, size, { letterSpacing: tracking }).toPathData(2);
+    const suffixPath = paintFont
+      .getPath(suffix, startX + valueWidth + gap, y - Math.round(size * 0.46), suffixSize, { letterSpacing: tracking })
+      .toPathData(2);
+    return `<path d="${valuePath}" fill="${color}"${opacity}/><path d="${suffixPath}" fill="${color}"${opacity}/>`;
+  }
+  return `<text x="${x}" y="${y}" font-family="${FALLBACK_FONT}" font-size="${size}" font-weight="${options.weight ?? 700}" fill="${options.color ?? INK}" text-anchor="${options.anchor ?? "middle"}">${value}<tspan font-size="${suffixSize}" font-weight="800" dx="${Math.round(size * 0.04)}" dy="${-Math.round(size * 0.46)}">${suffix}</tspan></text>`;
 }
 
 /** Gold, silver and bronze for the top three. */
@@ -89,12 +147,27 @@ type TextOptions = {
   anchor?: "start" | "middle" | "end";
   spacing?: number;
   opacity?: number;
+  /** Kept for call-site compatibility; path text uses the bundled Cinzel font. */
   font?: string;
   italic?: boolean;
 };
 
+/**
+ * Draw label text as glyph outlines from the bundled font so Sharp prints every detail
+ * on hosts without Helvetica/Georgia (e.g. the production VPS).
+ */
 function text(x: number, y: number, value: string, size: number, options: TextOptions = {}) {
-  return `<text x="${x}" y="${y}" font-family="${options.font ?? SANS}" font-size="${size}" font-weight="${options.weight ?? 400}"${options.italic ? ' font-style="italic"' : ""} fill="${options.color ?? INK}" text-anchor="${options.anchor ?? "start"}"${options.spacing ? ` letter-spacing="${options.spacing}"` : ""}${options.opacity != null ? ` fill-opacity="${options.opacity}"` : ""}>${esc(value)}</text>`;
+  const label = forFont(value);
+  if (paintFont) {
+    const tracking = trackingEm(options.spacing, size);
+    const width = paintFont.getAdvanceWidth(label, size, { letterSpacing: tracking });
+    const anchor = options.anchor ?? "start";
+    const startX = anchor === "middle" ? x - width / 2 : anchor === "end" ? x - width : x;
+    const color = options.color ?? INK;
+    const opacity = options.opacity != null ? ` fill-opacity="${options.opacity}"` : "";
+    return `<path d="${paintFont.getPath(label, startX, y, size, { letterSpacing: tracking }).toPathData(2)}" fill="${color}"${opacity}/>`;
+  }
+  return `<text x="${x}" y="${y}" font-family="${FALLBACK_FONT}" font-size="${size}" font-weight="${options.weight ?? 400}"${options.italic ? ' font-style="italic"' : ""} fill="${options.color ?? INK}" text-anchor="${options.anchor ?? "start"}"${options.spacing ? ` letter-spacing="${options.spacing}"` : ""}${options.opacity != null ? ` fill-opacity="${options.opacity}"` : ""}>${esc(label)}</text>`;
 }
 
 function initials(name: string) {
@@ -169,8 +242,8 @@ function schoolTitle(font: Font, name: string) {
 function fitWidth(font: Font, value: string, size: number) {
   if (titleWidth(font, value, size) <= TITLE_WIDTH) return value;
   let cut = value;
-  while (cut.length > 1 && titleWidth(font, `${cut}…`, size) > TITLE_WIDTH) cut = cut.slice(0, -1);
-  return `${cut.trimEnd()}…`;
+  while (cut.length > 1 && titleWidth(font, `${cut}...`, size) > TITLE_WIDTH) cut = cut.slice(0, -1);
+  return `${cut.trimEnd()}...`;
 }
 
 /** Small gold diamond used as an ornament before section titles. */
@@ -197,6 +270,16 @@ function statCard(x: number, y: number, w: number, h: number, body: string) {
 }
 
 function cardSvg(data: RankCardData, schoolBadge: boolean, titleFont: Font | null) {
+  const previousFont = paintFont;
+  paintFont = titleFont;
+  try {
+    return buildCardSvg(data, schoolBadge, titleFont);
+  } finally {
+    paintFont = previousFont;
+  }
+}
+
+function buildCardSvg(data: RankCardData, schoolBadge: boolean, titleFont: Font | null) {
   const hasOmr = data.subjects.some((row) => row.right != null);
   const parts: string[] = [];
 
@@ -231,7 +314,7 @@ function cardSvg(data: RankCardData, schoolBadge: boolean, titleFont: Font | nul
     const cx = W - 140;
     parts.push(`<circle cx="${cx}" cy="122" r="62" fill="url(#navy)" stroke="url(#gold)" stroke-width="4"/>`);
     parts.push(`<circle cx="${cx}" cy="122" r="51" fill="none" stroke="${GOLD}" stroke-opacity="0.6" stroke-width="1.5"/>`);
-    parts.push(text(cx, 138, initials(data.schoolName), 44, { color: "url(#goldText)", weight: 800, anchor: "middle", font: SERIF }));
+    parts.push(text(cx, 138, initials(data.schoolName), 44, { color: "url(#goldText)", weight: 800, anchor: "middle" }));
   }
 
   // Title band.
@@ -241,18 +324,18 @@ function cardSvg(data: RankCardData, schoolBadge: boolean, titleFont: Font | nul
   parts.push(`<line x1="40" y1="${bandY + 8}" x2="${W - 40}" y2="${bandY + 8}" stroke="url(#gold)" stroke-width="2"/>`);
   parts.push(`<line x1="40" y1="${bandY + 128}" x2="${W - 40}" y2="${bandY + 128}" stroke="url(#gold)" stroke-width="2"/>`);
   parts.push(diamond(300, bandY + 64, 8), diamond(W - 300, bandY + 64, 8));
-  parts.push(text(W / 2, bandY + 89, "RANK CARD", 60, { color: "url(#goldText)", weight: 700, anchor: "middle", spacing: 14, font: SERIF }));
+  parts.push(text(W / 2, bandY + 89, "RANK CARD", 60, { color: "url(#goldText)", weight: 700, anchor: "middle", spacing: 14 }));
 
   // Student hero; the class-rank medal is only for the top three.
   const heroY = 386;
   const heroH = 236;
   parts.push(`<rect x="64" y="${heroY}" width="${W - 128}" height="${heroH}" rx="26" fill="#ffffff" stroke="#e8dcb4" stroke-width="2"/>`);
   parts.push(text(100, heroY + 50, "STUDENT", 17, { color: GOLD_DARK, weight: 800, spacing: 5 }));
-  parts.push(text(100, heroY + 108, fit(data.student.name.toUpperCase(), 24), 50, { color: NAVY, weight: 700, font: SERIF }));
+  parts.push(text(100, heroY + 108, fit(data.student.name.toUpperCase(), 24), 50, { color: NAVY, weight: 700 }));
   parts.push(`<rect x="100" y="${heroY + 124}" width="110" height="4" rx="2" fill="url(#gold)"/>`);
   const chips: Array<[string, string]> = [
-    ["REG. NO", data.student.rollNo || "—"],
-    ["CLASS", data.student.classLabel || "—"],
+    ["REG. NO", data.student.rollNo || "-"],
+    ["CLASS", data.student.classLabel || "-"],
   ];
   chips.forEach(([label, value], index) => {
     const x = 100 + index * 228;
@@ -272,7 +355,7 @@ function cardSvg(data: RankCardData, schoolBadge: boolean, titleFont: Font | nul
     parts.push(`<circle cx="${mx}" cy="${my}" r="88" fill="none" stroke="#ffffff" stroke-opacity="0.85" stroke-width="2.5" stroke-dasharray="3 7"/>`);
     parts.push(`<circle cx="${mx}" cy="${my}" r="76" fill="#ffffff" fill-opacity="0.18"/>`);
     parts.push(text(mx, my - 34, "CLASS RANK", 16, { color: medal.label, weight: 800, anchor: "middle", spacing: 3 }));
-    parts.push(rankText(mx - 6, my + 46, data.classRank, 76, { color: medal.ink, font: SERIF }));
+    parts.push(rankText(mx - 6, my + 46, data.classRank, 76, { color: medal.ink }));
   }
 
   // Stat cards.
@@ -304,14 +387,14 @@ function cardSvg(data: RankCardData, schoolBadge: boolean, titleFont: Font | nul
       share > 0
         ? `<circle cx="${ringX}" cy="${ringY}" r="${ringR}" fill="none" stroke="url(#gold)" stroke-width="12" stroke-linecap="round" stroke-dasharray="${circumference * share} ${circumference}" transform="rotate(-90 ${ringX} ${ringY})"/>`
         : "",
-      text(ringX, ringY + 11, data.percentage == null ? "—" : `${Math.round(data.percentage)}%`, 32, { color: "#ffffff", weight: 800, anchor: "middle" }),
+      text(ringX, ringY + 11, data.percentage == null ? "-" : `${Math.round(data.percentage)}%`, 32, { color: "#ffffff", weight: 800, anchor: "middle" }),
     ].join("")),
   );
 
   parts.push(
     statCard(statX(2), statY, statW, statH, [
       label(statX(2), statY, "SECTION RANK"),
-      rankText(statX(2) + statW / 2, statY + 126, data.sectionRank, 62, { color: "#ffffff", font: SERIF }),
+      rankText(statX(2) + statW / 2, statY + 126, data.sectionRank, 62, { color: "#ffffff" }),
       text(statX(2) + statW / 2, statY + 164, `Class ${data.student.classLabel}`, 20, { color: "#c3c8f2", anchor: "middle" }),
     ].join("")),
   );
@@ -319,7 +402,7 @@ function cardSvg(data: RankCardData, schoolBadge: boolean, titleFont: Font | nul
   parts.push(
     statCard(statX(3), statY, statW, statH, [
       label(statX(3), statY, "CLASS RANK"),
-      rankText(statX(3) + statW / 2, statY + 126, data.classRank, 62, { color: "url(#goldText)", font: SERIF }),
+      rankText(statX(3) + statW / 2, statY + 126, data.classRank, 62, { color: "url(#goldText)" }),
       text(statX(3) + statW / 2, statY + 164, "All sections", 20, { color: "#c3c8f2", anchor: "middle", weight: 600 }),
     ].join("")),
   );
@@ -370,7 +453,7 @@ function cardSvg(data: RankCardData, schoolBadge: boolean, titleFont: Font | nul
     if (hasOmr) {
       const chip = (x: number, value: number | undefined, fill: string, ink: string) => {
         parts.push(`<rect x="${x - 30}" y="${mid - chipH / 2}" width="60" height="${chipH}" rx="12" fill="${fill}"/>`);
-        parts.push(text(x, mid + chipFont * 0.36, value == null ? "—" : String(value), chipFont, { color: ink, weight: 800, anchor: "middle" }));
+        parts.push(text(x, mid + chipFont * 0.36, value == null ? "-" : String(value), chipFont, { color: ink, weight: 800, anchor: "middle" }));
       };
       chip(cols.right, row.right, "#e3f6ea", "#16794a");
       chip(cols.wrong, row.wrong, "#fde8e6", "#b42318");
@@ -390,27 +473,46 @@ function cardSvg(data: RankCardData, schoolBadge: boolean, titleFont: Font | nul
       color: NAVY,
       weight: 700,
       anchor: "end",
-      font: SERIF,
     }),
   );
   const rowsEnd = totalTop + totalH;
 
-  // Remark.
-  const remarkY = rowsEnd + 40;
-  parts.push(`<rect x="64" y="${remarkY}" width="${W - 128}" height="118" rx="22" fill="#fbf6e6" stroke="${GOLD}" stroke-opacity="0.5" stroke-width="1.5"/>`);
-  parts.push(`<rect x="64" y="${remarkY + 22}" width="6" height="74" rx="3" fill="url(#gold)"/>`);
-  parts.push(text(104, remarkY + 92, "\u201C", 110, { color: GOLD, weight: 700, font: SERIF, opacity: 0.5 }));
-  parts.push(text(166, remarkY + 44, "REMARK", 16, { color: GOLD_DARK, weight: 800, spacing: 4 }));
-  parts.push(text(166, remarkY + 86, remark(data.percentage), 27, { color: NAVY, italic: true, font: SERIF }));
-
-  // Signatures and footer.
-  const signY = H - 176;
-  ["Class Teacher", "Principal"].forEach((value, index) => {
-    const x = 260 + index * 720;
-    parts.push(`<line x1="${x - 120}" y1="${signY}" x2="${x + 120}" y2="${signY}" stroke="#bfb592" stroke-width="1.5"/>`);
-    parts.push(text(x, signY + 30, value, 20, { color: MUTED, weight: 600, anchor: "middle", spacing: 1 }));
-  });
+  // Remark — wrap so the sentence stays inside the card (no right-edge overflow).
+  const remarkCopy = remark(data.percentage);
+  const remarkSize = 22;
+  const remarkLeft = 166;
+  const remarkMaxW = W - remarkLeft - 88;
+  const remarkLines = wrapLines(paintFont, remarkCopy, remarkSize, remarkMaxW).slice(0, 3);
+  const remarkBoxH = 52 + remarkLines.length * (remarkSize + 10);
   const footY = H - 108;
+  const signY = footY - 78;
+  const remarkY = Math.min(rowsEnd + 32, signY - remarkBoxH - 36);
+  parts.push(
+    `<rect x="64" y="${remarkY}" width="${W - 128}" height="${remarkBoxH}" rx="22" fill="#fbf6e6" stroke="${GOLD}" stroke-opacity="0.5" stroke-width="1.5"/>`,
+  );
+  parts.push(
+    `<rect x="64" y="${remarkY + 18}" width="6" height="${Math.max(40, remarkBoxH - 36)}" rx="3" fill="url(#gold)"/>`,
+  );
+  parts.push(text(remarkLeft, remarkY + 34, "REMARK", 15, { color: GOLD_DARK, weight: 800, spacing: 4 }));
+  remarkLines.forEach((line, index) => {
+    parts.push(
+      text(remarkLeft, remarkY + 64 + index * (remarkSize + 10), line, remarkSize, {
+        color: NAVY,
+        italic: true,
+      }),
+    );
+  });
+
+  // Signatures — more gap between teacher and principal, clear of the remark box.
+  const signCenters = [210, W - 210];
+  const signHalf = 150;
+  ["Class Teacher", "Principal"].forEach((value, index) => {
+    const x = signCenters[index]!;
+    parts.push(
+      `<line x1="${x - signHalf}" y1="${signY}" x2="${x + signHalf}" y2="${signY}" stroke="#bfb592" stroke-width="1.5"/>`,
+    );
+    parts.push(text(x, signY + 32, value, 20, { color: MUTED, weight: 600, anchor: "middle", spacing: 1 }));
+  });
   parts.push(`<path d="M40 ${footY} H${W - 40} V${H - 62} a22 22 0 0 1 -22 22 H62 a22 22 0 0 1 -22 -22 Z" fill="url(#band)"/>`);
   parts.push(`<line x1="40" y1="${footY}" x2="${W - 40}" y2="${footY}" stroke="url(#gold)" stroke-width="2"/>`);
   parts.push(
@@ -469,13 +571,21 @@ export async function renderRankCard(data: RankCardData, logos: RankCardLogos) {
     .toBuffer();
 }
 
-/** One A4 page per card. */
+/** One A4 page per card — slight inset so browser print margins don't spill onto a 2nd page. */
 export async function rankCardsPdf(cards: Buffer[]) {
   const pdf = await PDFDocument.create();
+  const pageW = 595.28;
+  const pageH = 841.89;
+  const inset = 8;
   for (const card of cards) {
     const image = await pdf.embedJpg(card);
-    const page = pdf.addPage([595.28, 841.89]);
-    page.drawImage(image, { x: 0, y: 0, width: 595.28, height: 841.89 });
+    const page = pdf.addPage([pageW, pageH]);
+    page.drawImage(image, {
+      x: inset,
+      y: inset,
+      width: pageW - inset * 2,
+      height: pageH - inset * 2,
+    });
   }
   return Buffer.from(await pdf.save());
 }

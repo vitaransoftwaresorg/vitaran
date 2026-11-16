@@ -32,7 +32,7 @@ function BackLink({ onBackToLogin }: { onBackToLogin?: () => void }) {
   }
   return (
     <Link
-      href="/school/login"
+      href="/?login=1"
       className="inline-flex items-center justify-center gap-1 text-xs font-medium text-neutral-600 hover:underline"
     >
       <ArrowLeft className="size-3.5" />
@@ -112,7 +112,7 @@ export function ForgotPasswordForm({
             </Button>
           ) : (
             <Link
-              href="/school/login"
+              href="/?login=1"
               className="inline-flex h-11 w-full items-center justify-center rounded-full bg-neutral-950 text-sm font-semibold text-white"
             >
               Back to sign in

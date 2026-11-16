@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
-import { Award, Download, Eye, FileText, X } from "lucide-react";
+import { Award, Download, Eye, FileText, Loader2, Printer, X } from "lucide-react";
 import { SharePdfButton } from "@/components/shared/share-pdf-button";
 import { Button } from "@/components/ui/button";
+import { printImage, printPdf } from "@/features/answer-keys/print-pdf";
 import { RESULTS_PATH } from "./constants";
 
 /* eslint-disable @next/next/no-img-element -- authenticated proxy route, not a static asset */
@@ -22,7 +24,41 @@ export function rankCardHref(target: CardTarget, options: { roll?: string; forma
   return `${target.basePath ?? RESULTS_PATH}/rank-cards?${query}`;
 }
 
-/** View / download one student's rank card. */
+function PrintRankCardButton({
+  href,
+  title,
+  className,
+  label,
+  /** Single cards print as JPEG (one A4 page); class packs stay PDF. */
+  mode = "pdf",
+}: {
+  href: string;
+  title: string;
+  className: string;
+  label?: string;
+  mode?: "pdf" | "image";
+}) {
+  const [printing, setPrinting] = useState(false);
+  return (
+    <button
+      type="button"
+      title={title}
+      disabled={printing}
+      className={className}
+      onClick={() => {
+        setPrinting(true);
+        const done = () => setPrinting(false);
+        if (mode === "image") printImage(href, done);
+        else printPdf(href, done);
+      }}
+    >
+      {printing ? <Loader2 className="size-3.5 animate-spin" /> : <Printer className="size-3.5" />}
+      {label}
+    </button>
+  );
+}
+
+/** View / download / print one student's rank card. */
 export function RankCardCell({
   target,
   roll,
@@ -33,6 +69,8 @@ export function RankCardCell({
   name: string;
 }) {
   if (!target || !roll) return <span className="text-neutral-300">—</span>;
+  const jpgHref = rankCardHref(target, { roll, format: "jpg" });
+  const downloadHref = rankCardHref(target, { roll, format: "pdf", download: true });
   return (
     <div className="flex items-center justify-center gap-1">
       <Dialog.Root>
@@ -49,15 +87,22 @@ export function RankCardCell({
               <Dialog.Title className="min-w-0 flex-1 truncate text-sm font-semibold text-neutral-900">
                 Rank card · {name} · {roll}
               </Dialog.Title>
+              <PrintRankCardButton
+                href={jpgHref}
+                mode="image"
+                title="Print rank card"
+                label="Print"
+                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-neutral-200 px-2.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-60 [&_svg]:size-3.5"
+              />
               <a
-                href={rankCardHref(target, { roll, format: "pdf", download: true })}
+                href={downloadHref}
                 className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-neutral-200 px-2.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50"
               >
                 <Download className="size-3.5" />
                 Download PDF
               </a>
               <SharePdfButton
-                href={rankCardHref(target, { roll, format: "pdf", download: true })}
+                href={downloadHref}
                 fileName={`${roll}-rank-card.pdf`}
                 title={`rank card of ${name}`}
                 preload
@@ -74,7 +119,7 @@ export function RankCardCell({
             </header>
             <div className="min-h-0 flex-1 bg-neutral-100 p-3">
               <img
-                src={rankCardHref(target, { roll, format: "jpg" })}
+                src={jpgHref}
                 alt={`Rank card of ${name}`}
                 className="size-full object-contain"
               />
@@ -82,15 +127,21 @@ export function RankCardCell({
           </Dialog.Popup>
         </Dialog.Portal>
       </Dialog.Root>
+      <PrintRankCardButton
+        href={jpgHref}
+        mode="image"
+        title="Print rank card"
+        className="inline-flex size-8 items-center justify-center rounded-md text-violet-700 hover:bg-violet-50 disabled:opacity-60 [&_svg]:size-4"
+      />
       <a
-        href={rankCardHref(target, { roll, format: "pdf", download: true })}
+        href={downloadHref}
         title="Download rank card (PDF)"
         className="inline-flex size-8 items-center justify-center rounded-md text-violet-700 hover:bg-violet-50"
       >
         <Download className="size-4" />
       </a>
       <SharePdfButton
-        href={rankCardHref(target, { roll, format: "pdf", download: true })}
+        href={downloadHref}
         fileName={`${roll}-rank-card.pdf`}
         title={`rank card of ${name}`}
         className="inline-flex size-8 items-center justify-center rounded-md text-violet-700 hover:bg-violet-50 disabled:opacity-60 [&_svg]:size-4"
@@ -148,20 +199,28 @@ export function ClassRankCardsDownload({ target }: { target: CardTarget | null }
       </Button>
     );
   }
+  const pdfHref = rankCardHref(target, { format: "pdf" });
+  const downloadHref = rankCardHref(target, { format: "pdf", download: true });
   return (
     <div className="flex items-center gap-1">
+      <PrintRankCardButton
+        href={pdfHref}
+        title="Print all rank cards"
+        label="Print"
+        className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-input bg-background px-3 text-sm font-semibold text-violet-800 hover:bg-violet-50 disabled:opacity-60 [&_svg]:size-4"
+      />
       <Button
         variant="outline"
         size="sm"
         className="h-9 rounded-lg"
         nativeButton={false}
-        render={<a href={rankCardHref(target, { format: "pdf", download: true })} />}
+        render={<a href={downloadHref} />}
       >
         <Award />
         Rank cards
       </Button>
       <SharePdfButton
-        href={rankCardHref(target, { format: "pdf", download: true })}
+        href={downloadHref}
         fileName={`Class-${target.classLevel}-rank-cards.pdf`}
         title={`Class ${target.classLevel} rank cards`}
         className="inline-flex size-9 items-center justify-center rounded-lg border border-input bg-background text-violet-700 hover:bg-violet-50 disabled:opacity-60 [&_svg]:size-4"

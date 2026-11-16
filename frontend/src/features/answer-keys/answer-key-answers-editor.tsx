@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { AlertCircle, Loader2, Save } from "lucide-react";
+import { AlertCircle, Loader2, Minus, Plus, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -85,10 +85,55 @@ const FALLBACK_RANGES: SubjectRange[] = [
   { subject: "MATHEMATICS", from: 1, to: 100, maxMarks: 400 },
 ];
 
-function parseMark(value: string, fallback: number) {
-  const next = Number.parseInt(value, 10);
-  if (!Number.isFinite(next)) return fallback;
-  return Math.min(MAX_MARK_VALUE, Math.max(0, next));
+function clampMark(value: number) {
+  return Math.min(MAX_MARK_VALUE, Math.max(0, value));
+}
+
+/** Number field with − / + for correct and wrong mark values. */
+function MarksStepper({
+  value,
+  onChange,
+  disabled,
+  ariaLabel,
+  prefix,
+}: {
+  value: number;
+  onChange: (next: number) => void;
+  disabled?: boolean;
+  ariaLabel: string;
+  prefix?: string;
+}) {
+  return (
+    <div className="inline-flex items-center gap-1.5">
+      {prefix ? <span className="text-sm font-semibold text-neutral-500">{prefix}</span> : null}
+      <div className="inline-flex h-9 items-stretch overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-xs">
+        <button
+          type="button"
+          aria-label={`Decrease ${ariaLabel}`}
+          disabled={disabled || value <= 0}
+          className="inline-flex w-8 items-center justify-center text-neutral-600 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+          onClick={() => onChange(clampMark(value - 1))}
+        >
+          <Minus className="size-3.5" />
+        </button>
+        <span
+          aria-label={ariaLabel}
+          className="inline-flex h-full w-14 items-center justify-center border-x border-neutral-200 text-sm font-semibold tabular-nums text-neutral-950"
+        >
+          {value}
+        </span>
+        <button
+          type="button"
+          aria-label={`Increase ${ariaLabel}`}
+          disabled={disabled || value >= MAX_MARK_VALUE}
+          className="inline-flex w-8 items-center justify-center text-neutral-600 transition-colors hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40"
+          onClick={() => onChange(clampMark(value + 1))}
+        >
+          <Plus className="size-3.5" />
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }: AnswerKeyAnswersEditorProps) {
@@ -118,7 +163,6 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
   );
   const [printedAnswers, setPrintedAnswers] = useState(() => answerKey.printedAnswers ?? {});
   const testIdCheck = useTestIdCheck(readOnly ? "" : testId, answerKey.id);
-  const testIdOk = TEST_ID_PATTERN.test(testId.trim()) && testIdCheck.state !== "taken";
 
   const dirty = useMemo(
     () => snapshot(answers, explanations, ranges, testId.trim(), correctMarks, wrongMarks) !== baseline,
@@ -139,15 +183,33 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
     setCounts(nextCounts);
   }
 
+  function goToQuestion(question: number) {
+    const el = document.getElementById(`answer-key-q-${question}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    el?.classList.add("ring-2", "ring-red-400");
+    window.setTimeout(() => el?.classList.remove("ring-2", "ring-red-400"), 1600);
+  }
+
   function save() {
-    if (!dirty) return;
     const nextTestId = testId.trim();
     if (!TEST_ID_PATTERN.test(nextTestId)) {
       toast.error(TEST_ID_MESSAGE);
+      document.querySelector<HTMLInputElement>('[aria-label="Test ID"]')?.focus();
       return;
     }
     if (testIdCheck.state === "taken") {
       toast.error("This test ID is already used by another answer key.");
+      document.querySelector<HTMLInputElement>('[aria-label="Test ID"]')?.focus();
+      return;
+    }
+    if (incomplete.length > 0) {
+      const first = incomplete[0]!;
+      toast.error(`Complete all answers before saving · Q${first} is incomplete`);
+      goToQuestion(first);
+      return;
+    }
+    if (!dirty) {
+      toast.message("Nothing to save");
       return;
     }
     startSaving(async () => {
@@ -195,13 +257,17 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
         ) : null}
         <p className="text-sm font-medium text-neutral-500">{totalQuestions} questions</p>
         {incomplete.length > 0 ? (
-          <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-red-700">
+          <button
+            type="button"
+            onClick={() => goToQuestion(incomplete[0]!)}
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-red-700 hover:underline"
+          >
             <AlertCircle className="size-4 shrink-0" />
             {incomplete.length} incomplete
-          </p>
+          </button>
         ) : null}
         {!readOnly && (
-          <Button type="button" className="ml-auto" onClick={save} disabled={pending || !dirty || !testIdOk}>
+          <Button type="button" className="ml-auto" onClick={save} disabled={pending}>
             {saving ? <Loader2 className="animate-spin" /> : <Save />}
             Save
           </Button>
@@ -237,31 +303,21 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
                 </div>
               </td>
               <td className="px-4 py-3">
-                <Input
-                  type="number"
-                  min={0}
-                  max={MAX_MARK_VALUE}
+                <MarksStepper
                   value={correctMarks}
                   disabled={pending || readOnly}
-                  aria-label="Marks for a correct answer"
-                  className="h-9 w-20 bg-white tabular-nums"
-                  onChange={(event) => setCorrectMarks(parseMark(event.currentTarget.value, correctMarks))}
+                  ariaLabel="Marks for a correct answer"
+                  onChange={setCorrectMarks}
                 />
               </td>
               <td className="px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-semibold text-neutral-500">−</span>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={MAX_MARK_VALUE}
-                    value={wrongMarks}
-                    disabled={pending || readOnly}
-                    aria-label="Negative marks for a wrong answer"
-                    className="h-9 w-20 bg-white tabular-nums"
-                    onChange={(event) => setWrongMarks(parseMark(event.currentTarget.value, wrongMarks))}
-                  />
-                </div>
+                <MarksStepper
+                  value={wrongMarks}
+                  disabled={pending || readOnly}
+                  ariaLabel="Negative marks for a wrong answer"
+                  prefix="−"
+                  onChange={setWrongMarks}
+                />
               </td>
             </tr>
           </tbody>
@@ -309,9 +365,10 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
                 const missing = !answers[key];
                 return (
                   <li
+                    id={`answer-key-q-${question}`}
                     key={question}
                     className={cn(
-                      "grid gap-3 px-4 py-3 md:grid-cols-[4.5rem_auto_minmax(0,1fr)] md:items-start",
+                      "grid gap-3 px-4 py-3 scroll-mt-24 md:grid-cols-[4.5rem_auto_minmax(0,1fr)] md:items-start",
                       missing && "bg-red-50",
                     )}
                   >

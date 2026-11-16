@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { googleErrorMessage } from "./google-errors";
 import { PortalLoginForm } from "./portal-login-form";
 
 export const OPEN_LOGIN_EVENT = "vitaran:open-login";
@@ -19,15 +21,32 @@ type LoginDropdownProps = {
 
 /** Log in button → compact form card (no separate marketing login page). */
 export function LoginDropdown({ className, googleError }: LoginDropdownProps) {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [stickyError, setStickyError] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
+  const formError = googleError ?? stickyError;
 
   useEffect(() => {
     const onOpen = () => setOpen(true);
     window.addEventListener(OPEN_LOGIN_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_LOGIN_EVENT, onOpen);
   }, []);
+
+  // /school/login and auth redirects land on /?login=1 (optional ?error=).
+  useEffect(() => {
+    if (searchParams.get("login") !== "1" && !searchParams.get("error")) return;
+    const err = googleErrorMessage(searchParams.get("error"));
+    if (err) setStickyError(err);
+    setOpen(true);
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete("login");
+    next.delete("error");
+    const query = next.toString();
+    router.replace(query ? `/?${query}` : "/", { scroll: false });
+  }, [router, searchParams]);
 
   useEffect(() => {
     if (!open) return;
@@ -85,7 +104,7 @@ export function LoginDropdown({ className, googleError }: LoginDropdownProps) {
             >
               <X className="size-4" />
             </button>
-            <PortalLoginForm compact googleError={googleError} />
+            <PortalLoginForm compact googleError={formError} />
           </div>
         </>
       ) : null}
