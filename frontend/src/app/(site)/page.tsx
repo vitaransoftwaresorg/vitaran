@@ -1,6 +1,5 @@
 import dynamic from "next/dynamic";
 import { Hero } from "@/features/home/hero";
-import { TrustBar } from "@/features/home/trust-bar";
 
 /** Below-fold marketing blocks — load after the hero paints. */
 const Services = dynamic(
@@ -25,7 +24,6 @@ export default function HomePage() {
   return (
     <>
       <Hero />
-      <TrustBar />
       <Services />
       <WhyVitaran />
       <SchoolsMarquee />
