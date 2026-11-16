@@ -33,15 +33,15 @@ export function Hero() {
         className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_55%_at_78%_42%,rgba(139,92,246,0.32),transparent_58%),radial-gradient(ellipse_45%_35%_at_8%_18%,rgba(167,139,250,0.22),transparent_52%),linear-gradient(180deg,#e4dff4_0%,#ebe6f8_55%,#f3f0fa_100%)]"
       />
 
-      {/* Mobile */}
+      {/* Mobile — copy first, image below (no side-by-side overlap) */}
       <div className="relative mx-auto w-full max-w-7xl px-5 sm:hidden">
-        <div className="grid grid-cols-[1.1fr_1fr] items-center gap-2 pt-4 pb-6">
-          <div className="relative z-10 pb-1">
+        <div className="flex flex-col gap-6 pt-2 pb-4">
+          <div className="relative z-10">
             <motion.h1
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.45 }}
-              className="text-[1.65rem] leading-[1.18] font-extrabold tracking-tight text-[#1a1750]"
+              className="text-[1.75rem] leading-[1.18] font-extrabold tracking-tight text-[#1a1750]"
             >
               Transforming the way of{" "}
               <span className="relative inline-block text-[#7c3aed]">
@@ -66,7 +66,7 @@ export function Hero() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.45, delay: 0.06 }}
-              className="mt-3 text-[0.82rem] leading-relaxed text-[#6b7280]"
+              className="mt-3 max-w-[22rem] text-[0.9rem] leading-relaxed text-[#6b7280]"
             >
               From curriculum design to assessments and art production, we create learning content
               that students genuinely enjoy.
@@ -75,12 +75,12 @@ export function Hero() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.45, delay: 0.12 }}
-              className="mt-4"
+              className="mt-5"
             >
               <button
                 type="button"
                 onClick={() => openLoginDropdown()}
-                className="inline-flex items-center gap-1.5 rounded-full bg-[#2a2670] px-4 py-2.5 text-xs font-semibold text-white shadow-[0_12px_28px_-12px_rgba(42,38,112,0.65)]"
+                className="inline-flex items-center gap-1.5 rounded-full bg-[#2a2670] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_12px_28px_-12px_rgba(42,38,112,0.65)]"
               >
                 Log in
                 <ArrowRight className="size-3.5" />
@@ -89,19 +89,19 @@ export function Hero() {
           </div>
 
           <motion.div
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.55 }}
-            className="relative -mr-4 min-h-[14rem] w-[125%] max-w-none justify-self-end"
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.55, delay: 0.08 }}
+            className="relative mx-auto w-full max-w-sm"
           >
-            <HeroPhoto className="relative size-full min-h-[14rem]" />
+            <HeroPhoto className="relative mx-auto aspect-[3/2] w-full" />
           </motion.div>
         </div>
       </div>
 
-      {/* Desktop / tablet */}
+      {/* Tablet / desktop — stacked until lg, then two columns */}
       <div className="relative mx-auto hidden w-full max-w-7xl flex-1 items-center gap-8 px-5 sm:grid sm:min-h-[calc(100svh-8rem)] sm:gap-10 sm:px-8 lg:grid-cols-2 lg:gap-10">
-        <div className="order-2 lg:order-1">
+        <div className="order-1">
           <motion.h1
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
@@ -185,7 +185,7 @@ export function Hero() {
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
-          className="relative order-1 mx-auto flex w-full max-w-[40rem] items-end justify-center lg:order-2 lg:max-w-none lg:min-h-[28rem]"
+          className="relative order-2 mx-auto flex w-full max-w-[40rem] items-end justify-center lg:max-w-none lg:min-h-[28rem]"
         >
           <HeroPhoto className="relative w-full lg:min-h-[28rem]" />
         </motion.div>
