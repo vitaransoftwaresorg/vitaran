@@ -1,24 +1,11 @@
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
-import {
-  ADMIN_BASE_PATH,
-  ADMIN_SESSION_COOKIE,
-  SCHOOL_HOME_PATH,
-  SCHOOL_SESSION_COOKIE,
-  TEACHER_HOME_PATH,
-  TEACHER_SESSION_COOKIE,
-} from "@/constants/auth";
 
-export default async function SiteLayout({ children }: LayoutProps<"/">) {
-  const jar = await cookies();
-
-  // Any signed-in role stays in its portal until logout — no public landing.
-  if (jar.has(ADMIN_SESSION_COOKIE)) redirect(ADMIN_BASE_PATH);
-  if (jar.has(SCHOOL_SESSION_COOKIE)) redirect(SCHOOL_HOME_PATH);
-  if (jar.has(TEACHER_SESSION_COOKIE)) redirect(TEACHER_HOME_PATH);
-
+/**
+ * Marketing shell. Signed-in portal redirects are handled in `proxy.ts`
+ * so this layout stays static and the landing HTML can paint immediately.
+ */
+export default function SiteLayout({ children }: LayoutProps<"/">) {
   return (
     <>
       <SiteHeader session={null} />
