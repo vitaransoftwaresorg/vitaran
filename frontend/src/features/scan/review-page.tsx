@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { subjectLabel } from "@/features/schools/constants";
 import { cn } from "@/lib/utils";
 import { commitScanAction } from "./actions";
-import { fetchOriginalSheetDirect } from "./client-upload";
+import { fetchOriginalSheetDirect, fetchPreviewSheetDirect } from "./client-upload";
 import { getOmrUploadAuthAction } from "./upload-auth";
 import {
   clearScanBatch,
@@ -234,8 +234,30 @@ const originals = new Map<string, string>();
 /** Marked sheet (answers checked against the key) or the photo / PDF page exactly as uploaded. */
 function SheetImage({ portal, previewId, marked }: { portal: ScanPortal; previewId: string; marked?: string }) {
   const [view, setView] = useState<"marked" | "original">("marked");
+  const [markedUrl, setMarkedUrl] = useState(marked ?? null);
   const [original, setOriginal] = useState(() => originals.get(previewId) ?? null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (marked) {
+      setMarkedUrl(marked);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const auth = await getOmrUploadAuthAction(portal);
+        if (!auth.ok || cancelled) return;
+        const url = await fetchPreviewSheetDirect(auth.previewsUrl, auth.token, previewId, "preview");
+        if (!cancelled) setMarkedUrl(url);
+      } catch {
+        // Placeholder stays until user retries via Original/Evaluated.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [portal, previewId, marked]);
 
   async function showOriginal() {
     setView("original");
@@ -255,7 +277,7 @@ function SheetImage({ portal, previewId, marked }: { portal: ScanPortal; preview
     }
   }
 
-  const src = view === "original" ? original : marked;
+  const src = view === "original" ? original : markedUrl;
   const tab = (active: boolean) =>
     cn(
       "rounded-md px-3 py-1 text-xs font-semibold transition-colors",

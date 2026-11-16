@@ -49,8 +49,8 @@ export function SectionHeading({
       {description && (
         <p
           className={cn(
-            "mt-5 hidden text-lg leading-relaxed text-pretty sm:block",
-            dark ? "text-brand-200/80" : "text-muted-foreground",
+            "mt-3 text-sm leading-relaxed text-pretty sm:mt-5 sm:text-lg",
+            dark ? "text-brand-200/80" : "text-brand-500",
           )}
         >
           {description}

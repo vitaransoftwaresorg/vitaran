@@ -26,5 +26,5 @@ export function StudentPerformanceLoader({ portal, studentId }: { portal: Perfor
       </div>
     );
   }
-  return <StudentPerformance results={loaded.results} />;
+  return <StudentPerformance results={loaded.results} portal={portal} />;
 }

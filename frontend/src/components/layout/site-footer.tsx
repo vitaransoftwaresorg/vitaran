@@ -8,8 +8,8 @@ export function SiteFooter() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="relative overflow-hidden bg-brand-950 text-brand-200">
-      <BrandBars className="pointer-events-none absolute -right-10 -bottom-10 h-72 w-64 text-brand-800/60" />
+    <footer className="relative overflow-hidden bg-linear-to-br from-brand-950 via-brand-900 to-[#2e1065] text-brand-200">
+      <BrandBars className="pointer-events-none absolute -right-10 -bottom-10 h-72 w-64 text-white/10" />
 
       <div className="relative mx-auto max-w-7xl px-5 pt-20 pb-10 sm:px-8">
         <div className="grid gap-12 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">

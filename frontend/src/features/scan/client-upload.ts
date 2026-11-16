@@ -63,14 +63,24 @@ export async function fetchPdfPageImageDirect(batchesUrl: string, token: string,
   return URL.createObjectURL(await response.blob());
 }
 
-/** The original uploaded photo / PDF page of a sheet that is not saved yet, as an object URL. */
-export async function fetchOriginalSheetDirect(previewsUrl: string, token: string, previewId: string) {
-  const response = await fetch(`${previewsUrl}/${previewId}/image?kind=raw`, {
+/** Unsaved sheet image (evaluated or original) as an object URL. */
+export async function fetchPreviewSheetDirect(
+  previewsUrl: string,
+  token: string,
+  previewId: string,
+  kind: "preview" | "raw" = "preview",
+) {
+  const response = await fetch(`${previewsUrl}/${previewId}/image?kind=${kind}`, {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store",
   });
   if (!response.ok) await readApiJson(response);
   return URL.createObjectURL(await response.blob());
+}
+
+/** The original uploaded photo / PDF page of a sheet that is not saved yet, as an object URL. */
+export async function fetchOriginalSheetDirect(previewsUrl: string, token: string, previewId: string) {
+  return fetchPreviewSheetDirect(previewsUrl, token, previewId, "raw");
 }
 
 export async function dismissPdfBatchDirect(batchesUrl: string, token: string, batchId: string) {

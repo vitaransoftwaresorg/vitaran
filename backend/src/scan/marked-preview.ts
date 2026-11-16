@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import opentype, { type Font } from "opentype.js";
 import sharp from "sharp";
 import { asAnswers, keyOptions, markedList, type AnswerOption } from "../utils/answer-key-parse.js";
 import type { BubbleMap } from "./detect.js";
@@ -6,6 +9,25 @@ import { questionResult } from "./score.js";
 
 const GREEN = "#16a34a";
 const RED = "#dc2626";
+
+type TableRow = {
+  subject: string;
+  correct: number;
+  wrong: number;
+  blank: number;
+  total: number;
+  maxTotal?: number;
+};
+
+let tableFont: Promise<Font | null> | null = null;
+
+/** Bundled font → outlines, so Sharp prints marks on any host without system fonts. */
+function loadTableFont() {
+  tableFont ??= readFile(fileURLToPath(new URL("../../assets/fonts/cinzel-700.woff", import.meta.url)))
+    .then((file) => opentype.parse(file.buffer.slice(file.byteOffset, file.byteOffset + file.byteLength)))
+    .catch(() => null);
+  return tableFont;
+}
 
 /**
  * Warped sheet with every filled bubble coloured green (counts as correct) or red (wrong),
@@ -43,11 +65,11 @@ export async function markedSheetPreview(
     .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
     .png()
     .toBuffer();
-  const table = subjects.length ? scoreTable(subjects, bubbles.width) : null;
+  const table = subjects.length ? await scoreTablePng(subjects, bubbles.width) : null;
   const withTable = table
     ? await sharp(marked)
         .extend({ top: table.height, background: "#ffffff" })
-        .composite([{ input: Buffer.from(table.svg), top: 0, left: 0 }])
+        .composite([{ input: table.png, top: 0, left: 0 }])
         .png()
         .toBuffer()
     : marked;
@@ -57,15 +79,36 @@ export async function markedSheetPreview(
     .toBuffer();
 }
 
-type TableRow = { subject: string; correct: number; wrong: number; blank: number; total: number };
-
 const formatMarks = (value: number) => String(Math.round(value * 100) / 100);
 
 const escapeXml = (value: string) =>
   value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+function marksCell(row: Pick<TableRow, "total" | "maxTotal">) {
+  const got = formatMarks(row.total);
+  return row.maxTotal != null && row.maxTotal > 0 ? `${got}/${formatMarks(row.maxTotal)}` : got;
+}
+
+function textPath(
+  font: Font | null,
+  value: string,
+  x: number,
+  y: number,
+  size: number,
+  options: { anchor?: "start" | "middle"; bold?: boolean },
+) {
+  if (font) {
+    const width = font.getAdvanceWidth(value, size);
+    const startX = options.anchor === "middle" ? x - width / 2 : x;
+    return `<path d="${font.getPath(value, startX, y, size).toPathData(2)}" fill="#111"/>`;
+  }
+  const bold = options.bold ? ' font-weight="700"' : "";
+  return `<text x="${x}" y="${y}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${size}"${bold} fill="#111" text-anchor="${options.anchor ?? "start"}">${escapeXml(value)}</text>`;
+}
+
 /** Subject-wise Right / Wrong / Blank / Marks table drawn above the sheet. */
-function scoreTable(subjects: TableRow[], width: number) {
+async function scoreTablePng(subjects: TableRow[], width: number) {
+  const font = await loadTableFont();
   const rows: string[][] = [
     ["Subject", "R", "W", "B", "Marks"],
     ...subjects.map((row) => [
@@ -73,21 +116,24 @@ function scoreTable(subjects: TableRow[], width: number) {
       String(row.correct),
       String(row.wrong),
       String(row.blank),
-      formatMarks(row.total),
+      marksCell(row),
     ]),
     [
       "Total",
       String(subjects.reduce((sum, row) => sum + row.correct, 0)),
       String(subjects.reduce((sum, row) => sum + row.wrong, 0)),
       String(subjects.reduce((sum, row) => sum + row.blank, 0)),
-      formatMarks(subjects.reduce((sum, row) => sum + row.total, 0)),
+      marksCell({
+        total: subjects.reduce((sum, row) => sum + row.total, 0),
+        maxTotal: subjects.reduce((sum, row) => sum + (row.maxTotal ?? 0), 0) || undefined,
+      }),
     ],
   ];
   const margin = Math.round(width * 0.04);
   const tableWidth = width - margin * 2;
   const rowHeight = Math.round(width * 0.05);
-  const font = Math.round(rowHeight * 0.52);
-  const shares = [0.3, 0.15, 0.15, 0.15, 0.25];
+  const fontSize = Math.round(rowHeight * 0.48);
+  const shares = [0.3, 0.12, 0.12, 0.12, 0.34];
   const xs = shares.reduce<number[]>((acc, share) => [...acc, acc[acc.length - 1]! + share * tableWidth], [margin]);
   const top = margin;
   const height = top + rowHeight * rows.length + margin;
@@ -96,21 +142,25 @@ function scoreTable(subjects: TableRow[], width: number) {
   ];
   rows.forEach((cells, r) => {
     const y = top + r * rowHeight;
-    if (r > 0) parts.push(`<line x1="${margin}" y1="${y}" x2="${margin + tableWidth}" y2="${y}" stroke="#111" stroke-width="2"/>`);
-    const bold = r === 0 || r === rows.length - 1 ? ' font-weight="700"' : "";
+    if (r > 0) {
+      parts.push(
+        `<line x1="${margin}" y1="${y}" x2="${margin + tableWidth}" y2="${y}" stroke="#111" stroke-width="2"/>`,
+      );
+    }
+    const baseline = y + rowHeight * 0.68;
+    const bold = r === 0 || r === rows.length - 1;
     cells.forEach((cell, c) => {
       const left = c === 0;
-      const x = left ? xs[c]! + font * 0.4 : (xs[c]! + xs[c + 1]!) / 2;
-      parts.push(
-        `<text x="${x}" y="${y + rowHeight * 0.68}" font-family="Arial, Helvetica, sans-serif" font-size="${font}"${bold} fill="#111" text-anchor="${left ? "start" : "middle"}">${escapeXml(cell)}</text>`,
-      );
+      const x = left ? xs[c]! + fontSize * 0.35 : (xs[c]! + xs[c + 1]!) / 2;
+      parts.push(textPath(font, cell, x, baseline, fontSize, { anchor: left ? "start" : "middle", bold }));
     });
   });
   for (const x of xs.slice(1, -1)) {
-    parts.push(`<line x1="${x}" y1="${top}" x2="${x}" y2="${top + rowHeight * rows.length}" stroke="#111" stroke-width="2"/>`);
+    parts.push(
+      `<line x1="${x}" y1="${top}" x2="${x}" y2="${top + rowHeight * rows.length}" stroke="#111" stroke-width="2"/>`,
+    );
   }
-  return {
-    height,
-    svg: `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#fff"/>${parts.join("")}</svg>`,
-  };
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#fff"/>${parts.join("")}</svg>`;
+  const png = await sharp(Buffer.from(svg)).png().toBuffer();
+  return { height, png };
 }

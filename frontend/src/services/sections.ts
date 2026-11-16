@@ -67,3 +67,24 @@ export function listAdminSchoolSections(schoolId: string) {
 export function getAdminSchoolSectionStrength(schoolId: string) {
   return adminApi<SectionStrength>(`${adminBase(schoolId)}/strength`);
 }
+
+export function createAdminSchoolSection(schoolId: string, input: SectionInput) {
+  return adminApi<CreateClassOrgResult>(adminBase(schoolId), { method: "POST", body: input });
+}
+
+export function updateAdminSchoolSection(
+  schoolId: string,
+  id: string,
+  input: Partial<SectionInput>,
+) {
+  return adminApi<SchoolSection>(`${adminBase(schoolId)}/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: input,
+  });
+}
+
+export function deleteAdminSchoolSection(schoolId: string, id: string) {
+  return adminApi<void>(`${adminBase(schoolId)}/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}

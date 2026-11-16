@@ -27,6 +27,19 @@ export function maxFromLabel(label: string) {
   return match ? Number(match[1]) : null;
 }
 
+/** Subject max from its header, else an equal share of Total Marks. */
+export function subjectMaxMarks(columns: string[], column: number) {
+  const fromLabel = maxFromLabel(columns[column]!);
+  if (fromLabel != null) return fromLabel;
+  const roles = columns.map(columnRole);
+  if (roles[column] !== "subject") return null;
+  const subjectCount = roles.filter((role) => role === "subject").length;
+  const totalCol = roles.indexOf("total");
+  const totalMax = totalCol >= 0 ? maxFromLabel(columns[totalCol]!) : null;
+  if (totalMax == null || subjectCount < 1) return null;
+  return Math.floor(totalMax / subjectCount);
+}
+
 export function columnRole(label: string): ColumnRole {
   const text = foldLabel(label);
   if (/^((s|sl|sr)\.?\s*no\.?|serial(\s*(no\.?|number))?|#)$/.test(text)) return "serial";

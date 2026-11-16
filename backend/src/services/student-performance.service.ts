@@ -7,6 +7,8 @@ export type StudentTestResult = {
   resultSetId: string;
   testNumber: number;
   testId: string | null;
+  /** Saved OMR for this test when one exists. */
+  scanId: string | null;
   programName: string;
   classLevel: number;
   published: boolean;
@@ -116,6 +118,7 @@ export async function schoolTestResultsIndex(
           resultSetId: set.id,
           testNumber: set.testNumber,
           testId: /^T-\d+$/i.test(set.testId) ? null : set.testId,
+          scanId: null,
           programName: setProgramName,
           classLevel: sheet.classLevel,
           published: set.published,
@@ -142,5 +145,31 @@ export async function studentTestResults(
   student: { schoolId: string; rollNo: string },
   options: { publishedOnly: boolean },
 ): Promise<StudentTestResult[]> {
-  return (await schoolTestResultsIndex(student.schoolId, options))(student.rollNo);
+  const results = (await schoolTestResultsIndex(student.schoolId, options))(student.rollNo);
+  if (results.length === 0) return results;
+
+  const roll = foldRoll(student.rollNo);
+  const scans = await prisma.omScan.findMany({
+    where: { schoolId: student.schoolId, rollNo: roll },
+    select: {
+      id: true,
+      testId: true,
+      classLevel: true,
+      answerKey: { select: { testNumber: true } },
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+  if (scans.length === 0) return results;
+
+  return results.map((result) => {
+    const match =
+      (result.testId
+        ? scans.find((scan) => scan.testId === result.testId && scan.classLevel === result.classLevel)
+        : undefined) ??
+      scans.find(
+        (scan) =>
+          scan.answerKey.testNumber === result.testNumber && scan.classLevel === result.classLevel,
+      );
+    return { ...result, scanId: match?.id ?? null };
+  });
 }

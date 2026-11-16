@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Clock, GraduationCap, Layers, MapPin, School, UserRound } from "lucide-react";
+import { Clock, MapPin, School } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   BOARD_LABELS,
@@ -11,9 +11,9 @@ import {
   TYPE_LABELS,
 } from "@/features/schools/constants";
 import { CredentialMailBar } from "@/features/auth/credential-mail-bar";
+import { AdminSchoolClassesPanel } from "@/features/schools/admin-school-classes-panel";
 import { uniqueSubjectsFromOfferings } from "@/features/schools/offerings";
 import { SchoolDetailActions } from "@/features/schools/school-detail-actions";
-import { STUDENTS_PATH } from "@/features/students/school-roster";
 import {
   getAdminSchoolSectionStrength,
   listAdminSchoolSections,
@@ -21,10 +21,6 @@ import {
 import { getSchool } from "@/services/schools";
 import { listAdminClassTeacherSlots } from "@/services/teachers";
 import { formatDateTime, formatNumber } from "@/utils/format";
-import { capitalizeWords } from "@/features/schools/schema";
-
-const linkBtn =
-  "inline-flex items-center gap-1.5 font-medium text-brand-900 transition-colors hover:text-brand-700 hover:underline";
 
 export const metadata: Metadata = { title: "School Details" };
 
@@ -71,55 +67,11 @@ export default async function SchoolDetailsPage({ params }: PageProps<"/admin/sc
     getAdminSchoolSectionStrength(school.id),
     listAdminClassTeacherSlots(school.id),
   ]);
-  const { wholeClasses, sections } = organization;
-  const classCtByKey = new Map(
-    classTeacherSlots
-      .filter((slot) => slot.kind === "class")
-      .map((slot) => [`${slot.programId}:${slot.classLevel}`, slot] as const),
-  );
-  const classRows = [
-    ...wholeClasses.map((row) => {
-      const ct = classCtByKey.get(`${row.programId}:${row.classLevel}`);
-      return {
-        key: `w-${row.id}`,
-        classLevel: row.classLevel,
-        section: "A",
-        programName: row.programName,
-        seats: row.studentCount,
-        teacherId: ct?.teacherId ?? null,
-        teacherName: ct?.teacherName ?? null,
-      };
-    }),
-    ...sections.map((section) => ({
-      key: `s-${section.id}`,
-      classLevel: section.classLevel,
-      section: section.name,
-      programName: section.programName,
-      seats: section.studentCount,
-      teacherId: section.classTeacher?.teacherId ?? null,
-      teacherName: section.classTeacher?.name ?? null,
-    })),
-  ].sort(
-    (a, b) =>
-      a.classLevel - b.classLevel ||
-      a.section.localeCompare(b.section) ||
-      a.programName.localeCompare(b.programName),
-  );
-  const studentsHref = `${STUDENTS_PATH}?${new URLSearchParams({ school: school.id })}`;
   const teachersHref = `/admin/teachers?school=${school.id}`;
   const seatsUsedLabel =
     strength.studentStrength == null
       ? `${formatNumber(strength.used)} seats assigned`
       : `${formatNumber(strength.used)} / ${formatNumber(strength.studentStrength)} seats`;
-
-  const schoolId = school.id;
-  function classStudentsHref(classLevel: number, section: string) {
-    return `${STUDENTS_PATH}?${new URLSearchParams({
-      school: schoolId,
-      class: String(classLevel),
-      section,
-    })}`;
-  }
 
   return (
     <div className="space-y-3">
@@ -263,94 +215,14 @@ export default async function SchoolDetailsPage({ params }: PageProps<"/admin/sc
         </div>
       </div>
 
-      <section className="overflow-hidden rounded-xl border border-brand-200 bg-white shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)]">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-brand-100 bg-brand-50/60 px-4 py-2.5">
-          <h2 className="flex items-center gap-2.5 text-sm font-semibold text-brand-950">
-            <span className="flex size-6 items-center justify-center rounded-md border border-brand-200 bg-white text-brand-700 [&_svg]:size-3.5">
-              <Layers />
-            </span>
-            Classes & sections
-          </h2>
-          <div className="flex flex-wrap items-center gap-3 text-xs">
-            <span className="font-medium text-neutral-600 tabular-nums">{seatsUsedLabel}</span>
-            <Link
-              href={studentsHref}
-              className="font-semibold text-brand-900 transition-colors hover:text-brand-700"
-            >
-              View students
-            </Link>
-          </div>
-        </div>
-
-        {classRows.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-neutral-500">
-            No classes set up yet. Add classes from the school portal.
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[640px] text-left text-sm">
-              <thead className="border-b border-brand-100 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">
-                <tr>
-                  <th className="px-4 py-2.5">Class</th>
-                  <th className="px-4 py-2.5">Section</th>
-                  <th className="px-4 py-2.5">Program</th>
-                  <th className="px-4 py-2.5 text-right">Seats</th>
-                  <th className="px-4 py-2.5">Students</th>
-                  <th className="px-4 py-2.5">Class teacher</th>
-                  <th className="px-4 py-2.5">Teachers</th>
-                </tr>
-              </thead>
-              <tbody>
-                {classRows.map((row) => {
-                  const studentsLink = classStudentsHref(row.classLevel, row.section);
-                  return (
-                    <tr
-                      key={row.key}
-                      className="border-b border-neutral-100 last:border-0 hover:bg-brand-50/40"
-                    >
-                      <td className="px-4 py-3 font-semibold text-neutral-950">
-                        Class {row.classLevel}
-                      </td>
-                      <td className="px-4 py-3 text-neutral-700">{row.section}</td>
-                      <td className="px-4 py-3 text-neutral-700">
-                        {capitalizeWords(row.programName)}
-                      </td>
-                      <td className="px-4 py-3 text-right font-medium text-neutral-900 tabular-nums">
-                        {formatNumber(row.seats)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Link href={studentsLink} className={linkBtn}>
-                          <GraduationCap className="size-3.5 shrink-0" strokeWidth={2} />
-                          Students
-                        </Link>
-                      </td>
-                      <td className="px-4 py-3">
-                        {row.teacherId ? (
-                          <Link
-                            href={`/admin/teachers/${row.teacherId}`}
-                            className={linkBtn}
-                          >
-                            <UserRound className="size-3.5 shrink-0" strokeWidth={2} />
-                            {capitalizeWords(row.teacherName ?? "Class teacher")}
-                          </Link>
-                        ) : (
-                          <span className="text-neutral-400">{EMPTY}</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Link href={teachersHref} className={linkBtn}>
-                          <UserRound className="size-3.5 shrink-0" strokeWidth={2} />
-                          Teachers
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      <AdminSchoolClassesPanel
+        schoolId={school.id}
+        schoolPrograms={school.schoolPrograms}
+        organization={organization}
+        classTeacherSlots={classTeacherSlots}
+        seatsUsedLabel={seatsUsedLabel}
+        teachersHref={teachersHref}
+      />
 
       <CredentialMailBar
         loginEmail={school.accountEmail ?? ""}

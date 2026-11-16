@@ -20,7 +20,7 @@ export default async function SiteLayout({ children }: LayoutProps<"/">) {
   return (
     <>
       <SiteHeader session={session} />
-      <main>{children}</main>
+      <main className="bg-white">{children}</main>
       <SiteFooter />
     </>
   );

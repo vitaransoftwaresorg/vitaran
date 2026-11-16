@@ -23,10 +23,10 @@ const studentSchema = z.object({
   rollNo: z.string().trim().regex(/^\d{7}$/, "Enter the 7-digit registration number"),
   email: z.union([z.literal(""), z.string().trim().email("Enter a valid email")]),
   parentName: z.string().trim().min(2, "Enter the parent / guardian name"),
-  parentPhone: z
-    .string()
-    .trim()
-    .regex(/^\d{10}$/, "Enter a 10-digit mobile number"),
+  parentPhone: z.union([
+    z.literal(""),
+    z.string().trim().regex(/^\d{10}$/, "Enter a 10-digit mobile number"),
+  ]),
   programId: z.string().min(1, "Pick a program").uuid("Pick a program"),
   classLevel: z.preprocess(
     (value) => (value === "" || value == null ? undefined : value),
@@ -40,10 +40,10 @@ const bulkRowSchema = z.object({
   rollNo: z.string().trim().regex(/^\d{7}$/, "Enter the 7-digit registration number"),
   email: z.union([z.literal(""), z.string().trim().email("Enter a valid email")]),
   parentName: z.string().trim().min(2, "Enter the parent / guardian name"),
-  parentPhone: z
-    .string()
-    .trim()
-    .regex(/^\d{10}$/, "Enter a 10-digit mobile number"),
+  parentPhone: z.union([
+    z.literal(""),
+    z.string().trim().regex(/^\d{10}$/, "Enter a 10-digit mobile number"),
+  ]),
 });
 
 function formValues(formData: FormData): Partial<CreateStudentInput> {
@@ -128,7 +128,7 @@ export async function createAdminStudentAction(
       rollNo: data.rollNo,
       email: data.email || null,
       parentName: data.parentName,
-      parentPhone: data.parentPhone,
+      parentPhone: data.parentPhone || null,
       programId: data.programId,
       classLevel: data.classLevel,
       sectionId: data.sectionId || null,
@@ -173,7 +173,7 @@ export async function createAdminStudentsBulkAction(
       !row.name.trim() &&
       !row.rollNo.trim() &&
       !row.parentName.trim() &&
-      !row.parentPhone.trim() &&
+      !(row.parentPhone ?? "").trim() &&
       !(row.email ?? "").trim();
     if (blank) return;
 
@@ -195,7 +195,7 @@ export async function createAdminStudentsBulkAction(
       rollNo: parsed.data.rollNo,
       email: parsed.data.email || null,
       parentName: parsed.data.parentName,
-      parentPhone: parsed.data.parentPhone,
+      parentPhone: parsed.data.parentPhone || null,
     });
   });
 
@@ -293,7 +293,7 @@ export async function updateAdminStudentAction(
       rollNo: data.rollNo,
       email: data.email || null,
       parentName: data.parentName,
-      parentPhone: data.parentPhone,
+      parentPhone: data.parentPhone || null,
       programId: data.programId,
       classLevel: data.classLevel,
       sectionId: data.sectionId || null,

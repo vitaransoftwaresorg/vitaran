@@ -13,8 +13,8 @@ import {
 import { getOmrUploadAuthAction } from "./upload-auth";
 
 const POLL_MS = 2000;
-/** Network blips are retried; after this many failures in a row the page stops asking. */
-const MAX_POLL_ERRORS = 10;
+/** Network blips are retried; 500-page jobs run a long time so allow more transient failures. */
+const MAX_POLL_ERRORS = 30;
 
 type Auth = { token: string; batchesUrl: string };
 

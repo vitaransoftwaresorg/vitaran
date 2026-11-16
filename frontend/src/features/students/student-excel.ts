@@ -127,7 +127,7 @@ export async function downloadStudentsTemplate(fileName = "students-import-templ
     "One student per row on the Students sheet. Keep the header row.",
     "Reg. no: 7 digits, unique in the school (required).",
     "Student name and Parent name: at least 2 letters (required).",
-    "Parent mobile: 10 digits, no +91 (required).",
+    "Parent mobile: 10 digits, no +91 (optional).",
     "Parent email: optional.",
     `Up to ${MAX_IMPORT_ROWS} students per file. Program, class and section are picked on the Add students page.`,
   ].forEach((line) => help.addRow([line]));

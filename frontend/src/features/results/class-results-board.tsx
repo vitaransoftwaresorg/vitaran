@@ -42,6 +42,7 @@ import {
   identityCell,
   maxFromLabel,
   numberCell,
+  subjectMaxMarks,
   type ColumnRole,
 } from "./result-columns";
 
@@ -250,9 +251,11 @@ export function ClassResultsBoard({
       return;
     }
     const max =
-      role === "subject" || role === "total"
-        ? maxFromLabel(columns[column]!)
-        : null;
+      role === "subject"
+        ? subjectMaxMarks(columns, column)
+        : role === "total"
+          ? maxFromLabel(columns[column]!)
+          : null;
     const mark = numberCell(value);
     if (max != null && mark != null && mark > max) {
       toast.error(

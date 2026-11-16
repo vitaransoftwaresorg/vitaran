@@ -17,6 +17,17 @@ import { asAnswers } from "../utils/answer-key-parse.js";
 import { logger } from "../utils/logger.js";
 import { displaySectionName } from "../utils/section-label.js";
 import { omrPdfPageCount, openOmrPdf } from "./pdf-pages.js";
+import {
+  loadBatchPageImage,
+  loadPendingImage,
+  purgeStaleOmrTemp,
+  removeBatchDir,
+  removeOmrPath,
+  removePendingDir,
+  replacePendingPreview,
+  storeBatchPageImage,
+  storePendingImages,
+} from "./pending-store.js";
 import { readQueued } from "./queue.js";
 import type { BubbleMap } from "./detect.js";
 import { markedSheetPreview } from "./marked-preview.js";
@@ -25,6 +36,8 @@ import { getObject, putObject } from "../services/object-storage.js";
 import { evaluatedImage, scoringFingerprint } from "./regrade.js";
 import * as scanRepository from "./repository.js";
 import { scoreSheet, sheetFlags, type SheetScore } from "./score.js";
+
+void purgeStaleOmrTemp();
 
 /** Dev only: keep uploads so detection can be tuned against real sheets. */
 async function keepSample(bytes: Buffer, fileName: string) {
@@ -42,8 +55,8 @@ async function keepSample(bytes: Buffer, fileName: string) {
 const IMAGE_MAX = 8 * 1024 * 1024;
 const PDF_MAX = 500 * 1024 * 1024;
 const PREVIEW_TTL_MS = 45 * 60 * 1000;
-/** A 300-page PDF reads for ~15 minutes, then sheets wait to be reviewed; idle time counts from the last page. */
-const PDF_BATCH_TTL_MS = 6 * 60 * 60 * 1000;
+/** A 500-page PDF can take ~25+ minutes to read; idle TTL counts from the last finished page. */
+const PDF_BATCH_TTL_MS = 8 * 60 * 60 * 1000;
 
 type PdfBatchItem = {
   page: number;
@@ -51,8 +64,8 @@ type PdfBatchItem = {
   error?: string;
   /** Same registration number as an earlier page in this PDF; that page is kept. */
   duplicateOf?: number;
-  /** Failed pages keep a small copy so the examiner can see why before scanning the sheet again. */
-  image?: Buffer;
+  /** Failed pages keep a small on-disk JPEG so the examiner can see why. */
+  imagePath?: string;
 };
 
 type PdfBatch = {
@@ -60,8 +73,8 @@ type PdfBatch = {
   owner: string;
   createdAt: number;
   expires: number;
-  /** Released once every page has been read. */
-  pdf: Buffer | null;
+  /** On-disk PDF path — kept only while pages are still being read. */
+  pdfPath: string | null;
   fileName: string;
   pageCount: number;
   /** Forced test ID for every page — never OCR the header for this. */
@@ -78,13 +91,30 @@ function purgeExpiredPdfBatches() {
   for (const [id, batch] of pdfBatches) {
     if (batch.expires >= now) continue;
     batch.cancelled = true;
-    dropBatchPreviews(batch);
+    void dropBatchFiles(batch);
     pdfBatches.delete(id);
+  }
+  for (const [previewId, row] of pending) {
+    if (row.expires >= now) continue;
+    void removePendingDir(row.diskDir);
+    pending.delete(previewId);
   }
 }
 
 function dropBatchPreviews(batch: PdfBatch) {
-  for (const item of batch.items) if (item.previewId) pending.delete(item.previewId);
+  for (const item of batch.items) {
+    if (!item.previewId) continue;
+    const row = pending.get(item.previewId);
+    if (row) void removePendingDir(row.diskDir);
+    pending.delete(item.previewId);
+  }
+}
+
+async function dropBatchFiles(batch: PdfBatch) {
+  dropBatchPreviews(batch);
+  await removeOmrPath(batch.pdfPath);
+  batch.pdfPath = null;
+  await removeBatchDir(batch.id);
 }
 
 /** Batches belong to the session that uploaded them (one school, one teacher, or admin). */
@@ -152,9 +182,9 @@ type Pending = {
   flags: ScanDto["flags"];
   score: ReturnType<typeof scoreSheet>;
   confidence: number;
-  image: Buffer;
-  rawImage: Buffer;
-  previewImage: Buffer;
+  /** Sheet / raw / preview JPEGs live on disk under this directory (keeps 500-page batches off the heap). */
+  diskDir: string;
+  sheetBytes: number;
   bubbles?: BubbleMap;
   fileName: string;
   studentId: string | null;
@@ -334,7 +364,7 @@ function toDto(row: scanRepository.OmScanRow, previewId?: string): ScanDto {
   };
 }
 
-function unsavedDto(previewId: string, row: Pending): ScanDto {
+function unsavedDto(previewId: string, row: Pending, _embedImage = true): ScanDto {
   return {
     id: previewId,
     previewId,
@@ -360,7 +390,8 @@ function unsavedDto(previewId: string, row: Pending): ScanDto {
     maxTotal: row.score.maxTotal,
     confidence: row.confidence,
     fileName: row.fileName,
-    sheetImage: `data:image/jpeg;base64,${row.previewImage.toString("base64")}`,
+    // PDF batch polls omit base64 — embedding hundreds of JPEGs OOMs the API.
+    sheetImage: undefined,
     answers: asMarked(row.answers),
     keyAnswers: asAnswers(row.key.answers),
     createdAt: new Date().toISOString(),
@@ -397,42 +428,66 @@ export async function checkTestId(context: ScanContext, testId: string) {
 }
 
 /**
- * Accept a multi-student OMR PDF and start reading every page on the server.
+ * Accept a multi-student OMR PDF (already on disk) and start reading every page.
  * The upload returns at once; progress and finished sheets come from pdfBatchStatus.
  */
 export async function registerOmrPdf(
   context: ScanContext,
-  pdf: Buffer,
+  pdfPath: string,
   fileName: string,
   identity: { testId?: string } = {},
+  fileSize = 0,
 ) {
-  if (pdf.length > PDF_MAX) throw new AppError(413, "PDF is too large (max 500 MB)");
-  if (!(identity.testId ?? "").trim()) throw new AppError(400, "Enter the test ID from the answer key before uploading");
-  const { testId } = await checkTestId(context, identity.testId ?? "");
-  purgeExpiredPdfBatches();
-  const pageCount = await omrPdfPageCount(pdf);
-  void keepSample(pdf, fileName || "omr.pdf");
-  const batch: PdfBatch = {
-    id: crypto.randomUUID(),
-    owner: ownerOf(context),
-    createdAt: Date.now(),
-    expires: Date.now() + PDF_BATCH_TTL_MS,
-    pdf,
-    fileName: fileName || "omr.pdf",
-    pageCount,
-    testId,
-    items: [],
-    finished: false,
-    cancelled: false,
-  };
-  pdfBatches.set(batch.id, batch);
-  void readPdfBatch(context, batch);
-  return { batchId: batch.id, pageCount, testId };
+  if (fileSize > PDF_MAX) {
+    await removeOmrPath(pdfPath);
+    throw new AppError(413, "PDF is too large (max 500 MB)");
+  }
+  if (!(identity.testId ?? "").trim()) {
+    await removeOmrPath(pdfPath);
+    throw new AppError(400, "Enter the test ID from the answer key before uploading");
+  }
+  let accepted = false;
+  try {
+    const { testId } = await checkTestId(context, identity.testId ?? "");
+    purgeExpiredPdfBatches();
+    const owner = ownerOf(context);
+    const active = [...pdfBatches.values()].find(
+      (batch) => batch.owner === owner && !batch.cancelled && !batch.finished,
+    );
+    if (active) {
+      throw new AppError(
+        409,
+        "A PDF is already being read for this account. Wait for it to finish, or dismiss it, then upload again.",
+      );
+    }
+    const pageCount = await omrPdfPageCount(pdfPath);
+    const batch: PdfBatch = {
+      id: crypto.randomUUID(),
+      owner,
+      createdAt: Date.now(),
+      expires: Date.now() + PDF_BATCH_TTL_MS,
+      pdfPath,
+      fileName: fileName || "omr.pdf",
+      pageCount,
+      testId,
+      items: [],
+      finished: false,
+      cancelled: false,
+    };
+    pdfBatches.set(batch.id, batch);
+    accepted = true;
+    void readPdfBatch(context, batch);
+    return { batchId: batch.id, pageCount, testId };
+  } catch (error) {
+    if (!accepted) await removeOmrPath(pdfPath);
+    throw error;
+  }
 }
 
 /** Reads pages one after another so live phone scans still get served between pages. */
 async function readPdfBatch(context: ScanContext, batch: PdfBatch) {
-  const reader = openOmrPdf(batch.pdf!, batch.fileName);
+  if (!batch.pdfPath) return;
+  const reader = await openOmrPdf(batch.pdfPath, batch.fileName);
   const pageOfRoll = new Map<string, number>();
   try {
     for (let page = 1; page <= batch.pageCount && !batch.cancelled; page += 1) {
@@ -444,9 +499,12 @@ async function readPdfBatch(context: ScanContext, batch: PdfBatch) {
         const { previewId, scan } = await previewScan(context, sheet.jpeg, sheet.fileName, {
           testId: batch.testId,
           flat: true,
+          lean: true,
         });
         const firstPage = pageOfRoll.get(scan.rollNo);
         if (firstPage != null) {
+          const dup = pending.get(previewId);
+          if (dup) void removePendingDir(dup.diskDir);
           pending.delete(previewId);
           batch.items.push({ page, duplicateOf: firstPage, error: `Same registration number as page ${firstPage}` });
         } else {
@@ -457,22 +515,29 @@ async function readPdfBatch(context: ScanContext, batch: PdfBatch) {
         }
       } catch (error) {
         if (!(error instanceof AppError)) logger.error({ err: error, page, batchId: batch.id }, "PDF page read failed");
-        const image = sheet
-          ? await sharp(sheet.jpeg)
-              .resize({ width: 1200, withoutEnlargement: true })
-              .jpeg({ quality: 80 })
-              .toBuffer()
-              .catch(() => undefined)
-          : undefined;
-        batch.items.push({ page, image, error: error instanceof AppError ? error.message : "Could not read this page" });
+        let imagePath: string | undefined;
+        if (sheet) {
+          const thumb = await sharp(sheet.jpeg)
+            .resize({ width: 900, withoutEnlargement: true })
+            .jpeg({ quality: 75 })
+            .toBuffer()
+            .catch(() => undefined);
+          if (thumb) imagePath = await storeBatchPageImage(batch.id, page, thumb).catch(() => undefined);
+        }
+        batch.items.push({
+          page,
+          imagePath,
+          error: error instanceof AppError ? error.message : "Could not read this page",
+        });
       }
       batch.expires = Date.now() + PDF_BATCH_TTL_MS;
     }
   } finally {
     batch.finished = true;
-    batch.pdf = null;
     await reader.close().catch(() => undefined);
-    if (batch.cancelled) dropBatchPreviews(batch);
+    await removeOmrPath(batch.pdfPath);
+    batch.pdfPath = null;
+    if (batch.cancelled) await dropBatchFiles(batch);
   }
 }
 
@@ -501,20 +566,23 @@ export function pdfBatchStatus(context: ScanContext, batchId: string, from = 0) 
         page: item.page,
         error: item.error,
         duplicateOf: item.duplicateOf,
-        hasImage: Boolean(item.image),
+        hasImage: Boolean(item.imagePath),
         /** Saved (or expired) sheets are no longer pending and are left out. */
-        preview: row && item.previewId ? { previewId: item.previewId, scan: unsavedDto(item.previewId, row) } : undefined,
+        preview: row && item.previewId
+          ? { previewId: item.previewId, scan: unsavedDto(item.previewId, row, false) }
+          : undefined,
       };
     }),
   };
 }
 
 /** The rendered page of a PDF page that could not be read. */
-export function getPdfBatchPageImage(context: ScanContext, batchId: string, page: number) {
+export async function getPdfBatchPageImage(context: ScanContext, batchId: string, page: number) {
   const batch = ownPdfBatch(context, batchId);
-  const image = batch.items.find((item) => item.page === page)?.image;
-  if (!image) throw new AppError(404, `No image kept for page ${page}`);
-  return { data: image, fileName: `${safeName(batch.fileName.replace(/\.pdf$/i, ""))}-p${page}.jpg` };
+  const imagePath = batch.items.find((item) => item.page === page)?.imagePath;
+  if (!imagePath) throw new AppError(404, `No image kept for page ${page}`);
+  const data = await loadBatchPageImage(imagePath);
+  return { data, fileName: `${safeName(batch.fileName.replace(/\.pdf$/i, ""))}-p${page}.jpg` };
 }
 
 /** Latest PDF this session uploaded, so leaving the page and coming back picks it up again. */
@@ -539,7 +607,8 @@ export function activePdfBatch(context: ScanContext) {
 export function dismissPdfBatch(context: ScanContext, batchId: string) {
   const batch = ownPdfBatch(context, batchId);
   batch.cancelled = true;
-  if (batch.finished) dropBatchPreviews(batch);
+  // Unfinished batches are cleaned in readPdfBatch's finally (PDF still needed until the reader closes).
+  if (batch.finished) void dropBatchFiles(batch);
   pdfBatches.delete(batch.id);
   return { batchId: batch.id };
 }
@@ -549,7 +618,7 @@ export async function previewScan(
   context: ScanContext,
   image: Buffer,
   fileName: string,
-  identity: { rollNo?: string; testId?: string; flat?: boolean; corners?: SheetCorners } = {},
+  identity: { rollNo?: string; testId?: string; flat?: boolean; lean?: boolean; corners?: SheetCorners } = {},
 ) {
   if (image.length > IMAGE_MAX) throw new AppError(413, "OMR image is too large (max 8 MB)");
   if (!identity.flat) void keepSample(image, fileName || "omr.jpg");
@@ -599,7 +668,21 @@ export async function previewScan(
     wrongMarks: key.wrongMarks,
   });
   const previewId = crypto.randomUUID();
-  const [preview, raw] = await Promise.all([previewImage(image, read, key.answers, score), rawJpeg(image)]);
+  let preview = await previewImage(image, read, key.answers, score);
+  // PDF batch pages already are flat JPEGs — reuse the same buffer instead of a second full copy.
+  const raw = identity.flat ? read.jpeg : await rawJpeg(image);
+  if (identity.lean) {
+    preview = await sharp(preview)
+      .resize({ width: 900, withoutEnlargement: true })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+  }
+  const stored = await storePendingImages(previewId, {
+    sheet: read.jpeg,
+    raw,
+    preview,
+    rawSameAsSheet: identity.flat === true,
+  });
   const row: Pending = {
     expires: Date.now() + PREVIEW_TTL_MS,
     context,
@@ -618,25 +701,26 @@ export async function previewScan(
     flags: sheetFlags(score, read.flags),
     score,
     confidence: read.confidence,
-    image: read.jpeg,
-    rawImage: raw,
-    previewImage: preview,
-    bubbles: read.bubbles?.points.length ? read.bubbles : undefined,
+    diskDir: stored.dir,
+    sheetBytes: stored.sheetBytes,
+    // Large PDF batches skip bubble maps — re-mark isn't needed for review/save.
+    bubbles: identity.lean || !read.bubbles?.points.length ? undefined : read.bubbles,
     fileName: fileName || "omr.jpg",
     studentId: enrolled.schoolId === school.id ? enrolled.id : null,
   };
   pending.set(previewId, row);
-  return { previewId, scan: unsavedDto(previewId, row) };
+  return { previewId, scan: unsavedDto(previewId, row, !identity.lean) };
 }
 
 /** The uploaded photo / PDF page, or the marked copy, of a sheet that is not saved yet. */
-export function getPreviewImage(context: ScanContext, previewId: string, kind: ScanImageKind) {
+export async function getPreviewImage(context: ScanContext, previewId: string, kind: ScanImageKind) {
   const row = pending.get(previewId);
   if (!row || row.expires < Date.now() || ownerOf(row.context) !== ownerOf(context)) {
     throw new AppError(404, "Scan expired. Scan again.");
   }
+  const data = await loadPendingImage(row.diskDir, kind === "raw" ? "raw" : "preview");
   return {
-    data: kind === "raw" ? row.rawImage : row.previewImage,
+    data,
     fileName: `${safeName(`${row.identity.rollNo}-${row.identity.studentName}`)}-${kind === "raw" ? "omr" : "evaluated"}.jpg`,
   };
 }
@@ -675,9 +759,10 @@ async function useCurrentKey(row: Pending) {
   if (scoringFingerprint(current) === scoringFingerprint(row.key)) return;
   const readFlags = row.flags.filter((flag) => flag.reason !== "Un-attempted");
   if (row.bubbles) {
-    const { score, image } = await evaluatedImage(row.image, row.bubbles, row.answers, current);
+    const sheet = await loadPendingImage(row.diskDir, "sheet");
+    const { score, image } = await evaluatedImage(sheet, row.bubbles, row.answers, current);
     row.score = score;
-    row.previewImage = image;
+    await replacePendingPreview(row.diskDir, image);
   } else {
     row.score = scoreSheet(row.answers, current.answers, current.subjectRanges, {
       correctMarks: current.correctMarks,
@@ -691,6 +776,7 @@ async function useCurrentKey(row: Pending) {
 async function saveScan(context: ScanContext, previewId: string) {
   const row = pending.get(previewId);
   if (!row || row.expires < Date.now()) {
+    if (row) void removePendingDir(row.diskDir);
     pending.delete(previewId);
     throw new AppError(410, "Scan expired. Scan again.");
   }
@@ -698,10 +784,15 @@ async function saveScan(context: ScanContext, previewId: string) {
   await useCurrentKey(row);
   const testId = row.identity.testId;
   const folder = `omr/${row.school.id}/${testId}/${row.identity.rollNo}`;
+  const [sheetBuf, rawBuf, previewBuf] = await Promise.all([
+    loadPendingImage(row.diskDir, "sheet"),
+    loadPendingImage(row.diskDir, "raw"),
+    loadPendingImage(row.diskDir, "preview"),
+  ]);
   const [image, rawImage, previewImage] = await Promise.all([
-    putObject(`${folder}/sheet`, row.image, { fileName: "sheet.jpg", contentType: "image/jpeg" }),
-    putObject(`${folder}/raw`, row.rawImage, { fileName: "raw.jpg", contentType: "image/jpeg" }),
-    putObject(`${folder}/evaluated`, row.previewImage, { fileName: "evaluated.jpg", contentType: "image/jpeg" }),
+    putObject(`${folder}/sheet`, sheetBuf, { fileName: "sheet.jpg", contentType: "image/jpeg" }),
+    putObject(`${folder}/raw`, rawBuf, { fileName: "raw.jpg", contentType: "image/jpeg" }),
+    putObject(`${folder}/evaluated`, previewBuf, { fileName: "evaluated.jpg", contentType: "image/jpeg" }),
   ]);
   const saved = await scanRepository.upsertOmScan(row.school.id, row.identity.rollNo, testId, row.identity.classLevel, {
     schoolId: row.school.id,
@@ -724,7 +815,7 @@ async function saveScan(context: ScanContext, previewId: string) {
     maxTotal: row.score.maxTotal,
     confidence: row.confidence,
     fileName: row.fileName,
-    fileSize: row.image.length,
+    fileSize: row.sheetBytes,
     image: Uint8Array.from(image),
     rawImage: Uint8Array.from(rawImage),
     previewImage: Uint8Array.from(previewImage),
@@ -744,6 +835,7 @@ async function saveScan(context: ScanContext, previewId: string) {
     total: row.score.total,
     maxTotal: row.score.maxTotal,
   });
+  void removePendingDir(row.diskDir);
   pending.delete(previewId);
   return { scan: toDto(saved), schoolId: row.school.id };
 }

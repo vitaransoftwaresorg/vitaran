@@ -44,7 +44,9 @@ export const errorHandler: ErrorRequestHandler = (error, _req, res, _next) => {
 
   if (error instanceof multer.MulterError) {
     const message =
-      error.code === "LIMIT_FILE_SIZE" ? "Keep each file under 2 MB" : "This upload couldn't be read";
+      error.code === "LIMIT_FILE_SIZE"
+        ? "This upload is too large (photos max 8 MB, OMR PDFs max 500 MB)"
+        : "This upload couldn't be read";
     sendError(res, 400, message, error.field ? [{ path: [error.field], message }] : undefined);
     return;
   }

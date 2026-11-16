@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { mkdirSync } from "node:fs";
 import { Router, type Response } from "express";
 import multer from "multer";
 import { z } from "zod";
@@ -9,6 +11,7 @@ import type { TeacherAccountDto } from "../services/teacher.service.js";
 import { sendSuccess } from "../utils/api-response.js";
 import { AppError } from "../utils/app-error.js";
 import { MAX_PDF_PAGES } from "./pdf-pages.js";
+import { omrUploadDir } from "./pending-store.js";
 import * as scanService from "./service.js";
 
 const IMAGE_MAX = 8 * 1024 * 1024;
@@ -30,8 +33,16 @@ const readImage = multer({
   },
 }).single("file");
 
+/** Large class PDFs land on disk immediately — never held as one giant Buffer in the API process. */
 const readPdf = multer({
-  storage: multer.memoryStorage(),
+  storage: multer.diskStorage({
+    destination: (_req, _file, done) => {
+      const dir = omrUploadDir();
+      mkdirSync(dir, { recursive: true });
+      done(null, dir);
+    },
+    filename: (_req, _file, done) => done(null, `${randomUUID()}.pdf`),
+  }),
   limits: { fileSize: PDF_MAX, files: 1 },
   fileFilter: (_req, file, done) => {
     if (
@@ -81,7 +92,7 @@ function omrRouter(contextOf: (res: Response) => scanService.ScanContext) {
   /** Store the PDF and start reading every page in the background; poll /batches/:batchId for sheets. */
   router.post("/split-pdf", omrScanRateLimit, readPdf, async (req, res) => {
     const file = req.file;
-    if (!file?.buffer) throw new AppError(400, "Attach a PDF of OMR sheets");
+    if (!file?.path) throw new AppError(400, "Attach a PDF of OMR sheets");
     const fromBody = req.body?.testId;
     const fromQuery = req.query?.testId;
     const fromHeader = req.get("x-test-id");
@@ -91,7 +102,7 @@ function omrRouter(contextOf: (res: Response) => scanService.ScanContext) {
       .find(Boolean) ?? "";
     sendSuccess(
       res,
-      await scanService.registerOmrPdf(contextOf(res), file.buffer, file.originalname, { testId }),
+      await scanService.registerOmrPdf(contextOf(res), file.path, file.originalname, { testId }, file.size),
     );
   });
   router.get("/batches/active", (_req, res) => {
@@ -102,17 +113,21 @@ function omrRouter(contextOf: (res: Response) => scanService.ScanContext) {
     const from = z.coerce.number().int().min(0).max(MAX_PDF_PAGES).catch(0).parse(req.query.from);
     sendSuccess(res, scanService.pdfBatchStatus(contextOf(res), batchId, from));
   });
-  router.get("/batches/:batchId/pages/:page/image", (req, res) => {
+  router.get("/batches/:batchId/pages/:page/image", async (req, res) => {
     const batchId = z.uuid().parse(req.params.batchId);
     const page = z.coerce.number().int().min(1).max(MAX_PDF_PAGES).parse(req.params.page);
-    sendFile(res, scanService.getPdfBatchPageImage(contextOf(res), batchId, page), "image/jpeg");
+    sendFile(res, await scanService.getPdfBatchPageImage(contextOf(res), batchId, page), "image/jpeg");
   });
   router.delete("/batches/:batchId", (req, res) => {
     sendSuccess(res, scanService.dismissPdfBatch(contextOf(res), z.uuid().parse(req.params.batchId)));
   });
-  router.get("/previews/:previewId/image", (req, res) => {
+  router.get("/previews/:previewId/image", async (req, res) => {
     const previewId = z.uuid().parse(req.params.previewId);
-    sendFile(res, scanService.getPreviewImage(contextOf(res), previewId, kindSchema.parse(req.query.kind)), "image/jpeg");
+    sendFile(
+      res,
+      await scanService.getPreviewImage(contextOf(res), previewId, kindSchema.parse(req.query.kind)),
+      "image/jpeg",
+    );
   });
   router.post(
     "/commit-many",

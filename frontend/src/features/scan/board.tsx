@@ -324,10 +324,12 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
                         <img
                           src={row.sheetImage}
                           alt=""
-                          className="h-14 w-10 shrink-0 rounded border border-neutral-200 object-cover bg-neutral-50"
+                          className="h-14 w-10 shrink-0 rounded border border-neutral-200 bg-neutral-50 object-cover"
                         />
                       ) : (
-                        <div className="h-14 w-10 shrink-0 rounded border border-dashed border-neutral-200 bg-neutral-50" />
+                        <div className="flex h-14 w-10 shrink-0 items-center justify-center rounded border border-dashed border-neutral-200 bg-neutral-50 text-[9px] font-medium text-neutral-400">
+                          OMR
+                        </div>
                       )}
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-semibold text-neutral-950">{row.student.name}</p>

@@ -110,3 +110,31 @@ export async function loadSchoolSectionsAction(): Promise<{
     };
   }
 }
+
+export async function createAdminSectionAction(schoolId: string, input: SectionInput) {
+  try {
+    const result = await sectionService.createAdminSchoolSection(schoolId, input);
+    revalidateSections(schoolId);
+    return { ok: true as const, result };
+  } catch (error) {
+    unstable_rethrow(error);
+    if (error instanceof ApiError) {
+      return { ok: false as const, message: error.message };
+    }
+    return { ok: false as const, message: "Could not create class/section." };
+  }
+}
+
+export async function deleteAdminSectionAction(schoolId: string, id: string) {
+  try {
+    await sectionService.deleteAdminSchoolSection(schoolId, id);
+    revalidateSections(schoolId);
+    return { ok: true as const };
+  } catch (error) {
+    unstable_rethrow(error);
+    if (error instanceof ApiError) {
+      return { ok: false as const, message: error.message };
+    }
+    return { ok: false as const, message: "Could not delete section." };
+  }
+}

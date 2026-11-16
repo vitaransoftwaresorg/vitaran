@@ -1,75 +1,194 @@
-import Link from "next/link";
-import { ArrowRight, CheckCircle2, PlayCircle, Sparkles } from "lucide-react";
-import { SCHOOL_LOGIN_PATH } from "@/constants/auth";
-import { LearningMap } from "./learning-map";
+"use client";
+
+import { motion } from "framer-motion";
+import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { openLoginDropdown } from "@/features/auth/login-dropdown";
+
+const trustItems = ["Corporates", "Industries", "K-12"] as const;
+
+/** Transparent cutout only — no baked/CSS background on the image. */
+const HERO_IMG = "/marketing/hero-student.png?v=8";
+
+function HeroPhoto({ className }: { className?: string }) {
+  return (
+    <div className={className}>
+      {/* eslint-disable-next-line @next/next/no-img-element -- cutout PNG needs raw alpha */}
+      <img
+        src={HERO_IMG}
+        alt="Students studying together with books"
+        width={1392}
+        height={929}
+        className="relative z-10 size-full object-contain object-bottom"
+      />
+    </div>
+  );
+}
 
 export function Hero() {
   return (
-    <section className="relative isolate flex min-h-[calc(100svh-7.125rem)] items-center overflow-hidden bg-brand-950 py-10 text-white sm:block sm:min-h-0 sm:pt-40 sm:pb-24 lg:pb-32">
-      <div className="bg-grid absolute inset-0 -z-10 mask-[radial-gradient(ellipse_at_center,black_30%,transparent_75%)]" />
-      <div className="absolute -top-40 left-1/2 -z-10 size-200 -translate-x-1/2 rounded-full bg-brand-700/40 blur-[140px]" />
-      <div className="absolute right-0 bottom-0 -z-10 size-120 rounded-full bg-glow/20 blur-[120px]" />
+    <section className="relative flex min-h-[100svh] flex-col justify-center overflow-x-clip bg-[#ebe6f8] pt-[5.5rem] pb-12 sm:pt-28 sm:pb-16 lg:pb-20">
+      <div id="about" className="pointer-events-none absolute top-24" aria-hidden />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_70%_55%_at_78%_42%,rgba(139,92,246,0.32),transparent_58%),radial-gradient(ellipse_45%_35%_at_8%_18%,rgba(167,139,250,0.22),transparent_52%),linear-gradient(180deg,#e4dff4_0%,#ebe6f8_55%,#f3f0fa_100%)]"
+      />
 
-      <div className="mx-auto grid w-full max-w-7xl items-center gap-16 px-5 sm:px-8 lg:grid-cols-[1.1fr_1fr]">
-        <div>
-          <div className="animate-in fade-in slide-in-from-bottom-4 hidden items-center gap-2 rounded-full border border-white/15 bg-white/5 px-4 py-1.5 text-xs font-medium text-brand-200 backdrop-blur duration-700 sm:inline-flex">
-            <Sparkles className="size-3.5 text-glow" />
-            Fostering a culture of continuous learning
+      {/* Mobile */}
+      <div className="relative mx-auto w-full max-w-7xl px-5 sm:hidden">
+        <div className="grid grid-cols-[1.1fr_1fr] items-center gap-2 pt-4 pb-6">
+          <div className="relative z-10 pb-1">
+            <motion.h1
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45 }}
+              className="text-[1.65rem] leading-[1.18] font-extrabold tracking-tight text-[#1a1750]"
+            >
+              Transforming the way of{" "}
+              <span className="relative inline-block text-[#7c3aed]">
+                learning.
+                <svg
+                  aria-hidden
+                  className="absolute inset-x-0 -bottom-0.5 h-2 w-full"
+                  viewBox="0 0 220 14"
+                  preserveAspectRatio="none"
+                >
+                  <path
+                    d="M2 9c50-8 98 5 145-2 28-4 50-3 71 3"
+                    fill="none"
+                    stroke="#a78bfa"
+                    strokeWidth="3.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </span>
+            </motion.h1>
+            <motion.p
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45, delay: 0.06 }}
+              className="mt-3 text-[0.82rem] leading-relaxed text-[#6b7280]"
+            >
+              From curriculum design to assessments and art production, we create learning content
+              that students genuinely enjoy.
+            </motion.p>
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45, delay: 0.12 }}
+              className="mt-4"
+            >
+              <button
+                type="button"
+                onClick={() => openLoginDropdown()}
+                className="inline-flex items-center gap-1.5 rounded-full bg-[#2a2670] px-4 py-2.5 text-xs font-semibold text-white shadow-[0_12px_28px_-12px_rgba(42,38,112,0.65)]"
+              >
+                Log in
+                <ArrowRight className="size-3.5" />
+              </button>
+            </motion.div>
           </div>
 
-          <h1 className="animate-in fade-in slide-in-from-bottom-6 text-[1.75rem] leading-[1.15] font-extrabold text-balance duration-700 sm:mt-8 sm:text-6xl sm:leading-[1.05] lg:text-7xl">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.55 }}
+            className="relative -mr-4 min-h-[14rem] w-[125%] max-w-none justify-self-end"
+          >
+            <HeroPhoto className="relative size-full min-h-[14rem]" />
+          </motion.div>
+        </div>
+      </div>
+
+      {/* Desktop / tablet */}
+      <div className="relative mx-auto hidden w-full max-w-7xl flex-1 items-center gap-8 px-5 sm:grid sm:min-h-[calc(100svh-8rem)] sm:gap-10 sm:px-8 lg:grid-cols-2 lg:gap-10">
+        <div className="order-2 lg:order-1">
+          <motion.h1
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="text-5xl leading-[1.1] font-extrabold tracking-tight text-[#1a1750] lg:text-[3.35rem] lg:leading-[1.08]"
+          >
             Transforming the way of{" "}
-            <span className="text-gradient">learning</span>
-            <span className="hidden sm:inline"> through expert-led innovation</span>.
-          </h1>
+            <span className="relative inline-block bg-linear-to-r from-[#7c3aed] via-[#9333ea] to-[#db2777] bg-clip-text text-transparent">
+              learning.
+              <svg
+                aria-hidden
+                className="absolute inset-x-0 -bottom-1.5 h-3 w-full"
+                viewBox="0 0 220 14"
+                preserveAspectRatio="none"
+              >
+                <path
+                  d="M2 9c50-8 98 5 145-2 28-4 50-3 71 3"
+                  fill="none"
+                  stroke="url(#swooshGrad)"
+                  strokeWidth="3.5"
+                  strokeLinecap="round"
+                />
+                <defs>
+                  <linearGradient id="swooshGrad" x1="0" y1="0" x2="1" y2="0">
+                    <stop offset="0%" stopColor="#7c3aed" />
+                    <stop offset="100%" stopColor="#db2777" />
+                  </linearGradient>
+                </defs>
+              </svg>
+            </span>
+          </motion.h1>
 
-          <p className="animate-in fade-in slide-in-from-bottom-8 mt-4 text-[0.9375rem] leading-relaxed text-brand-200/85 duration-1000 sm:hidden">
-            From curriculum design to assessments and art production, we create
-            learning content that students genuinely enjoy.
-          </p>
-          <p className="animate-in fade-in slide-in-from-bottom-8 mt-7 hidden max-w-xl text-lg leading-relaxed text-brand-200/85 duration-1000 sm:block">
-            From curriculum and course development to instructional design,
-            assessment and art production, we create educational content for{" "}
-            <span className="whitespace-nowrap">K-12</span>, corporates and
-            industries that learners genuinely enjoy.
-          </p>
+          <motion.p
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.08 }}
+            className="mt-5 max-w-md text-lg leading-relaxed text-[#6b7280]"
+          >
+            From curriculum design to assessments and art production, we create learning content
+            that students genuinely enjoy.
+          </motion.p>
 
-          <div className="animate-in fade-in slide-in-from-bottom-8 mt-7 flex gap-3 duration-1000 sm:mt-10">
-            <Link
-              href={SCHOOL_LOGIN_PATH}
-              className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-8 py-3 text-sm font-semibold text-brand-900 shadow-[0_10px_40px_-10px_rgb(143_149_255/0.7)] transition-all hover:bg-brand-100 sm:hidden"
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.16 }}
+            className="mt-8"
+          >
+            <button
+              type="button"
+              onClick={() => openLoginDropdown()}
+              className="group inline-flex items-center gap-2 rounded-full bg-[#2a2670] px-7 py-3.5 text-sm font-semibold text-white shadow-[0_14px_36px_-12px_rgba(42,38,112,0.65)] transition hover:bg-[#1a1750]"
             >
               Log in
-            </Link>
-            <Link
-              href="/contact"
-              className="group hidden items-center justify-center gap-2 rounded-full bg-white px-7 py-3.5 text-sm font-semibold text-brand-900 shadow-[0_10px_40px_-10px_rgb(143_149_255/0.7)] transition-all hover:bg-brand-100 sm:inline-flex"
-            >
-              Contact us
-              <ArrowRight className="size-4 transition-transform group-hover:translate-x-1" />
-            </Link>
-            <Link
-              href="/#services"
-              className="hidden items-center justify-center gap-2 rounded-full border border-white/20 px-7 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 sm:inline-flex"
-            >
-              <PlayCircle className="size-4" />
-              Explore services
-            </Link>
-          </div>
+              <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
+            </button>
+          </motion.div>
 
-          <ul className="animate-in fade-in mt-8 flex flex-wrap gap-x-5 gap-y-2 text-sm text-brand-300 duration-1000 sm:mt-12 sm:gap-x-8 sm:gap-y-3">
-            {["Corporates", "Industries", "K-12"].map((item) => (
-              <li key={item} className="flex items-center gap-2">
-                <CheckCircle2 className="size-4 text-glow" />
-                {item}
-              </li>
-            ))}
-          </ul>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.24 }}
+            className="mt-10"
+          >
+            <div className="flex items-center gap-4">
+              <span className="shrink-0 text-sm font-medium text-[#9ca3af]">Trusted by</span>
+              <span className="h-px flex-1 bg-[#e5e7eb]" />
+            </div>
+            <ul className="mt-4 flex flex-wrap gap-x-8 gap-y-2">
+              {trustItems.map((item) => (
+                <li key={item} className="inline-flex items-center gap-2 text-sm font-semibold text-[#2a2670]">
+                  <CheckCircle2 className="size-4 text-[#7c3aed]" />
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </motion.div>
         </div>
 
-        <div className="hidden sm:block">
-          <LearningMap />
-        </div>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.96 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.65, ease: [0.22, 1, 0.36, 1] }}
+          className="relative order-1 mx-auto flex w-full max-w-[40rem] items-end justify-center lg:order-2 lg:max-w-none lg:min-h-[28rem]"
+        >
+          <HeroPhoto className="relative w-full lg:min-h-[28rem]" />
+        </motion.div>
       </div>
     </section>
   );

@@ -15,8 +15,10 @@ module.exports = {
       exec_mode: "fork",
       env: {
         NODE_ENV: "production",
+        // PDF bytes + page render peaks; sheet images spill to disk so 500-page batches fit.
+        NODE_OPTIONS: "--max-old-space-size=4096",
       },
-      max_memory_restart: "512M",
+      max_memory_restart: "5G",
       time: true,
       error_file: "/home/icape/.pm2/logs/vitaranlearning-api-error.log",
       out_file: "/home/icape/.pm2/logs/vitaranlearning-api-out.log",
@@ -34,7 +36,7 @@ module.exports = {
         NODE_ENV: "production",
         PORT: "3001",
       },
-      max_memory_restart: "512M",
+      max_memory_restart: "1G",
       time: true,
       error_file: "/home/icape/.pm2/logs/vitaranlearning-web-error.log",
       out_file: "/home/icape/.pm2/logs/vitaranlearning-web-out.log",

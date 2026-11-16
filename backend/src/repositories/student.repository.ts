@@ -192,7 +192,7 @@ export function createStudent(data: {
   rollNo: string;
   email: string | null;
   parentName: string;
-  parentPhone: string;
+  parentPhone: string | null;
   programId: string;
   classLevel: number;
   sectionId: string | null;

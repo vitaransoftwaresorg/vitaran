@@ -339,8 +339,8 @@ export function ScanCamera({
             {busy ? status || "Working…" : testReady ? "Upload OMR photos or a PDF" : "Enter the test ID to upload"}
           </p>
           <p className="text-xs text-neutral-500">
-            One sheet, a photo batch, or one PDF with up to 300 students (one page each). A PDF is read in the
-            background — sheets are listed as they finish, even if you leave this page. JPEG, PNG, HEIC, or PDF.
+            One sheet, a photo batch, or one PDF with up to 500 student sheets (one page each). Large PDFs are
+            read on the server in the background — sheets appear as they finish. JPEG, PNG, HEIC, or PDF.
           </p>
         </label>
       </div>

@@ -3,75 +3,71 @@
 import { useEffect, useState, useTransition, type MouseEvent } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogIn, LogOut, Menu, X } from "lucide-react";
+import { LogOut, Menu, X } from "lucide-react";
 import { Logo } from "@/components/shared/logo";
-import { SCHOOL_LOGIN_PATH } from "@/constants/auth";
+import { LoginDropdown, openLoginDropdown } from "@/features/auth/login-dropdown";
 import { portalLogout } from "@/features/auth/portal-logout";
 import { navLinks } from "@/features/home/content";
 import { cn } from "@/lib/utils";
 
 const HEADER_OFFSET = 72;
-const mobileLinks = [...navLinks, { label: "Contact", href: "/contact" }];
+const mobileLinks = navLinks;
 
-const isHash = (href: string) => href.startsWith("#");
+/** Portal pages — when signed out, open the same login dropdown. */
+const AUTH_NAV_HREFS = new Set([
+  "/teacher/resources",
+  "/teacher/answer-keys",
+  "/teacher/results",
+]);
 
-function scrollToHash(href: string) {
-  const target = document.querySelector<HTMLElement>(href);
+const hashOf = (href: string) => {
+  const i = href.indexOf("#");
+  return i >= 0 ? href.slice(i) : null;
+};
+
+function scrollToHash(hash: string) {
+  const target = document.querySelector<HTMLElement>(hash);
   if (!target) return;
 
   document.body.style.overflow = "";
   const top =
     target.getBoundingClientRect().top + window.scrollY - HEADER_OFFSET;
   window.scrollTo({ top, behavior: "smooth" });
-  history.replaceState(null, "", href);
+  history.replaceState(null, "", hash);
 }
 
-const authButtonClasses =
-  "hidden h-10 cursor-pointer items-center gap-2 rounded-full bg-brand-900 px-5 text-sm font-semibold text-white select-none disabled:pointer-events-none disabled:opacity-60 sm:inline-flex";
+const logoutButtonClasses =
+  "hidden h-10 shrink-0 cursor-pointer items-center gap-2 rounded-full bg-[#2a2670] px-5 text-sm font-semibold text-white shadow-[0_10px_30px_-16px_rgba(42,38,112,0.7)] select-none transition-colors hover:bg-[#1a1750] disabled:pointer-events-none disabled:opacity-60 lg:inline-flex";
 
-const mobileAuthClasses =
-  "flex w-full items-center gap-3 rounded-xl bg-brand-900 px-4 py-3.5 text-lg font-medium text-white select-none disabled:opacity-60";
-
-const authIconClasses = "size-4";
+const mobileLogoutClasses =
+  "flex w-full items-center justify-center gap-2 rounded-full bg-[#2a2670] px-4 py-3.5 text-lg font-medium text-white select-none disabled:opacity-60";
 
 type SiteSession = {
   kind: "school" | "teacher";
 };
 
-/** Log in when signed out; portal + log out when a school/teacher session exists. */
-function AuthControl({
-  session,
+function LogoutButton({
   className,
   onNavigate,
 }: {
-  session: SiteSession | null;
   className: string;
   onNavigate?: () => void;
 }) {
   const [pending, startTransition] = useTransition();
 
-  if (session) {
-    return (
-      <button
-        type="button"
-        disabled={pending}
-        onClick={() => {
-          onNavigate?.();
-          startTransition(() => portalLogout());
-        }}
-        className={className}
-      >
-        <LogOut className={authIconClasses} />
-        <span>{pending ? "Logging out…" : "Log out"}</span>
-      </button>
-    );
-  }
-
   return (
-    <Link href={SCHOOL_LOGIN_PATH} onClick={onNavigate} className={className}>
-      <LogIn className={authIconClasses} />
-      <span>Log in</span>
-    </Link>
+    <button
+      type="button"
+      disabled={pending}
+      onClick={() => {
+        onNavigate?.();
+        startTransition(() => portalLogout());
+      }}
+      className={className}
+    >
+      <LogOut className="size-4" />
+      <span>{pending ? "Logging out…" : "Log out"}</span>
+    </button>
   );
 }
 
@@ -92,12 +88,17 @@ export function SiteHeader({ session }: { session: SiteSession | null }) {
   };
 
   const resolveHref = (href: string) => {
-    if (isHash(href)) return !onHome ? `/${href}` : href;
+    const hash = hashOf(href);
+    if (hash) return onHome ? hash : href.startsWith("/") ? href : `/${href}`;
     return contentHref(href);
   };
 
-  const isActive = (href: string) =>
-    isHash(href) ? onHome && active === href : pathname === contentHref(href);
+  const isActive = (href: string) => {
+    const hash = hashOf(href);
+    if (hash) return onHome && active === hash;
+    const resolved = contentHref(href);
+    return pathname === resolved || pathname.startsWith(`${resolved}/`);
+  };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -110,8 +111,9 @@ export function SiteHeader({ session }: { session: SiteSession | null }) {
     if (!onHome) return;
 
     const sections = mobileLinks
-      .filter((link) => isHash(link.href))
-      .map((link) => document.querySelector<HTMLElement>(link.href))
+      .map((link) => hashOf(link.href))
+      .filter((hash): hash is string => Boolean(hash))
+      .map((hash) => document.querySelector<HTMLElement>(hash))
       .filter((el): el is HTMLElement => el !== null);
 
     const observer = new IntersectionObserver(
@@ -144,38 +146,46 @@ export function SiteHeader({ session }: { session: SiteSession | null }) {
 
   const onNavClick = (event: MouseEvent<HTMLAnchorElement>, href: string) => {
     setOpen(false);
-    if (!isHash(href) || !onHome) return;
+
+    if (!session && AUTH_NAV_HREFS.has(href)) {
+      event.preventDefault();
+      openLoginDropdown();
+      return;
+    }
+
+    const hash = hashOf(href);
+    if (!hash || !onHome) return;
 
     event.preventDefault();
-    setActive(href);
-    scrollToHash(href);
+    setActive(hash);
+    scrollToHash(hash);
   };
 
   return (
     <header
       className={cn(
-        "fixed inset-x-0 top-0 z-50 border-b border-brand-100 bg-white transition-shadow duration-300",
-        (scrolled || open) && "shadow-[0_8px_30px_-12px_rgb(25_28_95/0.18)]",
+        "fixed inset-x-0 top-0 z-50 border-b border-[#ede9fe]/70 bg-white/95 backdrop-blur-md transition-shadow duration-300",
+        (scrolled || open) && "shadow-[0_8px_30px_-12px_rgba(49,46,129,0.14)]",
       )}
     >
-      <div className="mx-auto flex h-18 max-w-7xl items-center justify-between px-5 sm:px-8">
-        <Logo />
+      <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 px-5 sm:h-18 sm:px-8">
+        <Logo className="shrink-0" />
 
-        <nav aria-label="Primary" className="hidden lg:block">
-          <ul className="flex items-center gap-1">
+        <nav aria-label="Primary" className="hidden min-w-0 flex-1 justify-center lg:flex">
+          <ul className="flex flex-wrap items-center justify-center gap-x-0.5">
             {navLinks.map((link) => {
               const linkActive = isActive(link.href);
               return (
-                <li key={link.href}>
+                <li key={link.label}>
                   <Link
                     href={resolveHref(link.href)}
                     onClick={(e) => onNavClick(e, link.href)}
                     aria-current={linkActive ? "location" : undefined}
                     className={cn(
-                      "inline-flex h-10 cursor-pointer items-center rounded-full px-4 text-base font-medium transition-all duration-200 select-none active:scale-95",
+                      "inline-flex h-9 cursor-pointer items-center rounded-full px-3.5 text-sm font-medium whitespace-nowrap transition-colors select-none xl:px-4 xl:text-[0.95rem]",
                       linkActive
-                        ? "bg-brand-50 text-brand-900"
-                        : "text-brand-700 hover:bg-brand-50 hover:text-brand-900",
+                        ? "bg-[#eceaf8] text-[#1a1750]"
+                        : "text-[#1a1750] hover:bg-[#f5f3ff]",
                     )}
                   >
                     {link.label}
@@ -186,15 +196,19 @@ export function SiteHeader({ session }: { session: SiteSession | null }) {
           </ul>
         </nav>
 
-        <div className="flex items-center gap-2">
-          <AuthControl session={session} className={authButtonClasses} />
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {session ? (
+            <LogoutButton className={logoutButtonClasses} />
+          ) : (
+            <LoginDropdown />
+          )}
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
             aria-expanded={open}
             aria-controls="mobile-nav"
             aria-label={open ? "Close menu" : "Open menu"}
-            className="inline-flex size-11 items-center justify-center rounded-full text-brand-900 transition-all hover:bg-brand-50 active:scale-90 lg:hidden"
+            className="inline-flex size-11 items-center justify-center rounded-full text-[#2a2670] transition-all hover:bg-[#f5f3ff] active:scale-90 lg:hidden"
           >
             {open ? <X className="size-5" /> : <Menu className="size-5" />}
           </button>
@@ -213,7 +227,7 @@ export function SiteHeader({ session }: { session: SiteSession | null }) {
             {mobileLinks.map((link) => {
               const linkActive = isActive(link.href);
               return (
-                <li key={link.href}>
+                <li key={link.label}>
                   <Link
                     href={resolveHref(link.href)}
                     onClick={(e) => onNavClick(e, link.href)}
@@ -221,8 +235,8 @@ export function SiteHeader({ session }: { session: SiteSession | null }) {
                     className={cn(
                       "flex items-center rounded-xl px-4 py-3.5 text-lg font-medium transition-all select-none active:scale-[0.98]",
                       linkActive
-                        ? "bg-brand-800 text-white"
-                        : "text-brand-800 hover:bg-brand-50 active:bg-brand-100",
+                        ? "bg-[#2a2670] text-white"
+                        : "text-[#2a2670] hover:bg-[#f5f3ff] active:bg-[#ede9fe]",
                     )}
                   >
                     {link.label}
@@ -230,12 +244,24 @@ export function SiteHeader({ session }: { session: SiteSession | null }) {
                 </li>
               );
             })}
-            <li className="border-t border-brand-100 pt-2">
-              <AuthControl
-                session={session}
-                className={mobileAuthClasses}
-                onNavigate={() => setOpen(false)}
-              />
+            <li className="border-t border-[#ede9fe] pt-3">
+              {session ? (
+                <LogoutButton
+                  className={mobileLogoutClasses}
+                  onNavigate={() => setOpen(false)}
+                />
+              ) : (
+                <button
+                  type="button"
+                  className={mobileLogoutClasses}
+                  onClick={() => {
+                    setOpen(false);
+                    openLoginDropdown();
+                  }}
+                >
+                  Log in
+                </button>
+              )}
             </li>
           </ul>
         </nav>

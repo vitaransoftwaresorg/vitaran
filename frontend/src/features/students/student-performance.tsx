@@ -13,6 +13,13 @@ import {
 } from "recharts";
 import { cn } from "@/lib/utils";
 import type { StudentTestResult } from "@/types/student";
+import {
+  RESULTS_PATH,
+  SCHOOL_RESULTS_PATH,
+  TEACHER_RESULTS_PATH,
+} from "@/features/results/constants";
+import { OmrCell } from "@/features/results/omr-files";
+import type { PerformancePortal } from "./performance-actions";
 
 const SUBJECT_COLORS = ["#2f5bea", "#0f9f6e", "#e8622c", "#d63384", "#7048e8", "#0b93b8", "#c28a0a"];
 const TOTAL_COLOR = "#10133f";
@@ -43,8 +50,21 @@ function tone(percent: number | null) {
   return "text-red-600";
 }
 
+function omrBasePath(portal?: PerformancePortal) {
+  if (portal === "school") return SCHOOL_RESULTS_PATH;
+  if (portal === "teacher") return TEACHER_RESULTS_PATH;
+  return RESULTS_PATH;
+}
+
 /** A student's saved tests: summary, a test-by-test percentage chart and every test in order. */
-export function StudentPerformance({ results }: { results: StudentTestResult[] }) {
+export function StudentPerformance({
+  results,
+  portal,
+}: {
+  results: StudentTestResult[];
+  portal?: PerformancePortal;
+}) {
+  const omrPath = omrBasePath(portal);
   const subjects = [...new Set(results.flatMap((test) => test.subjects.map((subject) => subject.label)))];
   const colorOf = (label: string) => SUBJECT_COLORS[subjects.indexOf(label) % SUBJECT_COLORS.length]!;
   const [hidden, setHidden] = useState<Set<string>>(new Set());
@@ -242,7 +262,8 @@ export function StudentPerformance({ results }: { results: StudentTestResult[] }
                 ))}
                 <th className="px-3 py-2.5 text-right">Total</th>
                 <th className="px-3 py-2.5 text-right">Class rank</th>
-                <th className="px-4 py-2.5 text-right">Section rank</th>
+                <th className="px-3 py-2.5 text-right">Section rank</th>
+                <th className="px-4 py-2.5 text-center">OMR</th>
               </tr>
             </thead>
             <tbody>
@@ -300,8 +321,28 @@ export function StudentPerformance({ results }: { results: StudentTestResult[] }
                   <td className="px-3 py-3 text-right">
                     <RankBadge rank={test.classRank} />
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-3 py-3 text-right">
                     <RankBadge rank={test.sectionRank} />
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <OmrCell
+                      viewOnly
+                      scan={
+                        test.scanId
+                          ? {
+                              id: test.scanId,
+                              rollNo: "",
+                              studentName: test.testId
+                                ? `Test ID ${test.testId}`
+                                : `Test ${test.testNumber}`,
+                              total: test.total ?? 0,
+                              maxTotal: test.totalMax ?? 0,
+                              updatedAt: test.date,
+                            }
+                          : undefined
+                      }
+                      basePath={omrPath}
+                    />
                   </td>
                 </tr>
               ))}

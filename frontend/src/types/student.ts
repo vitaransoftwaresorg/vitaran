@@ -40,7 +40,7 @@ export type CreateStudentInput = {
   rollNo: string;
   email?: string | null;
   parentName: string;
-  parentPhone: string;
+  parentPhone?: string | null;
   programId: string;
   classLevel: number;
   sectionId?: string | null;
@@ -52,7 +52,7 @@ export type BulkStudentRowInput = {
   rollNo: string;
   email?: string | null;
   parentName: string;
-  parentPhone: string;
+  parentPhone?: string | null;
 };
 
 export type CreateStudentsBulkInput = {
@@ -76,6 +76,8 @@ export type StudentTestResult = {
   resultSetId: string;
   testNumber: number;
   testId: string | null;
+  /** Saved OMR scan for this test, when one exists. */
+  scanId: string | null;
   programName: string;
   classLevel: number;
   published: boolean;

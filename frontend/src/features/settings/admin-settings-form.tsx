@@ -19,6 +19,7 @@ import { subjectLabel } from "@/features/schools/constants";
 import { cn } from "@/lib/utils";
 import type { AppSettings, SmeContact } from "@/types/settings";
 import { saveAdminSettingsAction } from "./actions";
+
 const SUBJECT_OPTIONS = [
   "MATHEMATICS",
   "PHYSICS",
@@ -38,38 +39,32 @@ function emptySme(): SmeContact {
   return { name: "", subject: "MATHEMATICS", email: "" };
 }
 
+function subjectItems(subject: string) {
+  const known = SUBJECT_OPTIONS.includes(subject as (typeof SUBJECT_OPTIONS)[number]);
+  const options = known ? [...SUBJECT_OPTIONS] : [subject, ...SUBJECT_OPTIONS];
+  return options.map((value) => ({ value, label: subjectLabel(value) }));
+}
+
 export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
-  const [maintenanceMode, setMaintenanceMode] = useState(
-    initial.maintenanceMode,
-  );
+  const [maintenanceMode, setMaintenanceMode] = useState(initial.maintenanceMode);
   const [vitaranEmails, setVitaranEmails] = useState<string[]>(
     initial.vitaranEmails.length > 0 ? initial.vitaranEmails : [""],
   );
-  const [smeContacts, setSmeContacts] = useState<SmeContact[]>(
-    initial.smeContacts.length > 0 ? initial.smeContacts : [],
-  );
+  const [smeContacts, setSmeContacts] = useState<SmeContact[]>(initial.smeContacts);
+  const [drafts, setDrafts] = useState<SmeContact[]>([emptySme()]);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  function updateSme(index: number, patch: Partial<SmeContact>) {
-    setSmeContacts((current) =>
-      current.map((row, i) => (i === index ? { ...row, ...patch } : row)),
-    );
+  function updateDraft(index: number, patch: Partial<SmeContact>) {
+    setDrafts((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
   }
 
-  function submit() {
-    const inboxes = [
-      ...new Set(
-        vitaranEmails.map((email) => email.trim().toLowerCase()).filter(Boolean),
-      ),
-    ];
-    const badInbox = inboxes.find((email) => !EMAIL.test(email));
-    if (badInbox) {
-      setError(`Enter a valid Vitaran email (${badInbox}).`);
-      return;
-    }
+  function addDraftRows(count = 1) {
+    setDrafts((current) => [...current, ...Array.from({ length: count }, () => emptySme())]);
+  }
 
-    const cleaned = smeContacts
+  function appendDraftsToList() {
+    const cleaned = drafts
       .map((row) => ({
         name: row.name.trim(),
         subject: row.subject.trim().toUpperCase(),
@@ -77,10 +72,71 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
       }))
       .filter((row) => row.name || row.email);
 
+    if (cleaned.length === 0) {
+      setError("Enter at least one SME with a name and email.");
+      return;
+    }
     for (const row of cleaned) {
       if (!row.name || !row.email || !row.subject) {
         setError("Each SME needs a name, subject, and email.");
         return;
+      }
+      if (!EMAIL.test(row.email)) {
+        setError(`Enter a valid SME email (${row.email}).`);
+        return;
+      }
+    }
+
+    const existing = new Set(smeContacts.map((row) => `${row.email}|${row.subject}`));
+    const fresh = cleaned.filter((row) => !existing.has(`${row.email}|${row.subject}`));
+    if (fresh.length === 0) {
+      setError("Those SMEs are already in the list.");
+      return;
+    }
+
+    setError(null);
+    setSmeContacts((current) => [...current, ...fresh]);
+    setDrafts([emptySme()]);
+    toast.success(
+      fresh.length === 1 ? "SME added to the list" : `${fresh.length} SMEs added to the list`,
+    );
+  }
+
+  function submit() {
+    const inboxes = [
+      ...new Set(vitaranEmails.map((email) => email.trim().toLowerCase()).filter(Boolean)),
+    ];
+    const badInbox = inboxes.find((email) => !EMAIL.test(email));
+    if (badInbox) {
+      setError(`Enter a valid Vitaran email (${badInbox}).`);
+      return;
+    }
+
+    const pendingDrafts = drafts
+      .map((row) => ({
+        name: row.name.trim(),
+        subject: row.subject.trim().toUpperCase(),
+        email: row.email.trim().toLowerCase(),
+      }))
+      .filter((row) => row.name || row.email);
+
+    for (const row of pendingDrafts) {
+      if (!row.name || !row.email || !row.subject) {
+        setError("Finish or clear the Add SMEs rows before saving.");
+        return;
+      }
+      if (!EMAIL.test(row.email)) {
+        setError(`Enter a valid SME email (${row.email}).`);
+        return;
+      }
+    }
+
+    const merged = [...smeContacts];
+    const existing = new Set(merged.map((row) => `${row.email}|${row.subject}`));
+    for (const row of pendingDrafts) {
+      if (!existing.has(`${row.email}|${row.subject}`)) {
+        merged.push(row);
+        existing.add(`${row.email}|${row.subject}`);
       }
     }
 
@@ -89,13 +145,14 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
       const result = await saveAdminSettingsAction({
         maintenanceMode,
         vitaranEmails: inboxes,
-        smeContacts: cleaned,
+        smeContacts: merged,
       });
       if (!result.ok) {
         setError(result.message);
         return;
       }
       setSmeContacts(result.settings.smeContacts);
+      setDrafts([emptySme()]);
       setVitaranEmails(
         result.settings.vitaranEmails.length > 0 ? result.settings.vitaranEmails : [""],
       );
@@ -108,12 +165,7 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
     <>
       {error ? <FieldError>{error}</FieldError> : null}
       <div className="flex justify-end">
-        <Button
-          type="button"
-          disabled={pending}
-          onClick={submit}
-          className="gap-1.5"
-        >
+        <Button type="button" disabled={pending} onClick={submit} className="gap-1.5">
           {pending ? <Loader2 className="size-4 animate-spin" /> : null}
           Save settings
         </Button>
@@ -140,9 +192,7 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
         <section className="rounded-xl border border-brand-200 bg-white p-5 shadow-[0_4px_16px_-8px_rgb(25_28_95/0.12)]">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h2 className="text-sm font-bold text-brand-950">
-                Maintenance mode
-              </h2>
+              <h2 className="text-sm font-bold text-brand-950">Maintenance mode</h2>
               <p className="mt-1 text-sm text-neutral-600">
                 When on, school and teacher portals cannot use the app.
               </p>
@@ -154,10 +204,7 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
                 disabled={pending}
                 id="maintenance-mode"
               />
-              <label
-                htmlFor="maintenance-mode"
-                className="text-sm font-semibold text-neutral-800"
-              >
+              <label htmlFor="maintenance-mode" className="text-sm font-semibold text-neutral-800">
                 {maintenanceMode ? "On" : "Off"}
               </label>
             </div>
@@ -169,12 +216,9 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
       <TabsContent value="emails" className="space-y-6">
         <section className="space-y-4 rounded-xl border border-brand-200 bg-white p-5 shadow-[0_4px_16px_-8px_rgb(25_28_95/0.12)]">
           <div>
-            <h2 className="text-sm font-bold text-brand-950">
-              Objection emails
-            </h2>
+            <h2 className="text-sm font-bold text-brand-950">Objection emails</h2>
             <p className="mt-1 text-sm text-neutral-600">
-              Every objection goes to all Vitaran inboxes. Matching subject SMEs
-              are also emailed.
+              Every objection goes to all Vitaran inboxes. Matching subject SMEs are also emailed.
             </p>
           </div>
 
@@ -228,124 +272,157 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
             </ul>
           </div>
 
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="space-y-4 border-t border-brand-100 pt-4">
+            <div>
               <h3 className="text-xs font-semibold tracking-wider text-neutral-500 uppercase">
-                Subject SMEs
+                Add SMEs
               </h3>
+              <p className="mt-1 text-sm text-neutral-600">
+                Fill one or more rows, then add them to the list. Save settings to keep them.
+              </p>
+            </div>
+
+            <ul className="space-y-3">
+              {drafts.map((row, index) => (
+                <li
+                  key={index}
+                  className="grid gap-3 rounded-lg border border-neutral-200 bg-neutral-50/60 p-3 sm:grid-cols-[minmax(0,1fr)_10rem_minmax(0,1.2fr)_auto]"
+                >
+                  <Field>
+                    <FieldLabel>Name</FieldLabel>
+                    <Input
+                      value={row.name}
+                      onChange={(e) => updateDraft(index, { name: e.currentTarget.value })}
+                      placeholder="SME name"
+                      disabled={pending}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel>Subject</FieldLabel>
+                    <Select
+                      items={subjectItems(row.subject)}
+                      value={row.subject}
+                      onValueChange={(value) =>
+                        updateDraft(index, { subject: String(value ?? row.subject) })
+                      }
+                      disabled={pending}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {subjectItems(row.subject).map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            {item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field>
+                    <FieldLabel>Email</FieldLabel>
+                    <Input
+                      type="email"
+                      value={row.email}
+                      onChange={(e) => updateDraft(index, { email: e.currentTarget.value })}
+                      placeholder="sme@example.com"
+                      disabled={pending}
+                    />
+                  </Field>
+                  <button
+                    type="button"
+                    disabled={pending || drafts.length === 1}
+                    onClick={() => setDrafts((current) => current.filter((_, i) => i !== index))}
+                    className={cn(
+                      "mt-6 inline-flex size-9 items-center justify-center self-start rounded-md text-neutral-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-40",
+                    )}
+                    aria-label="Remove draft row"
+                  >
+                    <Trash2 className="size-4" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+            <div className="flex flex-wrap gap-2">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
                 disabled={pending}
-                onClick={() =>
-                  setSmeContacts((current) => [...current, emptySme()])
-                }
+                onClick={() => addDraftRows(1)}
               >
                 <Plus className="size-3.5" />
-                Add SME
+                Another row
               </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending}
+                onClick={() => addDraftRows(3)}
+              >
+                <Plus className="size-3.5" />
+                Add 3 rows
+              </Button>
+              <Button type="button" size="sm" disabled={pending} onClick={appendDraftsToList}>
+                Add to list
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-3 border-t border-brand-100 pt-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-xs font-semibold tracking-wider text-neutral-500 uppercase">
+                Added SMEs
+              </h3>
+              <span className="text-xs font-medium text-neutral-500 tabular-nums">
+                {smeContacts.length} {smeContacts.length === 1 ? "SME" : "SMEs"}
+              </span>
             </div>
 
             {smeContacts.length === 0 ? (
               <p className="rounded-lg border border-dashed border-neutral-200 px-3 py-6 text-center text-sm text-neutral-500">
-                No subject SMEs yet. Add one to route objections by subject.
+                No SMEs added yet. Use Add SMEs above, then Save settings.
               </p>
             ) : (
-              <ul className="space-y-3">
-                {smeContacts.map((row, index) => (
-                  <li
-                    key={index}
-                    className="grid gap-3 rounded-lg border border-neutral-200 bg-neutral-50/60 p-3 sm:grid-cols-[minmax(0,1fr)_10rem_minmax(0,1.2fr)_auto]"
-                  >
-                    <Field>
-                      <FieldLabel>Name</FieldLabel>
-                      <Input
-                        value={row.name}
-                        onChange={(e) =>
-                          updateSme(index, { name: e.currentTarget.value })
-                        }
-                        placeholder="SME name"
-                        disabled={pending}
-                      />
-                    </Field>
-                    <Field>
-                      <FieldLabel>Subject</FieldLabel>
-                      <Select
-                        items={
-                          SUBJECT_OPTIONS.includes(
-                            row.subject as (typeof SUBJECT_OPTIONS)[number],
-                          )
-                            ? SUBJECT_OPTIONS.map((subject) => ({
-                                value: subject,
-                                label: subjectLabel(subject),
-                              }))
-                            : [
-                                {
-                                  value: row.subject,
-                                  label: subjectLabel(row.subject),
-                                },
-                                ...SUBJECT_OPTIONS.map((subject) => ({
-                                  value: subject,
-                                  label: subjectLabel(subject),
-                                })),
-                              ]
-                        }
-                        value={row.subject}
-                        onValueChange={(value) =>
-                          updateSme(index, {
-                            subject: String(value ?? row.subject),
-                          })
-                        }
-                        disabled={pending}
+              <div className="overflow-x-auto rounded-lg border border-neutral-200">
+                <table className="w-full min-w-[480px] text-left text-sm">
+                  <thead className="border-b border-neutral-200 bg-neutral-50 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">
+                    <tr>
+                      <th className="px-3 py-2.5">Name</th>
+                      <th className="px-3 py-2.5">Subject</th>
+                      <th className="px-3 py-2.5">Email</th>
+                      <th className="px-3 py-2.5 text-right"> </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {smeContacts.map((row, index) => (
+                      <tr
+                        key={`${row.email}-${row.subject}-${index}`}
+                        className="border-b border-neutral-100 last:border-0"
                       >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(SUBJECT_OPTIONS.includes(
-                            row.subject as (typeof SUBJECT_OPTIONS)[number],
-                          )
-                            ? [...SUBJECT_OPTIONS]
-                            : [row.subject, ...SUBJECT_OPTIONS]
-                          ).map((subject) => (
-                            <SelectItem key={subject} value={subject}>
-                              {subjectLabel(subject)}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <Field>
-                      <FieldLabel>Email</FieldLabel>
-                      <Input
-                        type="email"
-                        value={row.email}
-                        onChange={(e) =>
-                          updateSme(index, { email: e.currentTarget.value })
-                        }
-                        placeholder="sme@example.com"
-                        disabled={pending}
-                      />
-                    </Field>
-                    <button
-                      type="button"
-                      disabled={pending}
-                      onClick={() =>
-                        setSmeContacts((current) =>
-                          current.filter((_, i) => i !== index),
-                        )
-                      }
-                      className={cn(
-                        "mt-6 inline-flex size-9 items-center justify-center self-start rounded-md text-neutral-500 hover:bg-red-50 hover:text-red-700",
-                      )}
-                      aria-label="Remove SME"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
+                        <td className="px-3 py-2.5 font-medium text-neutral-950">{row.name}</td>
+                        <td className="px-3 py-2.5 text-neutral-700">{subjectLabel(row.subject)}</td>
+                        <td className="px-3 py-2.5 text-neutral-700">{row.email}</td>
+                        <td className="px-3 py-2.5 text-right">
+                          <button
+                            type="button"
+                            disabled={pending}
+                            onClick={() =>
+                              setSmeContacts((current) => current.filter((_, i) => i !== index))
+                            }
+                            className="inline-flex size-8 items-center justify-center rounded-md text-neutral-500 hover:bg-red-50 hover:text-red-700"
+                            aria-label={`Remove ${row.name}`}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </section>

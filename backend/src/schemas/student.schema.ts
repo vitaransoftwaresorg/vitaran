@@ -5,16 +5,22 @@ import { StudentStatus } from "../generated/prisma/enums.js";
 const email = z.email().trim().toLowerCase().max(254);
 
 const parentPhone = z
-  .string()
-  .transform((value) => value.replace(/[\s-]/g, ""))
-  .pipe(z.string().regex(/^\+?\d{10,14}$/, "Invalid mobile number"));
+  .union([z.string(), z.null()])
+  .transform((value) => (value == null ? "" : value.replace(/[\s-]/g, "")))
+  .pipe(
+    z.union([
+      z.literal(""),
+      z.string().regex(/^\+?\d{10,14}$/, "Invalid mobile number"),
+    ]),
+  )
+  .transform((value) => (value === "" ? null : value));
 
 const studentRowSchema = z.object({
   name: titleText(2, 120),
   rollNo: z.string().trim().regex(/^\d{7}$/, "Registration number must be 7 digits"),
   email: email.optional().nullable(),
   parentName: titleText(2, 120),
-  parentPhone,
+  parentPhone: parentPhone.optional(),
 });
 
 export const createStudentSchema = studentRowSchema.extend({

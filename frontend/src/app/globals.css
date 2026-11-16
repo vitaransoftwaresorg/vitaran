@@ -17,6 +17,8 @@
   --color-brand-100: #ebebf3;
   --color-brand-50: #f6f6fa;
   --color-glow: #8f95ff;
+  --color-accent-pink: #c026d3;
+  --color-accent-violet: #7c3aed;
 
   --animate-float: float 8s ease-in-out infinite;
   --animate-bar-rise: bar-rise 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -269,7 +271,16 @@
     @apply bg-linear-to-r from-white via-brand-200 to-glow bg-clip-text text-transparent;
   }
   .text-gradient-dark {
-    @apply bg-linear-to-r from-brand-800 via-brand-600 to-brand-400 bg-clip-text text-transparent;
+    @apply bg-linear-to-r from-brand-800 via-accent-violet to-accent-pink bg-clip-text text-transparent;
+  }
+  .marketing-glow {
+    background:
+      radial-gradient(ellipse 70% 60% at 70% 35%, rgb(124 58 237 / 0.18), transparent 55%),
+      radial-gradient(ellipse 50% 45% at 15% 20%, rgb(192 38 211 / 0.08), transparent 50%),
+      #ffffff;
+  }
+  .marketing-swoosh {
+    background: linear-gradient(90deg, #7c3aed, #c026d3);
   }
 }
 

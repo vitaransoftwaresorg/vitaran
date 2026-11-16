@@ -224,7 +224,9 @@ export function StudentForm({
     if (name.trim().length < 2) next.name = "Enter the student name";
     if (!/^\d{7}$/.test(rollNo.trim())) next.rollNo = "Enter the 7-digit registration number";
     if (parentName.trim().length < 2) next.parentName = "Enter the parent / guardian name";
-    if (!/^\d{10}$/.test(parentPhone)) next.parentPhone = "Enter a 10-digit mobile number";
+    if (parentPhone && !/^\d{10}$/.test(parentPhone)) {
+      next.parentPhone = "Enter a 10-digit mobile number";
+    }
     if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       next.email = "Enter a valid parent / guardian email";
     }
@@ -320,7 +322,7 @@ export function StudentForm({
         </Field>
 
         <Field data-invalid={errors.parentPhone ? true : undefined}>
-          <FieldLabel htmlFor="parentPhone">Parent mobile number *</FieldLabel>
+          <FieldLabel htmlFor="parentPhone">Parent mobile number (optional)</FieldLabel>
           <Input
             id="parentPhone"
             name="parentPhone"

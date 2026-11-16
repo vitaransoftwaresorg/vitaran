@@ -37,9 +37,9 @@ const nextConfig: NextConfig = {
     return api ? [{ source: "/omr-api/:path*", destination: `${api}/api/v1/:path*` }] : [];
   },
   experimental: {
-    // Keep Next buffers small — OMR PDFs upload directly to the API, not through Next.
     serverActions: { bodySizeLimit: "12mb" },
-    proxyClientMaxBodySize: "12mb",
+    // OMR PDFs rewrite through /omr-api — must allow large multipart bodies.
+    proxyClientMaxBodySize: "500mb",
   },
 };
 

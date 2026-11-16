@@ -4,7 +4,7 @@ import { contactDetails, offices } from "./content";
 
 export function ContactDetails() {
   return (
-    <div className="space-y-4"> 
+    <div className="space-y-4">
       {offices.map((office) => (
         <DetailCard key={office.label} icon={MapPin} title={office.label}>
           {office.address}
@@ -15,13 +15,13 @@ export function ContactDetails() {
         <DetailCard icon={Mail} title="Email">
           <Link
             href={`mailto:${contactDetails.email}`}
-            className="break-all hover:text-white"
+            className="break-all text-brand-800 hover:text-brand-950"
           >
             {contactDetails.email}
           </Link>
         </DetailCard>
         <DetailCard icon={Phone} title="Phone">
-          <Link href={contactDetails.phoneHref} className="hover:text-white">
+          <Link href={contactDetails.phoneHref} className="text-brand-800 hover:text-brand-950">
             {contactDetails.phone}
           </Link>
         </DetailCard>
@@ -44,15 +44,13 @@ function DetailCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex gap-4 rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur">
-      <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-white/10 text-white">
+    <div className="flex gap-4 rounded-2xl border border-brand-100 bg-[#f8f7ff] p-5">
+      <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-brand-900 text-white">
         <Icon className="size-5" />
       </span>
       <div className="min-w-0">
-        <p className="font-semibold text-white">{title}</p>
-        <div className="mt-1 text-sm leading-relaxed text-brand-200/85">
-          {children}
-        </div>
+        <p className="font-semibold text-brand-950">{title}</p>
+        <div className="mt-1 text-sm leading-relaxed text-brand-500">{children}</div>
       </div>
     </div>
   );

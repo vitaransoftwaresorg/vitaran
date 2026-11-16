@@ -17,8 +17,8 @@ import {
 } from "lucide-react";
 
 export const navLinks = [
-  { label: "About", href: "#about" },
-  { label: "Services", href: "#services" },
+  { label: "About", href: "/#about" },
+  { label: "Services", href: "/#services" },
   { label: "Teachers Resources", href: "/teacher/resources" },
   { label: "Answer Keys", href: "/teacher/answer-keys" },
   { label: "Results", href: "/teacher/results" },
@@ -60,6 +60,46 @@ export const services: Service[] = [
     title: "Art & Production",
     description:
       "Illustration, animation, layout and graphic production that brings content to life.",
+  },
+];
+
+/** Landing “Our Solutions” cards — light colourful tiles matching the marketing theme. */
+export const solutionCards: Array<Service & { tone: string }> = [
+  {
+    icon: BookOpenCheck,
+    title: "Curriculum Design",
+    description: "Structured learning paths built for every grade and learner.",
+    tone: "bg-[#f3e8ff] text-[#6d28d9]",
+  },
+  {
+    icon: ClipboardCheck,
+    title: "Assessments",
+    description: "Clear evaluations that measure real understanding.",
+    tone: "bg-[#dbeafe] text-[#1d4ed8]",
+  },
+  {
+    icon: Palette,
+    title: "Art Production",
+    description: "Illustration and layout that make content come alive.",
+    tone: "bg-[#ffedd5] text-[#c2410c]",
+  },
+  {
+    icon: Target,
+    title: "Student Engagement",
+    description: "Interactive experiences students genuinely enjoy.",
+    tone: "bg-[#dcfce7] text-[#15803d]",
+  },
+  {
+    icon: Lightbulb,
+    title: "Trusted Quality",
+    description: "Expert-reviewed content you can rely on in every classroom.",
+    tone: "bg-[#ede9fe] text-[#5b21b6]",
+  },
+  {
+    icon: Users,
+    title: "Dedicated Support",
+    description: "A partner team ready to help schools and teachers succeed.",
+    tone: "bg-[#ccfbf1] text-[#0f766e]",
   },
 ];
 

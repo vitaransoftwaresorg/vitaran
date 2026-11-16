@@ -28,10 +28,13 @@ export function omrImageHref(scanId: string, kind: OmrKind, download = false, ba
 export function OmrCell({
   scan,
   basePath = RESULTS_PATH,
+  viewOnly = false,
 }: {
   scan: ClassScan | undefined;
   /** The portal's results section. */
   basePath?: string;
+  /** Profile tables: one View OMR control (dialog still has evaluated + original). */
+  viewOnly?: boolean;
 }) {
   const [kind, setKind] = useState<OmrKind>("preview");
   if (!scan) return <span className="text-neutral-300">—</span>;
@@ -40,9 +43,14 @@ export function OmrCell({
       <Dialog.Root onOpenChange={(open) => open && setKind("preview")}>
         <Dialog.Trigger
           title="View OMR"
-          className="inline-flex size-8 items-center justify-center rounded-md text-brand-900 hover:bg-brand-50"
+          className={
+            viewOnly
+              ? "inline-flex h-8 items-center gap-1.5 rounded-md border border-brand-200 bg-white px-2.5 text-xs font-semibold text-brand-900 hover:bg-brand-50"
+              : "inline-flex size-8 items-center justify-center rounded-md text-brand-900 hover:bg-brand-50"
+          }
         >
           <Eye className="size-4" />
+          {viewOnly ? "View OMR" : null}
         </Dialog.Trigger>
         <Dialog.Portal>
           <Dialog.Backdrop className="fixed inset-0 z-[60] bg-black/70 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />
@@ -91,13 +99,15 @@ export function OmrCell({
           </Dialog.Popup>
         </Dialog.Portal>
       </Dialog.Root>
-      <a
-        href={omrImageHref(scan.id, "preview", true, basePath)}
-        title="Download evaluated OMR"
-        className="inline-flex size-8 items-center justify-center rounded-md text-brand-900 hover:bg-brand-50"
-      >
-        <Download className="size-4" />
-      </a>
+      {viewOnly ? null : (
+        <a
+          href={omrImageHref(scan.id, "preview", true, basePath)}
+          title="Download evaluated OMR"
+          className="inline-flex size-8 items-center justify-center rounded-md text-brand-900 hover:bg-brand-50"
+        >
+          <Download className="size-4" />
+        </a>
+      )}
     </div>
   );
 }

@@ -1,10 +1,11 @@
+import { readFile } from "node:fs/promises";
 import { PDFParse } from "pdf-parse";
 import sharp from "sharp";
 import { AppError } from "../utils/app-error.js";
 
-export const MAX_PDF_PAGES = 300;
-/** Higher width keeps bubble ink sharp enough for layoutOmrBubbles. */
-const RENDER_WIDTH = 2200;
+export const MAX_PDF_PAGES = 500;
+/** Width for PDF batch pages — sharp enough for bubbles, lean enough for ~500-page uploads. */
+const RENDER_WIDTH = 1600;
 
 export type OmrPdfPage = {
   page: number;
@@ -13,16 +14,18 @@ export type OmrPdfPage = {
   jpeg: Buffer;
 };
 
-function assertPdf(pdf: Buffer) {
-  if (pdf.length < 5 || pdf.subarray(0, 5).toString("utf8") !== "%PDF-") {
+async function loadPdfBytes(pdf: Buffer | string): Promise<Buffer> {
+  const bytes = typeof pdf === "string" ? await readFile(pdf) : pdf;
+  if (bytes.length < 5 || bytes.subarray(0, 5).toString("utf8") !== "%PDF-") {
     throw new AppError(400, "Upload a PDF of OMR sheets");
   }
+  return bytes;
 }
 
 /** Fast page count — no rasterization. */
-export async function omrPdfPageCount(pdf: Buffer): Promise<number> {
-  assertPdf(pdf);
-  const parser = new PDFParse({ data: pdf });
+export async function omrPdfPageCount(pdf: Buffer | string): Promise<number> {
+  const bytes = await loadPdfBytes(pdf);
+  const parser = new PDFParse({ data: bytes });
   try {
     const info = await parser.getInfo();
     const total = info.total ?? 0;
@@ -39,11 +42,14 @@ export async function omrPdfPageCount(pdf: Buffer): Promise<number> {
   }
 }
 
-/** Parses the PDF once and renders pages on demand; close it when done. */
-export function openOmrPdf(pdf: Buffer, originalName = "omr.pdf") {
-  assertPdf(pdf);
+/**
+ * Parses the PDF once and renders pages on demand; close it when done.
+ * Accepts a Buffer or an on-disk path (preferred for large class PDFs).
+ */
+export async function openOmrPdf(pdf: Buffer | string, originalName = "omr.pdf") {
+  const bytes = await loadPdfBytes(pdf);
   const base = originalName.replace(/\.pdf$/i, "") || "omr";
-  const parser = new PDFParse({ data: pdf });
+  const parser = new PDFParse({ data: bytes });
 
   async function render(pageNumber: number): Promise<OmrPdfPage> {
     if (!Number.isInteger(pageNumber) || pageNumber < 1) {
@@ -63,7 +69,7 @@ export function openOmrPdf(pdf: Buffer, originalName = "omr.pdf") {
       }
       const jpeg = await sharp(Buffer.from(raw))
         .rotate()
-        .jpeg({ quality: 92, mozjpeg: true, chromaSubsampling: "4:4:4" })
+        .jpeg({ quality: 85, mozjpeg: true, chromaSubsampling: "4:4:4" })
         .toBuffer();
       return {
         page: page.pageNumber ?? pageNumber,
@@ -81,11 +87,11 @@ export function openOmrPdf(pdf: Buffer, originalName = "omr.pdf") {
 
 /** Render a single PDF page to a JPEG OMR sheet. */
 export async function omrPageFromPdf(
-  pdf: Buffer,
+  pdf: Buffer | string,
   pageNumber: number,
   originalName = "omr.pdf",
 ): Promise<OmrPdfPage> {
-  const reader = openOmrPdf(pdf, originalName);
+  const reader = await openOmrPdf(pdf, originalName);
   try {
     return await reader.render(pageNumber);
   } finally {
