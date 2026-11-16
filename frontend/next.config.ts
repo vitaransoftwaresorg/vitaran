@@ -6,6 +6,14 @@ const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
   agentRules: false,
+  images: {
+    localPatterns: [
+      { pathname: "/brand/**", search: "" },
+      { pathname: "/marketing/**", search: "" },
+      { pathname: "/school-logos/**", search: "" },
+    ],
+    qualities: [70, 75, 85],
+  },
   // Phone preview through ngrok. The dev server otherwise blocks that host.
   allowedDevOrigins: ["*.ngrok-free.app", "*.ngrok-free.dev", "*.ngrok.io", "*.ngrok.app"],
   turbopack: {

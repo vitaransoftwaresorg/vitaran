@@ -23,6 +23,7 @@
   --animate-float: float 8s ease-in-out infinite;
   --animate-bar-rise: bar-rise 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-marquee: marquee 40s linear infinite;
+  --animate-marquee-reverse: marquee-reverse 48s linear infinite;
   --animate-draw-path: draw-path 2.4s cubic-bezier(0.65, 0, 0.35, 1) 0.3s both;
   --animate-node-pop: node-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) both;
   --animate-pulse-ring: pulse-ring 2.4s ease-out infinite;
@@ -113,6 +114,14 @@
     }
     to {
       transform: translateX(-50%);
+    }
+  }
+  @keyframes marquee-reverse {
+    from {
+      transform: translateX(-50%);
+    }
+    to {
+      transform: translateX(0);
     }
   }
 }
