@@ -5,7 +5,7 @@ import { ApiError } from "@/services/api-client";
 
 type SessionConfig<T> = {
   cookieName: string;
-  /** Cookie scope: admin sessions stay under `/admin`, school sessions are site-wide. */
+  /** Cookie Path — use `/` so marketing redirects see every signed-in role. */
   path: string;
   fetchProfile: (token: string) => Promise<T>;
 };

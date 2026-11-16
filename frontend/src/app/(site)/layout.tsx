@@ -14,7 +14,7 @@ import {
 export default async function SiteLayout({ children }: LayoutProps<"/">) {
   const jar = await cookies();
 
-  // Signed-in users stay in their portal until they log out — no public landing.
+  // Any signed-in role stays in its portal until logout — no public landing.
   if (jar.has(ADMIN_SESSION_COOKIE)) redirect(ADMIN_BASE_PATH);
   if (jar.has(SCHOOL_SESSION_COOKIE)) redirect(SCHOOL_HOME_PATH);
   if (jar.has(TEACHER_SESSION_COOKIE)) redirect(TEACHER_HOME_PATH);

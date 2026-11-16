@@ -69,7 +69,7 @@ function teacherPortalPath(pathname: string): string {
   return TEACHER_HOME_PATH;
 }
 
-/** Public marketing site — signed-in admin/school/teacher must log out to see these. */
+/** Public marketing site — any signed-in role must log out to see these. */
 const isMarketingPage = (pathname: string) =>
   pathname === "/" ||
   pathname === "/contact" ||

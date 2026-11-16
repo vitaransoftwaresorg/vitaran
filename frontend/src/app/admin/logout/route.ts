@@ -16,8 +16,8 @@ export async function GET() {
   // Relative Location: behind a tunnel, request.url still reports the local host.
   const response = new NextResponse(null, { status: 303, headers: { Location: ADMIN_LOGIN_PATH } });
   response.headers.set("Cache-Control", "private, no-store, max-age=0, must-revalidate");
-  // NextResponse.cookies.set is keyed by name, so Path=/ would overwrite Path=/admin.
-  response.headers.append("Set-Cookie", expiredAdminCookie(ADMIN_BASE_PATH));
+  // NextResponse.cookies.set is keyed by name — append both so legacy Path=/admin also clears.
   response.headers.append("Set-Cookie", expiredAdminCookie("/"));
+  response.headers.append("Set-Cookie", expiredAdminCookie(ADMIN_BASE_PATH));
   return response;
 }

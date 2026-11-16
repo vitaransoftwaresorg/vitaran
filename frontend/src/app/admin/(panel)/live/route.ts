@@ -6,7 +6,7 @@ import { buildApiUrl } from "@/services/api-client";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/** Relays the API live-update stream for the signed-in admin (cookie Path=/admin). */
+  /** Relays the API live-update stream for the signed-in admin. */
 export async function GET(request: Request) {
   const token = (await cookies()).get(ADMIN_SESSION_COOKIE)?.value;
   if (!token) return new Response(null, { status: 401 });

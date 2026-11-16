@@ -15,7 +15,7 @@ export function LiveRefresh({
   path,
 }: {
   kind?: LiveContentKind | "all";
-  /** Admin cookie is Path=/admin — use `/admin/live` there. */
+  /** Override SSE path (e.g. `/admin/live` on the admin panel). */
   path?: string;
 }) {
   const router = useRouter();
