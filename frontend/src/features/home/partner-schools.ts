@@ -6,14 +6,14 @@ export type PartnerSchool = {
 };
 
 export const PARTNER_SCHOOLS: PartnerSchool[] = [
-  { id: "dps", name: "Delhi Public School", logoSrc: "/school-logos/dps_logo.jpeg" },
+  { id: "br-oxford", name: "Br. Oxford School", logoSrc: "/school-logos/br_oxford.png" },
   { id: "aditi", name: "Mallya Aditi International", logoSrc: "/school-logos/aditi_mallaya_school.png" },
   { id: "gitanjali", name: "Gitanjali Senior School", logoSrc: "/school-logos/geetanjali_school.png" },
-  { id: "st-mary", name: "St. Mary's High School", logoSrc: "/school-logos/st_mary_school.png" },
-  { id: "jsg", name: "Johnson Grammar School", logoSrc: "/school-logos/JSG-IBPYP-Logo.png" },
-  { id: "vidyashilp", name: "Vidyashilp School", logoSrc: "/school-logos/vidyashilp_school.webp" },
+  { id: "krishnaveni", name: "Sri Krishnaveni School", logoSrc: "/school-logos/krishnaveni_school.jpeg" },
+  { id: "future-minds", name: "Future Minds School", logoSrc: "/school-logos/future_mind.jpeg" },
+  { id: "vidyaniketan", name: "Vidyaniketan School", logoSrc: "/school-logos/vidyaniketan.jpeg" },
   { id: "doon", name: "The Doon School", logoSrc: "/school-logos/doon_school.png" },
-  { id: "sri-chaitanya", name: "Sri Chaitanya", logoSrc: "/school-logos/srichaitanya.avif" },
+  { id: "crestwood", name: "Crestwood International", logoSrc: "/school-logos/crestwood_school.jpg" },
   { id: "bishop-cotton", name: "Bishop Cotton School", logoSrc: "/school-logos/Bishop_Cotton_Schools_crest.png" },
   { id: "oakridge", name: "Oakridge International", logoSrc: "/school-logos/oakridge_logo.jpeg" },
   { id: "chirec", name: "CHIREC International", logoSrc: "/school-logos/CHIREC_International.png" },
