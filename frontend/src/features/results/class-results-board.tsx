@@ -432,6 +432,10 @@ export function ClassResultsBoard({
                           </TableCell>
                         );
                       }
+                      const shown =
+                        role === "percentage" && value != null && value !== ""
+                          ? `${cellText(value)}%`
+                          : cellText(value);
                       return (
                         <TableCell
                           key={`${label}:${index}`}
@@ -441,6 +445,7 @@ export function ClassResultsBoard({
                               ? "font-medium text-neutral-950"
                               : "text-center text-neutral-700",
                             role === "total" && "font-bold text-brand-900",
+                            role === "percentage" && "text-brand-800",
                           )}
                         >
                           {(role === "name" || role === "roll") &&
@@ -450,7 +455,7 @@ export function ClassResultsBoard({
                               {cellText(value)}
                             </ProfileLink>
                           ) : (
-                            cellText(value) || <span className="text-neutral-300">—</span>
+                            shown || <span className="text-neutral-300">—</span>
                           )}
                         </TableCell>
                       );

@@ -22,9 +22,13 @@ import { ClassOmrDownload, OmrCell } from "./omr-files";
 import { ClassRankCardsDownload, ClassResultPdfDownload, RankCardCell } from "./rank-card-files";
 import { columnRole, foldRoll, maxFromLabel, numberCell, type ColumnRole } from "./result-columns";
 
-function formatCell(value: ResultCell) {
+function formatCell(value: ResultCell, role?: ColumnRole) {
   if (value === null) return "—";
   if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (role === "percentage" && value !== "") {
+    const text = String(value).trim();
+    return text.endsWith("%") ? text : `${text}%`;
+  }
   return String(value);
 }
 
@@ -236,9 +240,9 @@ export function ResultSheetCard({
                       )}
                     >
                       {href && row[index] != null ? (
-                        <ProfileLink href={href}>{formatCell(row[index])}</ProfileLink>
+                        <ProfileLink href={href}>{formatCell(row[index], roles[index])}</ProfileLink>
                       ) : (
-                        formatCell(row[index] ?? null)
+                        formatCell(row[index] ?? null, roles[index])
                       )}
                     </TableCell>
                   );

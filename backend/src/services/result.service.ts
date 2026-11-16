@@ -21,11 +21,13 @@ import type { CellValue } from "../utils/excel.js";
 import {
   columnRole,
   foldRoll,
+  forceSubjectPaperMaxes,
   identityCell,
   maxFromLabel,
   numberCell,
   recomputeSheet,
   standardColumns,
+  SUBJECT_PAPER_MAX,
   subjectColumn,
   withRankColumns,
 } from "../utils/result-columns.js";
@@ -199,7 +201,7 @@ async function findClassSheet(meta: ResultSetMeta, classLevel: number, resultSet
 
 const DEFAULT_SUBJECTS = ["MATHEMATICS", "PHYSICS", "CHEMISTRY", "BIOLOGY"].map((subject) => ({
   subject,
-  maxMarks: 100,
+  maxMarks: SUBJECT_PAPER_MAX,
 }));
 
 /** Subjects set for this class in the school setup (falls back to the program's subjects). */
@@ -215,19 +217,21 @@ async function classSetupSubjects(meta: ResultSetMeta, classLevel: number) {
 }
 
 /**
- * Subject columns for a class table come from the school's class setup; max marks come from the
- * answer key when it has that subject, else 100 per subject.
+ * Subject columns for a class table come from the school's class setup (or answer-key subjects).
+ * Max marks are always 100 per subject for result entry — not question count × marks.
  */
 async function classSubjects(meta: ResultSetMeta, classLevel: number) {
   const [setup, keyed] = await Promise.all([
     classSetupSubjects(meta, classLevel),
     answerKeySubjects(meta, classLevel),
   ]);
-  if (setup.length === 0) return keyed;
-  return setup.map((subject) => ({
-    subject,
-    maxMarks: keyed.find((row) => row.subject === subject)?.maxMarks ?? 100,
-  }));
+  const subjects =
+    setup.length > 0
+      ? setup
+      : keyed.length > 0
+        ? keyed.map((row) => row.subject)
+        : DEFAULT_SUBJECTS.map((row) => row.subject);
+  return subjects.map((subject) => ({ subject, maxMarks: SUBJECT_PAPER_MAX }));
 }
 
 /**
@@ -301,7 +305,11 @@ export async function getClassResultTemplate(query: ClassResultTemplateQuery) {
   const { sheet } = await findClassSheet(meta, query.classLevel);
   const saved = (sheet?.columns as string[] | undefined) ?? [];
   const hasSubjects = saved.some((label) => columnRole(label) === "subject");
-  if (saved.length && hasSubjects) return { columns: withRankColumns(saved, [], query.classLevel).columns };
+  if (saved.length && hasSubjects) {
+    return {
+      columns: withRankColumns(forceSubjectPaperMaxes(saved), [], query.classLevel).columns,
+    };
+  }
   return { columns: standardColumns(await classSubjects(meta, query.classLevel)) };
 }
 
@@ -332,9 +340,10 @@ function assertWithinMax(columns: string[], rows: CellValue[][]) {
 export async function saveManualResultSheet(input: ManualResultSheetInput) {
   const meta = await resolveMeta({ ...input, removeClasses: [] });
   const { resultSet, sheet } = await findClassSheet(meta, input.classLevel, input.resultSetId);
+  const columns = forceSubjectPaperMaxes(input.columns);
   const filled = input.rows.filter((row) => row.some((cell) => cell !== null && cell !== ""));
-  assertWithinMax(input.columns, filled);
-  const rows = recomputeSheet(input.columns, filled, input.classLevel);
+  assertWithinMax(columns, filled);
+  const rows = recomputeSheet(columns, filled, input.classLevel);
   const caption = sheet?.caption.length ? sheet.caption : defaultCaption(input.classLevel, input.testNumber);
   return toResultSetDto(
     await writeClassSheet(
@@ -342,7 +351,7 @@ export async function saveManualResultSheet(input: ManualResultSheetInput) {
       resultSet?.id ?? null,
       input.classLevel,
       caption,
-      input.columns,
+      columns,
       rows,
       `class-${input.classLevel}-results.xlsx`,
     ),
@@ -375,8 +384,8 @@ export async function recordOmrResult(entry: OmrResultEntry) {
   const { resultSet, sheet } = await findClassSheet(meta, entry.classLevel);
   const savedColumns = (sheet?.columns as string[] | undefined) ?? [];
   const columns = savedColumns.length
-    ? savedColumns
-    : standardColumns(entry.subjects.map((row) => ({ subject: row.subject, maxMarks: row.maxTotal })));
+    ? forceSubjectPaperMaxes(savedColumns)
+    : standardColumns(entry.subjects.map((row) => ({ subject: row.subject, maxMarks: SUBJECT_PAPER_MAX })));
   const roles = columns.map(columnRole);
   const rows = sheet ? sheet.rows.map(({ values }) => values as CellValue[]) : [];
 

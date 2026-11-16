@@ -120,10 +120,8 @@ function keepColumn(label: string, subjects: string[]) {
   return Boolean(subject && subjects.includes(subject));
 }
 
-/** Vitaran papers: 25 questions × 4 marks. */
-const QUESTIONS_PER_SUBJECT = 25;
-const MARKS_PER_QUESTION = 4;
-const PAPER_SUBJECT_MAX = QUESTIONS_PER_SUBJECT * MARKS_PER_QUESTION;
+/** Result sheets always show 100 marks per subject (not question count). */
+const PAPER_SUBJECT_MAX = 100;
 
 function maxFromLabel(label: string) {
   const match = compactLabel(label).match(/\((\d+(?:\.\d+)?)\s*m\)/i);
@@ -138,14 +136,14 @@ function rewriteMaxInLabel(label: string, max: number) {
 }
 
 /**
- * Each subject is 25 questions × 4 marks. Excel headers sometimes paste a
- * student's score into the max (BIOLOGY 96M). Prefer the answer-key band, else 100.
+ * Normalize subject/total headers to 100M per subject. Excel uploads and answer-key
+ * question counts must not rewrite these to 25M.
  */
 export function canonicalizePaperMaxes(
   columns: string[],
   rows: CellValue[][],
   caption: string[] = [],
-  ranges: SubjectRange[] = [],
+  _ranges: SubjectRange[] = [],
 ) {
   const nextColumns = [...columns];
   let paperMax = 0;
@@ -153,8 +151,7 @@ export function canonicalizePaperMaxes(
   columns.forEach((label, index) => {
     const subject = subjectForColumn(label);
     if (!subject) return;
-    const range = ranges.find((row) => row.subject === subject);
-    const max = range?.maxMarks ?? PAPER_SUBJECT_MAX;
+    const max = PAPER_SUBJECT_MAX;
     paperMax += max;
     nextColumns[index] = rewriteMaxInLabel(label, max);
   });

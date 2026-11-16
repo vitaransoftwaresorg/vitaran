@@ -22,22 +22,22 @@ const foldLabel = (label: string) => label.replaceAll("\n", " ").replace(/\s+/g,
 export const foldRoll = (value: ResultCell | undefined) =>
   String(value ?? "").trim().toUpperCase().replace(/\s+/g, "");
 
+/** Require the M suffix so "(100)" on unrelated labels is not treated as marks. */
 export function maxFromLabel(label: string) {
-  const match = foldLabel(label).match(/\((\d+(?:\.\d+)?)\s*m?\)/i);
+  const match = foldLabel(label).match(/\((\d+(?:\.\d+)?)\s*m\)/i);
   return match ? Number(match[1]) : null;
 }
 
-/** Subject max from its header, else an equal share of Total Marks. */
+/** Each subject is out of 100 for entry / percentage (not question count). */
+export const SUBJECT_PAPER_MAX = 100;
+
+/** Subject max from its header, else 100. */
 export function subjectMaxMarks(columns: string[], column: number) {
   const fromLabel = maxFromLabel(columns[column]!);
-  if (fromLabel != null) return fromLabel;
+  if (fromLabel != null && fromLabel > 0) return fromLabel;
   const roles = columns.map(columnRole);
   if (roles[column] !== "subject") return null;
-  const subjectCount = roles.filter((role) => role === "subject").length;
-  const totalCol = roles.indexOf("total");
-  const totalMax = totalCol >= 0 ? maxFromLabel(columns[totalCol]!) : null;
-  if (totalMax == null || subjectCount < 1) return null;
-  return Math.floor(totalMax / subjectCount);
+  return SUBJECT_PAPER_MAX;
 }
 
 export function columnRole(label: string): ColumnRole {
@@ -87,9 +87,11 @@ export function computeRows(columns: string[], rows: ResultCell[][], classLevel:
   const sectionRankCol = roles.indexOf("sectionRank");
   const classRankCol = roles.indexOf("classRank");
   const serialCol = roles.indexOf("serial");
+  // Percentage is always out of 100 marks × subject count — never the old 25M headers.
   const totalMax =
-    (totalCol >= 0 ? maxFromLabel(columns[totalCol]!) : null) ??
-    subjectCols.reduce((sum, index) => sum + (maxFromLabel(columns[index]!) ?? 0), 0);
+    subjectCols.length > 0
+      ? subjectCols.length * SUBJECT_PAPER_MAX
+      : (totalCol >= 0 ? maxFromLabel(columns[totalCol]!) : null) ?? 0;
 
   const filled = rows.map((source, position) => {
     const row = [...source];

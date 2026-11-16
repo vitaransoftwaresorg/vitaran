@@ -25,8 +25,9 @@ export const foldLabel = (label: string) => label.replaceAll("\n", " ").replace(
 export const foldRoll = (value: CellValue | undefined) =>
   String(value ?? "").trim().toUpperCase().replace(/\s+/g, "");
 
+/** Require the M suffix so unrelated "(100)" labels are not treated as marks. */
 export function maxFromLabel(label: string) {
-  const match = foldLabel(label).match(/\((\d+(?:\.\d+)?)\s*m?\)/i);
+  const match = foldLabel(label).match(/\((\d+(?:\.\d+)?)\s*m\)/i);
   return match ? Number(match[1]) : null;
 }
 
@@ -50,14 +51,40 @@ export function subjectColumn(columns: string[], code: string) {
   return columns.findIndex((label) => columnRole(label) === "subject" && foldLabel(label).startsWith(prefix));
 }
 
+/** Each subject paper is out of 100 for result entry / display (not question count). */
+export const SUBJECT_PAPER_MAX = 100;
+
+function rewriteMaxInLabel(label: string, max: number) {
+  if (/\(\s*\d+(?:\.\d+)?\s*m\s*\)/i.test(label)) {
+    return label.replace(/\(\s*\d+(?:\.\d+)?\s*m\s*\)/i, `(${max}M)`);
+  }
+  return `${label.trimEnd()} (${max}M)`;
+}
+
+/** Force every subject column to SUBJECT_PAPER_MAX and total to the sum. */
+export function forceSubjectPaperMaxes(columns: string[], subjectMax = SUBJECT_PAPER_MAX) {
+  let subjectCount = 0;
+  const next = columns.map((label) => {
+    if (columnRole(label) !== "subject") return label;
+    subjectCount += 1;
+    return rewriteMaxInLabel(label, subjectMax);
+  });
+  if (subjectCount === 0) return next;
+  const totalMax = subjectCount * subjectMax;
+  return next.map((label) =>
+    columnRole(label) === "total" ? rewriteMaxInLabel(label, totalMax) : label,
+  );
+}
+
 /** RollNo · CandidateName · CLASS · one column per subject · Total · Percentage · ranks. */
 export function standardColumns(subjects: Array<{ subject: string; maxMarks: number }>) {
-  const max = subjects.reduce((sum, row) => sum + row.maxMarks, 0);
+  const normalized = subjects.map((row) => ({ ...row, maxMarks: SUBJECT_PAPER_MAX }));
+  const max = normalized.reduce((sum, row) => sum + row.maxMarks, 0);
   return [
     "RollNo",
     "CandidateName",
     "CLASS",
-    ...subjects.map((row) => `${subjectHeader(row.subject)} (${row.maxMarks}M)`),
+    ...normalized.map((row) => `${subjectHeader(row.subject)} (${row.maxMarks}M)`),
     max > 0 ? `Total Marks (${max}M)` : "Total Marks",
     "Percentage",
     "Section Rank",
@@ -96,9 +123,11 @@ export function recomputeSheet(columns: string[], rows: CellValue[][], classLeve
   const totalCol = roles.indexOf("total");
   const percentCol = roles.indexOf("percentage");
   const nameCol = roles.indexOf("name");
-  const subjectMaxes = subjectCols.map((index) => maxFromLabel(columns[index]!) ?? 0);
+  // Percentage is always out of 100 × subject count (ignore stale 25M headers).
   const totalMax =
-    (totalCol >= 0 ? maxFromLabel(columns[totalCol]!) : null) ?? subjectMaxes.reduce((sum, max) => sum + max, 0);
+    subjectCols.length > 0
+      ? subjectCols.length * SUBJECT_PAPER_MAX
+      : (totalCol >= 0 ? maxFromLabel(columns[totalCol]!) : null) ?? 0;
 
   const filled = rows.map((source) => {
     const row = columns.map((_, index) => source[index] ?? null);
