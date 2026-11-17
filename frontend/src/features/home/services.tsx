@@ -48,7 +48,7 @@ const cards: Array<{
     tone: "bg-[#ede9fe]",
   },
   {
-    title: "Olympiad Examination (I-CAPE)",
+    title: "Olympiad Examination I-CAPE",
     description: "A comprehensive platform for Olympiad exam registration, assessments, and results.",
     Icon: IconOlympiad,
     tone: "bg-[#ccfbf1]",

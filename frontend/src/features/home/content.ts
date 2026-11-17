@@ -97,7 +97,7 @@ export const solutionCards: Array<Service & { tone: string }> = [
   },
   {
     icon: Rocket,
-    title: "Olympiad Examination (I-CAPE)",
+    title: "Olympiad Examination I-CAPE",
     description: "A comprehensive platform for Olympiad exam registration, assessments, and results.",
     tone: "bg-[#ccfbf1] text-[#0f766e]",
   },
