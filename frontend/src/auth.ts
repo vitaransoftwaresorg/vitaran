@@ -13,6 +13,7 @@ const googleId = process.env.AUTH_GOOGLE_ID;
 const googleSecret = process.env.AUTH_GOOGLE_SECRET;
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  // Required behind Nginx on the VPS so callback URLs use the public https host.
   trustHost: true,
   providers:
     googleId && googleSecret
@@ -48,6 +49,17 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     session({ session, token }) {
       session.idToken = typeof token.idToken === "string" ? token.idToken : undefined;
       return session;
+    },
+    // Keep users on this app after Google — never fall back to a baked-in localhost AUTH_URL.
+    redirect({ url, baseUrl }) {
+      if (url.startsWith("/")) return `${baseUrl}${url}`;
+      try {
+        const target = new URL(url);
+        if (target.origin === baseUrl) return url;
+      } catch {
+        // ignore invalid url
+      }
+      return baseUrl;
     },
   },
 });

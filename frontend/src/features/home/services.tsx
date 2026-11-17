@@ -4,11 +4,11 @@ import type { ComponentType } from "react";
 import { motion } from "framer-motion";
 import {
   IconBook,
-  IconChart,
   IconClipboard,
-  IconHeadset,
+  IconLms,
+  IconOlympiad,
+  IconOmr,
   IconPalette,
-  IconShield,
 } from "./marketing-icons";
 
 const cards: Array<{
@@ -36,21 +36,21 @@ const cards: Array<{
     tone: "bg-[#ffedd5]",
   },
   {
-    title: "Student Engagement",
-    description: "Interactive content that students love.",
-    Icon: IconChart,
+    title: "Learning Management System (LMS)",
+    description: "A complete platform for managing courses, learning, and student progress.",
+    Icon: IconLms,
     tone: "bg-[#dcfce7]",
   },
   {
-    title: "Trusted Quality",
-    description: "Built for better learning outcomes.",
-    Icon: IconShield,
+    title: "Mobile OMR Evaluation",
+    description: "Fast and accurate answer-sheet evaluation using mobile camera scanning.",
+    Icon: IconOmr,
     tone: "bg-[#ede9fe]",
   },
   {
-    title: "Dedicated Support",
-    description: "We're here to support your learning journey.",
-    Icon: IconHeadset,
+    title: "Olympiad Examination (I-CAPE)",
+    description: "A comprehensive platform for Olympiad exam registration, assessments, and results.",
+    Icon: IconOlympiad,
     tone: "bg-[#ccfbf1]",
   },
 ];

@@ -202,3 +202,88 @@ export function IconOpenBook({ className }: { className?: string }) {
     </svg>
   );
 }
+
+/** LMS — courses and progress dashboard. */
+export function IconLms({ className }: { className?: string }) {
+  const id = useId().replace(/:/g, "");
+  return (
+    <svg viewBox="0 0 72 72" className={className} aria-hidden>
+      <defs>
+        <linearGradient id={`${id}-lms1`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#86efac" />
+          <stop offset="100%" stopColor="#15803d" />
+        </linearGradient>
+        <filter id={`${id}-lmssh`} x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="4" stdDeviation="3" floodColor="#14532d" floodOpacity=".22" />
+        </filter>
+      </defs>
+      <g filter={`url(#${id}-lmssh)`}>
+        <rect x="12" y="14" width="48" height="36" rx="8" fill={`url(#${id}-lms1)`} />
+        <rect x="18" y="20" width="16" height="12" rx="3" fill="#dcfce7" opacity=".95" />
+        <path d="M38 22h14M38 28h10M38 34h12" stroke="#ecfdf5" strokeWidth="2.5" strokeLinecap="round" />
+        <rect x="24" y="52" width="24" height="6" rx="2" fill="#166534" />
+        <rect x="30" y="48" width="12" height="5" rx="1.5" fill="#22c55e" />
+      </g>
+    </svg>
+  );
+}
+
+/** Mobile OMR — phone camera scanning answer sheets. */
+export function IconOmr({ className }: { className?: string }) {
+  const id = useId().replace(/:/g, "");
+  return (
+    <svg viewBox="0 0 72 72" className={className} aria-hidden>
+      <defs>
+        <linearGradient id={`${id}-omr1`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#c4b5fd" />
+          <stop offset="100%" stopColor="#6d28d9" />
+        </linearGradient>
+        <filter id={`${id}-omrsh`} x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="4" stdDeviation="3" floodColor="#4c1d95" floodOpacity=".25" />
+        </filter>
+      </defs>
+      <g filter={`url(#${id}-omrsh)`}>
+        <rect x="20" y="8" width="32" height="56" rx="8" fill={`url(#${id}-omr1)`} />
+        <rect x="24" y="16" width="24" height="36" rx="3" fill="#ede9fe" />
+        <circle cx="30" cy="24" r="2.2" fill="#7c3aed" />
+        <circle cx="36" cy="24" r="2.2" fill="#a78bfa" />
+        <circle cx="42" cy="24" r="2.2" fill="#7c3aed" />
+        <circle cx="30" cy="32" r="2.2" fill="#a78bfa" />
+        <circle cx="36" cy="32" r="2.2" fill="#7c3aed" />
+        <circle cx="42" cy="32" r="2.2" fill="#ddd6fe" />
+        <circle cx="30" cy="40" r="2.2" fill="#7c3aed" />
+        <circle cx="36" cy="40" r="2.2" fill="#ddd6fe" />
+        <circle cx="42" cy="40" r="2.2" fill="#7c3aed" />
+        <circle cx="36" cy="56" r="2.5" fill="#ede9fe" />
+      </g>
+    </svg>
+  );
+}
+
+/** Olympiad / I-CAPE — exam medal. */
+export function IconOlympiad({ className }: { className?: string }) {
+  const id = useId().replace(/:/g, "");
+  return (
+    <svg viewBox="0 0 72 72" className={className} aria-hidden>
+      <defs>
+        <linearGradient id={`${id}-oly1`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#5eead4" />
+          <stop offset="100%" stopColor="#0f766e" />
+        </linearGradient>
+        <filter id={`${id}-olysh`} x="-20%" y="-20%" width="140%" height="140%">
+          <feDropShadow dx="0" dy="4" stdDeviation="3" floodColor="#115e59" floodOpacity=".22" />
+        </filter>
+      </defs>
+      <g filter={`url(#${id}-olysh)`}>
+        <path d="M24 12h8l4 14H28l-4-14z" fill="#14b8a6" />
+        <path d="M40 12h8l-4 14h-8l4-14z" fill="#0d9488" />
+        <circle cx="36" cy="42" r="18" fill={`url(#${id}-oly1)`} />
+        <circle cx="36" cy="42" r="12" fill="#99f6e4" opacity=".35" />
+        <path
+          d="M36 32l2.6 7.2H46l-6 4.6 2.3 7.2L36 46.2l-6.3 4.8 2.3-7.2-6-4.6h7.4L36 32z"
+          fill="#fff"
+        />
+      </g>
+    </svg>
+  );
+}
