@@ -1,7 +1,7 @@
 import "server-only";
 import { connection } from "next/server";
 import { redirect } from "next/navigation";
-import { ADMIN_LOGIN_PATH, ADMIN_SESSION_COOKIE } from "@/constants/auth";
+import { ADMIN_SESSION_COOKIE, PORTAL_SESSION_EXPIRED_PATH } from "@/constants/auth";
 import { createSession } from "@/lib/session";
 import { fetchCurrentAdmin } from "@/services/auth";
 import type { AdminProfile } from "@/types/auth";
@@ -24,10 +24,12 @@ export async function deleteAdminSession() {
 /**
  * For admin-only pages. The proxy already redirects when there's no cookie;
  * this also catches expired or revoked tokens.
+ * Must clear cookies via session-expired — redirecting straight to login loops
+ * (proxy still sees the cookie and sends the user back to /admin).
  */
 export async function verifyAdminSession(): Promise<AdminProfile> {
   await connection();
   const admin = await getAdminSession();
-  if (!admin) redirect(ADMIN_LOGIN_PATH);
+  if (!admin) redirect(PORTAL_SESSION_EXPIRED_PATH);
   return admin;
 }
