@@ -28,13 +28,13 @@ export function SchoolHeader() {
     <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-2 border-b border-brand-100 bg-white/95 px-3 backdrop-blur sm:px-4">
       {isMobile && (
         <>
+          <Logo compact />
           <SidebarTrigger
-            className="size-11 shrink-0 text-black hover:bg-transparent hover:text-black"
+            className="ml-auto size-11 shrink-0 text-black hover:bg-transparent hover:text-black"
             aria-label="Open menu"
           >
             <Menu className="size-7" strokeWidth={2.25} />
           </SidebarTrigger>
-          <Logo compact />
         </>
       )}
 

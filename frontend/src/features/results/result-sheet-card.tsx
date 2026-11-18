@@ -52,12 +52,16 @@ function splitColumns({ columns, rows }: Pick<ResultSheet, "columns" | "rows">) 
 }
 
 const SHORT_HEADINGS: Partial<Record<NonNullable<ColumnRole>, string>> = {
-  roll: "Reg No",
+  roll: "Registration number",
   name: "Student",
   classRank: "Rank",
   sectionRank: "Sec Rank",
   percentage: "%",
 };
+
+function desktopHeading(label: string, role: ColumnRole) {
+  return role === "roll" ? "Registration number" : label;
+}
 
 /** Phone headings: short names, with a subject's max marks on its own line. */
 function MobileHeading({ label, role }: { label: string; role: ColumnRole }) {
@@ -65,7 +69,7 @@ function MobileHeading({ label, role }: { label: string; role: ColumnRole }) {
   const text = (role && SHORT_HEADINGS[role]) || label.replace(/\s*\(\s*\d+(?:\.\d+)?\s*m?\s*\)\s*/i, " ").trim();
   return (
     <span className="inline-flex flex-col items-center sm:hidden">
-      <span>{text}</span>
+      <span className={role === "roll" ? "whitespace-nowrap" : undefined}>{text}</span>
       {max != null && role !== "percentage" ? (
         <span className="font-medium text-brand-700/70">{max}</span>
       ) : null}
@@ -201,18 +205,25 @@ export function ResultSheetCard({
         <Table>
           <TableHeader>
             <TableRow className="border-brand-100 bg-brand-50 hover:bg-brand-50">
-              {shown.map((index) => (
-                <TableHead
-                  key={index}
-                  className={cn(
-                    "h-auto px-2.5 py-3 text-left align-top text-[11px] sm:align-bottom leading-tight font-semibold tracking-wide whitespace-nowrap text-brand-900 uppercase first:pl-4 last:pr-4 sm:whitespace-normal sm:wrap-anywhere sm:first:pl-5 sm:last:pr-5",
-                    numeric.has(index) && "text-right",
-                  )}
-                >
-                  <MobileHeading label={sheet.columns[index]!} role={roles[index] ?? null} />
-                  <span className="hidden sm:inline">{sheet.columns[index]}</span>
-                </TableHead>
-              ))}
+              {shown.map((index) => {
+                const role = roles[index] ?? null;
+                const isRoll = role === "roll";
+                return (
+                  <TableHead
+                    key={index}
+                    className={cn(
+                      "h-auto px-2.5 py-3 text-left align-top text-[11px] sm:align-bottom leading-tight font-semibold tracking-wide whitespace-nowrap text-brand-900 uppercase first:pl-4 last:pr-4 sm:first:pl-5 sm:last:pr-5",
+                      !isRoll && "sm:whitespace-normal sm:wrap-anywhere",
+                      numeric.has(index) && "text-right",
+                    )}
+                  >
+                    <MobileHeading label={sheet.columns[index]!} role={role} />
+                    <span className={cn("hidden sm:inline", isRoll && "whitespace-nowrap")}>
+                      {desktopHeading(sheet.columns[index]!, role)}
+                    </span>
+                  </TableHead>
+                );
+              })}
               {files ? (
                 <>
                   <TableHead className="h-auto px-2.5 py-3 text-center align-top text-[11px] font-semibold tracking-wide whitespace-nowrap sm:align-bottom text-brand-900 uppercase">
@@ -229,20 +240,28 @@ export function ResultSheetCard({
             {visible.map((row, rowIndex) => (
               <TableRow key={rowIndex} className="hover:bg-brand-50/50">
                 {shown.map((index) => {
-                  const href = roles[index] === "roll" || roles[index] === "name" ? studentHref(row) : null;
+                  const role = roles[index];
+                  const isRoll = role === "roll";
+                  const href = isRoll || role === "name" ? studentHref(row) : null;
                   return (
                     <TableCell
                       key={index}
                       className={cn(
-                        "px-2.5 py-2.5 whitespace-nowrap text-neutral-700 first:pl-4 last:pr-4 sm:whitespace-normal sm:wrap-anywhere sm:first:pl-5 sm:last:pr-5",
+                        "px-2.5 py-2.5 whitespace-nowrap text-neutral-700 first:pl-4 last:pr-4 sm:first:pl-5 sm:last:pr-5",
+                        !isRoll && "sm:whitespace-normal sm:wrap-anywhere",
                         numeric.has(index) && "text-right text-neutral-950 tabular-nums",
+                        isRoll && "tabular-nums",
                         row[index] === null && "text-neutral-300",
                       )}
                     >
                       {href && row[index] != null ? (
-                        <ProfileLink href={href}>{formatCell(row[index], roles[index])}</ProfileLink>
+                        <ProfileLink href={href} className={isRoll ? "whitespace-nowrap" : undefined}>
+                          {formatCell(row[index], role)}
+                        </ProfileLink>
                       ) : (
-                        formatCell(row[index] ?? null, roles[index])
+                        <span className={isRoll ? "whitespace-nowrap" : undefined}>
+                          {formatCell(row[index] ?? null, role)}
+                        </span>
                       )}
                     </TableCell>
                   );

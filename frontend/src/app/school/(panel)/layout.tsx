@@ -25,7 +25,12 @@ export default async function SchoolPanelLayout({
       <InPageBackProvider>
         <SidebarProvider
           defaultOpen={defaultOpen}
-          style={{ "--sidebar-width": "10.8rem" } as React.CSSProperties}
+          style={
+            {
+              // Match admin/teacher mobile drawer width.
+              "--sidebar-width": "10.5rem",
+            } as React.CSSProperties
+          }
         >
           <SchoolSidebar school={school} />
           <SidebarInset className="min-w-0 bg-neutral-50">

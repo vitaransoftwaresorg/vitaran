@@ -192,9 +192,9 @@ export function StudentDetailView({
       </div>
 
       {performance ? (
-        <StudentPerformance results={performance} portal={performancePortal} />
-      ) : performancePortal ? (
-        <StudentPerformanceLoader portal={performancePortal} studentId={student.id} />
+        <StudentPerformance results={performance} portal={portal} />
+      ) : portal ? (
+        <StudentPerformanceLoader portal={portal} studentId={student.id} />
       ) : null}
     </div>
   );

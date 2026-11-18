@@ -315,7 +315,7 @@ function columnsFor(data: ClassResultPdfData, tableW: number, withSection: boole
   const subjectW = data.subjects.length > 6 ? 40 : 48;
   const fixed: Column[] = [
     { head: ["RANK"], width: 38, align: "center", cell: (row) => (row.rank == null ? "-" : String(row.rank)), bold: true },
-    { head: ["ROLL NO"], width: 66, align: "left", cell: (row) => row.rollNo },
+    { head: ["REGISTRATION NUMBER"], width: 96, align: "left", cell: (row) => row.rollNo },
   ];
   const trailing: Column[] = [
     { head: ["CLASS"], width: 40, align: "center", cell: (row) => row.classLabel },

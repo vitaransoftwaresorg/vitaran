@@ -40,7 +40,7 @@ export function SchoolSidebar({ school }: { school: SchoolAccount }) {
   const initials = school.name.slice(0, 2).toUpperCase();
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="icon" side={isMobile ? "right" : "left"}>
       {/* Brand only on desktop — mobile already has logo in the page header. */}
       {!isMobile && (
         <SidebarHeader>

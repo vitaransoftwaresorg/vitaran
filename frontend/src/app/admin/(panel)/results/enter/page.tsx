@@ -13,7 +13,7 @@ import { listAdminSchoolStudents } from "@/services/students";
 export const metadata: Metadata = { title: "Enter results" };
 
 const FALLBACK_COLUMNS = [
-  "RollNo",
+  "Registration number",
   "CandidateName",
   "CLASS",
   "MATHS (100M)",
