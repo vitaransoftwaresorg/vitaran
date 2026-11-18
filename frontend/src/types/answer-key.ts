@@ -2,8 +2,13 @@ import type { PdfDocument, Publishable, SchoolRef } from "@/types/document";
 import type { Program, SchoolType, Subject } from "@/types/school";
 
 export type AnswerOption = "A" | "B" | "C" | "D";
-/** One option, two options ("B/C"), or a bonus ("ADD"). */
-export type KeyAnswer = AnswerOption | `${AnswerOption}/${AnswerOption}` | "ADD";
+/** One or more options ("A", "B/C", "A/B/C/D"), or a bonus ("ADD"). */
+export type KeyAnswer =
+  | AnswerOption
+  | `${AnswerOption}/${AnswerOption}`
+  | `${AnswerOption}/${AnswerOption}/${AnswerOption}`
+  | `${AnswerOption}/${AnswerOption}/${AnswerOption}/${AnswerOption}`
+  | "ADD";
 
 export function keyOptions(answer: KeyAnswer | undefined): AnswerOption[] {
   if (!answer || answer === "ADD") return [];
@@ -12,6 +17,18 @@ export function keyOptions(answer: KeyAnswer | undefined): AnswerOption[] {
 
 export function isBonusKey(answer: KeyAnswer | undefined) {
   return answer === "ADD";
+}
+
+export function isMultiKey(answer: KeyAnswer | undefined) {
+  return keyOptions(answer).length > 1;
+}
+
+/** Join selected options in A–D order for storage. */
+export function joinKeyOptions(options: Iterable<AnswerOption>): KeyAnswer | undefined {
+  const picked = new Set(options);
+  const ordered = (["A", "B", "C", "D"] as const).filter((option) => picked.has(option));
+  if (ordered.length === 0) return undefined;
+  return ordered.join("/") as KeyAnswer;
 }
 
 export type SubjectRange = {

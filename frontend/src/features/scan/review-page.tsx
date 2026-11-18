@@ -123,6 +123,9 @@ export function ScanReviewPage({ portal }: { portal: ScanPortal }) {
     );
   }
 
+  // Partial credit only exists for multi-correct MCQ keys (e.g. B/C).
+  const showPartial = keyHasMultiCorrect(scan.keyAnswers);
+
   return (
     <div className="space-y-4">
       <section className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
@@ -153,9 +156,14 @@ export function ScanReviewPage({ portal }: { portal: ScanPortal }) {
           ) : null}
 
           <div className="space-y-4">
-            <dl className="grid grid-cols-2 gap-2 text-center text-sm sm:grid-cols-4">
+            <dl
+              className={cn(
+                "grid grid-cols-2 gap-2 text-center text-sm",
+                showPartial ? "sm:grid-cols-4" : "sm:grid-cols-3",
+              )}
+            >
               <Stat label="Correct" value={scan.correct} />
-              <Stat label="Partial" value={scan.partial ?? 0} />
+              {showPartial ? <Stat label="Partial" value={scan.partial ?? 0} /> : null}
               <Stat label="Wrong" value={scan.wrong} />
               <Stat label="Un-attempted" value={scan.blank} />
             </dl>
@@ -172,9 +180,11 @@ export function ScanReviewPage({ portal }: { portal: ScanPortal }) {
                     <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">
                       Correct {row.correct}
                     </span>
-                    <span className="rounded bg-yellow-50 px-1.5 py-0.5 text-yellow-800">
-                      Partial {row.partial ?? 0}
-                    </span>
+                    {showPartial ? (
+                      <span className="rounded bg-yellow-50 px-1.5 py-0.5 text-yellow-800">
+                        Partial {row.partial ?? 0}
+                      </span>
+                    ) : null}
                     <span className="rounded bg-red-50 px-1.5 py-0.5 text-red-700">
                       Wrong {row.wrong}
                     </span>
@@ -365,6 +375,15 @@ function Stat({ label, value }: { label: string; value: number }) {
 
 type AnswerTone = "correct" | "wrong" | "partial" | "blank" | "plain";
 
+function keyHasMultiCorrect(keyAnswers?: Record<string, string>) {
+  if (!keyAnswers) return false;
+  return Object.values(keyAnswers).some((answer) => {
+    if (!answer || answer === "ADD") return false;
+    const options = answer.split("/").filter((part) => part === "A" || part === "B" || part === "C" || part === "D");
+    return options.length > 1;
+  });
+}
+
 function answerTone(marked: Array<"A" | "B" | "C" | "D">, expected?: string): AnswerTone {
   if (!expected) return marked.length === 0 ? "blank" : "plain";
   if (marked.length === 0) return "blank";
@@ -374,7 +393,7 @@ function answerTone(marked: Array<"A" | "B" | "C" | "D">, expected?: string): An
   // Equal share per key option; wrong options add 0 and do not cancel correct ones.
   const hit = wanted.filter((option) => marked.includes(option)).length;
   if (hit === wanted.length) return "correct";
-  if (hit > 0) return "partial";
+  if (hit > 0 && wanted.length > 1) return "partial";
   return "wrong";
 }
 
@@ -387,6 +406,7 @@ function AnswerGrid({
   keyAnswers?: Record<string, string>;
   ranges: Array<{ from: number; to: number }>;
 }) {
+  const showPartial = keyHasMultiCorrect(keyAnswers);
   const onPaper = (question: number) =>
     ranges.length === 0 || ranges.some((range) => question >= range.from && question <= range.to);
   const cells = Array.from({ length: 20 }, (_, row) =>
@@ -396,8 +416,9 @@ function AnswerGrid({
     <div className="rounded-xl border border-neutral-200 p-3">
       <p className="mb-1 text-xs font-semibold tracking-wider text-neutral-500 uppercase">Read vs answer key</p>
       <p className="mb-2 text-[10px] text-neutral-500">
-        Same 5 columns as the sheet. Green = correct, yellow = partial, red = wrong, amber = blank.
-        Multi-correct keys split marks equally per option; wrong options add 0.
+        {showPartial
+          ? "Same 5 columns as the sheet. Green = correct, yellow = partial, red = wrong, amber = blank. Multi-correct keys split marks equally per option; wrong options add 0."
+          : "Same 5 columns as the sheet. Green = correct, red = wrong, amber = blank."}
       </p>
       <div className="mb-1 grid grid-cols-5 gap-x-2 text-[10px] font-semibold tracking-wider text-neutral-400 uppercase">
         <span>1–20</span>

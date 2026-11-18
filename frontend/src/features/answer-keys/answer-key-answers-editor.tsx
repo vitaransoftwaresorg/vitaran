@@ -5,11 +5,18 @@ import { AlertCircle, Loader2, Minus, Plus, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { subjectLabel } from "@/features/schools/constants";
 import { cn } from "@/lib/utils";
 import type { AnswerKeyDetail, AnswerOption, KeyAnswer, SubjectRange } from "@/types/answer-key";
-import { isBonusKey, keyOptions } from "@/types/answer-key";
+import { isBonusKey, isMultiKey, joinKeyOptions, keyOptions } from "@/types/answer-key";
 import { saveAnswerKeyAnswersAction } from "./actions";
 import { enteredTestId, TEST_ID_LENGTH, TEST_ID_MESSAGE, TEST_ID_PATTERN, testIdDigits } from "./test-id";
 import { TestIdStatus, useTestIdCheck } from "./test-id-status";
@@ -18,6 +25,19 @@ const OPTIONS: AnswerOption[] = ["A", "B", "C", "D"];
 const DEFAULT_CORRECT_MARKS = 1;
 const MAX_SUBJECT_QUESTIONS = 100;
 const MAX_MARK_VALUE = 100;
+
+type QuestionMode = "non_mcq" | "mcq";
+
+const MODE_ITEMS = [
+  { value: "non_mcq", label: "Non MCQ" },
+  { value: "mcq", label: "MCQ" },
+] as const;
+
+function inferQuestionMode(answers: Record<string, KeyAnswer>): QuestionMode | "" {
+  const values = Object.values(answers);
+  if (values.length === 0) return "";
+  return values.some(isMultiKey) ? "mcq" : "non_mcq";
+}
 
 type AnswerKeyAnswersEditorProps = {
   answerKey: AnswerKeyDetail;
@@ -142,6 +162,9 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
     answerKey.subjectRanges.length > 0 ? answerKey.subjectRanges : FALLBACK_RANGES;
   const [answers, setAnswers] = useState<Record<string, KeyAnswer>>(() => answerKey.answers);
   const [explanations, setExplanations] = useState<Record<string, string>>(() => answerKey.explanations);
+  const [questionMode, setQuestionMode] = useState<QuestionMode | "">(() =>
+    inferQuestionMode(answerKey.answers),
+  );
   const [testId, setTestId] = useState(() => enteredTestId(answerKey.testId));
   const [correctMarks, setCorrectMarks] = useState(
     () => answerKey.correctMarks ?? DEFAULT_CORRECT_MARKS,
@@ -163,6 +186,7 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
   );
   const [printedAnswers, setPrintedAnswers] = useState(() => answerKey.printedAnswers ?? {});
   const testIdCheck = useTestIdCheck(readOnly ? "" : testId, answerKey.id);
+  const isMcq = questionMode === "mcq";
 
   const dirty = useMemo(
     () => snapshot(answers, explanations, ranges, testId.trim(), correctMarks, wrongMarks) !== baseline,
@@ -190,8 +214,62 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
     window.setTimeout(() => el?.classList.remove("ring-2", "ring-red-400"), 1600);
   }
 
+  function changeQuestionMode(next: QuestionMode | null) {
+    const mode = next ?? "";
+    setQuestionMode(mode);
+    if (mode !== "non_mcq") return;
+    // Non MCQ keeps only the first selected option per question.
+    setAnswers((current) => {
+      let changed = false;
+      const nextAnswers: Record<string, KeyAnswer> = {};
+      for (const [question, answer] of Object.entries(current)) {
+        if (isBonusKey(answer)) {
+          nextAnswers[question] = answer;
+          continue;
+        }
+        const options = keyOptions(answer);
+        if (options.length <= 1) {
+          nextAnswers[question] = answer;
+          continue;
+        }
+        changed = true;
+        nextAnswers[question] = options[0]!;
+      }
+      if (changed) toast.message("Switched to Non MCQ — kept one option per question");
+      return changed ? nextAnswers : current;
+    });
+  }
+
+  function toggleOption(question: string, option: AnswerOption) {
+    if (readOnly) return;
+    if (!questionMode) {
+      toast.error("Select Non MCQ or MCQ first");
+      return;
+    }
+    setAnswers((current) => {
+      const next = { ...current };
+      if (isMcq) {
+        const picked = new Set(keyOptions(current[question]));
+        if (picked.has(option)) picked.delete(option);
+        else picked.add(option);
+        const joined = joinKeyOptions(picked);
+        if (!joined) delete next[question];
+        else next[question] = joined;
+        return next;
+      }
+      // Non MCQ: single option only (tap again to clear).
+      if (current[question] === option) delete next[question];
+      else next[question] = option;
+      return next;
+    });
+  }
+
   function save() {
     const nextTestId = testId.trim();
+    if (!questionMode) {
+      toast.error("Select Non MCQ or MCQ at the top");
+      return;
+    }
     if (!TEST_ID_PATTERN.test(nextTestId)) {
       toast.error(TEST_ID_MESSAGE);
       document.querySelector<HTMLInputElement>('[aria-label="Test ID"]')?.focus();
@@ -232,6 +310,7 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
         setCounts(
           saved.subjectRanges.map((range) => ({ subject: range.subject, count: countOf(range) })),
         );
+        setQuestionMode(inferQuestionMode(saved.answers) || questionMode);
         setBaseline(
           snapshot(
             saved.answers,
@@ -255,6 +334,28 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
         {heading ? (
           <h1 className="text-base font-bold text-brand-900 sm:text-lg">{heading}</h1>
         ) : null}
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold tracking-wider text-neutral-500 uppercase">
+            Question type
+          </span>
+          <Select
+            value={questionMode || null}
+            items={[...MODE_ITEMS]}
+            onValueChange={(value) => changeQuestionMode((value as QuestionMode | null) ?? null)}
+            disabled={pending || readOnly}
+          >
+            <SelectTrigger className="h-8 w-[8.5rem]" aria-label="Question type" size="sm">
+              <SelectValue placeholder="Select" />
+            </SelectTrigger>
+            <SelectContent>
+              {MODE_ITEMS.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <p className="text-sm font-medium text-neutral-500">{totalQuestions} questions</p>
         {incomplete.length > 0 ? (
           <button
@@ -273,6 +374,15 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
           </Button>
         )}
       </div>
+      {questionMode === "mcq" ? (
+        <p className="text-xs text-neutral-500">
+          MCQ: select every correct option for each question (e.g. A and C → A/C).
+        </p>
+      ) : questionMode === "non_mcq" ? (
+        <p className="text-xs text-neutral-500">Non MCQ: one correct option per question.</p>
+      ) : !readOnly ? (
+        <p className="text-xs text-amber-700">Choose Non MCQ or MCQ before entering answers.</p>
+      ) : null}
 
       <div className="overflow-x-auto rounded-2xl border border-brand-100 bg-white">
         <table className="w-full text-sm">
@@ -386,18 +496,7 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
                             key={option}
                             type="button"
                             disabled={pending || readOnly}
-                            onClick={() => {
-                              if (readOnly) return;
-                              setAnswers((current) => {
-                                const picked = new Set(keyOptions(current[key]));
-                                if (picked.has(option)) picked.delete(option);
-                                else picked.add(option);
-                                const next = { ...current };
-                                if (picked.size === 0) delete next[key];
-                                else next[key] = [...picked].join("/") as KeyAnswer;
-                                return next;
-                              });
-                            }}
+                            onClick={() => toggleOption(key, option)}
                             className={cn(
                               "size-8 rounded-md text-xs font-bold",
                               selected
@@ -416,6 +515,10 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
                         disabled={pending || readOnly}
                         onClick={() => {
                           if (readOnly) return;
+                          if (!questionMode) {
+                            toast.error("Select Non MCQ or MCQ first");
+                            return;
+                          }
                           setAnswers((current) =>
                             isBonusKey(current[key])
                               ? (() => {
@@ -438,6 +541,11 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
                       >
                         ADD
                       </button>
+                      {isMcq && keyOptions(answers[key]).length > 1 ? (
+                        <span className="ml-1 text-[11px] font-semibold text-brand-800">
+                          {answers[key]}
+                        </span>
+                      ) : null}
                     </div>
                     {readOnly ? (
                       <p className="w-full min-w-0 whitespace-pre-wrap text-sm text-neutral-700">

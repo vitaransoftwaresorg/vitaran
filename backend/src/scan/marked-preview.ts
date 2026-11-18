@@ -2,7 +2,13 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import opentype, { type Font } from "opentype.js";
 import sharp from "sharp";
-import { asAnswers, keyOptions, markedList, type AnswerOption } from "../utils/answer-key-parse.js";
+import {
+  asAnswers,
+  keyHasMultiCorrect,
+  keyOptions,
+  markedList,
+  type AnswerOption,
+} from "../utils/answer-key-parse.js";
 import type { BubbleMap } from "./detect.js";
 import { subjectHeader } from "../utils/result-columns.js";
 import { questionResult } from "./score.js";
@@ -68,7 +74,9 @@ export async function markedSheetPreview(
     .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
     .png()
     .toBuffer();
-  const table = subjects.length ? await scoreTablePng(subjects, bubbles.width) : null;
+  const table = subjects.length
+    ? await scoreTablePng(subjects, bubbles.width, keyHasMultiCorrect(key))
+    : null;
   const withTable = table
     ? await sharp(marked)
         .extend({ top: table.height, background: "#ffffff" })
@@ -109,25 +117,34 @@ function textPath(
   return `<text x="${x}" y="${y}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${size}"${bold} fill="#111" text-anchor="${options.anchor ?? "start"}">${escapeXml(value)}</text>`;
 }
 
-/** Subject-wise Right / Partial / Wrong / Blank / Marks table drawn above the sheet. */
-async function scoreTablePng(subjects: TableRow[], width: number) {
+/** Subject-wise Right / (Partial) / Wrong / Blank / Marks table drawn above the sheet. */
+async function scoreTablePng(subjects: TableRow[], width: number, showPartial: boolean) {
   const font = await loadTableFont();
+  const header = showPartial
+    ? ["Subject", "R", "P", "W", "B", "Marks"]
+    : ["Subject", "R", "W", "B", "Marks"];
   const rows: string[][] = [
-    ["Subject", "R", "P", "W", "B", "Marks"],
-    ...subjects.map((row) => [
-      subjectHeader(row.subject),
-      String(row.correct),
-      String(row.partial ?? 0),
-      String(row.wrong),
-      String(row.blank),
-      marksCell(row),
-    ]),
+    header,
+    ...subjects.map((row) => {
+      const counts = showPartial
+        ? [String(row.correct), String(row.partial ?? 0), String(row.wrong), String(row.blank)]
+        : [String(row.correct), String(row.wrong), String(row.blank)];
+      return [subjectHeader(row.subject), ...counts, marksCell(row)];
+    }),
     [
       "Total",
-      String(subjects.reduce((sum, row) => sum + row.correct, 0)),
-      String(subjects.reduce((sum, row) => sum + (row.partial ?? 0), 0)),
-      String(subjects.reduce((sum, row) => sum + row.wrong, 0)),
-      String(subjects.reduce((sum, row) => sum + row.blank, 0)),
+      ...(showPartial
+        ? [
+            String(subjects.reduce((sum, row) => sum + row.correct, 0)),
+            String(subjects.reduce((sum, row) => sum + (row.partial ?? 0), 0)),
+            String(subjects.reduce((sum, row) => sum + row.wrong, 0)),
+            String(subjects.reduce((sum, row) => sum + row.blank, 0)),
+          ]
+        : [
+            String(subjects.reduce((sum, row) => sum + row.correct, 0)),
+            String(subjects.reduce((sum, row) => sum + row.wrong, 0)),
+            String(subjects.reduce((sum, row) => sum + row.blank, 0)),
+          ]),
       marksCell({
         total: subjects.reduce((sum, row) => sum + row.total, 0),
         maxTotal: subjects.reduce((sum, row) => sum + (row.maxTotal ?? 0), 0) || undefined,
@@ -138,7 +155,7 @@ async function scoreTablePng(subjects: TableRow[], width: number) {
   const tableWidth = width - margin * 2;
   const rowHeight = Math.round(width * 0.05);
   const fontSize = Math.round(rowHeight * 0.48);
-  const shares = [0.26, 0.1, 0.1, 0.1, 0.1, 0.34];
+  const shares = showPartial ? [0.26, 0.1, 0.1, 0.1, 0.1, 0.34] : [0.3, 0.12, 0.12, 0.12, 0.34];
   const xs = shares.reduce<number[]>((acc, share) => [...acc, acc[acc.length - 1]! + share * tableWidth], [margin]);
   const top = margin;
   const height = top + rowHeight * rows.length + margin;

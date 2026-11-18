@@ -4,8 +4,13 @@ import { readKeyGrid } from "./answer-key-grid.js";
 
 export const ANSWER_OPTIONS = ["A", "B", "C", "D"] as const;
 export type AnswerOption = (typeof ANSWER_OPTIONS)[number];
-/** Printed KEY cell: one option, two options ("B/C"), or a bonus ("ADD"). */
-export type KeyAnswer = AnswerOption | `${AnswerOption}/${AnswerOption}` | "ADD";
+/** Printed KEY cell: one or more options ("A", "B/C", "A/B/C/D"), or a bonus ("ADD"). */
+export type KeyAnswer =
+  | AnswerOption
+  | `${AnswerOption}/${AnswerOption}`
+  | `${AnswerOption}/${AnswerOption}/${AnswerOption}`
+  | `${AnswerOption}/${AnswerOption}/${AnswerOption}/${AnswerOption}`
+  | "ADD";
 
 export type SubjectRange = {
   subject: string;
@@ -315,6 +320,11 @@ export function asAnswers(value: unknown): Record<string, KeyAnswer> {
     if (parsed) answers[question] = parsed;
   }
   return answers;
+}
+
+/** True when any question is multi-correct MCQ (e.g. B/C) — partial credit only applies then. */
+export function keyHasMultiCorrect(answers: Record<string, KeyAnswer> | unknown) {
+  return Object.values(asAnswers(answers)).some(isMultiKey);
 }
 
 export function asMarkedAnswers(value: unknown): Record<string, AnswerOption> {
