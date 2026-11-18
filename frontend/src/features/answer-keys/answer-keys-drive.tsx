@@ -17,9 +17,9 @@ import type { AnswerKey } from "@/types/answer-key";
 import type { DeleteResult } from "@/types/document";
 import type { LearningProgram } from "@/types/program";
 import { formatDateTime } from "@/utils/format";
-import { createAnswerKeyAction } from "./actions";
+import { createAnswerKeyAction, deleteAnswerKeyAction } from "./actions";
 import { enteredTestId } from "./test-id";
-import { ANSWER_KEYS_PATH } from "./constants";
+import { ANSWER_KEY_NOUN, ANSWER_KEYS_PATH } from "./constants";
 import {
   ANSWER_KEYS_FOLDER_STORAGE,
   DRIVE_TESTS,
@@ -232,6 +232,7 @@ export function AnswerKeysDrive({
 
         const href = documentAnswersHref(ANSWER_KEYS_PATH, file.id, link(drivePath));
         const filled = file.answerCount ?? 0;
+        const publishLabel = `Class ${classLevel} answer key`;
         return {
           id: file.id,
           name: `Class ${classLevel}`,
@@ -242,8 +243,10 @@ export function AnswerKeysDrive({
           detail: file.published ? `${filled} answers · Published` : `${filled} answers · Hidden`,
           modified: wasEdited(file) ? formatDateTime(file.updatedAt) : undefined,
           published: file.published,
-          publishLabel: `Class ${classLevel} answer key`,
+          publishLabel,
           onPublish: publishAction.bind(null, file.id),
+          onDelete: () => deleteAnswerKeyAction(file.id),
+          deleteNoun: ANSWER_KEY_NOUN,
           actions: [
             { label: "View", href, icon: "view" as const },
             { label: "Update", href, icon: "edit" as const },
@@ -268,6 +271,9 @@ export function AnswerKeysDrive({
       testNumber: file.testNumber,
     });
     const href = documentAnswersHref(ANSWER_KEYS_PATH, file.id, folder);
+    const label = inTest
+      ? `Class ${file.classLevel} answer key`
+      : `Test ${file.testNumber} · Class ${file.classLevel} answer key`;
     return [
       {
         id: file.id,
@@ -279,6 +285,9 @@ export function AnswerKeysDrive({
         detail: file.published
           ? `${file.answerCount ?? 0} answers · Published`
           : `${file.answerCount ?? 0} answers · Hidden`,
+        publishLabel: label,
+        onDelete: () => deleteAnswerKeyAction(file.id),
+        deleteNoun: ANSWER_KEY_NOUN,
         actions: [
           { label: "View", href, icon: "view" as const },
           { label: "Update", href, icon: "edit" as const },

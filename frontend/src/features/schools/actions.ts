@@ -7,6 +7,10 @@ import { ADMIN_BASE_PATH, SCHOOL_BASE_PATH, TEACHER_BASE_PATH } from "@/constant
 import { ApiError } from "@/services/api-client";
 import * as schoolService from "@/services/schools";
 import type { SchoolInput } from "@/types/school";
+import type { SchoolProgramOffering } from "@/types/program";
+import type { SectionInput } from "@/types/section";
+import * as sectionService from "@/services/sections";
+import { CUSTOM_DRAFT_PROGRAM_ID } from "./offerings";
 import {
   getSchoolFormSchema,
   readFormValues,
@@ -90,7 +94,7 @@ function logoFieldError(file: File): string | null {
 async function saveSchool(
   formData: FormData,
   mode: SchoolFormMode,
-  save: (input: SchoolInput) => Promise<{ id: string }>,
+  save: (input: SchoolInput) => Promise<{ id: string; schoolPrograms: SchoolProgramOffering[] }>,
 ): Promise<SchoolFormState> {
   const values = readFormValues(formData);
   const parsed = getSchoolFormSchema(mode).safeParse(values);
@@ -119,6 +123,7 @@ async function saveSchool(
         if (!(error instanceof ApiError && error.status === 404)) throw error;
       }
     }
+    await applyPendingClassChanges(school.id, school.schoolPrograms, formData);
     revalidateSchoolPortalViews();
     return { status: "success", schoolId: school.id, submittedAt: Date.now() };
   } catch (error) {
@@ -159,6 +164,49 @@ export async function updateSchoolAction(
   return saveSchool(formData, "edit", (input) =>
     schoolService.updateSchool(schoolId, input),
   );
+}
+
+/** Classes & sections drafts from the school form — applied only on Save. */
+async function applyPendingClassChanges(
+  schoolId: string,
+  schoolPrograms: SchoolProgramOffering[],
+  formData: FormData,
+) {
+  const createsRaw = String(formData.get("pendingSectionCreates") ?? "").trim();
+  const deletesRaw = String(formData.get("pendingSectionDeletes") ?? "").trim();
+  if (!createsRaw && !deletesRaw) return;
+
+  let creates: SectionInput[] = [];
+  let deletes: string[] = [];
+  try {
+    if (createsRaw) creates = JSON.parse(createsRaw) as SectionInput[];
+    if (deletesRaw) deletes = JSON.parse(deletesRaw) as string[];
+  } catch {
+    return;
+  }
+
+  const customProgramId =
+    schoolPrograms.find((row) => row.type === "CUSTOMIZED")?.programId ??
+    schoolPrograms[0]?.programId;
+
+  for (const id of deletes) {
+    if (!id || id.startsWith("draft-")) continue;
+    await sectionService.deleteAdminSchoolSection(schoolId, id);
+  }
+
+  for (const row of creates) {
+    const programId =
+      !row.programId || row.programId === CUSTOM_DRAFT_PROGRAM_ID
+        ? customProgramId
+        : row.programId;
+    if (!programId) continue;
+    await sectionService.createAdminSchoolSection(schoolId, {
+      classLevel: row.classLevel,
+      name: row.name?.trim() || "A",
+      programId,
+      studentCount: row.studentCount,
+    });
+  }
 }
 
 /** Fails open: the create/update request still rejects duplicates. */

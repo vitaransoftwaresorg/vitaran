@@ -599,7 +599,7 @@ export function BulkStudentForm({
                 <th className="w-10 px-3 py-2.5">#</th>
                 <th className="px-3 py-2.5">Reg. no *</th>
                 <th className="px-3 py-2.5">Student name *</th>
-                <th className="px-3 py-2.5">Parent name *</th>
+                <th className="px-3 py-2.5">Parent name</th>
                 <th className="px-3 py-2.5">Parent mobile *</th>
                 <th className="px-3 py-2.5">Parent email</th>
                 <th className="w-12 px-2 py-2.5" />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { FieldError } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
 import type { LearningProgram } from "@/types/program";
@@ -36,13 +36,6 @@ export function ProgramOfferingsField({
     return open;
   });
 
-  const emit = useCallback(
-    (next: string[]) => {
-      queueMicrotask(() => onChange(next));
-    },
-    [onChange],
-  );
-
   const selectedPrograms = useMemo(
     () => catalog.filter((program) => selectedIds.has(program.id)),
     [catalog, selectedIds],
@@ -62,7 +55,7 @@ export function ProgramOfferingsField({
       return next;
     });
     if (!checked) {
-      emit(value.filter((token) => !token.startsWith(`${program.id}:`)));
+      onChange(value.filter((token) => !token.startsWith(`${program.id}:`)));
     }
   };
 
@@ -73,17 +66,17 @@ export function ProgramOfferingsField({
     });
 
     if (!checked) {
-      emit(withoutClass);
+      onChange(withoutClass);
       return;
     }
 
     const subjects = program.subjects.length > 0 ? program.subjects : [];
     if (subjects.length === 0) {
-      emit(withoutClass);
+      onChange(withoutClass);
       return;
     }
 
-    emit([
+    onChange([
       ...withoutClass,
       ...subjects.map((subject) => encodeOffering(program.id, classLevel, subject)),
     ]);

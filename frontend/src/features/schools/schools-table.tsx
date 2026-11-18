@@ -1,4 +1,5 @@
 import { ProfileLink, schoolProfileHref } from "@/components/shared/profile-link";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -14,6 +15,13 @@ import { BOARD_LABELS } from "./constants";
 import { SchoolRowActions } from "./school-row-actions";
 import { SchoolStatusBadge } from "./school-status-badge";
 import { SchoolTypeBadge } from "./school-type-badge";
+
+function schoolInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
+}
 
 export function SchoolsTable({ schools }: { schools: SchoolSummary[] }) {
   return (
@@ -36,10 +44,26 @@ export function SchoolsTable({ schools }: { schools: SchoolSummary[] }) {
         {schools.map((school) => (
           <TableRow key={school.id}>
             <TableCell className="max-w-72 pl-4">
-              <ProfileLink href={schoolProfileHref(school.id)} className="block truncate">
-                {school.name}
-              </ProfileLink>
-              <span className="font-mono text-xs text-muted-foreground">{school.code}</span>
+              <div className="flex min-w-0 items-center gap-3">
+                <Avatar size="sm" className="rounded-md after:rounded-md">
+                  {school.hasLogo ? (
+                    <AvatarImage
+                      src={`/admin/schools/${school.id}/logo`}
+                      alt=""
+                      className="rounded-md object-contain p-0.5"
+                    />
+                  ) : null}
+                  <AvatarFallback className="rounded-md text-[10px] font-semibold">
+                    {schoolInitials(school.name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <ProfileLink href={schoolProfileHref(school.id)} className="block truncate">
+                    {school.name}
+                  </ProfileLink>
+                  <span className="font-mono text-xs text-muted-foreground">{school.code}</span>
+                </div>
+              </div>
             </TableCell>
             <TableCell>
               <SchoolTypeBadge type={school.type} />

@@ -266,7 +266,7 @@ export async function createStudent(schoolId: string, input: CreateStudentInput)
     name: input.name,
     rollNo: input.rollNo.trim(),
     email: input.email?.trim().toLowerCase() || null,
-    parentName: input.parentName.trim(),
+    parentName: input.parentName?.trim() || null,
     parentPhone: input.parentPhone ?? null,
     programId: input.programId,
     classLevel: input.classLevel,
@@ -323,7 +323,7 @@ export async function createStudentsBulk(schoolId: string, input: CreateStudents
       name: row.name,
       rollNo: row.rollNo.trim(),
       email: row.email?.trim().toLowerCase() || null,
-      parentName: row.parentName.trim(),
+      parentName: row.parentName?.trim() || null,
       parentPhone: row.parentPhone ?? null,
       programId: input.programId,
       classLevel: input.classLevel,
@@ -380,7 +380,9 @@ export async function updateStudent(
     ...(input.email !== undefined
       ? { email: input.email?.trim().toLowerCase() || null }
       : {}),
-    ...(input.parentName !== undefined ? { parentName: input.parentName.trim() } : {}),
+    ...(input.parentName !== undefined
+      ? { parentName: input.parentName?.trim() || null }
+      : {}),
     ...(input.parentPhone !== undefined ? { parentPhone: input.parentPhone } : {}),
     ...(input.programId !== undefined ? { program: { connect: { id: nextProgramId } } } : {}),
     ...(input.classLevel !== undefined ? { classLevel: nextClassLevel } : {}),

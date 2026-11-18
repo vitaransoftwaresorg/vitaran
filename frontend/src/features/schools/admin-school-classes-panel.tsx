@@ -1,10 +1,19 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { memo, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { GraduationCap, Loader2, Plus, Trash2, UserRound } from "lucide-react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -20,7 +29,7 @@ import { capitalizeWords } from "@/features/schools/schema";
 import { STUDENTS_PATH } from "@/features/students/school-roster";
 import { formatNumber } from "@/utils/format";
 import type { SchoolProgramOffering } from "@/types/program";
-import type { ClassOrganization } from "@/types/section";
+import type { ClassOrganization, SectionInput } from "@/types/section";
 import type { ClassTeacherSlot } from "@/types/teacher";
 
 const linkBtn =
@@ -38,25 +47,37 @@ type ClassRow = {
   seats: number;
   teacherId: string | null;
   teacherName: string | null;
+  draft?: boolean;
+};
+
+export type DeferredClassChanges = {
+  creates: SectionInput[];
+  deleteSectionIds: string[];
 };
 
 type AdminSchoolClassesPanelProps = {
-  schoolId: string;
+  schoolId?: string;
   schoolPrograms: SchoolProgramOffering[];
   organization: ClassOrganization;
   classTeacherSlots: ClassTeacherSlot[];
   seatsUsedLabel: string;
   teachersHref: string;
+  /** When deferred, Add/Delete stay local until the school form Save. */
+  persist?: "immediate" | "deferred";
+  onDeferredChange?: (changes: DeferredClassChanges) => void;
 };
 
-export function AdminSchoolClassesPanel({
+export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
   schoolId,
   schoolPrograms,
   organization,
   classTeacherSlots,
   seatsUsedLabel,
   teachersHref,
+  persist = "immediate",
+  onDeferredChange,
 }: AdminSchoolClassesPanelProps) {
+  const deferred = persist === "deferred";
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [creating, setCreating] = useState(false);
@@ -67,6 +88,26 @@ export function AdminSchoolClassesPanel({
   const [errors, setErrors] = useState<
     Partial<Record<"classLevel" | "programId" | "studentCount" | "name", string>>
   >({});
+  const [draftCreates, setDraftCreates] = useState<
+    Array<SectionInput & { draftId: string; programName: string }>
+  >([]);
+  const [draftDeletes, setDraftDeletes] = useState<string[]>([]);
+
+  const onDeferredChangeRef = useRef(onDeferredChange);
+  onDeferredChangeRef.current = onDeferredChange;
+
+  useEffect(() => {
+    if (!deferred) return;
+    onDeferredChangeRef.current?.({
+      creates: draftCreates.map(({ classLevel, name, programId, studentCount }) => ({
+        classLevel,
+        name,
+        programId,
+        studentCount,
+      })),
+      deleteSectionIds: draftDeletes,
+    });
+  }, [deferred, draftCreates, draftDeletes]);
 
   const classCtByKey = useMemo(() => {
     const map = new Map<string, ClassTeacherSlot>();
@@ -78,24 +119,25 @@ export function AdminSchoolClassesPanel({
     return map;
   }, [classTeacherSlots]);
 
-  const classRows: ClassRow[] = useMemo(
-    () =>
-      [
-        ...organization.wholeClasses.map((row) => {
-          const ct = classCtByKey.get(`${row.programId}:${row.classLevel}`);
-          return {
-            key: `w-${row.id}`,
-            kind: "whole" as const,
-            id: row.id,
-            classLevel: row.classLevel,
-            section: "A",
-            programName: row.programName,
-            seats: row.studentCount,
-            teacherId: ct?.teacherId ?? null,
-            teacherName: ct?.teacherName ?? null,
-          };
-        }),
-        ...organization.sections.map((section) => ({
+  const classRows: ClassRow[] = useMemo(() => {
+    const rows: ClassRow[] = [
+      ...organization.wholeClasses.map((row) => {
+        const ct = classCtByKey.get(`${row.programId}:${row.classLevel}`);
+        return {
+          key: `w-${row.id}`,
+          kind: "whole" as const,
+          id: row.id,
+          classLevel: row.classLevel,
+          section: "A",
+          programName: row.programName,
+          seats: row.studentCount,
+          teacherId: ct?.teacherId ?? null,
+          teacherName: ct?.teacherName ?? null,
+        };
+      }),
+      ...organization.sections
+        .filter((section) => !draftDeletes.includes(section.id))
+        .map((section) => ({
           key: `s-${section.id}`,
           kind: "section" as const,
           id: section.id,
@@ -106,14 +148,26 @@ export function AdminSchoolClassesPanel({
           teacherId: section.classTeacher?.teacherId ?? null,
           teacherName: section.classTeacher?.name ?? null,
         })),
-      ].sort(
-        (a, b) =>
-          a.classLevel - b.classLevel ||
-          a.section.localeCompare(b.section) ||
-          a.programName.localeCompare(b.programName),
-      ),
-    [organization, classCtByKey],
-  );
+      ...draftCreates.map((row) => ({
+        key: row.draftId,
+        kind: "section" as const,
+        id: row.draftId,
+        classLevel: row.classLevel,
+        section: row.name?.trim() || "A",
+        programName: row.programName,
+        seats: row.studentCount,
+        teacherId: null,
+        teacherName: null,
+        draft: true,
+      })),
+    ];
+    return rows.sort(
+      (a, b) =>
+        a.classLevel - b.classLevel ||
+        a.section.localeCompare(b.section) ||
+        a.programName.localeCompare(b.programName),
+    );
+  }, [organization, classCtByKey, draftCreates, draftDeletes]);
 
   const classOptions = useMemo(() => {
     const levels = new Set<number>();
@@ -131,7 +185,27 @@ export function AdminSchoolClassesPanel({
     );
   }, [schoolPrograms, classLevel]);
 
+  // Only clear picks when Programs & classes checks remove that option — not on
+  // every array identity change or when a Select popup closes with null.
+  const classOptionsKey = classOptions.join(",");
+  const programsForClassKey = programsForClass.map((row) => row.programId).join(",");
+  useEffect(() => {
+    if (classLevel && !classOptions.includes(Number(classLevel))) {
+      setClassLevel("");
+      setProgramId("");
+      return;
+    }
+    if (
+      programId &&
+      !programsForClass.some((row) => row.programId === programId)
+    ) {
+      setProgramId("");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional stable keys
+  }, [classLevel, classOptionsKey, programId, programsForClassKey]);
+
   function classStudentsHref(level: number, section: string) {
+    if (!schoolId) return teachersHref;
     return `${STUDENTS_PATH}?${new URLSearchParams({
       school: schoolId,
       class: String(level),
@@ -169,10 +243,44 @@ export function AdminSchoolClassesPanel({
     }
     setErrors({});
 
+    const sectionName = name.trim() || "A";
+    const programName =
+      programsForClass.find((row) => row.programId === programId)?.programName ?? "";
+
+    if (deferred) {
+      const duplicate = classRows.some(
+        (row) =>
+          row.classLevel === level &&
+          row.section.toUpperCase() === sectionName.toUpperCase() &&
+          row.programName === programName,
+      );
+      if (duplicate) {
+        setErrors({ name: `Section ${sectionName} already listed for class ${level}` });
+        return;
+      }
+      setDraftCreates((prev) => [
+        ...prev,
+        {
+          draftId: `draft-${crypto.randomUUID()}`,
+          classLevel: level,
+          name: sectionName,
+          programId,
+          programName,
+          studentCount: count,
+        },
+      ]);
+      toast.success(`Class ${level}-${sectionName} added — save the school to keep it`);
+      setCreating(false);
+      resetCreate();
+      return;
+    }
+
+    if (!schoolId) return;
+
     startTransition(async () => {
       const result = await createAdminSectionAction(schoolId, {
         classLevel: level,
-        name: name.trim() || "A",
+        name: sectionName,
         programId,
         studentCount: count,
       });
@@ -196,6 +304,18 @@ export function AdminSchoolClassesPanel({
   function removeSection(row: ClassRow) {
     if (row.kind !== "section") return;
     if (!window.confirm(`Delete section ${row.classLevel}-${row.section}?`)) return;
+
+    if (deferred) {
+      if (row.draft || row.id.startsWith("draft-")) {
+        setDraftCreates((prev) => prev.filter((item) => item.draftId !== row.id));
+      } else {
+        setDraftDeletes((prev) => (prev.includes(row.id) ? prev : [...prev, row.id]));
+      }
+      toast.success("Section removed — save the school to keep this change");
+      return;
+    }
+
+    if (!schoolId) return;
     startTransition(async () => {
       const result = await deleteAdminSectionAction(schoolId, row.id);
       if (!result.ok) {
@@ -207,25 +327,48 @@ export function AdminSchoolClassesPanel({
     });
   }
 
+  const studentsSchoolHref = schoolId
+    ? `${STUDENTS_PATH}?${new URLSearchParams({ school: schoolId })}`
+    : null;
+
+  const classSelectItems = useMemo(
+    () =>
+      classOptions.map((level) => ({
+        value: String(level),
+        label: `Class ${level}`,
+      })),
+    [classOptions],
+  );
+  const programSelectItems = useMemo(
+    () =>
+      programsForClass.map((row) => ({
+        value: row.programId,
+        label: capitalizeWords(row.programName),
+      })),
+    [programsForClass],
+  );
+
   return (
-    <section className="overflow-hidden rounded-xl border border-brand-200 bg-white shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)]">
+    <section className="rounded-xl border border-brand-200 bg-white shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)]">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-brand-100 bg-brand-50/60 px-4 py-2.5">
         <h2 className="flex items-center gap-2.5 text-sm font-semibold text-brand-950">
           Classes & sections
         </h2>
         <div className="flex flex-wrap items-center gap-3 text-xs">
           <span className="font-medium text-neutral-600 tabular-nums">{seatsUsedLabel}</span>
-          <Link
-            href={`${STUDENTS_PATH}?${new URLSearchParams({ school: schoolId })}`}
-            className="font-semibold text-brand-900 transition-colors hover:text-brand-700"
-          >
-            View students
-          </Link>
+          {studentsSchoolHref ? (
+            <Link
+              href={studentsSchoolHref}
+              className="font-semibold text-brand-900 transition-colors hover:text-brand-700"
+            >
+              View students
+            </Link>
+          ) : null}
           <Button
             type="button"
             size="sm"
             className="h-8 gap-1.5"
-            disabled={pending || creating}
+            disabled={pending || creating || classOptions.length === 0}
             onClick={() => {
               resetCreate();
               setCreating(true);
@@ -237,23 +380,58 @@ export function AdminSchoolClassesPanel({
         </div>
       </div>
 
-      {creating ? (
-        <div className="space-y-3 border-b border-brand-100 bg-neutral-50/70 px-4 py-3">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {deferred ? (
+        <p className="border-b border-brand-100 bg-neutral-50/80 px-4 py-2 text-xs text-neutral-500">
+          Options follow Programs & classes checks. Added classes are kept when you save the school.
+        </p>
+      ) : null}
+
+      <AlertDialog
+        open={creating}
+        onOpenChange={(open) => {
+          if (!open && !pending) {
+            setCreating(false);
+            resetCreate();
+          }
+        }}
+      >
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Add class</AlertDialogTitle>
+            <AlertDialogDescription>
+              {classOptions.length === 0
+                ? "Select programs and classes above first. Options follow those checks."
+                : "Pick class, program, and seats. Section defaults to A if left blank."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="grid gap-3 py-1">
             <Field data-invalid={errors.classLevel ? true : undefined}>
               <FieldLabel>Class</FieldLabel>
               <Select
-                value={classLevel || undefined}
+                value={classLevel || null}
+                items={classSelectItems}
                 onValueChange={(value) => {
-                  setClassLevel(value ?? "");
-                  setProgramId("");
+                  if (value == null) return;
+                  setClassLevel(value);
+                  setProgramId((prev) => {
+                    if (!prev) return "";
+                    const level = Number(value);
+                    return schoolPrograms.some(
+                      (row) =>
+                        row.programId === prev &&
+                        row.classes.some((cls) => cls.classLevel === level),
+                    )
+                      ? prev
+                      : "";
+                  });
                   setErrors((prev) => ({ ...prev, classLevel: undefined }));
                 }}
               >
-                <SelectTrigger className="h-9">
+                <SelectTrigger className="h-9 w-full">
                   <SelectValue placeholder="Select class" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent alignItemWithTrigger={false}>
                   {classOptions.map((level) => (
                     <SelectItem key={level} value={String(level)}>
                       Class {level}
@@ -264,7 +442,7 @@ export function AdminSchoolClassesPanel({
               {errors.classLevel ? <FieldError>{errors.classLevel}</FieldError> : null}
             </Field>
 
-            <Field>
+            <Field data-invalid={errors.name ? true : undefined}>
               <FieldLabel>Section</FieldLabel>
               <Input
                 value={name}
@@ -273,21 +451,26 @@ export function AdminSchoolClassesPanel({
                 maxLength={32}
                 onChange={(e) => setName(e.currentTarget.value.toUpperCase())}
               />
+              {errors.name ? <FieldError>{errors.name}</FieldError> : null}
             </Field>
 
             <Field data-invalid={errors.programId ? true : undefined}>
               <FieldLabel>Program</FieldLabel>
               <Select
-                value={programId || undefined}
+                value={programId || null}
+                items={programSelectItems}
                 onValueChange={(value) => {
-                  setProgramId(value ?? "");
+                  if (value == null) return;
+                  setProgramId(value);
                   setErrors((prev) => ({ ...prev, programId: undefined }));
                 }}
               >
-                <SelectTrigger className="h-9">
-                  <SelectValue placeholder="Select program" />
+                <SelectTrigger className="h-9 w-full" disabled={!classLevel}>
+                  <SelectValue
+                    placeholder={classLevel ? "Select program" : "Pick class first"}
+                  />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent alignItemWithTrigger={false}>
                   {programsForClass.map((row) => (
                     <SelectItem key={row.programId} value={row.programId}>
                       {capitalizeWords(row.programName)}
@@ -312,27 +495,16 @@ export function AdminSchoolClassesPanel({
               {errors.studentCount ? <FieldError>{errors.studentCount}</FieldError> : null}
             </Field>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" className="h-8" disabled={pending} onClick={create}>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+            <Button type="button" disabled={pending || classOptions.length === 0} onClick={create}>
               {pending ? <Loader2 className="size-3.5 animate-spin" /> : null}
-              Create
+              {deferred ? "Add" : "Create"}
             </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="h-8"
-              disabled={pending}
-              onClick={() => {
-                setCreating(false);
-                resetCreate();
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      ) : null}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {classRows.length === 0 ? (
         <p className="px-4 py-8 text-center text-sm text-neutral-500">
@@ -355,7 +527,9 @@ export function AdminSchoolClassesPanel({
             </thead>
             <tbody>
               {classRows.map((row) => {
-                const studentsLink = classStudentsHref(row.classLevel, row.section);
+                const studentsLink = schoolId
+                  ? classStudentsHref(row.classLevel, row.section)
+                  : null;
                 return (
                   <tr
                     key={row.key}
@@ -363,6 +537,11 @@ export function AdminSchoolClassesPanel({
                   >
                     <td className="px-4 py-3 font-semibold text-neutral-950">
                       Class {row.classLevel}
+                      {row.draft ? (
+                        <span className="ml-2 text-[10px] font-medium tracking-wide text-amber-700 uppercase">
+                          Unsaved
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-neutral-700">{row.section}</td>
                     <td className="px-4 py-3 text-neutral-700">
@@ -372,10 +551,14 @@ export function AdminSchoolClassesPanel({
                       {formatNumber(row.seats)}
                     </td>
                     <td className="px-4 py-3">
-                      <Link href={studentsLink} className={linkBtn}>
-                        <GraduationCap className="size-3.5 shrink-0" strokeWidth={2} />
-                        Students
-                      </Link>
+                      {studentsLink ? (
+                        <Link href={studentsLink} className={linkBtn}>
+                          <GraduationCap className="size-3.5 shrink-0" strokeWidth={2} />
+                          Students
+                        </Link>
+                      ) : (
+                        <span className="text-neutral-400">{EMPTY}</span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {row.teacherId ? (
@@ -415,4 +598,4 @@ export function AdminSchoolClassesPanel({
       )}
     </section>
   );
-}
+});

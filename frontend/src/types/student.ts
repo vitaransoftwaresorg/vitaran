@@ -39,7 +39,7 @@ export type CreateStudentInput = {
   name: string;
   rollNo: string;
   email?: string | null;
-  parentName: string;
+  parentName?: string | null;
   parentPhone?: string | null;
   programId: string;
   classLevel: number;
@@ -51,7 +51,7 @@ export type BulkStudentRowInput = {
   name: string;
   rollNo: string;
   email?: string | null;
-  parentName: string;
+  parentName?: string | null;
   parentPhone?: string | null;
 };
 

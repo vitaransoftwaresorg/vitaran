@@ -15,11 +15,18 @@ const parentPhone = z
   )
   .transform((value) => (value === "" ? null : value));
 
+/** Empty → null; otherwise title-cased name (min 2 chars). */
+const optionalParentName = z
+  .union([z.string(), z.null()])
+  .transform((value) => (value == null ? "" : value.trim()))
+  .pipe(z.union([z.literal(""), titleText(2, 120)]))
+  .transform((value) => (value === "" ? null : value));
+
 const studentRowSchema = z.object({
   name: titleText(2, 120),
   rollNo: z.string().trim().regex(/^\d{7}$/, "Registration number must be 7 digits"),
   email: email.optional().nullable(),
-  parentName: titleText(2, 120),
+  parentName: optionalParentName,
   parentPhone: parentPhone.optional(),
 });
 
@@ -42,7 +49,7 @@ export const updateStudentSchema = z
     name: titleText(2, 120),
     rollNo: z.string().trim().regex(/^\d{7}$/, "Registration number must be 7 digits"),
     email: email.nullable(),
-    parentName: titleText(2, 120),
+    parentName: optionalParentName,
     parentPhone,
     programId: z.uuid(),
     classLevel: z.number().int().min(1).max(12),

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import Form from "next/form";
 import { AlertCircle, Loader2, Save } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -21,6 +21,7 @@ import {
 } from "@/features/students/actions";
 import { displaySectionName } from "@/features/schools/section-label";
 import { capitalizeWords, toPhoneDigits } from "@/features/schools/schema";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import type { SchoolProgramOffering } from "@/types/program";
 import type { SchoolSection } from "@/types/section";
 import { capitalizeInput } from "@/lib/name-case";
@@ -140,6 +141,19 @@ export function StudentForm({
     classLevel !== baseline.classLevel ||
     sectionId !== baseline.sectionId;
 
+  // For create, only warn after the user has typed something (not on an empty new form).
+  const createTouched =
+    name.trim() !== "" ||
+    rollNo.trim() !== "" ||
+    email.trim() !== "" ||
+    parentName.trim() !== "" ||
+    parentPhone !== "" ||
+    programId !== (defaults?.programId ?? "") ||
+    classLevel !== defaults?.classLevel ||
+    sectionId !== (defaults?.sectionId ?? NONE);
+  const formRef = useRef<HTMLFormElement>(null);
+  const unsaved = useUnsavedChanges(isEdit ? dirty : createTouched, formRef);
+
   const programItems = useMemo(
     () => schoolPrograms.map((p) => ({ value: p.programId, label: p.programName })),
     [schoolPrograms],
@@ -223,7 +237,9 @@ export function StudentForm({
     const next: typeof clientErrors = {};
     if (name.trim().length < 2) next.name = "Enter the student name";
     if (!/^\d{7}$/.test(rollNo.trim())) next.rollNo = "Enter the 7-digit registration number";
-    if (parentName.trim().length < 2) next.parentName = "Enter the parent / guardian name";
+    if (parentName.trim() && parentName.trim().length < 2) {
+      next.parentName = "Enter a parent / guardian name (at least 2 characters)";
+    }
     if (parentPhone && !/^\d{10}$/.test(parentPhone)) {
       next.parentPhone = "Enter a 10-digit mobile number";
     }
@@ -240,7 +256,9 @@ export function StudentForm({
   }
 
   return (
+    <>
     <Form
+      ref={formRef}
       action={formAction}
       className="space-y-4"
       onSubmit={(event) => {
@@ -248,7 +266,11 @@ export function StudentForm({
           event.preventDefault();
           return;
         }
-        if (isEdit && !dirty) event.preventDefault();
+        if (isEdit && !dirty) {
+          event.preventDefault();
+          return;
+        }
+        unsaved.markClean();
       }}
     >
       <input type="hidden" name="returnTo" value={returnTo} />
@@ -306,7 +328,7 @@ export function StudentForm({
         </Field>
 
         <Field data-invalid={errors.parentName ? true : undefined}>
-          <FieldLabel htmlFor="parentName">Parent / guardian name *</FieldLabel>
+          <FieldLabel htmlFor="parentName">Parent / guardian name (optional)</FieldLabel>
           <Input
             id="parentName"
             name="parentName"
@@ -470,5 +492,7 @@ export function StudentForm({
         </Button>
       ) : null}
     </Form>
+    {unsaved.dialog}
+    </>
   );
 }

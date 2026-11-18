@@ -29,6 +29,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { DeleteResult } from "@/types/document";
+import { DeleteDocumentButton } from "./delete-document-button";
 import { PublishSwitch } from "./publish-switch";
 
 const VIEW_KEY = "vitaran:drive-view";
@@ -54,6 +55,9 @@ export type DriveItem = {
   published?: boolean;
   publishLabel?: string;
   onPublish?: (published: boolean) => Promise<DeleteResult>;
+  /** Opens a confirm alert, then permanently removes this file. */
+  onDelete?: () => Promise<DeleteResult>;
+  deleteNoun?: string;
   actions?: DriveAction[];
   onCreate?: () => void;
   creating?: boolean;
@@ -474,8 +478,9 @@ function RowActions({ item }: { item: DriveItem }) {
 
   const actions = item.actions ?? [];
   const hasMenu = actions.length > 0 || item.onPublish;
+  const hasDelete = Boolean(item.onDelete);
 
-  if (!hasMenu) return null;
+  if (!hasMenu && !hasDelete) return null;
 
   return (
     <div className="inline-flex items-center justify-end gap-1">
@@ -488,6 +493,14 @@ function RowActions({ item }: { item: DriveItem }) {
           />
         </span>
       ) : null}
+      {item.onDelete ? (
+        <DeleteDocumentButton
+          fileName={item.publishLabel ?? item.name}
+          noun={item.deleteNoun ?? "file"}
+          onDelete={item.onDelete}
+        />
+      ) : null}
+      {hasMenu ? (
       <DropdownMenu>
         <DropdownMenuTrigger
           render={
@@ -534,6 +547,7 @@ function RowActions({ item }: { item: DriveItem }) {
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
+      ) : null}
     </div>
   );
 }

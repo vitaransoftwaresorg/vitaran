@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { SCHOOL_LOGIN_PATH } from "@/constants/auth";
 import { openLoginDropdown } from "@/features/auth/login-dropdown";
 import { cn } from "@/lib/utils";
 
@@ -13,9 +15,19 @@ export function HeroLoginButton({
   iconClassName?: string;
 }) {
   return (
-    <button type="button" onClick={() => openLoginDropdown()} className={cn(className)}>
-      Log in
-      <ArrowRight className={iconClassName} />
-    </button>
+    <>
+      <Link href={SCHOOL_LOGIN_PATH} className={cn(className, "lg:hidden")}>
+        Log in
+        <ArrowRight className={iconClassName} />
+      </Link>
+      <button
+        type="button"
+        onClick={() => openLoginDropdown()}
+        className={cn(className, "hidden lg:inline-flex")}
+      >
+        Log in
+        <ArrowRight className={iconClassName} />
+      </button>
+    </>
   );
 }

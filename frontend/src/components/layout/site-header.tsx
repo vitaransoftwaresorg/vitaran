@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogOut, Menu, X } from "lucide-react";
 import { Logo } from "@/components/shared/logo";
+import { SCHOOL_LOGIN_PATH } from "@/constants/auth";
 import { LoginDropdown, openLoginDropdown } from "@/features/auth/login-dropdown";
 import { portalLogout } from "@/features/auth/portal-logout";
 import { navLinks } from "@/features/home/content";
@@ -253,16 +254,13 @@ export function SiteHeader({ session }: { session: SiteSession | null }) {
                   onNavigate={() => setOpen(false)}
                 />
               ) : (
-                <button
-                  type="button"
+                <Link
+                  href={SCHOOL_LOGIN_PATH}
                   className={mobileLogoutClasses}
-                  onClick={() => {
-                    setOpen(false);
-                    openLoginDropdown();
-                  }}
+                  onClick={() => setOpen(false)}
                 >
                   Log in
-                </button>
+                </Link>
               )}
             </li>
           </ul>

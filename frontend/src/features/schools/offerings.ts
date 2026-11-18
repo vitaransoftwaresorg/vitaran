@@ -1,5 +1,9 @@
-import type { SchoolProgramInput, Subject } from "@/types/school";
-import type { SchoolProgramOffering } from "@/types/program";
+import type { LearningProgram, SchoolProgramOffering } from "@/types/program";
+import type { SchoolProgramInput, SchoolType, Subject } from "@/types/school";
+import { subjectsForClassLevel } from "./constants";
+
+/** Placeholder program id for customized schools before Save creates the catalog row. */
+export const CUSTOM_DRAFT_PROGRAM_ID = "__custom_draft__";
 
 /** Encodes one class+subject pick: `programId:classLevel:SUBJECT`. */
 export function encodeOffering(programId: string, classLevel: number, subject: Subject) {
@@ -50,4 +54,66 @@ export function uniqueSubjectsFromOfferings(offerings: SchoolProgramOffering[]):
     }
   }
   return [...subjects];
+}
+
+/**
+ * Live Programs & classes checks → offerings shape used by Classes & sections.
+ * Keeps Add-class dropdowns in sync with the form before Save.
+ */
+export function liveOfferingsFromForm(input: {
+  schoolType: SchoolType;
+  offerings: string[];
+  customClasses: string[];
+  customProgramName: string;
+  catalog: LearningProgram[];
+  savedPrograms: SchoolProgramOffering[];
+}): SchoolProgramOffering[] {
+  const year = new Date().getFullYear();
+
+  if (input.schoolType === "CUSTOMIZED") {
+    const saved =
+      input.savedPrograms.find((row) => row.type === "CUSTOMIZED") ?? input.savedPrograms[0];
+    const levels = [...new Set(input.customClasses.map(Number))]
+      .filter((level) => Number.isInteger(level) && level >= 1 && level <= 12)
+      .sort((a, b) => a - b);
+    if (levels.length === 0) return [];
+    const programName = input.customProgramName.trim() || saved?.programName || "Custom Program";
+    return [
+      {
+        programId: saved?.programId ?? CUSTOM_DRAFT_PROGRAM_ID,
+        programCode: saved?.programCode ?? "CUSTOM",
+        programName,
+        type: "CUSTOMIZED" as const,
+        year: saved?.year ?? year,
+        classFrom: levels[0],
+        classTo: levels[levels.length - 1],
+        catalogSubjects: saved?.catalogSubjects ?? [],
+        classes: levels.map((classLevel) => ({
+          classLevel,
+          subjects: subjectsForClassLevel(classLevel),
+        })),
+      },
+    ];
+  }
+
+  const programs = offeringsToPrograms(input.offerings);
+  return programs.flatMap((program) => {
+    const catalog = input.catalog.find((row) => row.id === program.programId);
+    const saved = input.savedPrograms.find((row) => row.programId === program.programId);
+    if (!catalog && !saved) return [];
+    const classLevels = program.classes.map((row) => row.classLevel);
+    return [
+      {
+        programId: program.programId,
+        programCode: catalog?.code ?? saved?.programCode ?? "",
+        programName: catalog?.name ?? saved?.programName ?? "",
+        type: "REGULAR" as const,
+        year: saved?.year ?? year,
+        classFrom: Math.min(...classLevels),
+        classTo: Math.max(...classLevels),
+        catalogSubjects: catalog?.subjects ?? saved?.catalogSubjects ?? [],
+        classes: program.classes,
+      },
+    ];
+  });
 }
