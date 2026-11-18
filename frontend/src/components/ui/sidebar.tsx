@@ -40,6 +40,8 @@ type SidebarContextProps = {
   setOpenMobile: (open: boolean) => void
   isMobile: boolean
   toggleSidebar: () => void
+  /** Resolved width for the mobile sheet (portaled, so CSS vars on the provider won't inherit). */
+  mobileWidth: string
 }
 
 const SidebarContext = React.createContext<SidebarContextProps | null>(null)
@@ -113,6 +115,14 @@ function SidebarProvider({
   // This makes it easier to style the sidebar with Tailwind classes.
   const state = open ? "expanded" : "collapsed"
 
+  const styleVars = style as React.CSSProperties & {
+    "--sidebar-width"?: string
+    "--sidebar-width-mobile"?: string
+  }
+  const desktopWidth = styleVars?.["--sidebar-width"] ?? SIDEBAR_WIDTH
+  const mobileWidth =
+    styleVars?.["--sidebar-width-mobile"] ?? desktopWidth ?? SIDEBAR_WIDTH_MOBILE
+
   const contextValue = React.useMemo<SidebarContextProps>(
     () => ({
       state,
@@ -122,8 +132,18 @@ function SidebarProvider({
       openMobile,
       setOpenMobile,
       toggleSidebar,
+      mobileWidth,
     }),
-    [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
+    [
+      state,
+      open,
+      setOpen,
+      isMobile,
+      openMobile,
+      setOpenMobile,
+      toggleSidebar,
+      mobileWidth,
+    ]
   )
 
   return (
@@ -162,7 +182,7 @@ function Sidebar({
   variant?: "sidebar" | "floating" | "inset"
   collapsible?: "offcanvas" | "icon" | "none"
 }) {
-  const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+  const { isMobile, state, openMobile, setOpenMobile, mobileWidth } = useSidebar()
 
   if (collapsible === "none") {
     return (
@@ -187,7 +207,14 @@ function Sidebar({
           data-sidebar="sidebar"
           data-slot="sidebar"
           data-mobile="true"
-          className="w-[var(--sidebar-width-mobile,var(--sidebar-width))]! max-w-[var(--sidebar-width-mobile,var(--sidebar-width))]! gap-0 bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
+          // Sheet portals to <body>, so provider CSS vars don't inherit — set width inline.
+          style={
+            {
+              width: mobileWidth,
+              maxWidth: mobileWidth,
+            } as React.CSSProperties
+          }
+          className="gap-0 bg-sidebar p-0 text-sidebar-foreground data-[side=left]:w-auto data-[side=right]:w-auto data-[side=left]:sm:max-w-none data-[side=right]:sm:max-w-none [&>button]:hidden"
           side={side}
         >
           <SheetHeader className="sr-only">

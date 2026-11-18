@@ -1,10 +1,11 @@
 "use client";
 
-import { useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { IconRowActions } from "@/components/shared/icon-row-actions";
+import { matchesSearch, TableSearch } from "@/components/shared/table-search";
 import {
   Table,
   TableBody,
@@ -27,8 +28,26 @@ function byTypeThenName(programs: LearningProgram[]) {
 
 export function ProgramsTable({ programs }: { programs: LearningProgram[] }) {
   const router = useRouter();
+  const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
-  const { regular, customized } = byTypeThenName(programs);
+
+  const filtered = useMemo(
+    () =>
+      programs.filter((program) =>
+        matchesSearch(
+          query,
+          program.name,
+          program.code,
+          program.type,
+          program.year,
+          TYPE_LABELS[program.type ?? "REGULAR"],
+          `Class ${program.classFrom}-${program.classTo}`,
+          ...(program.subjects ?? []).map((subject) => subjectLabel(subject)),
+        ),
+      ),
+    [programs, query],
+  );
+  const { regular, customized } = byTypeThenName(filtered);
 
   if (programs.length === 0) {
     return (
@@ -105,34 +124,46 @@ export function ProgramsTable({ programs }: { programs: LearningProgram[] }) {
 
   return (
     <div className="overflow-hidden rounded-2xl border border-brand-100 bg-white shadow-[0_12px_32px_-20px_rgb(25_28_95/0.35)]">
-      <Table>
-        <TableHeader>
-          <TableRow className="border-brand-100 bg-brand-50/60 hover:bg-brand-50/60">
-            <TableHead className="pl-5 text-[11px] font-semibold tracking-wider text-brand-700 uppercase">
-              Program
-            </TableHead>
-            <TableHead className="text-[11px] font-semibold tracking-wider text-brand-700 uppercase">
-              Type
-            </TableHead>
-            <TableHead className="text-[11px] font-semibold tracking-wider text-brand-700 uppercase">
-              Year
-            </TableHead>
-            <TableHead className="text-[11px] font-semibold tracking-wider text-brand-700 uppercase">
-              Classes
-            </TableHead>
-            <TableHead className="hidden text-[11px] font-semibold tracking-wider text-brand-700 uppercase md:table-cell">
-              Subjects
-            </TableHead>
-            <TableHead className="w-32 pr-5 text-right text-[11px] font-semibold tracking-wider text-brand-700 uppercase">
-              Actions
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {section("REGULAR", regular)}
-          {section("CUSTOMIZED", customized)}
-        </TableBody>
-      </Table>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-100 bg-brand-50/40 px-3 py-2.5 sm:px-5">
+        <p className="text-xs font-medium text-neutral-500 tabular-nums">
+          {filtered.length === programs.length
+            ? `${programs.length} program${programs.length === 1 ? "" : "s"}`
+            : `${filtered.length} of ${programs.length} programs`}
+        </p>
+        <TableSearch value={query} onChange={setQuery} placeholder="Search programs" />
+      </div>
+      {filtered.length === 0 ? (
+        <p className="px-5 py-10 text-center text-sm text-neutral-500">No matching programs.</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow className="border-brand-100 bg-brand-50/60 hover:bg-brand-50/60">
+              <TableHead className="pl-5 text-[11px] font-semibold tracking-wider text-brand-700 uppercase">
+                Program
+              </TableHead>
+              <TableHead className="text-[11px] font-semibold tracking-wider text-brand-700 uppercase">
+                Type
+              </TableHead>
+              <TableHead className="text-[11px] font-semibold tracking-wider text-brand-700 uppercase">
+                Year
+              </TableHead>
+              <TableHead className="text-[11px] font-semibold tracking-wider text-brand-700 uppercase">
+                Classes
+              </TableHead>
+              <TableHead className="hidden text-[11px] font-semibold tracking-wider text-brand-700 uppercase md:table-cell">
+                Subjects
+              </TableHead>
+              <TableHead className="w-32 pr-5 text-right text-[11px] font-semibold tracking-wider text-brand-700 uppercase">
+                Actions
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {section("REGULAR", regular)}
+            {section("CUSTOMIZED", customized)}
+          </TableBody>
+        </Table>
+      )}
     </div>
   );
 }

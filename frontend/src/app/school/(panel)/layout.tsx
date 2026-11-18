@@ -28,8 +28,8 @@ export default async function SchoolPanelLayout({
           style={
             {
               "--sidebar-width": "10.8rem",
-              // Mobile drawer: half of previous 10.8rem width.
-              "--sidebar-width-mobile": "5.4rem",
+              // Mobile drawer: half of the default sheet width (was ~75vw / sm:max-w-sm).
+              "--sidebar-width-mobile": "min(50vw, 12rem)",
             } as React.CSSProperties
           }
         >

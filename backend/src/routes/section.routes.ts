@@ -12,6 +12,7 @@ import {
   listSchoolClassOrganization,
   listSchoolSections,
   updateAdminSchoolSection,
+  updateAdminSchoolWholeClass,
   updateSchoolSection,
   updateSchoolWholeClass,
 } from "../controllers/section.controller.js";
@@ -75,6 +76,12 @@ adminSchoolSectionRouter.post(
   validate(schoolIdParams, "params"),
   validate(createSectionSchema),
   createAdminSchoolSection,
+);
+adminSchoolSectionRouter.patch(
+  "/classes/:id",
+  validate(schoolSectionParams, "params"),
+  validate(updateSchoolClassSchema),
+  updateAdminSchoolWholeClass,
 );
 adminSchoolSectionRouter.patch(
   "/:id",

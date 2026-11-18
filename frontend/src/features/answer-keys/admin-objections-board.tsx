@@ -16,6 +16,7 @@ import {
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
+import { matchesSearch, TableSearch } from "@/components/shared/table-search";
 import { documentAnswersHref } from "@/features/documents/constants";
 import { capitalizeWords } from "@/features/schools/schema";
 import { cn } from "@/lib/utils";
@@ -44,6 +45,7 @@ export function AdminObjectionsBoard({ initialItems }: AdminObjectionsBoardProps
   const [items, setItems] = useState(initialItems);
   const [syncedItems, setSyncedItems] = useState(initialItems);
   const [filter, setFilter] = useState<AnswerKeyObjectionStatus | "ALL">("OPEN");
+  const [query, setQuery] = useState("");
   const [reviewing, setReviewing] = useState<AnswerKeyObjection | null>(null);
   const [decision, setDecision] = useState<"RESOLVED" | "REJECTED">("RESOLVED");
   const [note, setNote] = useState("");
@@ -55,10 +57,28 @@ export function AdminObjectionsBoard({ initialItems }: AdminObjectionsBoardProps
     setItems(initialItems);
   }
 
-  const visible = useMemo(
-    () => (filter === "ALL" ? items : items.filter((row) => row.status === filter)),
-    [filter, items],
-  );
+  const visible = useMemo(() => {
+    const statusFiltered =
+      filter === "ALL" ? items : items.filter((row) => row.status === filter);
+    return statusFiltered.filter((row) =>
+      matchesSearch(
+        query,
+        row.school.name,
+        row.school.code,
+        row.answerKey.testNumber,
+        row.answerKey.testId,
+        row.answerKey.classLevel,
+        row.answerKey.programCode,
+        row.teacher?.name,
+        row.raisedBy,
+        row.questionNumber,
+        row.message,
+        row.status,
+        row.proposedAnswer,
+        row.currentAnswer,
+      ),
+    );
+  }, [filter, items, query]);
 
   function submitReview() {
     if (!reviewing) return;
@@ -94,32 +114,35 @@ export function AdminObjectionsBoard({ initialItems }: AdminObjectionsBoardProps
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        {FILTERS.map((item) => (
-          <button
-            key={item.value}
-            type="button"
-            onClick={() => setFilter(item.value)}
-            className={cn(
-              "rounded-lg border px-3 py-1.5 text-xs font-semibold",
-              filter === item.value
-                ? "border-brand-700 bg-brand-800 text-white"
-                : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50",
-            )}
-          >
-            {item.label}
-            {item.value !== "ALL" ? (
-              <span className="ml-1 opacity-70">
-                ({items.filter((row) => row.status === item.value).length})
-              </span>
-            ) : null}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          {FILTERS.map((item) => (
+            <button
+              key={item.value}
+              type="button"
+              onClick={() => setFilter(item.value)}
+              className={cn(
+                "rounded-lg border px-3 py-1.5 text-xs font-semibold",
+                filter === item.value
+                  ? "border-brand-700 bg-brand-800 text-white"
+                  : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50",
+              )}
+            >
+              {item.label}
+              {item.value !== "ALL" ? (
+                <span className="ml-1 opacity-70">
+                  ({items.filter((row) => row.status === item.value).length})
+                </span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+        <TableSearch value={query} onChange={setQuery} placeholder="Search objections" />
       </div>
 
       {visible.length === 0 ? (
         <p className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-10 text-center text-sm text-neutral-500">
-          No objections in this view.
+          {query.trim() ? "No matching objections." : "No objections in this view."}
         </p>
       ) : (
         <div className="overflow-hidden rounded-xl border border-brand-200 bg-white shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)]">

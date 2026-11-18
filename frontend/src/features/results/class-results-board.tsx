@@ -22,6 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { matchesSearch, TableSearch } from "@/components/shared/table-search";
 import type { DriveCrumb } from "@/features/documents/drive-browser";
 import { ProfileLink, studentProfileHref } from "@/components/shared/profile-link";
 import { programLabel } from "@/features/schools/constants";
@@ -201,9 +202,12 @@ export function ClassResultsBoard({
   const [rows, setRows] = useState(() =>
     buildRows(columns, students, sheet, path.classLevel),
   );
+  const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
 
   const roles = useMemo(() => columns.map(columnRole), [columns]);
+  const rollCol = roles.indexOf("roll");
+  const nameCol = roles.indexOf("name");
   const hasSubjects = roles.includes("subject");
   const computed = useMemo(
     () =>
@@ -213,6 +217,19 @@ export function ClassResultsBoard({
         path.classLevel,
       ),
     [columns, rows, path.classLevel],
+  );
+  const visibleRows = useMemo(
+    () =>
+      rows
+        .map((row, index) => ({ row, index }))
+        .filter(({ row }) =>
+          matchesSearch(
+            query,
+            rollCol >= 0 ? cellText(row.cells[rollCol]) : null,
+            nameCol >= 0 ? cellText(row.cells[nameCol]) : null,
+          ),
+        ),
+    [rows, query, rollCol, nameCol],
   );
 
   const programTitle = useMemo(() => {
@@ -350,6 +367,7 @@ export function ClassResultsBoard({
             </ol>
           </nav>
           <div className="flex flex-wrap items-center gap-2">
+            <TableSearch value={query} onChange={setQuery} placeholder="Search students" />
             <ClassResultPdfDownload target={savedRolls.size ? cardTarget : null} />
             <ClassRankCardsDownload target={savedRolls.size ? cardTarget : null} />
             <ClassOmrDownload path={path} count={scans.length} />
@@ -370,6 +388,10 @@ export function ClassResultsBoard({
           <p className="px-5 py-10 text-center text-sm text-neutral-500 sm:px-6">
             No students in this class yet. Add students to the school roster, or
             import Excel.
+          </p>
+        ) : visibleRows.length === 0 ? (
+          <p className="px-5 py-10 text-center text-sm text-neutral-500 sm:px-6">
+            No matching students.
           </p>
         ) : (
           <div className="max-h-[70vh] overflow-auto">
@@ -398,7 +420,7 @@ export function ClassResultsBoard({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((row, rowIndex) => (
+                {visibleRows.map(({ row, index: rowIndex }) => (
                   <TableRow key={row.key} onBlur={onRowBlur}>
                     {columns.map((label, index) => {
                       const role = roles[index] ?? null;

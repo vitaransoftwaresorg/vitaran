@@ -138,3 +138,39 @@ export async function deleteAdminSectionAction(schoolId: string, id: string) {
     return { ok: false as const, message: "Could not delete section." };
   }
 }
+
+export async function updateAdminSectionAction(
+  schoolId: string,
+  id: string,
+  input: Partial<SectionInput>,
+) {
+  try {
+    const section = await sectionService.updateAdminSchoolSection(schoolId, id, input);
+    revalidateSections(schoolId);
+    return { ok: true as const, section };
+  } catch (error) {
+    unstable_rethrow(error);
+    if (error instanceof ApiError) {
+      return { ok: false as const, message: error.message };
+    }
+    return { ok: false as const, message: "Could not update section." };
+  }
+}
+
+export async function updateAdminWholeClassAction(
+  schoolId: string,
+  id: string,
+  input: { programId?: string; studentCount?: number },
+) {
+  try {
+    const row = await sectionService.updateAdminSchoolWholeClass(schoolId, id, input);
+    revalidateSections(schoolId);
+    return { ok: true as const, class: row };
+  } catch (error) {
+    unstable_rethrow(error);
+    if (error instanceof ApiError) {
+      return { ok: false as const, message: error.message };
+    }
+    return { ok: false as const, message: "Could not update class." };
+  }
+}

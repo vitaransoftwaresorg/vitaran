@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { IconRowActions } from "@/components/shared/icon-row-actions";
+import { matchesSearch, TableSearch } from "@/components/shared/table-search";
 import { Switch } from "@/components/ui/switch";
 import {
   Table,
@@ -34,10 +35,30 @@ export function TeachersTable({
   showSchool,
 }: TeachersTableProps) {
   const router = useRouter();
+  const [query, setQuery] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
   /** Optimistic status so the switch flips immediately. */
   const [statusById, setStatusById] = useState<Record<string, TeacherStatus>>({});
   const [, startTransition] = useTransition();
+
+  const filtered = useMemo(
+    () =>
+      teachers.filter((teacher) =>
+        matchesSearch(
+          query,
+          teacher.name,
+          teacher.email,
+          teacher.school?.name,
+          teacher.school?.code,
+          TEACHER_STATUS_LABELS[teacher.status],
+          ...teacher.assignments.flatMap((item) => [
+            `C${item.classLevel}`,
+            subjectLabel(item.subject),
+          ]),
+        ),
+      ),
+    [teachers, query],
+  );
 
   if (teachers.length === 0) {
     return (
@@ -50,6 +71,17 @@ export function TeachersTable({
 
   return (
     <div className="overflow-hidden rounded-2xl border border-brand-100 bg-white shadow-[0_12px_32px_-20px_rgb(25_28_95/0.35)]">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-100 bg-brand-50/40 px-3 py-2.5 sm:px-5">
+        <p className="text-xs font-medium text-neutral-500 tabular-nums">
+          {filtered.length === teachers.length
+            ? `${teachers.length} teacher${teachers.length === 1 ? "" : "s"}`
+            : `${filtered.length} of ${teachers.length} teachers`}
+        </p>
+        <TableSearch value={query} onChange={setQuery} placeholder="Search teachers" />
+      </div>
+      {filtered.length === 0 ? (
+        <p className="px-5 py-10 text-center text-sm text-neutral-500">No matching teachers.</p>
+      ) : (
       <Table>
         <TableHeader>
           <TableRow className="border-brand-100 bg-brand-50/60 hover:bg-brand-50/60">
@@ -73,7 +105,7 @@ export function TeachersTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {teachers.map((teacher) => {
+          {filtered.map((teacher) => {
             const status = statusById[teacher.id] ?? teacher.status;
             const active = status === "ACTIVE";
             const busy = pendingId === teacher.id;
@@ -178,6 +210,7 @@ export function TeachersTable({
           })}
         </TableBody>
       </Table>
+      )}
     </div>
   );
 }

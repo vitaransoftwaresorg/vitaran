@@ -97,3 +97,14 @@ export const deleteAdminSchoolSection: RequestHandler<SchoolSectionParams> = asy
   await sectionService.deleteSection(req.params.schoolId, req.params.id);
   res.status(204).end();
 };
+
+export const updateAdminSchoolWholeClass: RequestHandler<SchoolSectionParams> = async (req, res) => {
+  sendSuccess(
+    res,
+    await sectionService.updateSchoolClass(
+      req.params.schoolId,
+      req.params.id,
+      req.body as UpdateSchoolClassInput,
+    ),
+  );
+};

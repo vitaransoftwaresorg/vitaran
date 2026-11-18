@@ -3,8 +3,9 @@
 import { memo, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { GraduationCap, Loader2, Plus, Trash2, UserRound } from "lucide-react";
+import { GraduationCap, Loader2, Pencil, Plus, Trash2, UserRound } from "lucide-react";
 import { toast } from "sonner";
+import { matchesSearch, TableSearch } from "@/components/shared/table-search";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -24,7 +25,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { createAdminSectionAction, deleteAdminSectionAction } from "@/features/schools/section-actions";
+import {
+  createAdminSectionAction,
+  deleteAdminSectionAction,
+  updateAdminSectionAction,
+  updateAdminWholeClassAction,
+} from "@/features/schools/section-actions";
 import { capitalizeWords } from "@/features/schools/schema";
 import { STUDENTS_PATH } from "@/features/students/school-roster";
 import { formatNumber } from "@/utils/format";
@@ -88,6 +94,12 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
   const [errors, setErrors] = useState<
     Partial<Record<"classLevel" | "programId" | "studentCount" | "name", string>>
   >({});
+  const [editing, setEditing] = useState<ClassRow | null>(null);
+  const [editSeats, setEditSeats] = useState("");
+  const [editName, setEditName] = useState("");
+  const [editErrors, setEditErrors] = useState<Partial<Record<"studentCount" | "name", string>>>(
+    {},
+  );
   const [draftCreates, setDraftCreates] = useState<
     Array<SectionInput & { draftId: string; programName: string }>
   >([]);
@@ -118,6 +130,8 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     }
     return map;
   }, [classTeacherSlots]);
+
+  const [query, setQuery] = useState("");
 
   const classRows: ClassRow[] = useMemo(() => {
     const rows: ClassRow[] = [
@@ -168,6 +182,21 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
         a.programName.localeCompare(b.programName),
     );
   }, [organization, classCtByKey, draftCreates, draftDeletes]);
+
+  const filteredRows = useMemo(
+    () =>
+      classRows.filter((row) =>
+        matchesSearch(
+          query,
+          row.classLevel,
+          row.section,
+          row.programName,
+          row.seats,
+          row.teacherName,
+        ),
+      ),
+    [classRows, query],
+  );
 
   const classOptions = useMemo(() => {
     const levels = new Set<number>();
@@ -301,6 +330,78 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     });
   }
 
+  function openEdit(row: ClassRow) {
+    setEditing(row);
+    setEditSeats(String(row.seats));
+    setEditName(row.section);
+    setEditErrors({});
+  }
+
+  function saveEdit() {
+    if (!editing) return;
+    const count = Number(editSeats);
+    const nextErrors: typeof editErrors = {};
+    if (!editSeats.trim()) nextErrors.studentCount = "Enter seats";
+    else if (!Number.isInteger(count) || count < 1) {
+      nextErrors.studentCount = "Enter a valid seat count (1 or more)";
+    }
+    if (editing.kind === "section" && !editName.trim()) {
+      nextErrors.name = "Section name is required";
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setEditErrors(nextErrors);
+      return;
+    }
+    setEditErrors({});
+
+    if (deferred) {
+      if (editing.draft || editing.id.startsWith("draft-")) {
+        setDraftCreates((prev) =>
+          prev.map((item) =>
+            item.draftId === editing.id
+              ? {
+                  ...item,
+                  studentCount: count,
+                  name: editing.kind === "section" ? editName.trim().toUpperCase() : item.name,
+                }
+              : item,
+          ),
+        );
+        toast.success("Seats updated — save the school to keep this change");
+        setEditing(null);
+        return;
+      }
+      toast.error("Save the school first, then edit this class’s seats");
+      return;
+    }
+
+    if (!schoolId) return;
+    startTransition(async () => {
+      if (editing.kind === "section") {
+        const result = await updateAdminSectionAction(schoolId, editing.id, {
+          name: editName.trim().toUpperCase(),
+          studentCount: count,
+        });
+        if (!result.ok) {
+          setEditErrors({ studentCount: result.message });
+          return;
+        }
+        toast.success(`Section ${editing.classLevel}-${editName.trim().toUpperCase()} updated`);
+      } else {
+        const result = await updateAdminWholeClassAction(schoolId, editing.id, {
+          studentCount: count,
+        });
+        if (!result.ok) {
+          setEditErrors({ studentCount: result.message });
+          return;
+        }
+        toast.success(`Class ${editing.classLevel}-A seats updated`);
+      }
+      setEditing(null);
+      router.refresh();
+    });
+  }
+
   function removeSection(row: ClassRow) {
     if (row.kind !== "section") return;
     if (!window.confirm(`Delete section ${row.classLevel}-${row.section}?`)) return;
@@ -385,6 +486,64 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
           Options follow Programs & classes checks. Added classes are kept when you save the school.
         </p>
       ) : null}
+
+      <AlertDialog
+        open={editing != null}
+        onOpenChange={(open) => {
+          if (!open && !pending) {
+            setEditing(null);
+            setEditErrors({});
+          }
+        }}
+      >
+        <AlertDialogContent className="sm:max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Edit seats</AlertDialogTitle>
+            <AlertDialogDescription>
+              {editing
+                ? `Class ${editing.classLevel}-${editing.kind === "section" ? editName || editing.section : "A"} · ${capitalizeWords(editing.programName)}`
+                : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="grid gap-3 py-1">
+            {editing?.kind === "section" ? (
+              <Field data-invalid={editErrors.name ? true : undefined}>
+                <FieldLabel>Section</FieldLabel>
+                <Input
+                  value={editName}
+                  maxLength={32}
+                  className="h-9 uppercase"
+                  onChange={(e) => {
+                    setEditName(e.currentTarget.value.toUpperCase());
+                    setEditErrors((prev) => ({ ...prev, name: undefined }));
+                  }}
+                />
+                {editErrors.name ? <FieldError>{editErrors.name}</FieldError> : null}
+              </Field>
+            ) : null}
+            <Field data-invalid={editErrors.studentCount ? true : undefined}>
+              <FieldLabel>Seats *</FieldLabel>
+              <Input
+                value={editSeats}
+                className="h-9"
+                inputMode="numeric"
+                onChange={(e) => {
+                  setEditSeats(e.currentTarget.value.replace(/\D/g, "").slice(0, 4));
+                  setEditErrors((prev) => ({ ...prev, studentCount: undefined }));
+                }}
+              />
+              {editErrors.studentCount ? <FieldError>{editErrors.studentCount}</FieldError> : null}
+            </Field>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+            <Button type="button" disabled={pending} onClick={saveEdit}>
+              {pending ? <Loader2 className="size-3.5 animate-spin" /> : null}
+              Save
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog
         open={creating}
@@ -512,6 +671,17 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
         </p>
       ) : (
         <div className="overflow-x-auto">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-100 px-3 py-2.5 sm:px-4">
+            <p className="text-xs font-medium text-neutral-500 tabular-nums">
+              {filteredRows.length === classRows.length
+                ? `${classRows.length} class${classRows.length === 1 ? "" : "es"}`
+                : `${filteredRows.length} of ${classRows.length} classes`}
+            </p>
+            <TableSearch value={query} onChange={setQuery} placeholder="Search classes" />
+          </div>
+          {filteredRows.length === 0 ? (
+            <p className="px-4 py-8 text-center text-sm text-neutral-500">No matching classes.</p>
+          ) : (
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead className="border-b border-brand-100 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">
               <tr>
@@ -526,7 +696,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
               </tr>
             </thead>
             <tbody>
-              {classRows.map((row) => {
+              {filteredRows.map((row) => {
                 const studentsLink = schoolId
                   ? classStudentsHref(row.classLevel, row.section)
                   : null;
@@ -548,7 +718,14 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                       {capitalizeWords(row.programName)}
                     </td>
                     <td className="px-4 py-3 text-right font-medium text-neutral-900 tabular-nums">
-                      {formatNumber(row.seats)}
+                      <button
+                        type="button"
+                        title="Edit seats"
+                        className="rounded-md px-1.5 py-0.5 hover:bg-brand-50 hover:text-brand-900"
+                        onClick={() => openEdit(row)}
+                      >
+                        {formatNumber(row.seats)}
+                      </button>
                     </td>
                     <td className="px-4 py-3">
                       {studentsLink ? (
@@ -577,23 +754,35 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                       </Link>
                     </td>
                     <td className="px-4 py-3 text-right">
-                      {row.kind === "section" ? (
+                      <div className="inline-flex items-center justify-end gap-0.5">
                         <button
                           type="button"
-                          title="Delete section"
+                          title="Edit seats"
                           disabled={pending}
-                          className="inline-flex size-8 items-center justify-center rounded-md text-neutral-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-40"
-                          onClick={() => removeSection(row)}
+                          className="inline-flex size-8 items-center justify-center rounded-md text-neutral-500 hover:bg-brand-50 hover:text-brand-800 disabled:opacity-40"
+                          onClick={() => openEdit(row)}
                         >
-                          <Trash2 className="size-3.5" />
+                          <Pencil className="size-3.5" />
                         </button>
-                      ) : null}
+                        {row.kind === "section" ? (
+                          <button
+                            type="button"
+                            title="Delete section"
+                            disabled={pending}
+                            className="inline-flex size-8 items-center justify-center rounded-md text-neutral-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-40"
+                            onClick={() => removeSection(row)}
+                          >
+                            <Trash2 className="size-3.5" />
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+          )}
         </div>
       )}
     </section>

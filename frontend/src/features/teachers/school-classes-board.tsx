@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { matchesSearch, TableSearch } from "@/components/shared/table-search";
 import { PageHeader } from "@/features/admin/page-header";
 import { useLiveContent } from "@/features/live/use-live-content";
 import {
@@ -100,6 +101,7 @@ export function SchoolClassesBoard({
   const [organization, setOrganization] = useState<ClassOrganization | null>(null);
   const [slots, setSlots] = useState(initialSlots);
   const [pending, startTransition] = useTransition();
+  const [query, setQuery] = useState("");
 
   const [classLevel, setClassLevel] = useState("");
   const [name, setName] = useState("");
@@ -416,6 +418,55 @@ export function SchoolClassesBoard({
 
   const totalCount = organization.wholeClasses.length + organization.sections.length;
 
+  const classRows = [
+    ...organization.wholeClasses.map((row) => {
+      const slot = classCtByKey.get(`${row.programId}:${row.classLevel}`);
+      return {
+        key: `w-${row.id}`,
+        kind: "class" as const,
+        row,
+        programName: row.programName,
+        classLevel: row.classLevel,
+        sectionLabel: "A",
+        enrolled: enrolledByWhole[row.id] ?? 0,
+        seats: row.studentCount,
+        teacherId: slot?.teacherId ?? null,
+        teacherName: slot?.teacherName ?? null,
+        open: () => onOpenStudents?.({ kind: "whole", row }),
+      };
+    }),
+    ...organization.sections.map((section) => ({
+      key: `s-${section.id}`,
+      kind: "section" as const,
+      row: section,
+      programName: section.programName,
+      classLevel: section.classLevel,
+      sectionLabel: section.name,
+      enrolled: enrolledBySection[section.id] ?? 0,
+      seats: section.studentCount,
+      teacherId: section.classTeacher?.teacherId ?? null,
+      teacherName: section.classTeacher?.name ?? null,
+      open: () => onOpenStudents?.({ kind: "section", row: section }),
+    })),
+  ].sort(
+    (a, b) =>
+      a.classLevel - b.classLevel ||
+      a.programName.localeCompare(b.programName) ||
+      a.sectionLabel.localeCompare(b.sectionLabel),
+  );
+
+  const filteredClassRows = classRows.filter((row) =>
+    matchesSearch(
+      query,
+      row.programName,
+      row.classLevel,
+      row.sectionLabel,
+      row.seats,
+      row.enrolled,
+      row.teacherName,
+    ),
+  );
+
   const teacherItems = [
     { value: NONE, label: "No class teacher" },
     ...eligibleTeachers.map((teacher) => ({
@@ -454,7 +505,18 @@ export function SchoolClassesBoard({
               pending && "opacity-70 transition-opacity",
             )}
           >
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-100 bg-brand-50/40 px-3 py-2.5 sm:px-4">
+              <p className="text-xs font-medium text-neutral-500 tabular-nums">
+                {filteredClassRows.length === classRows.length
+                  ? `${classRows.length} class${classRows.length === 1 ? "" : "es"}`
+                  : `${filteredClassRows.length} of ${classRows.length} classes`}
+              </p>
+              <TableSearch value={query} onChange={setQuery} placeholder="Search classes" />
+            </div>
             <div className="overflow-x-auto">
+              {filteredClassRows.length === 0 ? (
+                <p className="px-4 py-8 text-center text-sm text-neutral-500">No matching classes.</p>
+              ) : (
               <table className="w-full min-w-[860px] text-left text-sm">
                 <thead className="border-b border-brand-100 bg-brand-50/70 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">
                   <tr>
@@ -469,44 +531,7 @@ export function SchoolClassesBoard({
                   </tr>
                 </thead>
                 <tbody>
-                  {[
-                    ...organization.wholeClasses.map((row) => {
-                      const slot = classCtByKey.get(`${row.programId}:${row.classLevel}`);
-                      return {
-                        key: `w-${row.id}`,
-                        kind: "class" as const,
-                        row,
-                        programName: row.programName,
-                        classLevel: row.classLevel,
-                        sectionLabel: "A",
-                        enrolled: enrolledByWhole[row.id] ?? 0,
-                        seats: row.studentCount,
-                        teacherId: slot?.teacherId ?? null,
-                        teacherName: slot?.teacherName ?? null,
-                        open: () => onOpenStudents?.({ kind: "whole", row }),
-                      };
-                    }),
-                    ...organization.sections.map((section) => ({
-                      key: `s-${section.id}`,
-                      kind: "section" as const,
-                      row: section,
-                      programName: section.programName,
-                      classLevel: section.classLevel,
-                      sectionLabel: section.name,
-                      enrolled: enrolledBySection[section.id] ?? 0,
-                      seats: section.studentCount,
-                      teacherId: section.classTeacher?.teacherId ?? null,
-                      teacherName: section.classTeacher?.name ?? null,
-                      open: () => onOpenStudents?.({ kind: "section", row: section }),
-                    })),
-                  ]
-                    .sort(
-                      (a, b) =>
-                        a.classLevel - b.classLevel ||
-                        a.programName.localeCompare(b.programName) ||
-                        a.sectionLabel.localeCompare(b.sectionLabel),
-                    )
-                    .map((item) => (
+                  {filteredClassRows.map((item) => (
                       <tr
                         key={item.key}
                         className="border-b border-neutral-100 last:border-0 hover:bg-brand-50/40"
@@ -602,6 +627,7 @@ export function SchoolClassesBoard({
                     ))}
                 </tbody>
               </table>
+              )}
             </div>
           </div>
       )}
