@@ -21,7 +21,7 @@ import { FailedPages } from "./failed-pages";
 import { resumePdfJob, stopPdfJob } from "./pdf-batch";
 import type { ScanQueueItem } from "./queue-item";
 import type { ScanPortal } from "@/services/scans";
-import type { ScanPreview } from "@/types/scan";
+import { formatMarks, type ScanPreview } from "@/types/scan";
 
 const BASE: Record<ScanPortal, string> = {
   admin: "/admin/omr-scan",
@@ -107,7 +107,9 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
     try {
       const result = await commit(item);
       if (result.ok) {
-        toast.success(`Saved ${result.scan.student.name} · ${result.scan.total}/${result.scan.maxTotal}`);
+        toast.success(
+          `Saved ${result.scan.student.name} · ${formatMarks(result.scan.total)}/${formatMarks(result.scan.maxTotal)}`,
+        );
         router.refresh();
       } else toast.error(`${item.scan.student.name}: ${result.message}`);
     } finally {
@@ -339,7 +341,7 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
                         </p>
                       </div>
                       <p className="shrink-0 text-sm font-bold tabular-nums text-brand-900">
-                        {row.total}/{row.maxTotal}
+                        {formatMarks(row.total)}/{formatMarks(row.maxTotal)}
                       </p>
                     </button>
                     <Button

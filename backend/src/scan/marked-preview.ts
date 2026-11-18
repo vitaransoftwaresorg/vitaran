@@ -90,7 +90,7 @@ export async function markedSheetPreview(
     .toBuffer();
 }
 
-const formatMarks = (value: number) => String(Math.round(value * 100) / 100);
+const formatMarks = (value: number) => String(Number(value.toFixed(3)));
 
 const escapeXml = (value: string) =>
   value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");

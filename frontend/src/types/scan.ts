@@ -11,6 +11,12 @@ export type ScanSubjectScore = {
   maxTotal: number;
 };
 
+/** Drop float residue from partial-credit marks (286.66700000000003 → 286.667). */
+export function formatMarks(value: number) {
+  if (!Number.isFinite(value)) return "0";
+  return String(Number(value.toFixed(3)));
+}
+
 /** Answer key(s) behind an entered test ID. */
 export type TestIdCheck = {
   testId: string;

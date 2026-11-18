@@ -20,6 +20,7 @@ import {
   subscribeScanBatch,
 } from "./batch-store";
 import type { ScanPortal } from "@/services/scans";
+import { formatMarks } from "@/types/scan";
 
 const BASE: Record<ScanPortal, string> = {
   admin: "/admin/omr-scan",
@@ -99,7 +100,7 @@ export function ScanReviewPage({ portal }: { portal: ScanPortal }) {
         return;
       }
       toast.success(
-        `Saved ${result.scan.student.name} · ${result.scan.total}/${result.scan.maxTotal}`,
+        `Saved ${result.scan.student.name} · ${formatMarks(result.scan.total)}/${formatMarks(result.scan.maxTotal)}`,
       );
       const remaining = removeScanBatchAt(resolvedIndex);
       router.refresh();
@@ -144,8 +145,8 @@ export function ScanReviewPage({ portal }: { portal: ScanPortal }) {
           <div className="text-right">
             <p className="text-[10px] font-semibold tracking-wider text-neutral-400 uppercase">Score vs Total</p>
             <p className="text-4xl font-bold tabular-nums text-brand-900">
-              {scan.total}
-              <span className="text-lg font-semibold text-neutral-500">/{scan.maxTotal}</span>
+              {formatMarks(scan.total)}
+              <span className="text-lg font-semibold text-neutral-500">/{formatMarks(scan.maxTotal)}</span>
             </p>
           </div>
         </header>
@@ -173,7 +174,7 @@ export function ScanReviewPage({ portal }: { portal: ScanPortal }) {
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-semibold">{subjectLabel(row.subject)}</p>
                     <p className="text-sm font-bold tabular-nums">
-                      {row.total}/{row.maxTotal}
+                      {formatMarks(row.total)}/{formatMarks(row.maxTotal)}
                     </p>
                   </div>
                   <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] font-semibold tabular-nums">

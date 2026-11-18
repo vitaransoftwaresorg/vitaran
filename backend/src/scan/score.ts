@@ -41,6 +41,12 @@ export type QuestionScore = {
   marks: number;
 };
 
+/** Drop float residue (e.g. 286.66700000000003 → 286.667). */
+export function roundMarks(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Number(value.toFixed(3));
+}
+
 /**
  * MCQ marks: each key option is worth an equal share of correctMarks.
  * Correctly marked options earn their share; wrong options earn 0 (no negative).
@@ -63,8 +69,7 @@ export function questionScore(
   for (const option of filled) {
     if (wanted.includes(option)) earned += perOption;
   }
-  // Float-safe round (e.g. 4/3 shares).
-  earned = Math.round(Math.min(earned, correctMarks) * 1000) / 1000;
+  earned = roundMarks(Math.min(earned, correctMarks));
 
   const allWantedMarked = wanted.every((option) => filled.includes(option));
   if (earned <= 0) return { result: "wrong", marks: 0 };
@@ -137,7 +142,7 @@ export function scoreSheet(
       partial,
       wrong,
       blank,
-      total,
+      total: roundMarks(total),
       maxTotal: range.maxMarks || questions * correctMarks,
     };
   });
@@ -156,7 +161,7 @@ export function scoreSheet(
     partial: subjectScores.reduce((sum, row) => sum + row.partial, 0),
     wrong: subjectScores.reduce((sum, row) => sum + row.wrong, 0),
     blank: subjectScores.reduce((sum, row) => sum + row.blank, 0),
-    total: subjectScores.reduce((sum, row) => sum + row.total, 0),
+    total: roundMarks(subjectScores.reduce((sum, row) => sum + row.total, 0)),
     maxTotal: subjectScores.reduce((sum, row) => sum + row.maxTotal, 0),
   };
 }
