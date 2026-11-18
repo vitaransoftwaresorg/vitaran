@@ -19,7 +19,6 @@ export default async function AdminAnswerKeysPage({ searchParams }: PageProps<"/
     type: filters.type,
     schoolId: filters.schoolId,
     program: filters.schoolId ? undefined : filters.program,
-    limit: 100,
   });
 
   const path: DrivePath = {

@@ -201,7 +201,13 @@ export async function listRecentAnswerKeys({
       programCodes: school.schoolPrograms.map((row) => row.program.code),
     }));
   }
-  return (await answerKeyRepository.findRecentAnswerKeys({ AND: where }, limit)).map((row) => toAnswerKeyDto(row));
+  const filter = { AND: where };
+  // Cap only when requested — admin drive needs the full set so folder
+  // counts match the dashboard total.
+  const rows = limit
+    ? await answerKeyRepository.findRecentAnswerKeys(filter, limit)
+    : await answerKeyRepository.findAnswerKeys(filter);
+  return rows.map((row) => toAnswerKeyDto(row));
 }
 
 /**
@@ -266,9 +272,10 @@ export async function listSchoolTestsForResults(schoolId: string) {
 }
 
 export async function getAnswerKeyStats() {
+  // Unsaved editor shells (empty answers) are drafts — not counted until Save.
   const [total, published] = await Promise.all([
-    answerKeyRepository.countAnswerKeys(),
-    answerKeyRepository.countAnswerKeys({ published: true }),
+    answerKeyRepository.countSavedAnswerKeys(false),
+    answerKeyRepository.countSavedAnswerKeys(true),
   ]);
   return { total, published };
 }
@@ -299,6 +306,16 @@ export async function uploadAnswerKey({ schoolId, program, ...meta }: UploadAnsw
   await assertProgramClass(meta.type, program, meta.classLevel, resolvedSchoolId);
   await assertUniqueTestId(meta.testId);
 
+  // Reopen an unsaved draft for this slot instead of creating another empty row.
+  const draft = await answerKeyRepository.findDraftAnswerKey({
+    programCode: program,
+    testNumber: meta.testNumber,
+    classLevel: meta.classLevel,
+    type: meta.type,
+    schoolId: resolvedSchoolId,
+  });
+  if (draft) return toAnswerKeyDto(draft);
+
   const created = await answerKeyRepository.createAnswerKey({
     type: meta.type,
     ...(meta.testId ? { testId: meta.testId } : {}),
@@ -309,10 +326,11 @@ export async function uploadAnswerKey({ schoolId, program, ...meta }: UploadAnsw
     ...emptyKeyFile(),
     ...(await blankKeyFields(program)),
   });
+  // Draft shells stay admin-only until answers are saved (and usually published).
   notifyContentChanged({
     kind: KIND,
     schoolId: created.school?.id ?? null,
-    adminOnly: !created.published,
+    adminOnly: true,
   });
   return toAnswerKeyDto(created);
 }

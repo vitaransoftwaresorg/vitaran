@@ -1,5 +1,5 @@
 import { prisma } from "../config/database.js";
-import type { Prisma } from "../generated/prisma/client.js";
+import { Prisma } from "../generated/prisma/client.js";
 
 /** Everything except the file bytes. */
 export const answerKeySummarySelect = {
@@ -53,12 +53,58 @@ export function findAnswerKeys(where: Prisma.AnswerKeyWhereInput) {
   return prisma.answerKey.findMany({
     where,
     select: answerKeySummarySelect,
-    orderBy: [{ classLevel: "asc" }, { testNumber: "asc" }],
+    orderBy: [{ updatedAt: "desc" }, { classLevel: "asc" }, { testNumber: "asc" }],
   });
 }
 
 export function countAnswerKeys(where?: Prisma.AnswerKeyWhereInput) {
   return prisma.answerKey.count({ where });
+}
+
+/**
+ * Keys that still have no saved answers (opened editor, never saved).
+ * Used so drafts are not counted as real answer keys on the dashboard.
+ */
+export async function countSavedAnswerKeys(publishedOnly = false) {
+  const rows = publishedOnly
+    ? await prisma.$queryRaw<[{ count: bigint }]>`
+        SELECT COUNT(*)::bigint AS count
+        FROM answer_keys
+        WHERE published = true
+          AND answers IS NOT NULL
+          AND answers::text <> 'null'
+          AND answers::text <> '{}'
+      `
+    : await prisma.$queryRaw<[{ count: bigint }]>`
+        SELECT COUNT(*)::bigint AS count
+        FROM answer_keys
+        WHERE answers IS NOT NULL
+          AND answers::text <> 'null'
+          AND answers::text <> '{}'
+      `;
+  return Number(rows[0]?.count ?? 0);
+}
+
+/** Reuse an unsaved shell for the same program / test / class / school. */
+export function findDraftAnswerKey(slot: {
+  programCode: string;
+  testNumber: number;
+  classLevel: number;
+  type: Prisma.AnswerKeyWhereInput["type"];
+  schoolId: string | null;
+}) {
+  return prisma.answerKey.findFirst({
+    where: {
+      programCode: slot.programCode,
+      testNumber: slot.testNumber,
+      classLevel: slot.classLevel,
+      type: slot.type,
+      schoolId: slot.schoolId,
+      OR: [{ answers: { equals: {} } }, { answers: { equals: Prisma.DbNull } }, { answers: { equals: Prisma.JsonNull } }],
+    },
+    select: answerKeyDetailSelect,
+    orderBy: { updatedAt: "desc" },
+  });
 }
 
 export function findAnswerKeyById(id: string) {

@@ -196,7 +196,9 @@ export function AnswerKeysDrive({
   } else if (inTests) {
     driveItems.push(
       ...DRIVE_TESTS.map((testNumber) => {
-        const count = scopedItems(items, drivePath).filter((item) => item.testNumber === testNumber).length;
+        const count = scopedItems(items, drivePath).filter(
+          (item) => item.testNumber === testNumber && (item.answerCount ?? 0) > 0,
+        ).length;
         return {
           id: String(testNumber),
           name: `Test ${testNumber}`,
@@ -217,21 +219,31 @@ export function AnswerKeysDrive({
           .map((item) => item.classLevel),
       ).map((classLevel) => {
         const file = fileForClass(items, drivePath, classLevel);
-        if (!file) {
+        const filled = file?.answerCount ?? 0;
+        // Unsaved editor shells stay as drafts until answers are saved.
+        if (!file || filled === 0) {
+          const draftHref = file
+            ? documentAnswersHref(ANSWER_KEYS_PATH, file.id, link(drivePath))
+            : undefined;
           return {
-            id: `class:${classLevel}`,
+            id: file?.id ?? `class:${classLevel}`,
             name: `Class ${classLevel}`,
             kind: "empty" as const,
-            detail: "No key yet",
-            createLabel: "Add key",
+            detail: file ? "Draft — save answers to keep" : "No key yet",
+            createLabel: file ? "Continue" : "Add key",
             creating: creatingClass === classLevel,
             testId: "",
-            onCreate: () => addKey(classLevel),
+            onCreate: () => {
+              if (draftHref) {
+                router.push(draftHref);
+                return;
+              }
+              addKey(classLevel);
+            },
           };
         }
 
         const href = documentAnswersHref(ANSWER_KEYS_PATH, file.id, link(drivePath));
-        const filled = file.answerCount ?? 0;
         const publishLabel = `Class ${classLevel} answer key`;
         return {
           id: file.id,
@@ -263,6 +275,8 @@ export function AnswerKeysDrive({
       : "No programs yet";
 
   const searchItems: DriveItem[] = items.flatMap((file) => {
+    // Hide unsaved drafts from search — they are not real keys yet.
+    if ((file.answerCount ?? 0) === 0) return [];
     const testId = enteredTestId(file.testId);
     if (!testId) return [];
     const folder = link({

@@ -24,7 +24,8 @@ export const uploadAnswerKeyQuerySchema = z.object({
 export const updateAnswerKeyQuerySchema = uploadAnswerKeyQuerySchema;
 
 export const listAnswerKeysQuerySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(50),
+  /** Omit to load every matching key (admin drive / dashboard alignment). */
+  limit: z.coerce.number().int().min(1).max(5000).optional(),
   testNumber: z.coerce.number().int().min(1).max(18).optional(),
   program: programCode.optional(),
   type: z.enum(SchoolType).optional(),
