@@ -175,7 +175,7 @@ export function ScanReviewPage({ portal }: { portal: ScanPortal }) {
                     <span className="rounded bg-yellow-50 px-1.5 py-0.5 text-yellow-800">
                       Partial {row.partial ?? 0}
                     </span>
-                    <span className="rounded bg-yellow-50 px-1.5 py-0.5 text-yellow-700">
+                    <span className="rounded bg-red-50 px-1.5 py-0.5 text-red-700">
                       Wrong {row.wrong}
                     </span>
                     <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-neutral-600">
@@ -396,7 +396,7 @@ function AnswerGrid({
     <div className="rounded-xl border border-neutral-200 p-3">
       <p className="mb-1 text-xs font-semibold tracking-wider text-neutral-500 uppercase">Read vs answer key</p>
       <p className="mb-2 text-[10px] text-neutral-500">
-        Same 5 columns as the sheet. Green = full marks, yellow = partial / wrong (0 marks), amber = blank.
+        Same 5 columns as the sheet. Green = correct, yellow = partial, red = wrong, amber = blank.
         Multi-correct keys split marks equally per option; wrong options add 0.
       </p>
       <div className="mb-1 grid grid-cols-5 gap-x-2 text-[10px] font-semibold tracking-wider text-neutral-400 uppercase">
@@ -421,11 +421,13 @@ function AnswerGrid({
           const toneClass =
             tone === "correct"
               ? "text-emerald-800"
-              : tone === "wrong" || tone === "partial"
+              : tone === "partial"
                 ? "text-yellow-700"
-                : tone === "blank"
-                  ? "text-amber-800"
-                  : "text-neutral-900";
+                : tone === "wrong"
+                  ? "text-red-800"
+                  : tone === "blank"
+                    ? "text-amber-800"
+                    : "text-neutral-900";
           return (
             <li key={question} className={toneClass}>
               {question}. {tone === "blank" ? "—" : marked.join("")}

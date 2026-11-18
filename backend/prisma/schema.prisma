@@ -392,7 +392,7 @@ model OmScan {
   image          Bytes
   /// Original upload (photo or PDF page) as JPEG.
   rawImage       Bytes?    @map("raw_image")
-  /// Evaluated sheet: score table + green/red bubbles, as shown before saving.
+  /// Evaluated sheet: score table + green/yellow/red bubbles, as shown before saving.
   previewImage   Bytes?    @map("preview_image")
   actor          String    @db.VarChar(16)
   scannedById    String?   @map("scanned_by_id") @db.Uuid

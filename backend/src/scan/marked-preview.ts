@@ -8,7 +8,8 @@ import { subjectHeader } from "../utils/result-columns.js";
 import { questionResult } from "./score.js";
 
 const GREEN = "#16a34a";
-/** Wrong + partial (multi-mark MCQ) — yellow on the evaluated sheet. */
+const RED = "#dc2626";
+/** Partial credit (some key options only) — yellow on the evaluated sheet. */
 const YELLOW = "#ca8a04";
 
 type TableRow = {
@@ -32,8 +33,8 @@ function loadTableFont() {
 }
 
 /**
- * Warped sheet with filled bubbles coloured green (correct) or yellow (wrong / partial MCQ),
- * plus a green ring on the key's option where the student missed it, under a subject score table.
+ * Warped sheet colours: green = correct, red = wrong, yellow = partial,
+ * plus a green ring on the key option when the student missed it.
  */
 export async function markedSheetPreview(
   sheet: Buffer,
@@ -53,7 +54,7 @@ export async function markedSheetPreview(
     const filled = markedList(answers[question]).includes(point.option);
     const circle = `cx="${point.x}" cy="${point.y}" r="${r}"`;
     if (filled && (result === "correct" || result === "wrong" || result === "partial")) {
-      const color = result === "correct" ? GREEN : YELLOW;
+      const color = result === "correct" ? GREEN : result === "partial" ? YELLOW : RED;
       shapes.push(
         `<circle ${circle} fill="${color}" fill-opacity="0.45" stroke="${color}" stroke-width="${stroke}"/>`,
       );
