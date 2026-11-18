@@ -153,8 +153,9 @@ export function ScanReviewPage({ portal }: { portal: ScanPortal }) {
           ) : null}
 
           <div className="space-y-4">
-            <dl className="grid grid-cols-3 gap-2 text-center text-sm">
+            <dl className="grid grid-cols-2 gap-2 text-center text-sm sm:grid-cols-4">
               <Stat label="Correct" value={scan.correct} />
+              <Stat label="Partial" value={scan.partial ?? 0} />
               <Stat label="Wrong" value={scan.wrong} />
               <Stat label="Un-attempted" value={scan.blank} />
             </dl>
@@ -171,7 +172,12 @@ export function ScanReviewPage({ portal }: { portal: ScanPortal }) {
                     <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">
                       Correct {row.correct}
                     </span>
-                    <span className="rounded bg-red-50 px-1.5 py-0.5 text-red-700">Wrong {row.wrong}</span>
+                    <span className="rounded bg-yellow-50 px-1.5 py-0.5 text-yellow-800">
+                      Partial {row.partial ?? 0}
+                    </span>
+                    <span className="rounded bg-yellow-50 px-1.5 py-0.5 text-yellow-700">
+                      Wrong {row.wrong}
+                    </span>
                     <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-neutral-600">
                       Un-attempted {row.blank}
                     </span>
@@ -357,13 +363,19 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
-function matchesKey(marked: Array<"A" | "B" | "C" | "D">, expected?: string) {
-  if (!expected) return null;
-  if (expected === "ADD") return marked.length > 0;
+type AnswerTone = "correct" | "wrong" | "partial" | "blank" | "plain";
+
+function answerTone(marked: Array<"A" | "B" | "C" | "D">, expected?: string): AnswerTone {
+  if (!expected) return marked.length === 0 ? "blank" : "plain";
+  if (marked.length === 0) return "blank";
+  if (expected === "ADD") return "correct";
   const wanted = expected.split("/").filter((part) => part === "A" || part === "B" || part === "C" || part === "D");
-  if (marked.length === 0 || wanted.length === 0) return false;
-  if (wanted.length === 1) return marked.length === 1 && marked[0] === wanted[0];
-  return [...marked].sort().join("") === [...wanted].sort().join("");
+  if (wanted.length === 0) return "plain";
+  // Equal share per key option; wrong options add 0 and do not cancel correct ones.
+  const hit = wanted.filter((option) => marked.includes(option)).length;
+  if (hit === wanted.length) return "correct";
+  if (hit > 0) return "partial";
+  return "wrong";
 }
 
 function AnswerGrid({
@@ -384,7 +396,8 @@ function AnswerGrid({
     <div className="rounded-xl border border-neutral-200 p-3">
       <p className="mb-1 text-xs font-semibold tracking-wider text-neutral-500 uppercase">Read vs answer key</p>
       <p className="mb-2 text-[10px] text-neutral-500">
-        Same 5 columns as the sheet. Green matches the key, red is wrong, amber is blank.
+        Same 5 columns as the sheet. Green = full marks, yellow = partial / wrong (0 marks), amber = blank.
+        Multi-correct keys split marks equally per option; wrong options add 0.
       </p>
       <div className="mb-1 grid grid-cols-5 gap-x-2 text-[10px] font-semibold tracking-wider text-neutral-400 uppercase">
         <span>1–20</span>
@@ -404,20 +417,19 @@ function AnswerGrid({
           }
           const marked = answers[String(question)] ?? [];
           const expected = keyAnswers?.[String(question)];
-          const blank = marked.length === 0;
-          const match = matchesKey(marked, expected);
-          const tone =
-            match === true
+          const tone = answerTone(marked, expected);
+          const toneClass =
+            tone === "correct"
               ? "text-emerald-800"
-              : match === false && !blank
-                ? "text-red-800"
-                : blank
+              : tone === "wrong" || tone === "partial"
+                ? "text-yellow-700"
+                : tone === "blank"
                   ? "text-amber-800"
                   : "text-neutral-900";
           return (
-            <li key={question} className={tone}>
-              {question}. {blank ? "—" : marked.join("")}
-              {match === false && expected ? (
+            <li key={question} className={toneClass}>
+              {question}. {tone === "blank" ? "—" : marked.join("")}
+              {(tone === "wrong" || tone === "partial") && expected ? (
                 <span className="text-[10px] text-neutral-400"> {expected}</span>
               ) : null}
             </li>

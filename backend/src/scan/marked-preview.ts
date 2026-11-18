@@ -8,11 +8,13 @@ import { subjectHeader } from "../utils/result-columns.js";
 import { questionResult } from "./score.js";
 
 const GREEN = "#16a34a";
-const RED = "#dc2626";
+/** Wrong + partial (multi-mark MCQ) — yellow on the evaluated sheet. */
+const YELLOW = "#ca8a04";
 
 type TableRow = {
   subject: string;
   correct: number;
+  partial?: number;
   wrong: number;
   blank: number;
   total: number;
@@ -30,7 +32,7 @@ function loadTableFont() {
 }
 
 /**
- * Warped sheet with every filled bubble coloured green (counts as correct) or red (wrong),
+ * Warped sheet with filled bubbles coloured green (correct) or yellow (wrong / partial MCQ),
  * plus a green ring on the key's option where the student missed it, under a subject score table.
  */
 export async function markedSheetPreview(
@@ -50,8 +52,8 @@ export async function markedSheetPreview(
     const result = questionResult(answers[question], expected);
     const filled = markedList(answers[question]).includes(point.option);
     const circle = `cx="${point.x}" cy="${point.y}" r="${r}"`;
-    if (filled && (result === "correct" || result === "wrong")) {
-      const color = result === "correct" ? GREEN : RED;
+    if (filled && (result === "correct" || result === "wrong" || result === "partial")) {
+      const color = result === "correct" ? GREEN : YELLOW;
       shapes.push(
         `<circle ${circle} fill="${color}" fill-opacity="0.45" stroke="${color}" stroke-width="${stroke}"/>`,
       );
@@ -106,14 +108,15 @@ function textPath(
   return `<text x="${x}" y="${y}" font-family="DejaVu Sans, Liberation Sans, Arial, sans-serif" font-size="${size}"${bold} fill="#111" text-anchor="${options.anchor ?? "start"}">${escapeXml(value)}</text>`;
 }
 
-/** Subject-wise Right / Wrong / Blank / Marks table drawn above the sheet. */
+/** Subject-wise Right / Partial / Wrong / Blank / Marks table drawn above the sheet. */
 async function scoreTablePng(subjects: TableRow[], width: number) {
   const font = await loadTableFont();
   const rows: string[][] = [
-    ["Subject", "R", "W", "B", "Marks"],
+    ["Subject", "R", "P", "W", "B", "Marks"],
     ...subjects.map((row) => [
       subjectHeader(row.subject),
       String(row.correct),
+      String(row.partial ?? 0),
       String(row.wrong),
       String(row.blank),
       marksCell(row),
@@ -121,6 +124,7 @@ async function scoreTablePng(subjects: TableRow[], width: number) {
     [
       "Total",
       String(subjects.reduce((sum, row) => sum + row.correct, 0)),
+      String(subjects.reduce((sum, row) => sum + (row.partial ?? 0), 0)),
       String(subjects.reduce((sum, row) => sum + row.wrong, 0)),
       String(subjects.reduce((sum, row) => sum + row.blank, 0)),
       marksCell({
@@ -133,7 +137,7 @@ async function scoreTablePng(subjects: TableRow[], width: number) {
   const tableWidth = width - margin * 2;
   const rowHeight = Math.round(width * 0.05);
   const fontSize = Math.round(rowHeight * 0.48);
-  const shares = [0.3, 0.12, 0.12, 0.12, 0.34];
+  const shares = [0.26, 0.1, 0.1, 0.1, 0.1, 0.34];
   const xs = shares.reduce<number[]>((acc, share) => [...acc, acc[acc.length - 1]! + share * tableWidth], [margin]);
   const top = margin;
   const height = top + rowHeight * rows.length + margin;

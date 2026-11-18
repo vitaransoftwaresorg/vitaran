@@ -152,6 +152,7 @@ export type ScanDto = {
   flags: Array<{ question: number; reason: string }>;
   subjectScores: ReturnType<typeof scoreSheet>["subjectScores"];
   correct: number;
+  partial: number;
   wrong: number;
   blank: number;
   total: number;
@@ -353,6 +354,7 @@ function toDto(row: scanRepository.OmScanRow, previewId?: string): ScanDto {
     flags: Array.isArray(row.flags) ? (row.flags as ScanDto["flags"]) : [],
     subjectScores: row.subjectScores as ScanDto["subjectScores"],
     correct: row.correct,
+    partial: partialFromSubjectScores(row.subjectScores),
     wrong: row.wrong,
     blank: row.blank,
     total: row.total,
@@ -362,6 +364,15 @@ function toDto(row: scanRepository.OmScanRow, previewId?: string): ScanDto {
     answers: asMarked((row.answers as Pending["answers"]) ?? {}),
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+function partialFromSubjectScores(scores: unknown) {
+  if (!Array.isArray(scores)) return 0;
+  return scores.reduce((sum: number, row) => {
+    if (!row || typeof row !== "object") return sum;
+    const value = (row as { partial?: unknown }).partial;
+    return sum + (typeof value === "number" && Number.isFinite(value) ? value : 0);
+  }, 0);
 }
 
 function unsavedDto(previewId: string, row: Pending, _embedImage = true): ScanDto {
@@ -384,6 +395,7 @@ function unsavedDto(previewId: string, row: Pending, _embedImage = true): ScanDt
     flags: row.flags,
     subjectScores: row.score.subjectScores,
     correct: row.score.correct,
+    partial: row.score.partial,
     wrong: row.score.wrong,
     blank: row.score.blank,
     total: row.score.total,

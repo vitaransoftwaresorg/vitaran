@@ -3,6 +3,8 @@ export type ScanSubjectScore = {
   from: number;
   to: number;
   correct: number;
+  /** Partial-credit MCQ (some but not all key options). */
+  partial?: number;
   wrong: number;
   blank: number;
   total: number;
@@ -44,6 +46,7 @@ export type OmScan = {
   flags: Array<{ question: number; reason: string }>;
   subjectScores: ScanSubjectScore[];
   correct: number;
+  partial?: number;
   wrong: number;
   blank: number;
   total: number;

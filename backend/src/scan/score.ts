@@ -2,10 +2,10 @@ import {
   asAnswers,
   asSubjectRanges,
   isBonusKey,
-  isMultiKey,
+  keyOptions,
   markedList,
-  markedMatchesKey,
   type AnswerOption,
+  type KeyAnswer,
   type SubjectRange,
 } from "../utils/answer-key-parse.js";
 
@@ -14,6 +14,8 @@ export type SubjectScore = {
   from: number;
   to: number;
   correct: number;
+  /** Multi-correct MCQ with only some key options marked (or mixed). */
+  partial: number;
   wrong: number;
   blank: number;
   total: number;
@@ -24,25 +26,59 @@ export type SheetScore = {
   subjectScores: SubjectScore[];
   unattempted: number[];
   correct: number;
+  partial: number;
   wrong: number;
   blank: number;
   total: number;
   maxTotal: number;
 };
 
-export type QuestionResult = "correct" | "wrong" | "blank" | "unkeyed";
+export type QuestionResult = "correct" | "wrong" | "partial" | "blank" | "unkeyed";
 
-/** More than one filled bubble is wrong unless the key itself has two options or is ADD. */
+export type QuestionScore = {
+  result: QuestionResult;
+  /** Marks awarded for this question (never negative). */
+  marks: number;
+};
+
+/**
+ * MCQ marks: each key option is worth an equal share of correctMarks.
+ * Correctly marked options earn their share; wrong options earn 0 (no negative).
+ */
+export function questionScore(
+  marked: AnswerOption | AnswerOption[] | string | undefined,
+  expected: KeyAnswer | undefined,
+  correctMarks: number,
+): QuestionScore {
+  const filled = markedList(marked);
+  if (filled.length === 0) return { result: "blank", marks: 0 };
+  if (!expected) return { result: "unkeyed", marks: 0 };
+  if (isBonusKey(expected)) return { result: "correct", marks: correctMarks };
+
+  const wanted = keyOptions(expected);
+  if (wanted.length === 0) return { result: "unkeyed", marks: 0 };
+
+  const perOption = correctMarks / wanted.length;
+  let earned = 0;
+  for (const option of filled) {
+    if (wanted.includes(option)) earned += perOption;
+  }
+  // Float-safe round (e.g. 4/3 shares).
+  earned = Math.round(Math.min(earned, correctMarks) * 1000) / 1000;
+
+  const allWantedMarked = wanted.every((option) => filled.includes(option));
+  if (earned <= 0) return { result: "wrong", marks: 0 };
+  if (allWantedMarked) return { result: "correct", marks: correctMarks };
+  return { result: "partial", marks: earned };
+}
+
+/** Display / overlay classification (same rules as scoring). */
 export function questionResult(
   marked: AnswerOption | AnswerOption[] | string | undefined,
-  expected: Parameters<typeof markedMatchesKey>[1] | undefined,
+  expected: KeyAnswer | undefined,
 ): QuestionResult {
-  const filled = markedList(marked);
-  if (filled.length === 0) return "blank";
-  if (!expected) return "unkeyed";
-  if (isBonusKey(expected)) return "correct";
-  if (filled.length > 1 && !isMultiKey(expected)) return "wrong";
-  return markedMatchesKey(filled, expected) ? "correct" : "wrong";
+  // correctMarks only scales marks; result kind is independent of the absolute value.
+  return questionScore(marked, expected, 1).result;
 }
 
 /** A 75-question test ignores bubbles 76–100 on the 100-question sheet. */
@@ -73,22 +109,24 @@ export function scoreSheet(
   const bands: SubjectRange[] =
     ranges.length > 0 ? ranges : [{ subject: "TOTAL", from: 1, to: fallbackTo, maxMarks: fallbackTo * marks.correctMarks }];
   const correctMarks = marks.correctMarks;
-  const wrongMarks = marks.wrongMarks;
+  // wrongMarks ignored — wrong options carry 0, never negative.
   const subjectScores = bands.map((range) => {
     let correct = 0;
+    let partial = 0;
     let wrong = 0;
     let blank = 0;
     let total = 0;
     for (let question = range.from; question <= range.to; question += 1) {
-      const result = questionResult(marked[String(question)], key[String(question)]);
+      const { result, marks: earned } = questionScore(
+        marked[String(question)],
+        key[String(question)],
+        correctMarks,
+      );
+      total += earned;
       if (result === "blank") blank += 1;
-      else if (result === "correct") {
-        correct += 1;
-        total += correctMarks;
-      } else if (result === "wrong") {
-        wrong += 1;
-        total -= wrongMarks;
-      }
+      else if (result === "correct") correct += 1;
+      else if (result === "partial") partial += 1;
+      else if (result === "wrong") wrong += 1;
     }
     const questions = range.to - range.from + 1;
     return {
@@ -96,6 +134,7 @@ export function scoreSheet(
       from: range.from,
       to: range.to,
       correct,
+      partial,
       wrong,
       blank,
       total,
@@ -114,6 +153,7 @@ export function scoreSheet(
     subjectScores,
     unattempted,
     correct: subjectScores.reduce((sum, row) => sum + row.correct, 0),
+    partial: subjectScores.reduce((sum, row) => sum + row.partial, 0),
     wrong: subjectScores.reduce((sum, row) => sum + row.wrong, 0),
     blank: subjectScores.reduce((sum, row) => sum + row.blank, 0),
     total: subjectScores.reduce((sum, row) => sum + row.total, 0),
