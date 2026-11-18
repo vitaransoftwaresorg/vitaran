@@ -11,9 +11,9 @@ import {
 } from "@/constants/auth";
 import { ApiError } from "@/services/api-client";
 import { loginAdmin, loginSchool, loginTeacher } from "@/services/auth";
-import { createAdminSession } from "@/features/admin-auth/session";
-import { createSchoolSession } from "@/features/school-auth/session";
-import { createTeacherSession } from "@/features/teacher-auth/session";
+import { createAdminSession, getAdminSession } from "@/features/admin-auth/session";
+import { createSchoolSession, getSchoolSession } from "@/features/school-auth/session";
+import { createTeacherSession, getTeacherSession } from "@/features/teacher-auth/session";
 import { passwordField, type LoginFormState } from "./schema";
 
 const portalLoginSchema = z.object({
@@ -38,6 +38,11 @@ export async function portalLogin(
   _state: LoginFormState,
   formData: FormData,
 ): Promise<LoginFormState> {
+  // Already signed in → go straight to the portal (no re-entry of credentials).
+  if (await getSchoolSession()) redirect(SCHOOL_HOME_PATH);
+  if (await getTeacherSession()) redirect(TEACHER_HOME_PATH);
+  if (await getAdminSession()) redirect(ADMIN_BASE_PATH);
+
   const identifier = String(formData.get("identifier") ?? "");
   const parsed = portalLoginSchema.safeParse({
     identifier,

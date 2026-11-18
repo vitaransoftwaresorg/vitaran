@@ -7,13 +7,13 @@ import { signIn } from "@/auth";
 import {
   GOOGLE_COMPLETE_PATH,
   GOOGLE_PORTAL_COOKIE,
-  SCHOOL_LOGIN_PATH,
+  portalLoginHref,
 } from "@/constants/auth";
 import { isGoogleAuthConfigured } from "./google-complete";
 
 export async function continueWithGoogle() {
   if (!isGoogleAuthConfigured()) {
-    redirect(`${SCHOOL_LOGIN_PATH}?error=Configuration`);
+    redirect(portalLoginHref("Configuration"));
   }
 
   const cookieStore = await cookies();
@@ -33,6 +33,6 @@ export async function continueWithGoogle() {
     const type = error instanceof AuthError ? String(error.type) : "";
     const code =
       type === "AccessDenied" ? "AccessDenied" : type === "Configuration" ? "Configuration" : "OAuthSignin";
-    redirect(`${SCHOOL_LOGIN_PATH}?error=${code}`);
+    redirect(portalLoginHref(code));
   }
 }

@@ -14,12 +14,16 @@ import {
   TEACHER_SESSION_COOKIE,
 } from "@/constants/auth";
 
-/** Shared school + teacher portal login. */
+/** Shared school + teacher portal login (header dropdown on home). */
 const PORTAL_LOGIN_PATH = SCHOOL_LOGIN_PATH;
+
+function isLoginEntryPath(pathname: string) {
+  return pathname === "/school/login" || pathname === "/teacher/login";
+}
 
 function redirectToLogin(request: NextRequest, loginPath: string) {
   const { pathname, search } = request.nextUrl;
-  if (pathname === loginPath || pathname === "/teacher/login") {
+  if (isLoginEntryPath(pathname)) {
     return NextResponse.next();
   }
 
@@ -128,8 +132,8 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Already signed in → never show the portal login form.
-  if (pathname === PORTAL_LOGIN_PATH || pathname === "/teacher/login") {
+  // Legacy login routes → home dropdown (or portal home if already signed in).
+  if (isLoginEntryPath(pathname)) {
     if (hasAdmin) return NextResponse.redirect(new URL(ADMIN_BASE_PATH, request.nextUrl));
     if (hasSchool) {
       return NextResponse.redirect(new URL(SCHOOL_HOME_PATH, request.nextUrl));
@@ -137,7 +141,10 @@ export function proxy(request: NextRequest) {
     if (hasTeacher) {
       return NextResponse.redirect(new URL(TEACHER_HOME_PATH, request.nextUrl));
     }
-    return NextResponse.next();
+    const target = new URL(PORTAL_LOGIN_PATH, request.nextUrl);
+    const error = request.nextUrl.searchParams.get("error");
+    if (error) target.searchParams.set("error", error);
+    return NextResponse.redirect(target);
   }
 
   if (pathname.startsWith(SCHOOL_BASE_PATH)) {

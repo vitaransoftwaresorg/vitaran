@@ -479,6 +479,8 @@ enum PasswordResetRole {
 model AppSettings {
   id               String   @id @db.VarChar(32)
   maintenanceMode  Boolean  @default(false) @map("maintenance_mode")
+  /// When true, teacher solution books are public on /teachers-resources (no login).
+  teacherResourcesPublic Boolean @default(false) @map("teacher_resources_public")
   /// Inboxes for every answer-key objection.
   vitaranEmails    String[] @default([]) @map("vitaran_emails") @db.VarChar(254)
   /// SME contacts: [{ "name": "…", "subject": "MATHEMATICS", "email": "…" }]

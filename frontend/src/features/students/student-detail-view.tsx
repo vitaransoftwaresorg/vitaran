@@ -177,7 +177,6 @@ export function StudentDetailView({
             {student.parentName ? capitalizeWords(student.parentName) : null}
           </Field>
           <Field label="Parent mobile">{student.parentPhone}</Field>
-          <Field label="Parent / guardian email">{student.email}</Field>
           <Field label="School" span={2}>
             {student.school.name}
           </Field>

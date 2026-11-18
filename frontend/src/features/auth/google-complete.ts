@@ -6,9 +6,9 @@ import { auth, signOut } from "@/auth";
 import {
   GOOGLE_PORTAL_COOKIE,
   SCHOOL_HOME_PATH,
-  SCHOOL_LOGIN_PATH,
   TEACHER_HOME_PATH,
   RETURN_TO_COOKIE,
+  portalLoginHref,
 } from "@/constants/auth";
 import { googleErrorCode } from "@/features/auth/google-errors";
 import { createSchoolSession } from "@/features/school-auth/session";
@@ -40,13 +40,13 @@ export async function completeGoogleSignIn(): Promise<never> {
 
   if (portal !== "school") {
     await clearGoogleHandshakeCookies();
-    redirect(`${SCHOOL_LOGIN_PATH}?error=google`);
+    redirect(portalLoginHref("google"));
   }
 
   const session = await auth();
   if (!session?.idToken) {
     await clearGoogleHandshakeCookies();
-    redirect(`${SCHOOL_LOGIN_PATH}?error=google`);
+    redirect(portalLoginHref("google"));
   }
 
   try {
@@ -71,6 +71,6 @@ export async function completeGoogleSignIn(): Promise<never> {
       error instanceof ApiError
         ? googleErrorCode(error.message, error.status)
         : "google";
-    redirect(`${SCHOOL_LOGIN_PATH}?error=${code}`);
+    redirect(portalLoginHref(code));
   }
 }

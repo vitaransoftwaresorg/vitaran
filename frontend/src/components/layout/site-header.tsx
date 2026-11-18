@@ -1,11 +1,10 @@
 "use client";
 
-import { Suspense, useEffect, useState, useTransition, type MouseEvent } from "react";
+import { useEffect, useState, useTransition, type MouseEvent } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogOut, Menu, X } from "lucide-react";
 import { Logo } from "@/components/shared/logo";
-import { SCHOOL_LOGIN_PATH } from "@/constants/auth";
 import { LoginDropdown, openLoginDropdown } from "@/features/auth/login-dropdown";
 import { portalLogout } from "@/features/auth/portal-logout";
 import { navLinks } from "@/features/home/content";
@@ -14,12 +13,11 @@ import { cn } from "@/lib/utils";
 const HEADER_OFFSET = 72;
 const mobileLinks = navLinks;
 
-/** Portal pages — when signed out, open the same login dropdown. */
-const AUTH_NAV_HREFS = new Set([
-  "/teacher/resources",
-  "/teacher/answer-keys",
-  "/teacher/results",
-]);
+/**
+ * Portal pages that always need login when signed out.
+ * Teachers Resources uses /teachers-resources (public or login via page/settings).
+ */
+const AUTH_NAV_HREFS = new Set(["/teacher/answer-keys", "/teacher/results"]);
 
 const hashOf = (href: string) => {
   const i = href.indexOf("#");
@@ -82,7 +80,9 @@ export function SiteHeader({ session }: { session: SiteSession | null }) {
   /** When a school is signed in, content links open the school portal. */
   const contentHref = (href: string) => {
     if (!session || session.kind !== "school") return href;
-    if (href === "/teacher/resources") return "/school/resources";
+    if (href === "/teacher/resources" || href === "/teachers-resources") {
+      return "/school/resources";
+    }
     if (href === "/teacher/answer-keys") return "/school/answer-keys";
     if (href === "/teacher/results") return "/school/results";
     return href;
@@ -201,9 +201,7 @@ export function SiteHeader({ session }: { session: SiteSession | null }) {
           {session ? (
             <LogoutButton className={logoutButtonClasses} />
           ) : (
-            <Suspense fallback={null}>
-              <LoginDropdown />
-            </Suspense>
+            <LoginDropdown />
           )}
           <button
             type="button"
@@ -254,13 +252,16 @@ export function SiteHeader({ session }: { session: SiteSession | null }) {
                   onNavigate={() => setOpen(false)}
                 />
               ) : (
-                <Link
-                  href={SCHOOL_LOGIN_PATH}
+                <button
+                  type="button"
                   className={mobileLogoutClasses}
-                  onClick={() => setOpen(false)}
+                  onClick={() => {
+                    setOpen(false);
+                    openLoginDropdown();
+                  }}
                 >
                   Log in
-                </Link>
+                </button>
               )}
             </li>
           </ul>

@@ -36,6 +36,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       : [],
   session: { strategy: "jwt", maxAge: 60 * 5 },
   pages: {
+    // Thin redirect → /?login=1 (header dropdown). Auth.js needs a path, not a query-only URL.
     signIn: "/school/login",
     error: "/auth/google/error",
   },

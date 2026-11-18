@@ -87,7 +87,6 @@ type Row = {
   rollNo: string;
   parentName: string;
   parentPhone: string;
-  email: string;
 };
 
 const NONE = "__none__";
@@ -100,13 +99,12 @@ function emptyRow(fields?: Partial<Omit<Row, "key">>): Row {
     rollNo: "",
     parentName: "",
     parentPhone: "",
-    email: "",
     ...fields,
   };
 }
 
 const isFilled = (row: Row) =>
-  Boolean(row.name.trim() || row.rollNo.trim() || row.parentName.trim() || row.parentPhone.trim() || row.email.trim());
+  Boolean(row.name.trim() || row.rollNo.trim() || row.parentName.trim() || row.parentPhone.trim());
 
 export function BulkStudentForm({
   schoolPrograms,
@@ -252,7 +250,6 @@ export function BulkStudentForm({
       rollNo: row.rollNo,
       parentName: row.parentName,
       parentPhone: row.parentPhone,
-      email: row.email,
     })),
   });
 
@@ -289,7 +286,6 @@ export function BulkStudentForm({
           name: titleCase(student.name),
           parentName: titleCase(student.parentName),
           parentPhone: toPhoneDigits(student.parentPhone),
-          email: student.email,
         }),
       );
       setRows(added.length || kept.length ? [...kept, ...added] : [emptyRow()]);
@@ -339,7 +335,7 @@ export function BulkStudentForm({
           rollNo: row.rollNo,
           parentName: row.parentName,
           parentPhone: row.parentPhone,
-          email: row.email || null,
+          email: null,
         })),
         returnTo,
         stay: true,
@@ -547,7 +543,7 @@ export function BulkStudentForm({
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-brand-950">Import from Excel</p>
           <p className="text-xs text-neutral-500">
-            Reg. no *, Student name * · Parent name / mobile / email optional · up to{" "}
+            Reg. no *, Student name * · Parent name / mobile optional · up to{" "}
             {MAX_IMPORT_ROWS} students
           </p>
         </div>
@@ -602,7 +598,6 @@ export function BulkStudentForm({
                 <th className="px-3 py-2.5">Student name *</th>
                 <th className="px-3 py-2.5">Parent name (optional)</th>
                 <th className="px-3 py-2.5">Parent mobile (optional)</th>
-                <th className="px-3 py-2.5">Parent email (optional)</th>
                 <th className="w-12 px-2 py-2.5" />
               </tr>
             </thead>
@@ -673,17 +668,6 @@ export function BulkStudentForm({
                       {errors.parentPhone ? (
                         <FieldError>{errors.parentPhone}</FieldError>
                       ) : null}
-                    </td>
-                    <td className="px-2 py-1.5 align-top">
-                      <Input
-                        type="email"
-                        value={row.email}
-                        className="h-9"
-                        placeholder="optional"
-                        aria-invalid={errors.email ? true : undefined}
-                        onChange={(e) => updateRow(row.key, { email: e.currentTarget.value })}
-                      />
-                      {errors.email ? <FieldError>{errors.email}</FieldError> : null}
                     </td>
                     <td className="px-2 py-1.5 align-top">
                       <button

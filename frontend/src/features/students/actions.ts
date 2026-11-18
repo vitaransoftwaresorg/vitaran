@@ -78,7 +78,6 @@ function formValues(formData: FormData): Partial<CreateStudentInput> {
   return {
     name: String(formData.get("name") ?? ""),
     rollNo: String(formData.get("rollNo") ?? ""),
-    email: String(formData.get("email") ?? "") || null,
     parentName: String(formData.get("parentName") ?? ""),
     parentPhone: String(formData.get("parentPhone") ?? "").replace(/\D/g, "").slice(0, 10),
     programId: String(formData.get("programId") ?? ""),
@@ -125,7 +124,7 @@ export async function createStudentAction(
   const values = formValues(formData);
   const parsed = studentSchema.safeParse({
     ...values,
-    email: values.email ?? "",
+    email: "",
     sectionId: values.sectionId ?? "",
   });
 
@@ -145,7 +144,7 @@ export async function createStudentAction(
     const student = await createSchoolStudent({
       name: data.name,
       rollNo: data.rollNo,
-      email: data.email || null,
+      email: null,
       parentName: data.parentName || null,
       parentPhone: data.parentPhone || null,
       programId: data.programId,
@@ -193,13 +192,12 @@ export async function createSchoolStudentsBulkAction(input: {
       !row.name.trim() &&
       !row.rollNo.trim() &&
       !(row.parentName ?? "").trim() &&
-      !(row.parentPhone ?? "").trim() &&
-      !(row.email ?? "").trim();
+      !(row.parentPhone ?? "").trim();
     if (blank) return;
 
     const parsed = bulkRowSchema.safeParse({
       ...row,
-      email: row.email ?? "",
+      email: "",
       parentPhone: String(row.parentPhone ?? "").replace(/\D/g, "").slice(0, 10),
     });
     if (!parsed.success) {
@@ -213,7 +211,7 @@ export async function createSchoolStudentsBulkAction(input: {
     validRows.push({
       name: parsed.data.name,
       rollNo: parsed.data.rollNo,
-      email: parsed.data.email || null,
+      email: null,
       parentName: parsed.data.parentName || null,
       parentPhone: parsed.data.parentPhone || null,
     });
@@ -290,7 +288,7 @@ export async function updateStudentAction(
   const values = formValues(formData);
   const parsed = studentSchema.safeParse({
     ...values,
-    email: values.email ?? "",
+    email: "",
     sectionId: values.sectionId ?? "",
   });
 
@@ -310,7 +308,6 @@ export async function updateStudentAction(
     await updateSchoolStudent(id, {
       name: data.name,
       rollNo: data.rollNo,
-      email: data.email || null,
       parentName: data.parentName || null,
       parentPhone: data.parentPhone || null,
       programId: data.programId,

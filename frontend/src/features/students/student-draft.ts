@@ -7,7 +7,6 @@ export type StudentDraftRow = {
   rollNo: string;
   parentName: string;
   parentPhone: string;
-  email: string;
 };
 
 export type StudentDraft = {

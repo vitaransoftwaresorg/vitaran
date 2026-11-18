@@ -14,6 +14,7 @@ export type SmeContact = {
 
 export type AppSettingsDto = {
   maintenanceMode: boolean;
+  teacherResourcesPublic: boolean;
   vitaranEmails: string[];
   smeContacts: SmeContact[];
   updatedAt: string;
@@ -40,6 +41,7 @@ function asSmeContacts(value: unknown): SmeContact[] {
 function toDto(row: NonNullable<Awaited<ReturnType<typeof settingsRepository.findSettings>>>): AppSettingsDto {
   return {
     maintenanceMode: row.maintenanceMode,
+    teacherResourcesPublic: row.teacherResourcesPublic,
     vitaranEmails: row.vitaranEmails,
     smeContacts: asSmeContacts(row.smeContacts),
     updatedAt: row.updatedAt.toISOString(),
@@ -48,6 +50,7 @@ function toDto(row: NonNullable<Awaited<ReturnType<typeof settingsRepository.fin
 
 const EMPTY: AppSettingsDto = {
   maintenanceMode: false,
+  teacherResourcesPublic: false,
   vitaranEmails: [],
   smeContacts: [],
   updatedAt: new Date(0).toISOString(),
@@ -61,7 +64,10 @@ export async function getAppSettings() {
 
 export async function getPublicSettings() {
   const settings = await getAppSettings();
-  return { maintenanceMode: settings.maintenanceMode };
+  return {
+    maintenanceMode: settings.maintenanceMode,
+    teacherResourcesPublic: settings.teacherResourcesPublic,
+  };
 }
 
 /**
@@ -98,6 +104,7 @@ async function sendOnboardingEmails(after: AppSettingsDto) {
 export async function updateAppSettings(input: UpdateAppSettingsInput) {
   const row = await settingsRepository.upsertSettings({
     maintenanceMode: input.maintenanceMode,
+    teacherResourcesPublic: input.teacherResourcesPublic,
     vitaranEmails: input.vitaranEmails,
     smeContacts: input.smeContacts.map((row) => ({
       name: row.name.trim(),

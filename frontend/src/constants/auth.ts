@@ -4,7 +4,8 @@ export const ADMIN_LOGOUT_PATH = "/admin/logout";
 
 export const SCHOOL_SESSION_COOKIE = "vitaran_school_session";
 export const SCHOOL_BASE_PATH = "/school";
-export const SCHOOL_LOGIN_PATH = "/school/login";
+/** Header login dropdown on the marketing home (no separate login page). */
+export const SCHOOL_LOGIN_PATH = "/?login=1";
 /** The admin signs in on the shared portal login. */
 export const ADMIN_LOGIN_PATH = SCHOOL_LOGIN_PATH;
 /** After school login — the dashboard is the landing page. */
@@ -19,6 +20,13 @@ export const TEACHER_HOME_PATH = "/teacher";
 
 /** Clears stale school/teacher cookies, then shows the portal login. */
 export const PORTAL_SESSION_EXPIRED_PATH = "/auth/session-expired";
+
+/** Home URL that opens the header login dropdown (optional Google/Auth error). */
+export function portalLoginHref(error?: string | null): string {
+  if (!error) return SCHOOL_LOGIN_PATH;
+  const params = new URLSearchParams({ login: "1", error });
+  return `/?${params.toString()}`;
+}
 
 /** Page the user tried to open before being sent to login; read once after signing in. */
 export const RETURN_TO_COOKIE = "vitaran_return_to";
@@ -44,7 +52,7 @@ export function safePortalReturnPath(
     return fallback;
   }
   if (role === "school") {
-    return value.startsWith("/school") && !value.startsWith("/school/login") ? value : fallback;
+    return value.startsWith("/school") ? value : fallback;
   }
   if (value.startsWith("/teacher")) return value;
   if (value.startsWith("/answer-keys")) return `/teacher${value}`;

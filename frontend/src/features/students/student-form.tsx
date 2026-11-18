@@ -30,7 +30,6 @@ import type { StudentDetail } from "@/types/student";
 type StudentFormField =
   | "name"
   | "rollNo"
-  | "email"
   | "parentName"
   | "parentPhone"
   | "programId"
@@ -89,7 +88,6 @@ export function StudentForm({
   const initial = {
     name: student?.name ?? "",
     rollNo: student?.rollNo ?? "",
-    email: student?.email ?? "",
     parentName: student?.parentName ?? "",
     parentPhone: student?.parentPhone ?? "",
     programId: student?.programId ?? defaults?.programId ?? "",
@@ -99,7 +97,6 @@ export function StudentForm({
 
   const [name, setName] = useState(state.values?.name ?? initial.name);
   const [rollNo, setRollNo] = useState(state.values?.rollNo ?? initial.rollNo);
-  const [email, setEmail] = useState((state.values?.email ?? initial.email) || "");
   const [parentName, setParentName] = useState(
     state.values?.parentName ?? initial.parentName,
   );
@@ -122,7 +119,6 @@ export function StudentForm({
   const [baseline] = useState(() => ({
     name: initial.name,
     rollNo: initial.rollNo,
-    email: initial.email || "",
     parentName: initial.parentName,
     parentPhone: toPhoneDigits(initial.parentPhone),
     programId: initial.programId,
@@ -134,7 +130,6 @@ export function StudentForm({
     !isEdit ||
     name.trim() !== baseline.name ||
     rollNo.trim() !== baseline.rollNo ||
-    email.trim() !== baseline.email ||
     parentName.trim() !== baseline.parentName ||
     parentPhone !== baseline.parentPhone ||
     programId !== baseline.programId ||
@@ -145,7 +140,6 @@ export function StudentForm({
   const createTouched =
     name.trim() !== "" ||
     rollNo.trim() !== "" ||
-    email.trim() !== "" ||
     parentName.trim() !== "" ||
     parentPhone !== "" ||
     programId !== (defaults?.programId ?? "") ||
@@ -242,9 +236,6 @@ export function StudentForm({
     }
     if (parentPhone && !/^\d{10}$/.test(parentPhone)) {
       next.parentPhone = "Enter a 10-digit mobile number";
-    }
-    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      next.email = "Enter a valid parent / guardian email";
     }
     if (!programId) next.programId = "Pick a program";
     if (classLevel == null) next.classLevel = "Pick a class";
@@ -361,23 +352,6 @@ export function StudentForm({
             }}
           />
           {errors.parentPhone ? <FieldError>{errors.parentPhone}</FieldError> : null}
-        </Field>
-
-        <Field data-invalid={errors.email ? true : undefined} className="sm:col-span-2">
-          <FieldLabel htmlFor="email">Parent / guardian email (optional)</FieldLabel>
-          <Input
-            id="email"
-            name="email"
-            type="email"
-            value={email}
-            className="h-9"
-            placeholder="parent@example.com"
-            onChange={(e) => {
-              setEmail(e.currentTarget.value);
-              setClientErrors((prev) => ({ ...prev, email: undefined }));
-            }}
-          />
-          {errors.email ? <FieldError>{errors.email}</FieldError> : null}
         </Field>
 
         {!lockPlacement ? (

@@ -47,6 +47,9 @@ function subjectItems(subject: string) {
 
 export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
   const [maintenanceMode, setMaintenanceMode] = useState(initial.maintenanceMode);
+  const [teacherResourcesPublic, setTeacherResourcesPublic] = useState(
+    initial.teacherResourcesPublic,
+  );
   const [vitaranEmails, setVitaranEmails] = useState<string[]>(
     initial.vitaranEmails.length > 0 ? initial.vitaranEmails : [""],
   );
@@ -144,6 +147,7 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
     startTransition(async () => {
       const result = await saveAdminSettingsAction({
         maintenanceMode,
+        teacherResourcesPublic,
         vitaranEmails: inboxes,
         smeContacts: merged,
       });
@@ -157,6 +161,7 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
         result.settings.vitaranEmails.length > 0 ? result.settings.vitaranEmails : [""],
       );
       setMaintenanceMode(result.settings.maintenanceMode);
+      setTeacherResourcesPublic(result.settings.teacherResourcesPublic);
       toast.success("Settings saved");
     });
   }
@@ -206,6 +211,32 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
               />
               <label htmlFor="maintenance-mode" className="text-sm font-semibold text-neutral-800">
                 {maintenanceMode ? "On" : "Off"}
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-brand-200 bg-white p-5 shadow-[0_4px_16px_-8px_rgb(25_28_95/0.12)]">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-bold text-brand-950">Teacher resources</h2>
+              <p className="mt-1 text-sm text-neutral-600">
+                Public: anyone can open Teachers Resources on the website. Private: login
+                required (school or teacher portal).
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={teacherResourcesPublic}
+                onCheckedChange={setTeacherResourcesPublic}
+                disabled={pending}
+                id="teacher-resources-public"
+              />
+              <label
+                htmlFor="teacher-resources-public"
+                className="text-sm font-semibold text-neutral-800"
+              >
+                {teacherResourcesPublic ? "Public" : "Private"}
               </label>
             </div>
           </div>
