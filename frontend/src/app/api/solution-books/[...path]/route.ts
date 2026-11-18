@@ -55,6 +55,9 @@ export async function GET(_request: Request, context: RouteContext) {
       "Cache-Control": "private, no-store, max-age=0, must-revalidate",
       "X-Content-Type-Options": "nosniff",
       "X-Robots-Tag": "noindex, nofollow",
+      // Discourage embedding outside our viewer and opportunistic saves.
+      "X-Frame-Options": "SAMEORIGIN",
+      "Referrer-Policy": "same-origin",
     },
   });
 }

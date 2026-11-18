@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
   agentRules: false,
+  serverExternalPackages: ["pdfjs-dist"],
   images: {
     localPatterns: [
       { pathname: "/brand/**", search: "" },

@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   Atom,
   Calculator,
@@ -14,7 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import { classLabel } from "@/utils/format";
 import { portalPrograms } from "./portal-programs";
-import { SolutionBookViewer } from "./solution-book-viewer";
+import { solutionBookViewHref } from "./solution-book-viewer";
 import type { SolutionBook, Subject } from "./solution-books";
 
 const subjectIcons: Record<Subject, LucideIcon> = {
@@ -133,12 +135,19 @@ export function ProgramTabs({
   );
 }
 
+function resourcesViewBase(pathname: string) {
+  if (pathname.startsWith("/teacher/resources")) return "/teacher/resources";
+  if (pathname.startsWith("/school/resources")) return "/school/resources";
+  return "/teachers-resources";
+}
+
 function BookBrowser({ books }: { books: SolutionBook[] }) {
+  const pathname = usePathname();
+  const viewBase = resourcesViewBase(pathname);
   const volumes = [
     ...new Set(books.map((b) => b.volume).filter((v) => v !== undefined)),
   ];
   const [volume, setVolume] = useState(volumes[0]);
-  const [viewing, setViewing] = useState<SolutionBook | null>(null);
 
   const visible = books.filter((b) => b.volume === volume);
   const subjects = [...new Set(visible.map((b) => b.subject))];
@@ -188,27 +197,30 @@ function BookBrowser({ books }: { books: SolutionBook[] }) {
               <ul className="mt-3 space-y-1.5">
                 {visible
                   .filter((b) => b.subject === subject)
-                  .map((book) => (
-                    <li key={book.href}>
-                      <button
-                        type="button"
-                        onClick={() => setViewing(book)}
-                        className="group flex w-full items-center justify-between rounded-xl bg-white px-3 py-2 text-sm font-medium text-brand-800 ring-1 ring-brand-100 transition-all hover:bg-brand-800 hover:text-white hover:ring-brand-800 active:scale-[0.98]"
-                      >
-                        <span>{classLabel(book.grade)}</span>
-                        <Eye className="size-3.5 opacity-60 group-hover:opacity-100" />
-                      </button>
-                    </li>
-                  ))}
+                  .map((book) => {
+                    const href = solutionBookViewHref(viewBase, book);
+                    if (!href) return null;
+                    return (
+                      <li key={book.href}>
+                        <Link
+                          href={href}
+                          className="group flex w-full items-center justify-between rounded-xl bg-white px-3 py-2 text-sm font-medium text-brand-800 ring-1 ring-brand-100 transition-all hover:bg-brand-800 hover:text-white hover:ring-brand-800 active:scale-[0.98]"
+                        >
+                          <span>{classLabel(book.grade)}</span>
+                          <Eye className="size-3.5 opacity-60 group-hover:opacity-100" />
+                        </Link>
+                      </li>
+                    );
+                  })}
               </ul>
             </div>
           );
         })}
       </div>
 
-      <p className="mt-4 text-xs text-muted-foreground">View only — files cannot be downloaded or printed.</p>
-
-      {viewing ? <SolutionBookViewer book={viewing} onClose={() => setViewing(null)} /> : null}
+      <p className="mt-4 text-xs text-muted-foreground">
+        View only — opens in a separate page; save and print are disabled.
+      </p>
     </div>
   );
 }
