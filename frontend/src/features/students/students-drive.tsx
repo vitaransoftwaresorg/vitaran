@@ -13,6 +13,7 @@ type StudentsDriveProps = {
   schools: SchoolOption[];
   schoolId?: string;
   classLevel?: number;
+  /** Optional single-section filter; class view shows both sections. */
   section?: string;
   organization?: ClassOrganization | null;
   /** When a school is open: full roster for that school. */
@@ -23,18 +24,17 @@ function schoolHref(schoolId: string) {
   return `${STUDENTS_PATH}?${new URLSearchParams({ school: schoolId })}`;
 }
 
-function classHref(schoolId: string, classLevel: number, section: string) {
+function classHref(schoolId: string, classLevel: number) {
   return `${STUDENTS_PATH}?${new URLSearchParams({
     school: schoolId,
     class: String(classLevel),
-    section,
   })}`;
 }
 
 type ClassFolder = {
   key: string;
   classLevel: number;
-  section: string;
+  sections: string[];
   programs: string[];
   seats: number;
   studentCount: number;
@@ -44,53 +44,70 @@ function classFoldersForSchool(
   organization: ClassOrganization | null | undefined,
   students: Student[],
 ): ClassFolder[] {
-  const folders = new Map<string, ClassFolder>();
+  const folders = new Map<number, ClassFolder>();
 
-  const ensure = (classLevel: number, section: string) => {
-    const key = `${classLevel}:${section}`;
-    const existing = folders.get(key);
+  const ensure = (classLevel: number) => {
+    const existing = folders.get(classLevel);
     if (existing) return existing;
     const created: ClassFolder = {
-      key,
+      key: String(classLevel),
       classLevel,
-      section,
+      sections: [],
       programs: [],
       seats: 0,
       studentCount: 0,
     };
-    folders.set(key, created);
+    folders.set(classLevel, created);
     return created;
   };
 
+  const addSection = (folder: ClassFolder, section: string) => {
+    if (!folder.sections.includes(section)) folder.sections.push(section);
+  };
+  const addProgram = (folder: ClassFolder, programName: string) => {
+    if (!folder.programs.includes(programName)) folder.programs.push(programName);
+  };
+
   for (const row of organization?.wholeClasses ?? []) {
-    const folder = ensure(row.classLevel, "A");
-    folder.seats = Math.max(folder.seats, row.studentCount);
-    if (!folder.programs.includes(row.programName)) folder.programs.push(row.programName);
+    const folder = ensure(row.classLevel);
+    folder.seats += row.studentCount;
+    addSection(folder, "A");
+    addProgram(folder, row.programName);
   }
   for (const section of organization?.sections ?? []) {
-    const folder = ensure(section.classLevel, section.name);
-    folder.seats = Math.max(folder.seats, section.studentCount);
-    if (!folder.programs.includes(section.programName)) folder.programs.push(section.programName);
+    const folder = ensure(section.classLevel);
+    folder.seats += section.studentCount;
+    addSection(folder, section.name);
+    addProgram(folder, section.programName);
   }
 
   for (const student of students) {
-    const folder = ensure(student.classLevel, displaySectionName(student.sectionName));
+    const folder = ensure(student.classLevel);
     folder.studentCount += 1;
-    if (!folder.programs.includes(student.programName)) folder.programs.push(student.programName);
+    addSection(folder, displaySectionName(student.sectionName));
+    addProgram(folder, student.programName);
   }
 
-  return [...folders.values()].sort(
-    (a, b) => a.classLevel - b.classLevel || a.section.localeCompare(b.section),
-  );
+  return [...folders.values()]
+    .map((folder) => ({
+      ...folder,
+      sections: [...folder.sections].sort((a, b) => a.localeCompare(b)),
+    }))
+    .sort((a, b) => a.classLevel - b.classLevel);
 }
 
-function studentsInClassSection(students: Student[], classLevel: number, section: string) {
+function studentsInClass(students: Student[], classLevel: number, section?: string) {
   return students
-    .filter(
-      (student) =>
-        student.classLevel === classLevel && displaySectionName(student.sectionName) === section,
-    )
-    .sort((a, b) => a.rollNo.localeCompare(b.rollNo));
+    .filter((student) => {
+      if (student.classLevel !== classLevel) return false;
+      if (!section) return true;
+      return displaySectionName(student.sectionName) === section;
+    })
+    .sort(
+      (a, b) =>
+        displaySectionName(a.sectionName).localeCompare(displaySectionName(b.sectionName)) ||
+        a.rollNo.localeCompare(b.rollNo),
+    );
 }
 
 export function StudentsDrive({
@@ -103,8 +120,8 @@ export function StudentsDrive({
 }: StudentsDriveProps) {
   const school = schools.find((item) => item.id === schoolId);
 
-  if (schoolId && school && classLevel != null && section) {
-    const roster = studentsInClassSection(
+  if (schoolId && school && classLevel != null) {
+    const roster = studentsInClass(
       studentsForSchoolOfferings(school, students),
       classLevel,
       section,
@@ -114,7 +131,9 @@ export function StudentsDrive({
       <StudentsTable
         students={roster}
         mode="admin"
-        emptyMessage="No students in this class section yet."
+        emptyMessage={
+          section ? "No students in this class section yet." : "No students in this class yet."
+        }
       />
     );
   }
@@ -128,9 +147,9 @@ export function StudentsDrive({
     ];
 
     const items: DriveItem[] = folders.map((folder) => {
-      const programDetail = folder.programs
-        .map((name) => programLabel(name, name))
-        .join(", ");
+      const programDetail = folder.programs.map((name) => programLabel(name, name)).join(", ");
+      const sectionDetail =
+        folder.sections.length > 0 ? `Sections ${folder.sections.join(", ")}` : null;
       const countDetail =
         folder.studentCount > 0
           ? `${folder.studentCount} student${folder.studentCount === 1 ? "" : "s"}`
@@ -139,10 +158,10 @@ export function StudentsDrive({
             : "Empty";
       return {
         id: folder.key,
-        name: `Class ${folder.classLevel}-${folder.section}`,
+        name: `Class ${folder.classLevel}`,
         kind: "folder" as const,
-        href: classHref(school.id, folder.classLevel, folder.section),
-        detail: [programDetail, countDetail].filter(Boolean).join(" · "),
+        href: classHref(school.id, folder.classLevel),
+        detail: [programDetail, sectionDetail, countDetail].filter(Boolean).join(" · "),
       };
     });
 

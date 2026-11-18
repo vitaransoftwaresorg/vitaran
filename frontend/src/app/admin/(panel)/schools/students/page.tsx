@@ -46,19 +46,27 @@ export default async function AdminAllStudentsPage({
       ])
     : [[], null];
 
-  const inClass = Boolean(school && classLevel != null && section);
-  const title = school ? (inClass ? `Class ${classLevel}-${section}` : school.name) : "Students";
+  const inClass = Boolean(school && classLevel != null);
+  const title = school
+    ? inClass
+      ? section
+        ? `Class ${classLevel}-${section}`
+        : `Class ${classLevel}`
+      : school.name
+    : "Students";
   const description = school
     ? inClass
-      ? `${school.name} · students`
-      : "Open a class section to view students"
+      ? section
+        ? `${school.name} · students`
+        : `${school.name} · all sections`
+      : "Open a class to view students"
     : "Open a school to view its classes";
   const roster = inClass
-    ? students.filter(
-        (student) =>
-          student.classLevel === classLevel &&
-          (student.sectionName?.trim().toUpperCase() || "A") === section,
-      )
+    ? students.filter((student) => {
+        if (student.classLevel !== classLevel) return false;
+        if (!section) return true;
+        return (student.sectionName?.trim().toUpperCase() || "A") === section;
+      })
     : [];
   const rosterCount = inClass ? roster.length : undefined;
 
@@ -80,7 +88,9 @@ export default async function AdminAllStudentsPage({
               <Link
                 href={
                   inClass
-                    ? `/admin/schools/${school.id}/students/new?class=${classLevel}&section=${encodeURIComponent(section!)}`
+                    ? section
+                      ? `/admin/schools/${school.id}/students/new?class=${classLevel}&section=${encodeURIComponent(section)}`
+                      : `/admin/schools/${school.id}/students/new?class=${classLevel}`
                     : `/admin/schools/${school.id}/students/new`
                 }
                 className={cn(buttonVariants({ size: "sm" }), "h-8 gap-1.5 rounded-lg")}

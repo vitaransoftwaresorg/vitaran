@@ -76,6 +76,7 @@ export function StudentsTable({
             <th className="px-4 py-2.5">Reg No</th>
             <th className="px-4 py-2.5">Name</th>
             <th className="hidden px-4 py-2.5 sm:table-cell">Class</th>
+            <th className="px-4 py-2.5">Section</th>
             <th className="hidden px-4 py-2.5 md:table-cell">Program</th>
             <th className="px-4 py-2.5">Status</th>
             {showActions ? <th className="px-4 py-2.5 text-right">Actions</th> : null}
@@ -85,7 +86,7 @@ export function StudentsTable({
           {students.map((student) => {
             const detail = detailHref(student);
             const edit = editHref(student);
-            const classLabel = `${student.classLevel}-${displaySectionName(student.sectionName)}`;
+            const sectionLabel = displaySectionName(student.sectionName);
             return (
               <tr key={student.id} className="border-b border-neutral-100 last:border-0">
                 {showSchool ? (
@@ -130,8 +131,9 @@ export function StudentsTable({
                   )}
                 </td>
                 <td className="hidden px-4 py-2.5 text-neutral-600 sm:table-cell">
-                  Class {classLabel}
+                  Class {student.classLevel}
                 </td>
+                <td className="px-4 py-2.5 font-medium text-neutral-950">{sectionLabel}</td>
                 <td className="hidden px-4 py-2.5 text-neutral-600 md:table-cell">
                   {student.programName}
                 </td>

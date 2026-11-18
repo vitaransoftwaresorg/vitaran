@@ -39,9 +39,34 @@ export default async function AdminSchoolStudentNewPage({ params, searchParams }
         )
       : undefined;
 
+  const classSections =
+    classLevel != null
+      ? organization.sections.filter((section) => section.classLevel === classLevel)
+      : [];
+  const classWhole =
+    classLevel != null
+      ? organization.wholeClasses.find((row) => row.classLevel === classLevel)
+      : undefined;
+
+  const defaults =
+    matchingSection
+      ? {
+          programId: matchingSection.programId,
+          classLevel: matchingSection.classLevel,
+          sectionId: matchingSection.id,
+        }
+      : classLevel != null
+        ? {
+            programId: classSections[0]?.programId ?? classWhole?.programId,
+            classLevel,
+          }
+        : undefined;
+
   const returnTo =
-    classLevel != null && sectionName
-      ? `/admin/schools/students?school=${id}&class=${classLevel}&section=${encodeURIComponent(sectionName)}`
+    classLevel != null
+      ? sectionName
+        ? `/admin/schools/students?school=${id}&class=${classLevel}&section=${encodeURIComponent(sectionName)}`
+        : `/admin/schools/students?school=${id}&class=${classLevel}`
       : `/admin/schools/students?school=${id}`;
 
   const submitAction = createAdminStudentsBulkAction.bind(null, id);
@@ -51,8 +76,10 @@ export default async function AdminSchoolStudentNewPage({ params, searchParams }
       <PageHeader
         title="Add students"
         description={
-          classLevel != null && sectionName
-            ? `${school.name} · Class ${classLevel}-${sectionName}`
+          classLevel != null
+            ? sectionName
+              ? `${school.name} · Class ${classLevel}-${sectionName}`
+              : `${school.name} · Class ${classLevel} · all sections`
             : school.name
         }
       />
@@ -60,15 +87,7 @@ export default async function AdminSchoolStudentNewPage({ params, searchParams }
         <BulkStudentForm
           schoolPrograms={school.schoolPrograms}
           sections={organization.sections}
-          defaults={
-            matchingSection
-              ? {
-                  programId: matchingSection.programId,
-                  classLevel: matchingSection.classLevel,
-                  sectionId: matchingSection.id,
-                }
-              : undefined
-          }
+          defaults={defaults}
           lockPlacement={Boolean(matchingSection)}
           returnTo={returnTo}
           submitAction={submitAction}

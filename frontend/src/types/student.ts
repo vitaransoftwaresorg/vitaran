@@ -53,6 +53,8 @@ export type BulkStudentRowInput = {
   email?: string | null;
   parentName?: string | null;
   parentPhone?: string | null;
+  /** Per-row section; omit to use the bulk default section. */
+  sectionId?: string | null;
 };
 
 export type CreateStudentsBulkInput = {

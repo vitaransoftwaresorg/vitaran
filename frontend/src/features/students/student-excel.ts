@@ -7,6 +7,8 @@ export type ImportedStudent = {
   name: string;
   parentName: string;
   parentPhone: string;
+  /** Section letter/name from Excel, e.g. A / B. */
+  section: string;
 };
 
 type Column = keyof ImportedStudent;
@@ -16,6 +18,7 @@ export const MAX_IMPORT_ROWS = 300;
 
 const TEMPLATE_COLUMNS: Array<{ key: Column; header: string; width: number }> = [
   { key: "rollNo", header: "Reg No", width: 14 },
+  { key: "section", header: "Section", width: 10 },
   { key: "name", header: "Student name", width: 28 },
   { key: "parentName", header: "Parent name (optional)", width: 28 },
   { key: "parentPhone", header: "Parent mobile (optional)", width: 18 },
@@ -25,6 +28,7 @@ const TEMPLATE_COLUMNS: Array<{ key: Column; header: string; width: number }> = 
 const HEADER_MATCHERS: Array<[Column, RegExp]> = [
   ["parentPhone", /mobile|phone|contact|whats ?app/],
   ["parentName", /parent|father|mother|guardian/],
+  ["section", /section|sec\.?$/],
   ["rollNo", /reg|roll|admission|enrol/],
   ["name", /name|student/],
 ];
@@ -98,6 +102,7 @@ export async function readStudentsExcel(file: File): Promise<ImportedStudent[]> 
       name: pick(cells, "name"),
       parentName: pick(cells, "parentName"),
       parentPhone: pick(cells, "parentPhone").replace(/\D/g, "").replace(/^(?:91|0)(\d{10})$/, "$1"),
+      section: pick(cells, "section").trim().toUpperCase(),
     };
     return Object.values(student).some(Boolean) ? [student] : [];
   });
@@ -109,7 +114,7 @@ export async function downloadStudentsTemplate(fileName = "students-import-templ
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet("Students", { views: [{ state: "frozen", ySplit: 1 }] });
   sheet.columns = TEMPLATE_COLUMNS.map(({ key, header, width }) => ({ key, header, width }));
-  for (const key of ["rollNo", "parentPhone"] as const) sheet.getColumn(key).numFmt = "@";
+  for (const key of ["rollNo", "parentPhone", "section"] as const) sheet.getColumn(key).numFmt = "@";
 
   const header = sheet.getRow(1);
   header.font = { bold: true, color: { argb: "FFFFFFFF" } };
@@ -122,10 +127,11 @@ export async function downloadStudentsTemplate(fileName = "students-import-templ
   [
     "One student per row on the Students sheet. Keep the header row.",
     "Reg No: 7 digits, unique in the school (required).",
+    "Section: A, B, … for that class (required when the class has sections). You can mix A and B in one file.",
     "Student name: at least 2 letters (required).",
     "Parent name: optional (at least 2 letters if provided).",
     "Parent mobile: optional (10 digits, no +91 if provided).",
-    `Up to ${MAX_IMPORT_ROWS} students per file. Program, class and section are picked on the Add students page.`,
+    `Up to ${MAX_IMPORT_ROWS} students per file. Program and class are picked on the Add students page.`,
   ].forEach((line) => help.addRow([line]));
 
   const buffer = await workbook.xlsx.writeBuffer();

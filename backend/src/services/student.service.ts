@@ -279,18 +279,29 @@ export async function createStudent(schoolId: string, input: CreateStudentInput)
 }
 
 export async function createStudentsBulk(schoolId: string, input: CreateStudentsBulkInput) {
-  const sectionId = input.sectionId ?? null;
-  const rows = input.students;
+  const defaultSectionId = input.sectionId ?? null;
+  const rows = input.students.map((row) => ({
+    ...row,
+    sectionId: row.sectionId !== undefined ? row.sectionId : defaultSectionId,
+  }));
 
   await assertSchoolOffering(schoolId, input.programId, input.classLevel);
-  await assertSeatAvailable(
-    schoolId,
-    input.programId,
-    input.classLevel,
-    sectionId,
-    undefined,
-    rows.length,
-  );
+
+  const seatsBySection = new Map<string | null, number>();
+  for (const row of rows) {
+    const key = row.sectionId ?? null;
+    seatsBySection.set(key, (seatsBySection.get(key) ?? 0) + 1);
+  }
+  for (const [sectionId, seatsNeeded] of seatsBySection) {
+    await assertSeatAvailable(
+      schoolId,
+      input.programId,
+      input.classLevel,
+      sectionId,
+      undefined,
+      seatsNeeded,
+    );
+  }
 
   const seen = new Set<string>();
   for (const [index, row] of rows.entries()) {
@@ -327,7 +338,7 @@ export async function createStudentsBulk(schoolId: string, input: CreateStudents
       parentPhone: row.parentPhone ?? null,
       programId: input.programId,
       classLevel: input.classLevel,
-      sectionId,
+      sectionId: row.sectionId ?? null,
       status: StudentStatus.ACTIVE,
     });
     created.push(toStudentDetailDto(student));

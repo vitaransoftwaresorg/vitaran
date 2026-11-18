@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { displaySectionName } from "@/features/schools/section-label";
 import { StudentDetailView } from "@/features/students/student-detail-view";
 import { getSchoolStudent, getSchoolStudentPerformance } from "@/services/students";
 
@@ -11,7 +10,6 @@ type Props = { params: Promise<{ id: string }> };
 function rosterHref(student: { classLevel: number; sectionName: string | null }) {
   return `/school/students?${new URLSearchParams({
     class: String(student.classLevel),
-    section: displaySectionName(student.sectionName),
   })}`;
 }
 

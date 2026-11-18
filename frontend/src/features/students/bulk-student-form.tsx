@@ -87,6 +87,7 @@ type Row = {
   rollNo: string;
   parentName: string;
   parentPhone: string;
+  sectionId: string;
 };
 
 const NONE = "__none__";
@@ -99,12 +100,19 @@ function emptyRow(fields?: Partial<Omit<Row, "key">>): Row {
     rollNo: "",
     parentName: "",
     parentPhone: "",
+    sectionId: NONE,
     ...fields,
   };
 }
 
 const isFilled = (row: Row) =>
-  Boolean(row.name.trim() || row.rollNo.trim() || row.parentName.trim() || row.parentPhone.trim());
+  Boolean(
+    row.name.trim() ||
+      row.rollNo.trim() ||
+      row.parentName.trim() ||
+      row.parentPhone.trim() ||
+      (row.sectionId && row.sectionId !== NONE),
+  );
 
 export function BulkStudentForm({
   schoolPrograms,
@@ -119,7 +127,9 @@ export function BulkStudentForm({
   const [pending, startTransition] = useTransition();
   const [state, setState] = useState<BulkStudentFormState>({});
   const [rows, setRows] = useState<Row[]>(() =>
-    Array.from({ length: EMPTY_ROWS }, () => emptyRow()),
+    Array.from({ length: EMPTY_ROWS }, () =>
+      emptyRow({ sectionId: defaults?.sectionId ?? NONE }),
+    ),
   );
   const [programId, setProgramId] = useState(defaults?.programId ?? "");
   const [classLevel, setClassLevel] = useState<number | undefined>(defaults?.classLevel);
@@ -167,6 +177,10 @@ export function BulkStudentForm({
   }, [sections, programId, classLevel, placementReady]);
 
   const hasNamedSections = sectionOptions.length > 0;
+  /** Locked to one section from the list URL — no per-row picker. */
+  const fixedSection = lockPlacement && Boolean(defaults?.sectionId);
+  /** Mix A/B (and more) in one add/import when the class has named sections. */
+  const perRowSection = hasNamedSections && !fixedSection;
 
   useEffect(() => {
     if (!placementReady) return;
@@ -224,9 +238,25 @@ export function BulkStudentForm({
     setState({});
   }
 
+  function sectionIdForName(name: string | null | undefined) {
+    if (!name) return NONE;
+    const match = sectionOptions.find(
+      (section) => section.name.trim().toUpperCase() === name.trim().toUpperCase(),
+    );
+    return match?.id ?? NONE;
+  }
+
   function restoreDraft() {
     if (!draft) return;
-    setRows([...draft.rows.map((row) => emptyRow(row)), emptyRow()]);
+    setRows([
+      ...draft.rows.map((row) =>
+        emptyRow({
+          ...row,
+          sectionId: row.sectionId || NONE,
+        }),
+      ),
+      emptyRow({ sectionId: fixedSection ? sectionId : sectionId !== NONE ? sectionId : NONE }),
+    ]);
     if (!lockPlacement) {
       setProgramId(draft.programId);
       setClassLevel(draft.classLevel ?? undefined);
@@ -250,6 +280,7 @@ export function BulkStudentForm({
       rollNo: row.rollNo,
       parentName: row.parentName,
       parentPhone: row.parentPhone,
+      sectionId: row.sectionId === NONE ? "" : row.sectionId,
     })),
   });
 
@@ -259,7 +290,11 @@ export function BulkStudentForm({
   }
 
   function addRows(count: number) {
-    setRows((current) => [...current, ...Array.from({ length: count }, () => emptyRow())]);
+    const defaultSection = fixedSection || sectionId !== NONE ? sectionId : NONE;
+    setRows((current) => [
+      ...current,
+      ...Array.from({ length: count }, () => emptyRow({ sectionId: defaultSection })),
+    ]);
   }
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -280,19 +315,27 @@ export function BulkStudentForm({
       claimDraft();
       const kept = rows.filter(isFilled);
       const room = Math.max(0, MAX_IMPORT_ROWS - kept.length);
-      const added = students.slice(0, room).map((student) =>
-        emptyRow({
+      const defaultSection = fixedSection || sectionId !== NONE ? sectionId : NONE;
+      const added = students.slice(0, room).map((student) => {
+        const fromSheet = sectionIdForName(student.section);
+        return emptyRow({
           rollNo: student.rollNo.slice(0, 7),
           name: titleCase(student.name),
           parentName: titleCase(student.parentName),
           parentPhone: toPhoneDigits(student.parentPhone),
-        }),
-      );
-      setRows(added.length || kept.length ? [...kept, ...added] : [emptyRow()]);
+          sectionId: fixedSection
+            ? defaultSection
+            : fromSheet !== NONE
+              ? fromSheet
+              : defaultSection,
+        });
+      });
+      setRows(added.length || kept.length ? [...kept, ...added] : [emptyRow({ sectionId: defaultSection })]);
       const skipped = students.length - added.length;
       setImportNote(
         `Imported ${added.length} student${added.length === 1 ? "" : "s"} from ${file.name}` +
           (skipped ? ` · ${skipped} left out (limit ${MAX_IMPORT_ROWS} per save)` : "") +
+          (perRowSection ? " · set Section per row if needed" : "") +
           ". Check the rows below, then save them.",
       );
     } catch (error) {
@@ -319,9 +362,23 @@ export function BulkStudentForm({
       setState({ message: "Pick a program and class" });
       return;
     }
-    if (hasNamedSections && (sectionId === NONE || !sectionId)) {
+    if (hasNamedSections && !perRowSection && (sectionId === NONE || !sectionId)) {
       setState({ message: "Pick a section" });
       return;
+    }
+
+    if (perRowSection) {
+      const missing: Record<number, Record<string, string>> = {};
+      rows.forEach((row, index) => {
+        if (!isFilled(row)) return;
+        if (!row.sectionId || row.sectionId === NONE) {
+          missing[index] = { sectionId: "Pick a section" };
+        }
+      });
+      if (Object.keys(missing).length > 0) {
+        setState({ message: "Pick a section for each student", rowErrors: missing });
+        return;
+      }
     }
 
     const action = submitAction ?? createSchoolStudentsBulkAction;
@@ -336,6 +393,12 @@ export function BulkStudentForm({
           parentName: row.parentName,
           parentPhone: row.parentPhone,
           email: null,
+          sectionId:
+            perRowSection || fixedSection
+              ? row.sectionId === NONE
+                ? null
+                : row.sectionId
+              : undefined,
         })),
         returnTo,
         stay: true,
@@ -504,13 +567,27 @@ export function BulkStudentForm({
 
           <Field>
             <FieldLabel>
-              Section {hasNamedSections ? "*" : placementReady ? "(Section A)" : ""}
+              {perRowSection
+                ? "Default section"
+                : hasNamedSections
+                  ? "Section *"
+                  : placementReady
+                    ? "(Section A)"
+                    : "Section"}
             </FieldLabel>
             <Select
               value={sectionSelectValue}
               items={sectionItems}
               onValueChange={(v) => {
-                setSectionId(v ?? NONE);
+                const next = v ?? NONE;
+                setSectionId(next);
+                if (perRowSection && next !== NONE) {
+                  setRows((current) =>
+                    current.map((row) =>
+                      !row.sectionId || row.sectionId === NONE ? { ...row, sectionId: next } : row,
+                    ),
+                  );
+                }
                 setState({});
               }}
               disabled={!placementReady || (!hasNamedSections && placementReady)}
@@ -520,9 +597,11 @@ export function BulkStudentForm({
                   placeholder={
                     !placementReady
                       ? "Pick program and class first"
-                      : hasNamedSections
-                        ? "Select section"
-                        : `Section ${displaySectionName(null)}`
+                      : perRowSection
+                        ? "Optional default for new rows"
+                        : hasNamedSections
+                          ? "Select section"
+                          : `Section ${displaySectionName(null)}`
                   }
                 />
               </SelectTrigger>
@@ -543,8 +622,8 @@ export function BulkStudentForm({
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-brand-950">Import from Excel</p>
           <p className="text-xs text-neutral-500">
-            Reg No *, Student name * · Parent name / mobile optional · up to{" "}
-            {MAX_IMPORT_ROWS} students
+            Reg No *, {perRowSection ? "Section *, " : ""}Student name * · Parent optional · up to{" "}
+            {MAX_IMPORT_ROWS} · mix sections in one file
           </p>
         </div>
         <input
@@ -595,6 +674,7 @@ export function BulkStudentForm({
               <tr>
                 <th className="w-10 px-3 py-2.5">#</th>
                 <th className="px-3 py-2.5">Reg No *</th>
+                {perRowSection ? <th className="px-3 py-2.5">Section *</th> : null}
                 <th className="px-3 py-2.5">Student name *</th>
                 <th className="px-3 py-2.5">Parent name (optional)</th>
                 <th className="px-3 py-2.5">Parent mobile (optional)</th>
@@ -622,11 +702,37 @@ export function BulkStudentForm({
                         className="h-9"
                         aria-invalid={errors.rollNo ? true : undefined}
                         onChange={(e) =>
-                          updateRow(row.key, { rollNo: e.currentTarget.value.replace(/\D/g, "").slice(0, 7) })
+                          updateRow(row.key, {
+                            rollNo: e.currentTarget.value.replace(/\D/g, "").slice(0, 7),
+                          })
                         }
                       />
                       {errors.rollNo ? <FieldError>{errors.rollNo}</FieldError> : null}
                     </td>
+                    {perRowSection ? (
+                      <td className="px-2 py-1.5 align-top">
+                        <Select
+                          value={row.sectionId === NONE ? null : row.sectionId}
+                          items={sectionItems}
+                          onValueChange={(v) => updateRow(row.key, { sectionId: v ?? NONE })}
+                        >
+                          <SelectTrigger
+                            className="h-9 w-full min-w-24"
+                            aria-invalid={errors.sectionId ? true : undefined}
+                          >
+                            <SelectValue placeholder="Section" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {sectionItems.map((item) => (
+                              <SelectItem key={item.value} value={item.value}>
+                                {item.label.replace(/^Section\s+/i, "")}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {errors.sectionId ? <FieldError>{errors.sectionId}</FieldError> : null}
+                      </td>
+                    ) : null}
                     <td className="px-2 py-1.5 align-top">
                       <Input
                         value={row.name}

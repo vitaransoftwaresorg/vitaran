@@ -37,9 +37,34 @@ export default async function SchoolStudentNewPage({
         )
       : undefined;
 
+  const classSections =
+    classLevel != null
+      ? organization.sections.filter((section) => section.classLevel === classLevel)
+      : [];
+  const classWhole =
+    classLevel != null
+      ? organization.wholeClasses.find((row) => row.classLevel === classLevel)
+      : undefined;
+
+  const defaults =
+    matchingSection
+      ? {
+          programId: matchingSection.programId,
+          classLevel: matchingSection.classLevel,
+          sectionId: matchingSection.id,
+        }
+      : classLevel != null
+        ? {
+            programId: classSections[0]?.programId ?? classWhole?.programId,
+            classLevel,
+          }
+        : undefined;
+
   const returnTo =
-    classLevel != null && sectionName
-      ? `/school/students?class=${classLevel}&section=${encodeURIComponent(sectionName)}`
+    classLevel != null
+      ? sectionName
+        ? `/school/students?class=${classLevel}&section=${encodeURIComponent(sectionName)}`
+        : `/school/students?class=${classLevel}`
       : "/school/students";
 
   return (
@@ -47,8 +72,10 @@ export default async function SchoolStudentNewPage({
       <PageHeader
         title="Add students"
         description={
-          classLevel != null && sectionName
-            ? `${school.name} · Class ${classLevel}-${sectionName}`
+          classLevel != null
+            ? sectionName
+              ? `${school.name} · Class ${classLevel}-${sectionName}`
+              : `${school.name} · Class ${classLevel} · all sections`
             : school.name
         }
       />
@@ -56,15 +83,7 @@ export default async function SchoolStudentNewPage({
         <BulkStudentForm
           schoolPrograms={school.schoolPrograms}
           sections={organization.sections}
-          defaults={
-            matchingSection
-              ? {
-                  programId: matchingSection.programId,
-                  classLevel: matchingSection.classLevel,
-                  sectionId: matchingSection.id,
-                }
-              : undefined
-          }
+          defaults={defaults}
           lockPlacement={Boolean(matchingSection)}
           returnTo={returnTo}
         />

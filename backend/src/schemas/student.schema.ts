@@ -28,6 +28,8 @@ const studentRowSchema = z.object({
   email: email.optional().nullable(),
   parentName: optionalParentName,
   parentPhone: parentPhone.optional(),
+  /** Per-row section; falls back to the bulk `sectionId` when omitted. */
+  sectionId: z.uuid().optional().nullable(),
 });
 
 export const createStudentSchema = studentRowSchema.extend({
@@ -40,6 +42,7 @@ export const createStudentSchema = studentRowSchema.extend({
 export const createStudentsBulkSchema = z.object({
   programId: z.uuid(),
   classLevel: z.number().int().min(1).max(12),
+  /** Default section when a row does not set its own `sectionId`. */
   sectionId: z.uuid().optional().nullable(),
   students: z.array(studentRowSchema).min(1).max(300),
 });

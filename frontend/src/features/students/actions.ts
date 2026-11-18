@@ -72,6 +72,7 @@ const bulkRowSchema = z.object({
     z.literal(""),
     z.string().trim().regex(/^\d{10}$/, "Enter a 10-digit mobile number"),
   ]),
+  sectionId: z.union([z.literal(""), z.string().uuid("Pick a valid section")]).optional(),
 });
 
 function formValues(formData: FormData): Partial<CreateStudentInput> {
@@ -214,6 +215,7 @@ export async function createSchoolStudentsBulkAction(input: {
       email: null,
       parentName: parsed.data.parentName || null,
       parentPhone: parsed.data.parentPhone || null,
+      sectionId: parsed.data.sectionId || row.sectionId || null,
     });
   });
 

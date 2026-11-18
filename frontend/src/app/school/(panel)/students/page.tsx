@@ -42,16 +42,23 @@ export default async function SchoolStudentsPage({
     (student) => allowedPrograms.size === 0 || allowedPrograms.has(student.programCode),
   );
 
-  const inClass = classLevel != null && Boolean(section);
-  const title = inClass ? `Class ${classLevel}-${section}` : "Students";
+  const inClass = classLevel != null;
+  const title = inClass
+    ? section
+      ? `Class ${classLevel}-${section}`
+      : `Class ${classLevel}`
+    : "Students";
   const description = inClass
-    ? `${school.name} · students`
-    : "Open a class section to view students";
+    ? section
+      ? `${school.name} · students`
+      : `${school.name} · all sections`
+    : "Open a class to view students";
   const roster = inClass
-    ? students.filter(
-        (student) =>
-          student.classLevel === classLevel && displaySectionName(student.sectionName) === section,
-      )
+    ? students.filter((student) => {
+        if (student.classLevel !== classLevel) return false;
+        if (!section) return true;
+        return displaySectionName(student.sectionName) === section;
+      })
     : [];
   const rosterCount = inClass ? roster.length : students.length;
 
@@ -72,7 +79,9 @@ export default async function SchoolStudentsPage({
             <Link
               href={
                 inClass
-                  ? `/school/students/new?class=${classLevel}&section=${encodeURIComponent(section!)}`
+                  ? section
+                    ? `/school/students/new?class=${classLevel}&section=${encodeURIComponent(section)}`
+                    : `/school/students/new?class=${classLevel}`
                   : "/school/students/new"
               }
               className={cn(buttonVariants({ size: "sm" }), "h-8 gap-1.5 rounded-lg")}

@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { displaySectionName } from "@/features/schools/section-label";
 import { StudentDetailView } from "@/features/students/student-detail-view";
 import { getAdminStudent, getAdminStudentPerformance } from "@/services/students";
 
@@ -13,7 +12,6 @@ function rosterHref(student: {
   return `/admin/schools/students?${new URLSearchParams({
     school: student.schoolId,
     class: String(student.classLevel),
-    section: displaySectionName(student.sectionName),
   })}`;
 }
 
