@@ -89,6 +89,18 @@ export const listTeacherAnswerKeys: RequestHandler = async (_req, res) => {
   sendSuccess(res, await answerKeyService.listVisibleAnswerKeys(actor));
 };
 
+export const listPublicAnswerKeys: RequestHandler = async (_req, res) => {
+  sendSuccess(res, await answerKeyService.listPublicAnswerKeys());
+};
+
+export const getPublicAnswerKey: RequestHandler<IdParams> = async (req, res) => {
+  sendSuccess(res, await answerKeyService.getPublicAnswerKey(req.params.id));
+};
+
+export const getPublicAnswerKeyPdf: RequestHandler<IdParams> = async (req, res) => {
+  sendPdf(res, await answerKeyService.getPublicAnswerKeyPdf(req.params.id));
+};
+
 export const getTeacherAnswerKey: RequestHandler<IdParams> = async (req, res) => {
   const actor: ContentActor = { kind: "teacher", teacher: res.locals.teacher as TeacherAccountDto };
   sendSuccess(res, await answerKeyService.getVisibleAnswerKey(req.params.id, actor));

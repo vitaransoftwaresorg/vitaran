@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   streamAdminEvents,
+  streamPublicEvents,
   streamSchoolEvents,
   streamTeacherEvents,
 } from "../controllers/live.controller.js";
@@ -20,3 +21,7 @@ schoolEventsRouter.get("/", streamSchoolEvents);
 export const teacherEventsRouter = Router();
 teacherEventsRouter.use(requireTeacher);
 teacherEventsRouter.get("/", streamTeacherEvents);
+
+/** Anonymous settings stream (public/private toggles) for the marketing site. */
+export const publicEventsRouter = Router();
+publicEventsRouter.get("/", streamPublicEvents);

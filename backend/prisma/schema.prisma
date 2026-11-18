@@ -481,6 +481,8 @@ model AppSettings {
   maintenanceMode  Boolean  @default(false) @map("maintenance_mode")
   /// When true, teacher solution books are public on /teachers-resources (no login).
   teacherResourcesPublic Boolean @default(false) @map("teacher_resources_public")
+  /// When true, published regular answer keys are public on /answer-keys (no login).
+  answerKeysPublic Boolean @default(false) @map("answer_keys_public")
   /// Inboxes for every answer-key objection.
   vitaranEmails    String[] @default([]) @map("vitaran_emails") @db.VarChar(254)
   /// SME contacts: [{ "name": "…", "subject": "MATHEMATICS", "email": "…" }]

@@ -7,6 +7,7 @@ export type SmeContact = {
 export type AppSettings = {
   maintenanceMode: boolean;
   teacherResourcesPublic: boolean;
+  answerKeysPublic: boolean;
   vitaranEmails: string[];
   smeContacts: SmeContact[];
   updatedAt: string;
@@ -15,11 +16,13 @@ export type AppSettings = {
 export type PublicSettings = {
   maintenanceMode: boolean;
   teacherResourcesPublic: boolean;
+  answerKeysPublic: boolean;
 };
 
 export type UpdateAppSettingsInput = {
   maintenanceMode: boolean;
   teacherResourcesPublic: boolean;
+  answerKeysPublic: boolean;
   vitaranEmails: string[];
   smeContacts: SmeContact[];
 };

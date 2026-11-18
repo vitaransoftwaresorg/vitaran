@@ -50,6 +50,7 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
   const [teacherResourcesPublic, setTeacherResourcesPublic] = useState(
     initial.teacherResourcesPublic,
   );
+  const [answerKeysPublic, setAnswerKeysPublic] = useState(initial.answerKeysPublic);
   const [vitaranEmails, setVitaranEmails] = useState<string[]>(
     initial.vitaranEmails.length > 0 ? initial.vitaranEmails : [""],
   );
@@ -105,6 +106,88 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
     );
   }
 
+  function persist(
+    patch: Partial<{
+      maintenanceMode: boolean;
+      teacherResourcesPublic: boolean;
+      answerKeysPublic: boolean;
+      vitaranEmails: string[];
+      smeContacts: SmeContact[];
+    }>,
+    options?: { successMessage?: string; clearDrafts?: boolean },
+  ) {
+    const previous = {
+      maintenanceMode,
+      teacherResourcesPublic,
+      answerKeysPublic,
+    };
+    setError(null);
+    startTransition(async () => {
+      const result = await saveAdminSettingsAction({
+        maintenanceMode: patch.maintenanceMode ?? previous.maintenanceMode,
+        teacherResourcesPublic:
+          patch.teacherResourcesPublic ?? previous.teacherResourcesPublic,
+        answerKeysPublic: patch.answerKeysPublic ?? previous.answerKeysPublic,
+        vitaranEmails: patch.vitaranEmails ?? [
+          ...new Set(vitaranEmails.map((email) => email.trim().toLowerCase()).filter(Boolean)),
+        ],
+        smeContacts: patch.smeContacts ?? smeContacts,
+      });
+      if (!result.ok) {
+        setError(result.message);
+        if (patch.maintenanceMode !== undefined) {
+          setMaintenanceMode(previous.maintenanceMode);
+        }
+        if (patch.teacherResourcesPublic !== undefined) {
+          setTeacherResourcesPublic(previous.teacherResourcesPublic);
+        }
+        if (patch.answerKeysPublic !== undefined) {
+          setAnswerKeysPublic(previous.answerKeysPublic);
+        }
+        return;
+      }
+      setSmeContacts(result.settings.smeContacts);
+      setVitaranEmails(
+        result.settings.vitaranEmails.length > 0 ? result.settings.vitaranEmails : [""],
+      );
+      setMaintenanceMode(result.settings.maintenanceMode);
+      setTeacherResourcesPublic(result.settings.teacherResourcesPublic);
+      setAnswerKeysPublic(result.settings.answerKeysPublic);
+      if (options?.clearDrafts) setDrafts([emptySme()]);
+      toast.success(options?.successMessage ?? "Settings saved");
+    });
+  }
+
+  function setMaintenance(next: boolean) {
+    setMaintenanceMode(next);
+    persist(
+      { maintenanceMode: next },
+      { successMessage: next ? "Maintenance mode on" : "Maintenance mode off" },
+    );
+  }
+
+  function setResourcesPublic(next: boolean) {
+    setTeacherResourcesPublic(next);
+    persist(
+      { teacherResourcesPublic: next },
+      {
+        successMessage: next
+          ? "Teacher resources are public"
+          : "Teacher resources are private",
+      },
+    );
+  }
+
+  function setKeysPublic(next: boolean) {
+    setAnswerKeysPublic(next);
+    persist(
+      { answerKeysPublic: next },
+      {
+        successMessage: next ? "Answer keys are public" : "Answer keys are private",
+      },
+    );
+  }
+
   function submit() {
     const inboxes = [
       ...new Set(vitaranEmails.map((email) => email.trim().toLowerCase()).filter(Boolean)),
@@ -143,27 +226,10 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
       }
     }
 
-    setError(null);
-    startTransition(async () => {
-      const result = await saveAdminSettingsAction({
-        maintenanceMode,
-        teacherResourcesPublic,
-        vitaranEmails: inboxes,
-        smeContacts: merged,
-      });
-      if (!result.ok) {
-        setError(result.message);
-        return;
-      }
-      setSmeContacts(result.settings.smeContacts);
-      setDrafts([emptySme()]);
-      setVitaranEmails(
-        result.settings.vitaranEmails.length > 0 ? result.settings.vitaranEmails : [""],
-      );
-      setMaintenanceMode(result.settings.maintenanceMode);
-      setTeacherResourcesPublic(result.settings.teacherResourcesPublic);
-      toast.success("Settings saved");
-    });
+    persist(
+      { vitaranEmails: inboxes, smeContacts: merged },
+      { clearDrafts: true },
+    );
   }
 
   const saveBar = (
@@ -205,7 +271,7 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
             <div className="flex items-center gap-2">
               <Switch
                 checked={maintenanceMode}
-                onCheckedChange={setMaintenanceMode}
+                onCheckedChange={setMaintenance}
                 disabled={pending}
                 id="maintenance-mode"
               />
@@ -222,13 +288,13 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
               <h2 className="text-sm font-bold text-brand-950">Teacher resources</h2>
               <p className="mt-1 text-sm text-neutral-600">
                 Public: anyone can open Teachers Resources on the website. Private: login
-                required (school or teacher portal).
+                required. Applies to all visitors immediately.
               </p>
             </div>
             <div className="flex items-center gap-2">
               <Switch
                 checked={teacherResourcesPublic}
-                onCheckedChange={setTeacherResourcesPublic}
+                onCheckedChange={setResourcesPublic}
                 disabled={pending}
                 id="teacher-resources-public"
               />
@@ -241,7 +307,30 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
             </div>
           </div>
         </section>
-        {saveBar}
+
+        <section className="rounded-xl border border-brand-200 bg-white p-5 shadow-[0_4px_16px_-8px_rgb(25_28_95/0.12)]">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-bold text-brand-950">Answer keys</h2>
+              <p className="mt-1 text-sm text-neutral-600">
+                Public: anyone can open published answer keys on the website. Private: login
+                required. Applies to all visitors immediately.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={answerKeysPublic}
+                onCheckedChange={setKeysPublic}
+                disabled={pending}
+                id="answer-keys-public"
+              />
+              <label htmlFor="answer-keys-public" className="text-sm font-semibold text-neutral-800">
+                {answerKeysPublic ? "Public" : "Private"}
+              </label>
+            </div>
+          </div>
+        </section>
+        {error ? <FieldError>{error}</FieldError> : null}
       </TabsContent>
 
       <TabsContent value="emails" className="space-y-6">

@@ -10,6 +10,9 @@ export async function saveAdminSettingsAction(input: UpdateAppSettingsInput) {
   try {
     const settings = await updateAdminSettings(input);
     revalidatePath("/admin/settings");
+    revalidatePath("/teachers-resources");
+    revalidatePath("/answer-keys");
+    revalidatePath("/");
     return { ok: true as const, settings };
   } catch (error) {
     unstable_rethrow(error);

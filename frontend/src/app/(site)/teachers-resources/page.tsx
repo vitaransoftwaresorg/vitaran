@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { SCHOOL_LOGIN_PATH } from "@/constants/auth";
 import { SUBJECT_LABELS } from "@/features/schools/constants";
+import { PublicAccessGuard } from "@/features/settings/public-access-guard";
 import { programs } from "@/features/teachers-resources/content";
 import { ResourcePage } from "@/features/teachers-resources/resource-page";
 import { solutionBooks } from "@/features/teachers-resources/solution-books";
@@ -22,14 +23,17 @@ export default async function TeachersResourcesPage() {
   }
 
   return (
-    <ResourcePage
-      title="Teachers"
-      highlight="Resources"
-      books={solutionBooks}
-      programIds={programs.map((program) => program.id)}
-      subjectIds={Object.keys(SUBJECT_LABELS)}
-      label="Solution Books"
-      emptyMessage="Solution books for this program will be available here soon."
-    />
+    <>
+      <PublicAccessGuard flag="teacherResourcesPublic" />
+      <ResourcePage
+        title="Teachers"
+        highlight="Resources"
+        books={solutionBooks}
+        programIds={programs.map((program) => program.id)}
+        subjectIds={Object.keys(SUBJECT_LABELS)}
+        label="Solution Books"
+        emptyMessage="Solution books for this program will be available here soon."
+      />
+    </>
   );
 }

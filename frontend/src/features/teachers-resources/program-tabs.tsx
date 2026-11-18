@@ -1,13 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import {
   Atom,
   Calculator,
   ChevronDown,
-  Download,
-  ExternalLink,
+  Eye,
   FlaskConical,
   Leaf,
   Microscope,
@@ -16,6 +14,7 @@ import {
 import { cn } from "@/lib/utils";
 import { classLabel } from "@/utils/format";
 import { portalPrograms } from "./portal-programs";
+import { SolutionBookViewer } from "./solution-book-viewer";
 import type { SolutionBook, Subject } from "./solution-books";
 
 const subjectIcons: Record<Subject, LucideIcon> = {
@@ -139,6 +138,7 @@ function BookBrowser({ books }: { books: SolutionBook[] }) {
     ...new Set(books.map((b) => b.volume).filter((v) => v !== undefined)),
   ];
   const [volume, setVolume] = useState(volumes[0]);
+  const [viewing, setViewing] = useState<SolutionBook | null>(null);
 
   const visible = books.filter((b) => b.volume === volume);
   const subjects = [...new Set(visible.map((b) => b.subject))];
@@ -190,20 +190,14 @@ function BookBrowser({ books }: { books: SolutionBook[] }) {
                   .filter((b) => b.subject === subject)
                   .map((book) => (
                     <li key={book.href}>
-                      <Link
-                        href={book.href}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        prefetch={false}
-                        className="group flex items-center justify-between rounded-xl bg-white px-3 py-2 text-sm font-medium text-brand-800 ring-1 ring-brand-100 transition-all hover:bg-brand-800 hover:text-white hover:ring-brand-800 active:scale-[0.98]"
+                      <button
+                        type="button"
+                        onClick={() => setViewing(book)}
+                        className="group flex w-full items-center justify-between rounded-xl bg-white px-3 py-2 text-sm font-medium text-brand-800 ring-1 ring-brand-100 transition-all hover:bg-brand-800 hover:text-white hover:ring-brand-800 active:scale-[0.98]"
                       >
                         <span>{classLabel(book.grade)}</span>
-                        {book.external ? (
-                          <ExternalLink className="size-3.5 opacity-60 group-hover:opacity-100" />
-                        ) : (
-                          <Download className="size-3.5 opacity-60 group-hover:opacity-100" />
-                        )}
-                      </Link>
+                        <Eye className="size-3.5 opacity-60 group-hover:opacity-100" />
+                      </button>
                     </li>
                   ))}
               </ul>
@@ -212,12 +206,9 @@ function BookBrowser({ books }: { books: SolutionBook[] }) {
         })}
       </div>
 
-      {books.some((b) => b.external) && (
-        <p className="mt-4 flex items-center gap-1.5 text-xs text-muted-foreground">
-          <ExternalLink className="size-3" />
-          Opens in Google Drive
-        </p>
-      )}
+      <p className="mt-4 text-xs text-muted-foreground">View only — files cannot be downloaded or printed.</p>
+
+      {viewing ? <SolutionBookViewer book={viewing} onClose={() => setViewing(null)} /> : null}
     </div>
   );
 }

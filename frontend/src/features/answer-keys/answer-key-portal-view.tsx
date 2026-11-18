@@ -21,6 +21,8 @@ type AnswerKeyPortalViewProps = {
   role: "school" | "teacher";
   objections: AnswerKeyObjection[];
   onRaiseObjection: (questionNumber: number) => void;
+  /** Public site: answers only — no raise-objection controls. */
+  allowObjections?: boolean;
 };
 
 function questionsIn(range: SubjectRange) {
@@ -190,6 +192,7 @@ export function AnswerKeyPortalView({
   role,
   objections,
   onRaiseObjection,
+  allowObjections = true,
 }: AnswerKeyPortalViewProps) {
   const ranges =
     answerKey.subjectRanges.length > 0
@@ -228,7 +231,9 @@ export function AnswerKeyPortalView({
       <AnswerKeyTable questions={questions} answers={answerKey.answers} />
 
       <div className="space-y-4 sm:space-y-5">
-        <p className="text-sm font-bold text-neutral-900">Explanations & objections</p>
+        <p className="text-sm font-bold text-neutral-900">
+          {allowObjections ? "Explanations & objections" : "Explanations"}
+        </p>
         {ranges.map((range) => (
           <section key={`${range.subject}-${range.from}`} className="space-y-2.5 sm:space-y-3">
             <header className="px-0.5">
@@ -295,19 +300,21 @@ export function AnswerKeyPortalView({
                         )}
                       </div>
 
-                      {objection ? (
+                      {allowObjections && objection ? (
                         <QuestionObjectionCard objection={objection} role={role} />
                       ) : null}
 
-                      <button
-                        type="button"
-                        onClick={() => onRaiseObjection(question)}
-                        disabled={hasOpen}
-                        className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-brand-200 bg-brand-50/60 px-3 py-2 text-xs font-semibold text-brand-800 hover:bg-brand-50 disabled:pointer-events-none disabled:opacity-40 sm:w-auto sm:border-0 sm:bg-transparent sm:px-2 sm:py-1.5 sm:justify-start"
-                      >
-                        <MessageSquareWarning className="size-3.5" strokeWidth={2} />
-                        {hasOpen ? "Objection open" : "Raise objection"}
-                      </button>
+                      {allowObjections ? (
+                        <button
+                          type="button"
+                          onClick={() => onRaiseObjection(question)}
+                          disabled={hasOpen}
+                          className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-brand-200 bg-brand-50/60 px-3 py-2 text-xs font-semibold text-brand-800 hover:bg-brand-50 disabled:pointer-events-none disabled:opacity-40 sm:w-auto sm:border-0 sm:bg-transparent sm:px-2 sm:py-1.5 sm:justify-start"
+                        >
+                          <MessageSquareWarning className="size-3.5" strokeWidth={2} />
+                          {hasOpen ? "Objection open" : "Raise objection"}
+                        </button>
+                      ) : null}
                     </div>
                   </li>
                 );

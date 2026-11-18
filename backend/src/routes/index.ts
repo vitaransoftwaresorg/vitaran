@@ -3,12 +3,18 @@ import { getAdminDashboard } from "../controllers/dashboard.controller.js";
 import { requireAdmin } from "../middleware/authenticate.js";
 import {
   answerKeyRouter,
+  publicAnswerKeyRouter,
   schoolAnswerKeyRouter,
   teacherAnswerKeyRouter,
 } from "./answer-key.routes.js";
 import { authRouter } from "./auth.routes.js";
 import { healthRouter } from "./health.routes.js";
-import { adminEventsRouter, schoolEventsRouter, teacherEventsRouter } from "./live.routes.js";
+import {
+  adminEventsRouter,
+  publicEventsRouter,
+  schoolEventsRouter,
+  teacherEventsRouter,
+} from "./live.routes.js";
 import {
   resultRouter,
   schoolResultRouter,
@@ -33,6 +39,7 @@ export const apiRouter = Router();
 apiRouter.use("/health", healthRouter);
 apiRouter.use("/auth", authRouter);
 apiRouter.use("/settings", publicSettingsRouter);
+apiRouter.use("/public/events", publicEventsRouter);
 apiRouter.use("/admin/settings", adminSettingsRouter);
 apiRouter.get("/dashboard", requireAdmin, getAdminDashboard);
 apiRouter.use("/schools", schoolRouter);
@@ -43,6 +50,7 @@ apiRouter.use("/programs", programRouter);
 apiRouter.use("/catalog/programs", programCatalogRouter);
 apiRouter.use("/teachers", teacherRouter);
 apiRouter.use("/answer-keys", answerKeyRouter);
+apiRouter.use("/public/answer-keys", publicAnswerKeyRouter);
 apiRouter.use("/results", resultRouter);
 apiRouter.use("/school/teachers", blockIfMaintenance, schoolTeacherRouter);
 apiRouter.use("/school/sections", blockIfMaintenance, schoolSectionRouter);

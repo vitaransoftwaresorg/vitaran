@@ -88,6 +88,11 @@ export function proxy(request: NextRequest) {
   const hasSchool = request.cookies.has(SCHOOL_SESSION_COOKIE);
   const hasTeacher = request.cookies.has(TEACHER_SESSION_COOKIE);
 
+  // Solution books are view-only via /api/solution-books — never serve raw public PDFs.
+  if (pathname.startsWith("/solution-books/")) {
+    return new NextResponse("Not found", { status: 404 });
+  }
+
   if (pathname.startsWith(ADMIN_BASE_PATH)) {
     if (pathname === "/admin/login") {
       return adminResponse(
@@ -183,6 +188,8 @@ export const config = {
     "/teacher/:path*",
     "/teachers-resources",
     "/teachers-resources/:path*",
+    "/solution-books",
+    "/solution-books/:path*",
     "/answer-keys",
     "/answer-keys/:path*",
     "/results",

@@ -78,3 +78,54 @@ export const streamTeacherEvents: RequestHandler = (req, res) => {
   const teacher = res.locals.teacher as TeacherAccountDto;
   streamContentEvents(res, req, teacher.school.id);
 };
+
+/**
+ * Anonymous marketing-site stream — settings only (public/private toggles, maintenance).
+ * No auth; never includes school/teacher content events.
+ */
+export const streamPublicEvents: RequestHandler = (req, res) => {
+  res.set({
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+    "X-Accel-Buffering": "no",
+  });
+  req.socket.setTimeout(0);
+  res.flushHeaders();
+
+  let open = true;
+  const write = (chunk: string) => {
+    if (!open || res.writableEnded) return false;
+    try {
+      return res.write(chunk);
+    } catch {
+      open = false;
+      return false;
+    }
+  };
+
+  write(`: connected\n\n`);
+  write(`retry: ${RETRY_MS}\n\n`);
+
+  const unsubscribe = onContentChanged(({ kind }) => {
+    if (kind !== "settings") return;
+    write(`event: change\ndata: ${JSON.stringify({ kind })}\n\n`);
+  });
+
+  const heartbeat = setInterval(() => {
+    if (!write(": ping\n\n")) {
+      clearInterval(heartbeat);
+      unsubscribe();
+    }
+  }, HEARTBEAT_MS);
+
+  const cleanup = () => {
+    if (!open) return;
+    open = false;
+    clearInterval(heartbeat);
+    unsubscribe();
+  };
+  req.on("close", cleanup);
+  res.on("close", cleanup);
+  res.on("error", cleanup);
+};

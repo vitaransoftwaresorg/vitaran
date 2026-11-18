@@ -25,6 +25,7 @@ export function useLiveContent(
   kind: LiveContentKind | "all",
   onChange: () => void,
   path: string = DEFAULT_LIVE_PATH,
+  debounceMs: number = REFRESH_DEBOUNCE_MS,
 ) {
   useEffect(() => {
     let source: EventSource | undefined;
@@ -34,7 +35,7 @@ export function useLiveContent(
 
     const refresh = () => {
       clearTimeout(refreshTimer);
-      refreshTimer = setTimeout(onChange, REFRESH_DEBOUNCE_MS);
+      refreshTimer = setTimeout(onChange, Math.max(0, debounceMs));
     };
 
     const connect = () => {
@@ -68,5 +69,5 @@ export function useLiveContent(
       clearTimeout(retryTimer);
       clearTimeout(refreshTimer);
     };
-  }, [kind, onChange, path]);
+  }, [kind, onChange, path, debounceMs]);
 }

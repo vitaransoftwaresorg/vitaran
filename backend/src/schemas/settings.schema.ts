@@ -10,6 +10,7 @@ export const smeContactSchema = z.object({
 export const updateAppSettingsSchema = z.object({
   maintenanceMode: z.boolean(),
   teacherResourcesPublic: z.boolean(),
+  answerKeysPublic: z.boolean(),
   vitaranEmails: z
     .array(z.string().trim().toLowerCase().email("Enter a valid Vitaran email").max(254))
     .max(20)

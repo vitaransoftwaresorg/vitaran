@@ -9,15 +9,13 @@ import { LoginDropdown, openLoginDropdown } from "@/features/auth/login-dropdown
 import { portalLogout } from "@/features/auth/portal-logout";
 import { navLinks } from "@/features/home/content";
 import { cn } from "@/lib/utils";
+import { usePublicSettings } from "@/features/settings/use-public-settings";
 
 const HEADER_OFFSET = 72;
 const mobileLinks = navLinks;
 
-/**
- * Portal pages that always need login when signed out.
- * Teachers Resources uses /teachers-resources (public or login via page/settings).
- */
-const AUTH_NAV_HREFS = new Set(["/teacher/answer-keys", "/teacher/results"]);
+/** Always require login when signed out (no public toggle). */
+const AUTH_NAV_HREFS = new Set(["/teacher/results"]);
 
 const hashOf = (href: string) => {
   const i = href.indexOf("#");
@@ -74,8 +72,20 @@ export function SiteHeader({ session }: { session: SiteSession | null }) {
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<string | null>(null);
+  const { settings, ready } = usePublicSettings();
   const pathname = usePathname();
   const onHome = pathname === "/";
+  // Optimistic until first fetch so public catalogs don't flash as login-gated.
+  const resourcesPublic = ready ? settings.teacherResourcesPublic : true;
+  const answerKeysPublic = ready ? settings.answerKeysPublic : true;
+
+  function needsLogin(href: string) {
+    if (session) return false;
+    if (AUTH_NAV_HREFS.has(href)) return true;
+    if (href === "/teachers-resources" && !resourcesPublic) return true;
+    if (href === "/answer-keys" && !answerKeysPublic) return true;
+    return false;
+  }
 
   /** When a school is signed in, content links open the school portal. */
   const contentHref = (href: string) => {
@@ -83,7 +93,9 @@ export function SiteHeader({ session }: { session: SiteSession | null }) {
     if (href === "/teacher/resources" || href === "/teachers-resources") {
       return "/school/resources";
     }
-    if (href === "/teacher/answer-keys") return "/school/answer-keys";
+    if (href === "/teacher/answer-keys" || href === "/answer-keys") {
+      return "/school/answer-keys";
+    }
     if (href === "/teacher/results") return "/school/results";
     return href;
   };
@@ -148,7 +160,7 @@ export function SiteHeader({ session }: { session: SiteSession | null }) {
   const onNavClick = (event: MouseEvent<HTMLAnchorElement>, href: string) => {
     setOpen(false);
 
-    if (!session && AUTH_NAV_HREFS.has(href)) {
+    if (needsLogin(href)) {
       event.preventDefault();
       openLoginDropdown();
       return;

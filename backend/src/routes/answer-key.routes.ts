@@ -5,11 +5,14 @@ import {
   deleteAnswerKey,
   getAnswerKey,
   getAnswerKeyStats,
+  getPublicAnswerKey,
+  getPublicAnswerKeyPdf,
   getSchoolAnswerKey,
   getSchoolAnswerKeyPdf,
   getTeacherAnswerKey,
   getTeacherAnswerKeyPdf,
   listAnswerKeys,
+  listPublicAnswerKeys,
   listSchoolAnswerKeys,
   listSchoolTests,
   listTeacherAnswerKeys,
@@ -105,6 +108,12 @@ answerKeyRouter.patch(
 );
 answerKeyRouter.patch("/:id/publish", validateId, validate(publishBodySchema, "body"), setAnswerKeyPublished);
 answerKeyRouter.delete("/:id", validateId, deleteAnswerKey);
+
+/** Public catalog answer keys (gated by admin answerKeysPublic setting). */
+export const publicAnswerKeyRouter = Router();
+publicAnswerKeyRouter.get("/", listPublicAnswerKeys);
+publicAnswerKeyRouter.get("/:id", validateId, getPublicAnswerKey);
+publicAnswerKeyRouter.get("/:id/pdf", validateId, getPublicAnswerKeyPdf);
 
 /** Answer keys as seen by a signed-in school. */
 export const schoolAnswerKeyRouter = Router();

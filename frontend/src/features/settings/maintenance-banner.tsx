@@ -1,27 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getPublicSettingsClient } from "@/services/settings-client";
+import { usePublicSettings } from "@/features/settings/use-public-settings";
 
 /** Shown on school/teacher portals when admin turns maintenance on. */
 export function MaintenanceBanner() {
-  const [on, setOn] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    void getPublicSettingsClient()
-      .then((settings) => {
-        if (!cancelled) setOn(settings.maintenanceMode);
-      })
-      .catch(() => {
-        if (!cancelled) setOn(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  if (!on) return null;
+  const { settings, ready } = usePublicSettings();
+  if (!ready || !settings.maintenanceMode) return null;
 
   return (
     <div className="border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-center text-sm font-medium text-amber-950">

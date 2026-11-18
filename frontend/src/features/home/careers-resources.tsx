@@ -1,9 +1,23 @@
+"use client";
+
+import type { MouseEvent } from "react";
 import Link from "next/link";
 import { ArrowRight, Briefcase } from "lucide-react";
 import { Reveal } from "@/components/shared/reveal";
+import { openLoginDropdown } from "@/features/auth/login-dropdown";
+import { usePublicSettings } from "@/features/settings/use-public-settings";
 import { programs } from "@/features/teachers-resources/content";
 
 export function CareersAndResources() {
+  const { settings, ready } = usePublicSettings();
+  const resourcesPublic = ready ? settings.teacherResourcesPublic : true;
+
+  function onResourcesClick(event: MouseEvent<HTMLAnchorElement>) {
+    if (resourcesPublic) return;
+    event.preventDefault();
+    openLoginDropdown();
+  }
+
   return (
     <section className="border-t border-[#ede9fe] bg-[#faf8ff] py-14 sm:py-24">
       <div className="mx-auto grid max-w-7xl gap-4 px-5 sm:gap-6 sm:px-8 lg:grid-cols-2">
@@ -47,6 +61,7 @@ export function CareersAndResources() {
                 <li key={program.title}>
                   <Link
                     href="/teachers-resources"
+                    onClick={onResourcesClick}
                     className="group flex items-center gap-3 rounded-xl border border-brand-100 bg-[#f8f7ff] p-3 transition-all hover:border-brand-200 hover:bg-white hover:shadow-[0_12px_30px_-15px_rgb(25_28_95/0.35)] sm:gap-4 sm:rounded-2xl sm:p-4"
                   >
                     <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#ede9fe] text-[#6d28d9] sm:size-11 sm:rounded-xl">
@@ -65,6 +80,7 @@ export function CareersAndResources() {
             </ul>
             <Link
               href="/teachers-resources"
+              onClick={onResourcesClick}
               className="group mt-6 inline-flex w-fit items-center gap-2 rounded-full bg-brand-900 px-5 py-2.5 text-sm font-semibold text-white transition-all hover:bg-brand-800 active:scale-95 sm:mt-8 sm:px-6 sm:py-3"
             >
               View all programs

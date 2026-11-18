@@ -36,6 +36,7 @@ export function claimObjectionWelcomes(keys: string[]) {
 export function upsertSettings(data: {
   maintenanceMode: boolean;
   teacherResourcesPublic: boolean;
+  answerKeysPublic: boolean;
   vitaranEmails: string[];
   smeContacts: Prisma.InputJsonValue;
 }) {
@@ -45,12 +46,14 @@ export function upsertSettings(data: {
       id: SETTINGS_ID,
       maintenanceMode: data.maintenanceMode,
       teacherResourcesPublic: data.teacherResourcesPublic,
+      answerKeysPublic: data.answerKeysPublic,
       vitaranEmails: data.vitaranEmails,
       smeContacts: data.smeContacts,
     },
     update: {
       maintenanceMode: data.maintenanceMode,
       teacherResourcesPublic: data.teacherResourcesPublic,
+      answerKeysPublic: data.answerKeysPublic,
       vitaranEmails: data.vitaranEmails,
       smeContacts: data.smeContacts,
     },

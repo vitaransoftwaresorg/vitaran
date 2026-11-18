@@ -29,8 +29,22 @@ import { answerKeyAccessFilter, type ContentActor } from "./content-access.js";
 import { getObject } from "./object-storage.js";
 import { loadVitaranLogo } from "./rank-card.render.js";
 import { toSchoolRef, type SchoolAccountDto } from "./school.service.js";
+import * as settingsService from "./settings.service.js";
 
 const KIND = "answer-keys";
+
+/** Published catalog keys only — never school-customized keys. */
+const PUBLIC_ANSWER_KEY_FILTER: Prisma.AnswerKeyWhereInput = {
+  published: true,
+  type: SchoolType.REGULAR,
+};
+
+async function assertAnswerKeysPublic() {
+  const { answerKeysPublic } = await settingsService.getAppSettings();
+  if (!answerKeysPublic) {
+    throw new AppError(403, "Answer keys are private. Sign in to view them.");
+  }
+}
 
 function toAnswerKeyDto(row: AnswerKeySummary | AnswerKeyDetail, forPortal = false) {
   const answers = asAnswers(row.answers);
@@ -483,4 +497,57 @@ export async function getVisibleAnswerKey(id: string, actor: ContentActor) {
   const row = await answerKeyRepository.findVisibleAnswerKey(id, answerKeyAccessFilter(actor));
   if (!row) throw new AppError(404, "Answer key not found");
   return toAnswerKeyDto(row);
+}
+
+/** Public site: list published regular answer keys (when admin toggle is on). */
+export async function listPublicAnswerKeys() {
+  await assertAnswerKeysPublic();
+  return (await answerKeyRepository.findAnswerKeys(PUBLIC_ANSWER_KEY_FILTER))
+    .map((row) => toAnswerKeyDto(row, true))
+    .filter((row) => (row.answerCount ?? 0) > 0);
+}
+
+export async function getPublicAnswerKey(id: string) {
+  await assertAnswerKeysPublic();
+  const row = await answerKeyRepository.findVisibleAnswerKey(id, PUBLIC_ANSWER_KEY_FILTER);
+  if (!row) throw new AppError(404, "Answer key not found");
+  const dto = toAnswerKeyDto(row);
+  if (Object.keys(asAnswers(row.answers)).length === 0) {
+    throw new AppError(404, "Answer key not found");
+  }
+  return dto;
+}
+
+/** Public branded PDF (Vitaran logo only — no school branding). */
+export async function getPublicAnswerKeyPdf(id: string) {
+  await assertAnswerKeysPublic();
+  const row = await answerKeyRepository.findVisibleAnswerKey(id, PUBLIC_ANSWER_KEY_FILTER);
+  if (!row) throw new AppError(404, "Answer key not found");
+  const answers = asAnswers(row.answers);
+  if (Object.keys(answers).length === 0) throw new AppError(404, "No answers published for this test yet");
+
+  const program =
+    (await programRepository.findProgramByCode(row.programCode))?.name ?? row.programCode;
+  const vitaran = await loadVitaranLogo();
+  const testId = enteredTestId(row.testId);
+  const data = await renderAnswerKeyPdf(
+    {
+      schoolName: "Vitaran Learning",
+      programName: program,
+      testNumber: row.testNumber,
+      testId: testId ?? null,
+      classLevel: row.classLevel,
+      correctMarks: row.correctMarks ?? 1,
+      wrongMarks: row.wrongMarks ?? 0,
+      publishedAt: row.publishedAt ?? row.updatedAt,
+      answers,
+      explanations: asExplanations(row.explanations),
+      subjectRanges: asSubjectRanges(row.subjectRanges),
+    },
+    { vitaran, school: null },
+  );
+  const name = ["Answer-Key", `Class-${row.classLevel}`, `Test-${row.testNumber}`, testId]
+    .filter(Boolean)
+    .join("-");
+  return { fileName: `${name}.pdf`, data };
 }

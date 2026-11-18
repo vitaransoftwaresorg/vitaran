@@ -1,5 +1,5 @@
 import "server-only";
-import { ApiError } from "@/services/api-client";
+import { ApiError, apiClient, buildApiUrl } from "@/services/api-client";
 import { adminApi, adminFetch } from "@/services/admin-api";
 import { listFiltersQuery, type ListFilters } from "@/services/list-filters";
 import { schoolApi, schoolFetch } from "@/services/school-api";
@@ -23,6 +23,7 @@ import type {
 import type { ContentStats } from "@/types/document";
 
 const BASE = "/answer-keys";
+const PUBLIC_BASE = "/public/answer-keys";
 const SCHOOL_BASE = "/school/answer-keys";
 const TEACHER_BASE = "/teacher/answer-keys";
 const itemPath = (base: string, id: string) => `${base}/${encodeURIComponent(id)}`;
@@ -117,6 +118,29 @@ export async function getSchoolAnswerKey(id: string): Promise<AnswerKeyDetail | 
 /** Keys for the signed-in teacher's assigned classes. */
 export function listTeacherAnswerKeys() {
   return teacherApi<AnswerKey[]>(TEACHER_BASE);
+}
+
+/** Published regular keys when admin sets Answer keys → Public. */
+export function listPublicAnswerKeys() {
+  return apiClient<AnswerKey[]>(PUBLIC_BASE, { cache: "no-store" });
+}
+
+export async function getPublicAnswerKey(id: string): Promise<AnswerKeyDetail | null> {
+  try {
+    return await apiClient<AnswerKeyDetail>(itemPath(PUBLIC_BASE, id), { cache: "no-store" });
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 404 || error.status === 400 || error.status === 403)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export function fetchPublicAnswerKeyPdf(id: string) {
+  return fetch(buildApiUrl(`${itemPath(PUBLIC_BASE, id)}/pdf`), {
+    cache: "no-store",
+    headers: { Accept: "application/pdf" },
+  });
 }
 
 export async function getTeacherAnswerKey(id: string): Promise<AnswerKeyDetail | null> {
