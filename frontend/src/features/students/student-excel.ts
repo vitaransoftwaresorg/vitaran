@@ -18,9 +18,9 @@ export const MAX_IMPORT_ROWS = 300;
 const TEMPLATE_COLUMNS: Array<{ key: Column; header: string; width: number }> = [
   { key: "rollNo", header: "Reg. no", width: 14 },
   { key: "name", header: "Student name", width: 28 },
-  { key: "parentName", header: "Parent name", width: 28 },
-  { key: "parentPhone", header: "Parent mobile", width: 16 },
-  { key: "email", header: "Parent email", width: 30 },
+  { key: "parentName", header: "Parent name (optional)", width: 28 },
+  { key: "parentPhone", header: "Parent mobile (optional)", width: 18 },
+  { key: "email", header: "Parent email (optional)", width: 30 },
 ];
 
 /** Header text → column; checked in order so "parent name" wins over plain "name". */
@@ -126,8 +126,9 @@ export async function downloadStudentsTemplate(fileName = "students-import-templ
   [
     "One student per row on the Students sheet. Keep the header row.",
     "Reg. no: 7 digits, unique in the school (required).",
-    "Student name and Parent name: at least 2 letters (required).",
-    "Parent mobile: 10 digits, no +91 (optional).",
+    "Student name: at least 2 letters (required).",
+    "Parent name: optional (at least 2 letters if provided).",
+    "Parent mobile: optional (10 digits, no +91 if provided).",
     "Parent email: optional.",
     `Up to ${MAX_IMPORT_ROWS} students per file. Program, class and section are picked on the Add students page.`,
   ].forEach((line) => help.addRow([line]));
