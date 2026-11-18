@@ -15,7 +15,7 @@ type Column = keyof ImportedStudent;
 export const MAX_IMPORT_ROWS = 300;
 
 const TEMPLATE_COLUMNS: Array<{ key: Column; header: string; width: number }> = [
-  { key: "rollNo", header: "Reg. no", width: 14 },
+  { key: "rollNo", header: "Reg No", width: 14 },
   { key: "name", header: "Student name", width: 28 },
   { key: "parentName", header: "Parent name (optional)", width: 28 },
   { key: "parentPhone", header: "Parent mobile (optional)", width: 18 },
@@ -121,7 +121,7 @@ export async function downloadStudentsTemplate(fileName = "students-import-templ
   help.getColumn(1).width = 90;
   [
     "One student per row on the Students sheet. Keep the header row.",
-    "Reg. no: 7 digits, unique in the school (required).",
+    "Reg No: 7 digits, unique in the school (required).",
     "Student name: at least 2 letters (required).",
     "Parent name: optional (at least 2 letters if provided).",
     "Parent mobile: optional (10 digits, no +91 if provided).",

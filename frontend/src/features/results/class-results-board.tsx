@@ -384,7 +384,9 @@ export function ClassResultsBoard({
                         roles[index] !== "name" && "text-center",
                       )}
                     >
-                      {label.replace(/\s*\((\d+M?)\)/i, "\n($1)")}
+                      {roles[index] === "roll"
+                        ? "Reg No"
+                        : label.replace(/\s*\((\d+M?)\)/i, "\n($1)")}
                     </TableHead>
                   ))}
                   <TableHead className="text-center text-xs font-bold uppercase">

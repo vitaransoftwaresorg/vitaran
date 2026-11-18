@@ -1,8 +1,21 @@
 import { notFound } from "next/navigation";
+import { displaySectionName } from "@/features/schools/section-label";
 import { StudentDetailView } from "@/features/students/student-detail-view";
 import { getAdminStudent, getAdminStudentPerformance } from "@/services/students";
 
 type Props = { params: Promise<{ studentId: string }> };
+
+function rosterHref(student: {
+  schoolId: string;
+  classLevel: number;
+  sectionName: string | null;
+}) {
+  return `/admin/schools/students?${new URLSearchParams({
+    school: student.schoolId,
+    class: String(student.classLevel),
+    section: displaySectionName(student.sectionName),
+  })}`;
+}
 
 export default async function AdminStudentDetailPage({ params }: Props) {
   const { studentId } = await params;
@@ -12,11 +25,14 @@ export default async function AdminStudentDetailPage({ params }: Props) {
   ]);
   if (!student) notFound();
 
+  const listHref = rosterHref(student);
+
   return (
     <StudentDetailView
       student={student}
       editHref={`/admin/schools/students/${studentId}/edit`}
-      afterDeleteHref="/admin/schools/students"
+      afterDeleteHref={listHref}
+      backHref={listHref}
       adminFlat
       performance={performance}
       portal="admin"

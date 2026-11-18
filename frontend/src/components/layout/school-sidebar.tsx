@@ -107,7 +107,7 @@ export function SchoolSidebar({ school }: { school: SchoolAccount }) {
                     {initials}
                   </AvatarFallback>
                 </Avatar>
-                <span className="grid flex-1 text-left text-sm leading-tight">
+                <span className="grid min-w-0 flex-1 text-left text-sm leading-tight">
                   <span className="truncate font-medium text-white">{school.name}</span>
                   <span className="truncate text-xs">{school.code}</span>
                 </span>

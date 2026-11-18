@@ -543,7 +543,7 @@ export function BulkStudentForm({
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-brand-950">Import from Excel</p>
           <p className="text-xs text-neutral-500">
-            Reg. no *, Student name * · Parent name / mobile optional · up to{" "}
+            Reg No *, Student name * · Parent name / mobile optional · up to{" "}
             {MAX_IMPORT_ROWS} students
           </p>
         </div>
@@ -594,7 +594,7 @@ export function BulkStudentForm({
             <thead className="sticky top-0 z-10 border-b border-brand-100 bg-brand-50 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">
               <tr>
                 <th className="w-10 px-3 py-2.5">#</th>
-                <th className="px-3 py-2.5">Reg. no *</th>
+                <th className="px-3 py-2.5">Reg No *</th>
                 <th className="px-3 py-2.5">Student name *</th>
                 <th className="px-3 py-2.5">Parent name (optional)</th>
                 <th className="px-3 py-2.5">Parent mobile (optional)</th>

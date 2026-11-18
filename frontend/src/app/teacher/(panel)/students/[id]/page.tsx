@@ -17,6 +17,7 @@ export default async function TeacherStudentDetailPage({ params }: { params: Pro
     <StudentDetailView
       student={student}
       showActions={false}
+      backHref="/teacher/students"
       performance={performance}
       portal="teacher"
     />

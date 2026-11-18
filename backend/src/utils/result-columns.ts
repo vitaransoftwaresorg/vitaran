@@ -76,12 +76,12 @@ export function forceSubjectPaperMaxes(columns: string[], subjectMax = SUBJECT_P
   );
 }
 
-/** Registration number · CandidateName · CLASS · one column per subject · Total · Percentage · ranks. */
+/** Reg No · CandidateName · CLASS · one column per subject · Total · Percentage · ranks. */
 export function standardColumns(subjects: Array<{ subject: string; maxMarks: number }>) {
   const normalized = subjects.map((row) => ({ ...row, maxMarks: SUBJECT_PAPER_MAX }));
   const max = normalized.reduce((sum, row) => sum + row.maxMarks, 0);
   return [
-    "Registration number",
+    "Reg No",
     "CandidateName",
     "CLASS",
     ...normalized.map((row) => `${subjectHeader(row.subject)} (${row.maxMarks}M)`),

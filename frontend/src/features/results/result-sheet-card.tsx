@@ -52,7 +52,7 @@ function splitColumns({ columns, rows }: Pick<ResultSheet, "columns" | "rows">) 
 }
 
 const SHORT_HEADINGS: Partial<Record<NonNullable<ColumnRole>, string>> = {
-  roll: "Registration number",
+  roll: "Reg No",
   name: "Student",
   classRank: "Rank",
   sectionRank: "Sec Rank",
@@ -60,7 +60,7 @@ const SHORT_HEADINGS: Partial<Record<NonNullable<ColumnRole>, string>> = {
 };
 
 function desktopHeading(label: string, role: ColumnRole) {
-  return role === "roll" ? "Registration number" : label;
+  return role === "roll" ? "Reg No" : label;
 }
 
 /** Phone headings: short names, with a subject's max marks on its own line. */

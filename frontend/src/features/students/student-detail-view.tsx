@@ -3,9 +3,10 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useCallback, useTransition } from "react";
 import { BookOpen, Contact, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { useRegisterInPageBack } from "@/components/layout/in-page-back";
 import { cn } from "@/lib/utils";
 import { classWithSectionLabel, displaySectionName } from "@/features/schools/section-label";
 import { capitalizeWords } from "@/features/schools/schema";
@@ -18,6 +19,14 @@ import { StudentPdfActions } from "./student-pdf-actions";
 import { StudentPerformanceLoader } from "./student-performance-loader";
 
 const EMPTY = "—";
+
+/** Only mount when a list URL is known — avoids clearing a parent in-page Back. */
+function ProfileBackBinder({ href }: { href: string }) {
+  const router = useRouter();
+  const goBack = useCallback(() => router.push(href), [href, router]);
+  useRegisterInPageBack(goBack);
+  return null;
+}
 
 /** Standalone classes — buttonVariants hover colors fight white-on-dark. */
 const INVERTED_BASE =
@@ -65,6 +74,11 @@ type StudentDetailViewProps = {
   /** Admin flat URLs — delete by student id only. */
   adminFlat?: boolean;
   afterDeleteHref?: string;
+  /**
+   * Where layout ← Back should go (e.g. class roster). When set, overrides
+   * pathname-only parent so profile → list keeps the class/section folder.
+   */
+  backHref?: string;
   showActions?: boolean;
   /** Server-loaded test results. */
   performance?: StudentTestResult[];
@@ -81,6 +95,7 @@ export function StudentDetailView({
   onDeleted,
   adminFlat = false,
   afterDeleteHref,
+  backHref,
   showActions,
   performance,
   performancePortal,
@@ -95,6 +110,7 @@ export function StudentDetailView({
 
   return (
     <div className="space-y-3">
+      {backHref ? <ProfileBackBinder href={backHref} /> : null}
       <header className="rounded-xl border border-brand-700 bg-linear-to-r from-brand-800 to-brand-950 px-5 py-4 text-white shadow-[0_10px_30px_-12px_rgb(25_28_95/0.55)]">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">

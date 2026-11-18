@@ -30,7 +30,7 @@ export default async function TeacherPanelLayout({
           style={
             {
               // Narrow drawer on mobile; desktop matches school icon rail.
-              "--sidebar-width": "10.5rem",
+              "--sidebar-width": "10.8rem",
             } as React.CSSProperties
           }
         >
