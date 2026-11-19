@@ -122,16 +122,21 @@ export default async function AdminResultEnterPage({
   const backHref = `${RESULTS_PATH}?${backParams}`;
   const schoolParams = new URLSearchParams({ school: schoolId });
   if (school.type) schoolParams.set("type", school.type);
+  // Folder levels only — "Results and Ranks" already lives in the top navbar.
   const breadcrumbs = [
-    { label: "Results", href: RESULTS_PATH },
     { label: school.name, href: `${RESULTS_PATH}?${schoolParams}` },
     { label: `Test ${testNumber}`, href: backHref },
-    { label: `Class ${classLevel}`, href: "" },
+    { label: `Class ${classLevel}`, href: `${RESULTS_PATH}/enter?${new URLSearchParams({
+      school: schoolId,
+      test: String(testNumber),
+      class: String(classLevel),
+      ...(effectiveProgram ? { program: effectiveProgram } : {}),
+    })}` },
   ];
 
   return (
     <ClassResultsBoard
-      key={`${resultSet?.id ?? "new"}:${sheet?.updatedAt ?? "empty"}:${studentPage.items.length}`}
+      key={`${resultSet?.id ?? "new"}:${path.classLevel}:${scans.length}:${scans.at(-1)?.updatedAt ?? ""}:${studentPage.items.length}`}
       students={studentPage.items}
       columns={template.columns}
       sheet={sheet}

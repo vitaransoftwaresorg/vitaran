@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import type { AnswerKeyDetail, AnswerOption, KeyAnswer, SubjectRange } from "@/types/answer-key";
 import { isBonusKey, isMultiKey, joinKeyOptions, keyOptions } from "@/types/answer-key";
 import { saveAnswerKeyAnswersAction } from "./actions";
+import { AnswerKeyOptionsTable } from "./answer-key-options-table";
 import { enteredTestId, TEST_ID_LENGTH, TEST_ID_MESSAGE, TEST_ID_PATTERN, testIdDigits } from "./test-id";
 import { TestIdStatus, useTestIdCheck } from "./test-id-status";
 
@@ -452,6 +453,13 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
             </label>
           ))}
         </div>
+      ) : null}
+
+      {ranges.length > 0 ? (
+        <AnswerKeyOptionsTable
+          questions={ranges.flatMap((range) => questionsIn(range))}
+          answers={answers}
+        />
       ) : null}
 
       {ranges.length === 0 ? (

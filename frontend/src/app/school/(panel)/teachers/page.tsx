@@ -13,7 +13,6 @@ export default async function SchoolTeachersPage() {
   return (
     <>
       <PageHeader
-        title="Teachers"
         count={pagination.total}
         description="Create teachers and assign the classes and subjects they can access."
         actions={

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { PageHeader } from "@/features/admin/page-header";
 import { setAnswerKeyPublishedAction } from "@/features/answer-keys/actions";
 import { AnswerKeysDrive, type DrivePath } from "@/features/answer-keys/answer-keys-drive";
 import { parseListFilters } from "@/features/documents/list-filters";
@@ -28,15 +27,12 @@ export default async function AdminAnswerKeysPage({ searchParams }: PageProps<"/
   };
 
   return (
-    <>
-      <PageHeader title="Answer Keys" />
-      <AnswerKeysDrive
-        items={answerKeys}
-        programs={programs}
-        schools={schools}
-        path={path}
-        publishAction={setAnswerKeyPublishedAction}
-      />
-    </>
+    <AnswerKeysDrive
+      items={answerKeys}
+      programs={programs}
+      schools={schools}
+      path={path}
+      publishAction={setAnswerKeyPublishedAction}
+    />
   );
 }

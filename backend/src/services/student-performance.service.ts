@@ -56,6 +56,8 @@ export async function schoolTestResultsIndex(
       sheets: {
         select: {
           classLevel: true,
+          published: true,
+          publishedAt: true,
           columns: true,
           rows: { select: { values: true }, orderBy: { position: "asc" } },
         },
@@ -77,6 +79,7 @@ export async function schoolTestResultsIndex(
   for (const set of sets) {
     const setProgramName = await programName(set.programCode, set.programName);
     for (const sheet of set.sheets) {
+      if (options.publishedOnly && !sheet.published) continue;
       const ranked = withRankColumns(
         Array.isArray(sheet.columns) ? (sheet.columns as string[]) : [],
         sheet.rows.map((row) => (Array.isArray(row.values) ? (row.values as CellValue[]) : [])),
@@ -121,8 +124,8 @@ export async function schoolTestResultsIndex(
           scanId: null,
           programName: setProgramName,
           classLevel: sheet.classLevel,
-          published: set.published,
-          date: (set.publishedAt ?? set.createdAt).toISOString(),
+          published: sheet.published,
+          date: (sheet.publishedAt ?? set.publishedAt ?? set.createdAt).toISOString(),
           subjects,
           total,
           totalMax,

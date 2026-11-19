@@ -217,8 +217,7 @@ export async function updateSchoolTeacherAction(
   );
 }
 
-/** Keep status toggles snappy — only the pages that must reflect the change. */
-function revalidateAfterTeacherStatusChange() {
+function revalidateTeacherLists() {
   revalidatePath(`${SCHOOL_BASE_PATH}/classes`);
   revalidatePath(`${SCHOOL_BASE_PATH}/teachers`);
   revalidatePath(`${ADMIN_BASE_PATH}/teachers`);
@@ -227,8 +226,9 @@ function revalidateAfterTeacherStatusChange() {
 
 export async function setSchoolTeacherStatusAction(teacherId: string, status: TeacherStatus) {
   try {
+    // No revalidatePath — any revalidate refreshes the current page and blinks every switch.
+    // Optimistic UI + SSE LiveRefresh update other tabs.
     await teacherService.setSchoolTeacherStatus(teacherId, status);
-    revalidateAfterTeacherStatusChange();
     return { ok: true as const };
   } catch {
     return { ok: false as const, message: "Could not update teacher status." };
@@ -238,7 +238,7 @@ export async function setSchoolTeacherStatusAction(teacherId: string, status: Te
 export async function deleteSchoolTeacherAction(teacherId: string) {
   try {
     await teacherService.deleteSchoolTeacher(teacherId);
-    revalidateAfterTeacherStatusChange();
+    revalidateTeacherLists();
     return { ok: true as const };
   } catch {
     return { ok: false as const, message: "Could not delete teacher." };
@@ -273,9 +273,8 @@ export async function updateAdminTeacherAction(
 
 export async function setAdminTeacherStatusAction(teacherId: string, status: TeacherStatus) {
   try {
+    // No revalidatePath — see setSchoolTeacherStatusAction.
     await teacherService.setAdminTeacherStatus(teacherId, status);
-    revalidatePath(ADMIN_BASE_PATH, "layout");
-    revalidateAfterTeacherStatusChange();
     return { ok: true as const };
   } catch {
     return { ok: false as const, message: "Could not update teacher status." };

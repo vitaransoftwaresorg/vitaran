@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/features/admin/page-header";
 import { SchoolForm } from "@/features/schools/school-form";
+import { SchoolNavTrail } from "@/features/schools/school-nav-trail";
 import { listPrograms } from "@/services/programs";
 import {
   getAdminSchoolSectionStrength,
@@ -30,10 +31,8 @@ export default async function EditSchoolPage({ params }: PageProps<"/admin/schoo
 
   return (
     <div>
-      <PageHeader
-        title={`Edit ${school.name}`}
-        description={`School code ${school.code}`}
-      />
+      <SchoolNavTrail id={school.id} name={school.name} leaf="Edit" />
+      <PageHeader description={`School code ${school.code}`} />
       <SchoolForm
         school={school}
         catalog={catalog}

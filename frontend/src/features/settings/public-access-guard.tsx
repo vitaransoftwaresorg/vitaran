@@ -6,7 +6,7 @@ import { SCHOOL_LOGIN_PATH } from "@/constants/auth";
 import { usePublicSettings } from "./use-public-settings";
 
 type PublicAccessGuardProps = {
-  flag: "teacherResourcesPublic" | "answerKeysPublic";
+  flag: "teacherResourcesPublic" | "answerKeysPublic" | "resultsPublic";
 };
 
 /**

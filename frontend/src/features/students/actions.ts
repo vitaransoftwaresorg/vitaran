@@ -8,8 +8,11 @@ import {
   createSchoolStudent,
   createSchoolStudentsBulk,
   deleteSchoolStudent,
+  findStudentIdByRoll,
   getSchoolStudent,
+  getTeacherStudent,
   listSchoolStudents,
+  listTeacherStudents,
   updateSchoolStudent,
 } from "@/services/students";
 import type {
@@ -353,6 +356,32 @@ export async function deleteStudentInPlaceAction(id: string) {
 
 export async function loadSchoolStudentAction(id: string): Promise<StudentDetail | null> {
   return getSchoolStudent(id);
+}
+
+export type PortalStudentPortal = "school" | "teacher";
+
+/** Prefetch class roster so result-sheet profile opens are instant. */
+export async function loadPortalClassStudentsAction(
+  portal: PortalStudentPortal,
+  classLevel: number,
+): Promise<Student[]> {
+  const params = { classLevel, pageSize: 200 };
+  const list =
+    portal === "school"
+      ? await listSchoolStudents(params)
+      : await listTeacherStudents(params);
+  return list.items;
+}
+
+/** Resolve a result-sheet registration number to a portal student profile. */
+export async function loadPortalStudentByRollAction(
+  portal: PortalStudentPortal,
+  roll: string,
+): Promise<StudentDetail | null> {
+  const id = await findStudentIdByRoll(portal, roll);
+  if (!id) return null;
+  if (portal === "school") return getSchoolStudent(id);
+  return getTeacherStudent(id);
 }
 
 export async function loadSchoolRosterAction(params: {

@@ -14,6 +14,7 @@ import { CredentialMailBar } from "@/features/auth/credential-mail-bar";
 import { AdminSchoolClassesPanel } from "@/features/schools/admin-school-classes-panel";
 import { uniqueSubjectsFromOfferings } from "@/features/schools/offerings";
 import { SchoolDetailActions } from "@/features/schools/school-detail-actions";
+import { SchoolNavTrail } from "@/features/schools/school-nav-trail";
 import {
   getAdminSchoolSectionStrength,
   listAdminSchoolSections,
@@ -75,6 +76,7 @@ export default async function SchoolDetailsPage({ params }: PageProps<"/admin/sc
 
   return (
     <div className="space-y-3">
+      <SchoolNavTrail id={school.id} name={school.name} />
       <header className="rounded-xl border border-brand-700 bg-linear-to-r from-brand-800 to-brand-950 px-5 py-4 text-white shadow-[0_10px_30px_-12px_rgb(25_28_95/0.55)]">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 items-start gap-3">

@@ -65,7 +65,7 @@ export default async function SchoolStudentsPage({
   return (
     <>
       <PageHeader
-        title={title}
+        title={inClass ? title : undefined}
         description={description}
         count={rosterCount}
         actions={
@@ -74,6 +74,8 @@ export default async function SchoolStudentsPage({
               <ClassProfilesPdfActions
                 portal="school"
                 studentIds={roster.map((student) => student.id)}
+                scopeLabel={title}
+                schoolName={school.name}
               />
             ) : null}
             <Link

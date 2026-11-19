@@ -80,16 +80,24 @@ function MobileHeading({ label, role }: { label: string; role: ColumnRole }) {
 type ResultSheetCardProps = {
   sheet: ResultSheet;
   downloadHref: string;
+  /** Suggested Excel filename (Content-Disposition from the API is preferred). */
+  downloadFileName?: string;
   showDownload?: boolean;
   emptyMessage?: string;
   /** Roll and name cells link to `${base}/${roll}${query}`. */
   studentLink?: { base: string; query?: string };
+  /** Stay on this page and open the student (school/teacher results). */
+  onStudentClick?: (roll: string) => void;
   /** Rank card and OMR columns, served from the portal's results section. */
   files?: {
     basePath: string;
     resultSetId: string;
     scans: ClassScan[];
     path: { schoolId: string; testNumber: number; classLevel: number; program?: string };
+    schoolName?: string;
+    programLabel?: string;
+    testNumber?: number;
+    testId?: string;
   };
 };
 
@@ -97,9 +105,11 @@ type ResultSheetCardProps = {
 export function ResultSheetCard({
   sheet,
   downloadHref,
+  downloadFileName,
   showDownload = true,
   emptyMessage = "No students from your classes in this result.",
   studentLink,
+  onStudentClick,
   files,
 }: ResultSheetCardProps) {
   const roles = sheet.columns.map(columnRole);
@@ -107,15 +117,33 @@ export function ResultSheetCard({
   const nameCol = roles.indexOf("name");
   const markCols = roles.flatMap((role, index) => (role === "subject" || role === "total" ? [index] : []));
   const cardTarget = files
-    ? { resultSetId: files.resultSetId, classLevel: sheet.classLevel, basePath: files.basePath }
+    ? {
+        resultSetId: files.resultSetId,
+        classLevel: sheet.classLevel,
+        basePath: files.basePath,
+        schoolName: files.schoolName,
+        programLabel: files.programLabel,
+        testNumber: files.testNumber,
+        testId: files.testId,
+      }
     : null;
   const scanByRoll = new Map((files?.scans ?? []).map((scan) => [foldRoll(scan.rollNo), scan]));
   const rollOf = (row: ResultCell[]) => (rollCol >= 0 ? String(row[rollCol] ?? "").trim() : "");
   const hasMarks = (row: ResultCell[]) => markCols.some((index) => numberCell(row[index]) != null);
-  const studentHref = (row: ResultCell[]) => {
+  const studentRoll = (row: ResultCell[]) => {
     const roll = rollCol >= 0 ? row[rollCol] : null;
-    if (!studentLink || roll == null || String(roll).trim() === "") return null;
-    return `${studentLink.base}/${encodeURIComponent(String(roll).trim())}${studentLink.query ?? ""}`;
+    if (roll == null || String(roll).trim() === "") return null;
+    return String(roll).trim();
+  };
+  const studentHref = (row: ResultCell[]) => {
+    const roll = studentRoll(row);
+    if (!studentLink || !roll || onStudentClick) return null;
+    return `${studentLink.base}/${encodeURIComponent(roll)}${studentLink.query ?? ""}`;
+  };
+  const studentOpen = (row: ResultCell[]) => {
+    const roll = studentRoll(row);
+    if (!onStudentClick || !roll) return undefined;
+    return () => onStudentClick(roll);
   };
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
@@ -186,7 +214,7 @@ export function ResultSheetCard({
               render={
                 <Link
                   href={downloadHref}
-                  download={sheet.fileName}
+                  download={downloadFileName ?? sheet.fileName}
                   target="_blank"
                   rel="noopener noreferrer"
                   prefetch={false}
@@ -202,9 +230,9 @@ export function ResultSheetCard({
       </header>
 
       {visible.length > 0 ? (
-        <Table>
+        <Table className="border-collapse">
           <TableHeader>
-            <TableRow className="border-brand-100 bg-brand-50 hover:bg-brand-50">
+            <TableRow className="border-0 bg-brand-50 hover:bg-brand-50">
               {shown.map((index) => {
                 const role = roles[index] ?? null;
                 const isRoll = role === "roll";
@@ -212,9 +240,8 @@ export function ResultSheetCard({
                   <TableHead
                     key={index}
                     className={cn(
-                      "h-auto px-2.5 py-3 text-left align-top text-[11px] sm:align-bottom leading-tight font-semibold tracking-wide whitespace-nowrap text-brand-900 uppercase first:pl-4 last:pr-4 sm:first:pl-5 sm:last:pr-5",
+                      "h-auto border border-neutral-300 bg-brand-50 px-2.5 py-3 text-center align-middle text-[11px] leading-tight font-semibold tracking-wide whitespace-nowrap text-brand-900 uppercase",
                       !isRoll && "sm:whitespace-normal sm:wrap-anywhere",
-                      numeric.has(index) && "text-right",
                     )}
                   >
                     <MobileHeading label={sheet.columns[index]!} role={role} />
@@ -226,36 +253,42 @@ export function ResultSheetCard({
               })}
               {files ? (
                 <>
-                  <TableHead className="h-auto px-2.5 py-3 text-center align-top text-[11px] font-semibold tracking-wide whitespace-nowrap sm:align-bottom text-brand-900 uppercase">
+                  <TableHead className="h-auto border border-neutral-300 bg-brand-50 px-2.5 py-3 text-center align-middle text-[11px] font-semibold tracking-wide whitespace-nowrap text-brand-900 uppercase">
                     Rank card
                   </TableHead>
-                  <TableHead className="h-auto px-2.5 py-3 pr-4 text-center align-top text-[11px] font-semibold tracking-wide whitespace-nowrap sm:align-bottom text-brand-900 uppercase sm:pr-5">
+                  <TableHead className="h-auto border border-neutral-300 bg-brand-50 px-2.5 py-3 text-center align-middle text-[11px] font-semibold tracking-wide whitespace-nowrap text-brand-900 uppercase">
                     OMR
                   </TableHead>
                 </>
               ) : null}
             </TableRow>
           </TableHeader>
-          <TableBody>
+          <TableBody className="[&_tr:last-child]:border-b">
             {visible.map((row, rowIndex) => (
-              <TableRow key={rowIndex} className="hover:bg-brand-50/50">
+              <TableRow key={rowIndex} className="border-0 hover:bg-brand-50/50">
                 {shown.map((index) => {
                   const role = roles[index];
                   const isRoll = role === "roll";
-                  const href = isRoll || role === "name" ? studentHref(row) : null;
+                  const canOpen = isRoll || role === "name";
+                  const href = canOpen ? studentHref(row) : null;
+                  const open = canOpen ? studentOpen(row) : undefined;
                   return (
                     <TableCell
                       key={index}
                       className={cn(
-                        "px-2.5 py-2.5 whitespace-nowrap text-neutral-700 first:pl-4 last:pr-4 sm:first:pl-5 sm:last:pr-5",
+                        "border border-neutral-300 px-2.5 py-2.5 text-center whitespace-nowrap text-neutral-700",
                         !isRoll && "sm:whitespace-normal sm:wrap-anywhere",
-                        numeric.has(index) && "text-right text-neutral-950 tabular-nums",
+                        numeric.has(index) && "text-neutral-950 tabular-nums",
                         isRoll && "tabular-nums",
                         row[index] === null && "text-neutral-300",
                       )}
                     >
-                      {href && row[index] != null ? (
-                        <ProfileLink href={href} className={isRoll ? "whitespace-nowrap" : undefined}>
+                      {(href || open) && row[index] != null ? (
+                        <ProfileLink
+                          href={href}
+                          onClick={open}
+                          className={isRoll ? "whitespace-nowrap" : undefined}
+                        >
                           {formatCell(row[index], role)}
                         </ProfileLink>
                       ) : (
@@ -268,14 +301,14 @@ export function ResultSheetCard({
                 })}
                 {files ? (
                   <>
-                    <TableCell className="px-1.5 py-1 text-center">
+                    <TableCell className="border border-neutral-300 px-1.5 py-1 text-center">
                       <RankCardCell
                         target={hasMarks(row) ? cardTarget : null}
                         roll={rollOf(row)}
                         name={nameCol >= 0 ? formatCell(row[nameCol] ?? null) : rollOf(row)}
                       />
                     </TableCell>
-                    <TableCell className="px-1.5 py-1 pr-3 text-center sm:pr-4">
+                    <TableCell className="border border-neutral-300 px-1.5 py-1 text-center">
                       <OmrCell scan={scanByRoll.get(foldRoll(rollOf(row)))} basePath={files.basePath} />
                     </TableCell>
                   </>

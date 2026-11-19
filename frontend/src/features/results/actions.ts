@@ -1,21 +1,18 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { ADMIN_BASE_PATH, SCHOOL_BASE_PATH, TEACHER_BASE_PATH } from "@/constants/auth";
 import { deleteDocument, publishDocument } from "@/features/documents/save";
 import { ApiError } from "@/services/api-client";
 import * as resultService from "@/services/results";
-import { SCHOOL_RESULTS_PATH, TEACHER_RESULTS_PATH } from "./constants";
+import { RESULTS_PATH, SCHOOL_RESULTS_PATH, TEACHER_RESULTS_PATH } from "./constants";
 
 const NOUN = "result";
 
 /** Admin + school/teacher portals must see replaces/publishes without a hard refresh. */
 function revalidateResultViews() {
-  revalidatePath(ADMIN_BASE_PATH, "layout");
+  revalidatePath(RESULTS_PATH);
   revalidatePath(SCHOOL_RESULTS_PATH);
   revalidatePath(TEACHER_RESULTS_PATH);
-  revalidatePath(SCHOOL_BASE_PATH, "layout");
-  revalidatePath(TEACHER_BASE_PATH, "layout");
 }
 
 export async function saveManualResultAction(input: resultService.ManualResultSheetInput) {
@@ -35,19 +32,33 @@ export async function saveManualResultAction(input: resultService.ManualResultSh
 }
 
 export async function setResultPublishedAction(id: string, published: boolean) {
-  const result = await publishDocument(
+  // No revalidatePath — refreshes the current page and blinks every publish switch.
+  // Optimistic UI + SSE update portals / other tabs.
+  return publishDocument(
     () => resultService.setResultSetPublished(id, published),
-    ADMIN_BASE_PATH,
+    RESULTS_PATH,
     NOUN,
+    false,
   );
-  if (result.ok) revalidateResultViews();
-  return result;
+}
+
+export async function setResultSheetPublishedAction(
+  id: string,
+  classLevel: number,
+  published: boolean,
+) {
+  return publishDocument(
+    () => resultService.setResultSheetPublished(id, classLevel, published),
+    RESULTS_PATH,
+    NOUN,
+    false,
+  );
 }
 
 export async function deleteResultAction(id: string) {
   const result = await deleteDocument(
     () => resultService.deleteResultSet(id),
-    ADMIN_BASE_PATH,
+    RESULTS_PATH,
     NOUN,
   );
   if (result.ok) revalidateResultViews();

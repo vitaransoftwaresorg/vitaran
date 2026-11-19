@@ -14,9 +14,6 @@ import { usePublicSettings } from "@/features/settings/use-public-settings";
 const HEADER_OFFSET = 72;
 const mobileLinks = navLinks;
 
-/** Always require login when signed out (no public toggle). */
-const AUTH_NAV_HREFS = new Set(["/teacher/results"]);
-
 const hashOf = (href: string) => {
   const i = href.indexOf("#");
   return i >= 0 ? href.slice(i) : null;
@@ -78,12 +75,13 @@ export function SiteHeader({ session }: { session: SiteSession | null }) {
   // Optimistic until first fetch so public catalogs don't flash as login-gated.
   const resourcesPublic = ready ? settings.teacherResourcesPublic : true;
   const answerKeysPublic = ready ? settings.answerKeysPublic : true;
+  const resultsPublic = ready ? settings.resultsPublic : true;
 
   function needsLogin(href: string) {
     if (session) return false;
-    if (AUTH_NAV_HREFS.has(href)) return true;
     if (href === "/teachers-resources" && !resourcesPublic) return true;
     if (href === "/answer-keys" && !answerKeysPublic) return true;
+    if ((href === "/results" || href === "/teacher/results") && !resultsPublic) return true;
     return false;
   }
 
@@ -96,7 +94,7 @@ export function SiteHeader({ session }: { session: SiteSession | null }) {
     if (href === "/teacher/answer-keys" || href === "/answer-keys") {
       return "/school/answer-keys";
     }
-    if (href === "/teacher/results") return "/school/results";
+    if (href === "/teacher/results" || href === "/results") return "/school/results";
     return href;
   };
 

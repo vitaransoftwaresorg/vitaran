@@ -15,10 +15,13 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { silenceLive } from "@/features/live/silence";
 import { subjectLabel } from "@/features/schools/constants";
 import { cn } from "@/lib/utils";
 import type { AppSettings, SmeContact } from "@/types/settings";
 import { saveAdminSettingsAction } from "./actions";
+
+type ToggleKey = "maintenance" | "resources" | "keys" | "results";
 
 const SUBJECT_OPTIONS = [
   "MATHEMATICS",
@@ -51,6 +54,7 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
     initial.teacherResourcesPublic,
   );
   const [answerKeysPublic, setAnswerKeysPublic] = useState(initial.answerKeysPublic);
+  const [resultsPublic, setResultsPublic] = useState(initial.resultsPublic);
   const [vitaranEmails, setVitaranEmails] = useState<string[]>(
     initial.vitaranEmails.length > 0 ? initial.vitaranEmails : [""],
   );
@@ -58,6 +62,8 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
   const [drafts, setDrafts] = useState<SmeContact[]>([emptySme()]);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  /** Only the switch being saved goes disabled — shared `pending` was dimming every toggle. */
+  const [busyToggle, setBusyToggle] = useState<ToggleKey | null>(null);
 
   function updateDraft(index: number, patch: Partial<SmeContact>) {
     setDrafts((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
@@ -111,50 +117,76 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
       maintenanceMode: boolean;
       teacherResourcesPublic: boolean;
       answerKeysPublic: boolean;
+      resultsPublic: boolean;
       vitaranEmails: string[];
       smeContacts: SmeContact[];
     }>,
-    options?: { successMessage?: string; clearDrafts?: boolean },
+    options?: {
+      successMessage?: string;
+      clearDrafts?: boolean;
+      /** Which switch is saving — only that control dims. */
+      toggle?: ToggleKey;
+      /** Full form save should resync toggle state from the server. */
+      syncToggles?: boolean;
+    },
   ) {
     const previous = {
       maintenanceMode,
       teacherResourcesPublic,
       answerKeysPublic,
+      resultsPublic,
     };
     setError(null);
+    if (options?.toggle) {
+      silenceLive(4_000);
+      setBusyToggle(options.toggle);
+    }
     startTransition(async () => {
-      const result = await saveAdminSettingsAction({
-        maintenanceMode: patch.maintenanceMode ?? previous.maintenanceMode,
-        teacherResourcesPublic:
-          patch.teacherResourcesPublic ?? previous.teacherResourcesPublic,
-        answerKeysPublic: patch.answerKeysPublic ?? previous.answerKeysPublic,
-        vitaranEmails: patch.vitaranEmails ?? [
-          ...new Set(vitaranEmails.map((email) => email.trim().toLowerCase()).filter(Boolean)),
-        ],
-        smeContacts: patch.smeContacts ?? smeContacts,
-      });
-      if (!result.ok) {
-        setError(result.message);
-        if (patch.maintenanceMode !== undefined) {
-          setMaintenanceMode(previous.maintenanceMode);
+      try {
+        const result = await saveAdminSettingsAction({
+          maintenanceMode: patch.maintenanceMode ?? previous.maintenanceMode,
+          teacherResourcesPublic:
+            patch.teacherResourcesPublic ?? previous.teacherResourcesPublic,
+          answerKeysPublic: patch.answerKeysPublic ?? previous.answerKeysPublic,
+          resultsPublic: patch.resultsPublic ?? previous.resultsPublic,
+          vitaranEmails: patch.vitaranEmails ?? [
+            ...new Set(vitaranEmails.map((email) => email.trim().toLowerCase()).filter(Boolean)),
+          ],
+          smeContacts: patch.smeContacts ?? smeContacts,
+        });
+        if (!result.ok) {
+          setError(result.message);
+          if (patch.maintenanceMode !== undefined) {
+            setMaintenanceMode(previous.maintenanceMode);
+          }
+          if (patch.teacherResourcesPublic !== undefined) {
+            setTeacherResourcesPublic(previous.teacherResourcesPublic);
+          }
+          if (patch.answerKeysPublic !== undefined) {
+            setAnswerKeysPublic(previous.answerKeysPublic);
+          }
+          if (patch.resultsPublic !== undefined) {
+            setResultsPublic(previous.resultsPublic);
+          }
+          return;
         }
-        if (patch.teacherResourcesPublic !== undefined) {
-          setTeacherResourcesPublic(previous.teacherResourcesPublic);
+        setSmeContacts(result.settings.smeContacts);
+        setVitaranEmails(
+          result.settings.vitaranEmails.length > 0 ? result.settings.vitaranEmails : [""],
+        );
+        // Toggle saves stay optimistic — rewriting every switch from the response
+        // (or a racing neighbor) is what made the other controls blink.
+        if (options?.syncToggles) {
+          setMaintenanceMode(result.settings.maintenanceMode);
+          setTeacherResourcesPublic(result.settings.teacherResourcesPublic);
+          setAnswerKeysPublic(result.settings.answerKeysPublic);
+          setResultsPublic(result.settings.resultsPublic);
         }
-        if (patch.answerKeysPublic !== undefined) {
-          setAnswerKeysPublic(previous.answerKeysPublic);
-        }
-        return;
+        if (options?.clearDrafts) setDrafts([emptySme()]);
+        toast.success(options?.successMessage ?? "Settings saved");
+      } finally {
+        if (options?.toggle) setBusyToggle(null);
       }
-      setSmeContacts(result.settings.smeContacts);
-      setVitaranEmails(
-        result.settings.vitaranEmails.length > 0 ? result.settings.vitaranEmails : [""],
-      );
-      setMaintenanceMode(result.settings.maintenanceMode);
-      setTeacherResourcesPublic(result.settings.teacherResourcesPublic);
-      setAnswerKeysPublic(result.settings.answerKeysPublic);
-      if (options?.clearDrafts) setDrafts([emptySme()]);
-      toast.success(options?.successMessage ?? "Settings saved");
     });
   }
 
@@ -162,7 +194,10 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
     setMaintenanceMode(next);
     persist(
       { maintenanceMode: next },
-      { successMessage: next ? "Maintenance mode on" : "Maintenance mode off" },
+      {
+        toggle: "maintenance",
+        successMessage: next ? "Maintenance mode on" : "Maintenance mode off",
+      },
     );
   }
 
@@ -171,6 +206,7 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
     persist(
       { teacherResourcesPublic: next },
       {
+        toggle: "resources",
         successMessage: next
           ? "Teacher resources are public"
           : "Teacher resources are private",
@@ -183,7 +219,19 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
     persist(
       { answerKeysPublic: next },
       {
+        toggle: "keys",
         successMessage: next ? "Answer keys are public" : "Answer keys are private",
+      },
+    );
+  }
+
+  function setResultsPublicToggle(next: boolean) {
+    setResultsPublic(next);
+    persist(
+      { resultsPublic: next },
+      {
+        toggle: "results",
+        successMessage: next ? "Results are public" : "Results are private",
       },
     );
   }
@@ -228,7 +276,7 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
 
     persist(
       { vitaranEmails: inboxes, smeContacts: merged },
-      { clearDrafts: true },
+      { clearDrafts: true, syncToggles: true },
     );
   }
 
@@ -272,7 +320,7 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
               <Switch
                 checked={maintenanceMode}
                 onCheckedChange={setMaintenance}
-                disabled={pending}
+                disabled={busyToggle === "maintenance"}
                 id="maintenance-mode"
               />
               <label htmlFor="maintenance-mode" className="text-sm font-semibold text-neutral-800">
@@ -295,7 +343,7 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
               <Switch
                 checked={teacherResourcesPublic}
                 onCheckedChange={setResourcesPublic}
-                disabled={pending}
+                disabled={busyToggle === "resources"}
                 id="teacher-resources-public"
               />
               <label
@@ -321,11 +369,34 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
               <Switch
                 checked={answerKeysPublic}
                 onCheckedChange={setKeysPublic}
-                disabled={pending}
+                disabled={busyToggle === "keys"}
                 id="answer-keys-public"
               />
               <label htmlFor="answer-keys-public" className="text-sm font-semibold text-neutral-800">
                 {answerKeysPublic ? "Public" : "Private"}
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-brand-200 bg-white p-5 shadow-[0_4px_16px_-8px_rgb(25_28_95/0.12)]">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-bold text-brand-950">Results</h2>
+              <p className="mt-1 text-sm text-neutral-600">
+                Public: guests enter a School ID to open that school&apos;s published results. Private: login
+                required. Applies to all visitors immediately.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={resultsPublic}
+                onCheckedChange={setResultsPublicToggle}
+                disabled={busyToggle === "results"}
+                id="results-public"
+              />
+              <label htmlFor="results-public" className="text-sm font-semibold text-neutral-800">
+                {resultsPublic ? "Public" : "Private"}
               </label>
             </div>
           </div>

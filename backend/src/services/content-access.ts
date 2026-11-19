@@ -76,7 +76,8 @@ export function answerKeyAccessFilter(actor: ContentActor): Prisma.AnswerKeyWher
       ]),
     );
     if (slots.length === 0) return { id: { in: [] } };
-    return { published: true, ...ownership, OR: slots };
+    // Include unpublished — portals show them as "Not Published".
+    return { ...ownership, OR: slots };
   }
 
   const slots = programClassSlots(
@@ -91,7 +92,8 @@ export function answerKeyAccessFilter(actor: ContentActor): Prisma.AnswerKeyWher
     ),
   );
   if (slots.length === 0) return { id: { in: [] } };
-  return { published: true, ...ownership, OR: slots };
+  // Include unpublished — portals show them as "Not Published".
+  return { ...ownership, OR: slots };
 }
 
 export type StudentScope = {
@@ -146,7 +148,8 @@ export function teacherCanAccessStudent(teacher: TeacherAccountDto, student: Stu
 }
 
 export function resultSetAccessFilter(actor: ContentActor): Prisma.ResultSetWhereInput {
-  return { schoolId: contentSchool(actor).id, published: true };
+  // Include unpublished sets — portals show them as "Not Published".
+  return { schoolId: contentSchool(actor).id };
 }
 
 export function resultSetMatchesProgram(

@@ -23,6 +23,9 @@ export type DriveSchool = {
 export const DRIVE_TESTS = Array.from({ length: 18 }, (_, index) => index + 1);
 
 export const ANSWER_KEYS_FOLDER_STORAGE = "vitaran:answer-keys-folder";
+export const ANSWER_KEYS_FOLDER_CRUMBS = "vitaran:answer-keys-folder-crumbs";
+
+export type AnswerKeysFolderCrumb = { label: string; href: string };
 
 export function answerKeysFolderHref(
   path: DrivePath,
@@ -40,9 +43,45 @@ export function answerKeysFolderHref(
 }
 
 export function isAnswerKeysFolderHref(href: string) {
-  if (!href.startsWith(ANSWER_KEYS_PATH) || href.includes("://")) return false;
   const pathOnly = href.split("?")[0];
-  return pathOnly === ANSWER_KEYS_PATH;
+  return (
+    !href.includes("://") &&
+    (pathOnly === ANSWER_KEYS_PATH ||
+      pathOnly === "/school/answer-keys" ||
+      pathOnly === "/teacher/answer-keys")
+  );
+}
+
+export function writeAnswerKeysFolderTrail(href: string, crumbs: AnswerKeysFolderCrumb[]) {
+  if (typeof window === "undefined") return;
+  try {
+    if (isAnswerKeysFolderHref(href)) {
+      window.sessionStorage.setItem(ANSWER_KEYS_FOLDER_STORAGE, href);
+    }
+    window.sessionStorage.setItem(ANSWER_KEYS_FOLDER_CRUMBS, JSON.stringify(crumbs));
+  } catch {
+    // ignore
+  }
+}
+
+export function readAnswerKeysFolderCrumbs(): AnswerKeysFolderCrumb[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.sessionStorage.getItem(ANSWER_KEYS_FOLDER_CRUMBS);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((row) => {
+      if (!row || typeof row !== "object") return [];
+      const { label, href } = row as Record<string, unknown>;
+      if (typeof label !== "string" || typeof href !== "string" || !label.trim() || !href.trim()) {
+        return [];
+      }
+      return [{ label, href }];
+    });
+  } catch {
+    return [];
+  }
 }
 
 /** Last drive folder, so Back from an answer key returns there instead of home. */
@@ -57,4 +96,8 @@ export function readAnswerKeysReturnHref() {
     // ignore
   }
   return null;
+}
+
+export function isAnswerKeyEditorPath(pathname: string) {
+  return /\/answer-keys\/[^/]+\/(answers|edit)$/.test(pathname);
 }

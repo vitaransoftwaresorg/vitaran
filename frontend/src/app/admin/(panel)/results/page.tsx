@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import { PageHeader } from "@/features/admin/page-header";
 import { parseListFilters } from "@/features/documents/list-filters";
-import { setResultPublishedAction } from "@/features/results/actions";
+import { setResultSheetPublishedAction } from "@/features/results/actions";
 import { ResultsDrive, type DrivePath } from "@/features/results/results-drive";
 import { listResultSets } from "@/services/results";
 import { listAdminPrograms } from "@/services/programs";
@@ -29,15 +28,12 @@ export default async function AdminResultsPage({ searchParams }: PageProps<"/adm
   };
 
   return (
-    <>
-      <PageHeader title="Results" />
-      <ResultsDrive
-        resultSets={resultSets}
-        programs={programs}
-        schools={schools}
-        path={path}
-        publishAction={setResultPublishedAction}
-      />
-    </>
+    <ResultsDrive
+      resultSets={resultSets}
+      programs={programs}
+      schools={schools}
+      path={path}
+      publishAction={setResultSheetPublishedAction}
+    />
   );
 }

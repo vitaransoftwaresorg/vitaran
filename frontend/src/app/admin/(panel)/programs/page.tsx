@@ -11,7 +11,6 @@ export default async function AdminProgramsPage() {
   return (
     <>
       <PageHeader
-        title="Programs"
         description="Catalog of learning programs schools can enrol in."
         actions={
           <Link href="/admin/programs/new" className={cn(buttonVariants())}>

@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { PageHeader } from "@/features/admin/page-header";
 import { updateProgramAction } from "@/features/programs/actions";
 import { ProgramForm } from "@/features/programs/program-form";
+import { ProgramNavTrail } from "@/features/programs/program-nav-trail";
+import { capitalizeWords } from "@/features/schools/schema";
 import { getProgram } from "@/services/programs";
 
 export default async function EditProgramPage({
@@ -13,7 +15,8 @@ export default async function EditProgramPage({
 
   return (
     <>
-      <PageHeader title="Edit program" description={program.code} />
+      <ProgramNavTrail id={program.id} name={capitalizeWords(program.name)} leaf="Edit" />
+      <PageHeader description={program.code} />
       <ProgramForm program={program} action={updateProgramAction.bind(null, program.id)} />
     </>
   );

@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
-import { PageHeader } from "@/features/admin/page-header";
-import { LiveRefresh } from "@/features/live/live-refresh";
 import { TEACHER_RESULTS_PATH } from "@/features/results/constants";
-import { ResultSetView, classScanFilter, selectedClass } from "@/features/results/result-set-view";
+import { PortalResultSetView } from "@/features/results/portal-result-set-view";
+import { classScanFilter, selectedClass } from "@/features/results/result-set-view";
 import { listClassScans } from "@/services/scans";
 import { getTeacherResultSet, getTeacherResultSheet } from "@/services/results";
 
@@ -24,17 +23,26 @@ export default async function TeacherResultDetailPage({
     : [null, []];
   if (!resultSet || !sheet) notFound();
 
+  if (!resultSet.published || !sheet.published) {
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-10 text-center">
+        <p className="text-sm font-semibold text-amber-950">Not Published</p>
+        <p className="mt-1 text-sm text-amber-800">
+          This result is not published yet. It will open here once the admin publishes it.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <>
-      <LiveRefresh kind="results" />
-      <PageHeader title="Result" />
-      <ResultSetView
-        resultSet={resultSet}
-        sheet={sheet}
-        scans={scans}
-        basePath={TEACHER_RESULTS_PATH}
-        showDownload={false}
-      />
-    </>
+    <PortalResultSetView
+      key={`${resultSet.id}:${sheet.classLevel}:${scans.length}`}
+      resultSet={resultSet}
+      sheet={sheet}
+      scans={scans}
+      basePath={TEACHER_RESULTS_PATH}
+      showDownload={false}
+      portal="teacher"
+    />
   );
 }

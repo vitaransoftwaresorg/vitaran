@@ -1,10 +1,12 @@
 "use client";
 
-import { usePathname } from "next/navigation";
 import { useInPageBackHandler } from "@/components/layout/in-page-back";
 import { PortalBackButton } from "./portal-back-button";
 
-/** On-page back — never in the header. */
+/**
+ * Back only for in-page stacks (roster, OMR review queue).
+ * Route parents are handled by the top navbar breadcrumbs — no second nav row.
+ */
 export function PortalPageBack({
   getParentHref,
   homeHref,
@@ -14,11 +16,8 @@ export function PortalPageBack({
   homeHref: string;
   homeHrefs?: string[];
 }) {
-  const pathname = usePathname();
   const inPageBack = useInPageBackHandler();
-  const roots = new Set([homeHref, ...(homeHrefs ?? [])]);
-  // Nav roots hide Back unless an in-page stack (e.g. classes → roster) is active.
-  if (roots.has(pathname) && !inPageBack) return null;
+  if (!inPageBack) return null;
 
   return (
     <div className="mb-2 md:mb-3">

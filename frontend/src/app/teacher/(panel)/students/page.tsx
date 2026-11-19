@@ -18,7 +18,6 @@ export default async function TeacherStudentsPage() {
   return (
     <>
       <PageHeader
-        title="Students"
         description={
           ctLabels.length
             ? `Class teacher of ${ctLabels.join(", ")} · plus assigned classes`

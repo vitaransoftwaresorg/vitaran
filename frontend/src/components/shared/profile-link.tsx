@@ -26,15 +26,30 @@ export const PROFILE_LINK_CLASS =
 /** Names and registration numbers in tables: always look like links to the profile. */
 export function ProfileLink({
   href,
+  onClick,
   children,
   className,
   title,
 }: {
-  href: string | null | undefined;
+  href?: string | null;
+  /** In-page open (e.g. results → profile stack) instead of navigating away. */
+  onClick?: () => void;
   children: ReactNode;
   className?: string;
   title?: string;
 }) {
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        title={title}
+        onClick={onClick}
+        className={cn(PROFILE_LINK_CLASS, "cursor-pointer bg-transparent p-0 text-left", className)}
+      >
+        {children}
+      </button>
+    );
+  }
   if (!href) return <span className={cn("font-medium text-neutral-950", className)}>{children}</span>;
   return (
     <Link

@@ -96,7 +96,8 @@ const SEGMENT_LABELS: Record<string, string> = {
   programs: "Programs",
   new: "Register",
   edit: "Edit",
-  answers: "Answers",
+  answers: "Enter answers",
+  enter: "Enter marks",
   "answer-keys": "Answer Keys",
   objections: "Key Objections",
   upload: "Upload",
@@ -123,8 +124,10 @@ export function getAdminBreadcrumbs(pathname: string): AdminBreadcrumb[] {
 
   segments.forEach((segment, index) => {
     const previous = segments[index - 1];
-    // `/admin/answer-keys/:id` is not a page — including it trapped Back and the Key crumb on Edit.
+    // UUID detail ids are resolved by name in the top nav (school / program / answer key).
     if (previous === "answer-keys" && UUID.test(segment)) return;
+    if (previous === "programs" && UUID.test(segment)) return;
+    if (previous === "schools" && UUID.test(segment)) return;
     crumbs.push({
       label: crumbLabel(segment, previous),
       href: `/admin/${segments.slice(0, index + 1).join("/")}`,

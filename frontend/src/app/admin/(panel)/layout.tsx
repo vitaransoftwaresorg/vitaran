@@ -3,11 +3,11 @@ import { Suspense } from "react";
 import { AdminHeader } from "@/components/layout/admin-header";
 import { AdminPageBack } from "@/components/layout/admin-page-back";
 import { AdminSidebar } from "@/components/layout/admin-sidebar";
+import { DrivePathProvider } from "@/components/layout/drive-path-context";
 import { InPageBackProvider } from "@/components/layout/in-page-back";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { PanelFallback } from "@/features/admin/dashboard-parts";
 import { verifyAdminSession } from "@/features/admin-auth/session";
 import { LiveRefresh } from "@/features/live/live-refresh";
 
@@ -28,19 +28,22 @@ export default async function AdminPanelLayout({
   return (
     <TooltipProvider>
       <InPageBackProvider>
-        <SidebarProvider
-          defaultOpen={defaultOpen}
-          style={{ "--sidebar-width": "10.8rem" } as React.CSSProperties}
-        >
-          <AdminSidebar admin={admin} />
-          <SidebarInset className="min-w-0 bg-neutral-50">
-            <AdminHeader />
-            <div className="w-full flex-1 p-4 sm:p-5 lg:px-6 lg:py-6">
-              <AdminPageBack />
-              <Suspense fallback={<PanelFallback />}>{children}</Suspense>
-            </div>
-          </SidebarInset>
-        </SidebarProvider>
+        <DrivePathProvider>
+          <SidebarProvider
+            defaultOpen={defaultOpen}
+            style={{ "--sidebar-width": "10.8rem" } as React.CSSProperties}
+          >
+            <AdminSidebar admin={admin} />
+            <SidebarInset className="min-w-0 bg-neutral-50">
+              <AdminHeader />
+              <div className="w-full flex-1 p-4 sm:p-5 lg:px-6 lg:py-6">
+                <AdminPageBack />
+                {/* null fallback: keep the current table visible during soft refresh (toggles/publish). */}
+                <Suspense fallback={null}>{children}</Suspense>
+              </div>
+            </SidebarInset>
+          </SidebarProvider>
+        </DrivePathProvider>
       </InPageBackProvider>
       <LiveRefresh path="/admin/live" />
       <Toaster theme="light" position="top-right" richColors closeButton />

@@ -1,5 +1,5 @@
 import "server-only";
-import { ApiError } from "@/services/api-client";
+import { ApiError, apiClient, buildApiUrl } from "@/services/api-client";
 import { adminApi, adminFetch } from "@/services/admin-api";
 import { listFiltersQuery, type ListFilters } from "@/services/list-filters";
 import { schoolApi, schoolFetch } from "@/services/school-api";
@@ -8,6 +8,7 @@ import type { ContentStats } from "@/types/document";
 import type { ResultCell, ResultSet, ResultSheet } from "@/types/result";
 
 const BASE = "/results";
+const PUBLIC_BASE = "/public/results";
 const SCHOOL_BASE = "/school/results";
 const TEACHER_BASE = "/teacher/results";
 const setPath = (base: string, id: string) => `${base}/${encodeURIComponent(id)}`;
@@ -74,6 +75,13 @@ export function getClassResultTemplate(query: {
 
 export function setResultSetPublished(id: string, published: boolean) {
   return adminApi<ResultSet>(`${setPath(BASE, id)}/publish`, { method: "PATCH", body: { published } });
+}
+
+export function setResultSheetPublished(id: string, classLevel: number, published: boolean) {
+  return adminApi<ResultSet>(`${sheetPath(BASE, id, classLevel)}/publish`, {
+    method: "PATCH",
+    body: { published },
+  });
 }
 
 export function deleteResultSet(id: string) {
@@ -148,4 +156,41 @@ export function getTeacherResultSheet(id: string, classLevel: number) {
 
 export function fetchTeacherResultSheetFile(id: string, classLevel: number) {
   return teacherFetch(`${sheetPath(TEACHER_BASE, id, classLevel)}/file`);
+}
+
+export type PublicResultsList = {
+  school: { id: string; name: string; code: string } | null;
+  items: ResultSet[];
+};
+
+/** Published results for one school (by School ID) when Results → Public. */
+export function listPublicResultSets(schoolCode: string) {
+  const query = new URLSearchParams({ school: schoolCode.trim() });
+  return apiClient<PublicResultsList>(`${PUBLIC_BASE}?${query}`, { cache: "no-store" });
+}
+
+export async function getPublicResultSet(id: string): Promise<ResultSet | null> {
+  try {
+    return await apiClient<ResultSet>(setPath(PUBLIC_BASE, id), { cache: "no-store" });
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 404 || error.status === 400 || error.status === 403)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function getPublicResultSheet(id: string, classLevel: number): Promise<ResultSheet | null> {
+  try {
+    return await apiClient<ResultSheet>(sheetPath(PUBLIC_BASE, id, classLevel), { cache: "no-store" });
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 404 || error.status === 400 || error.status === 403)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export function fetchPublicResultSheetFile(id: string, classLevel: number) {
+  return fetch(buildApiUrl(`${sheetPath(PUBLIC_BASE, id, classLevel)}/file`), { cache: "no-store" });
 }

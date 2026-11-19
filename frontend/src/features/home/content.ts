@@ -21,7 +21,7 @@ export const navLinks = [
   { label: "Services", href: "/#services" },
   { label: "Teachers Resources", href: "/teachers-resources" },
   { label: "Answer Keys", href: "/answer-keys" },
-  { label: "Results", href: "/teacher/results" },
+  { label: "Results", href: "/results" },
 ] as const;
 
 type Service = {

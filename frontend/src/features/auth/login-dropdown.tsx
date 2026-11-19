@@ -98,21 +98,21 @@ function LoginDropdownInner({ className, googleError }: LoginDropdownProps) {
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
-        disabled={pending}
         onClick={() => {
           if (open) {
             setOpen(false);
             clearLoginQuery();
             return;
           }
+          if (pending) return;
           resumeOrOpenForm();
         }}
         className={cn(
-          "inline-flex cursor-pointer items-center rounded-full bg-[#2a2670] px-7 py-3.5 text-sm font-semibold text-white shadow-[0_14px_36px_-12px_rgba(42,38,112,0.65)] select-none transition-colors hover:bg-[#1a1750] disabled:opacity-70",
+          "inline-flex cursor-pointer items-center justify-center rounded-full bg-[#2a2670] px-7 py-3.5 text-sm font-semibold text-white shadow-[0_14px_36px_-12px_rgba(42,38,112,0.65)] select-none transition-colors hover:bg-[#1a1750]",
           className,
         )}
       >
-        {pending ? "Signing in…" : "Log in"}
+        Log in
       </button>
 
       {open ? (

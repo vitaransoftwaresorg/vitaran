@@ -18,7 +18,7 @@ type ResultsDriveProps = {
   programs: LearningProgram[];
   schools: DriveSchool[];
   path: DrivePath;
-  publishAction: (id: string, published: boolean) => Promise<DeleteResult>;
+  publishAction: (id: string, classLevel: number, published: boolean) => Promise<DeleteResult>;
 };
 
 type ClassEntry = {
@@ -121,7 +121,8 @@ export function ResultsDrive({
   const link = (next: DrivePath, type?: DriveSchool["type"]) =>
     hrefFor(next, type ?? currentSchool?.type ?? schools.find((s) => s.id === next.schoolId)?.type);
 
-  const breadcrumbs: DriveCrumb[] = [{ label: "Results", href: RESULTS_PATH }];
+  // Root "Results" is omitted — top navbar already has Results and Ranks.
+  const breadcrumbs: DriveCrumb[] = [{ label: "Results and Ranks", href: RESULTS_PATH }];
   if (schoolId) {
     breadcrumbs.push({
       label: currentSchool?.name ?? "School",
@@ -200,6 +201,7 @@ export function ResultsDrive({
         }
 
         const viewHref = resultSetHref(RESULTS_PATH, resultSet.id, entry.classLevel);
+        const classPublished = sheet.published;
         return {
           id: `${resultSet.id}:${entry.classLevel}`,
           name: `Class ${entry.classLevel}`,
@@ -207,16 +209,16 @@ export function ResultsDrive({
           fileKind: "sheet" as const,
           href: enterHref,
           detail: `${entry.programTitle} · ${
-            resultSet.published
+            classPublished
               ? `${formatNumber(sheet.rowCount)} students · Published`
               : `${formatNumber(sheet.rowCount)} students · Hidden`
           }`,
           modified: wasEdited({ createdAt: resultSet.createdAt, updatedAt: sheet.updatedAt })
             ? formatDateTime(sheet.updatedAt)
             : undefined,
-          published: resultSet.published,
-          publishLabel: `Test ${resultSet.testNumber}`,
-          onPublish: publishAction.bind(null, resultSet.id),
+          published: classPublished,
+          publishLabel: `Class ${entry.classLevel}`,
+          onPublish: publishAction.bind(null, resultSet.id, entry.classLevel),
           actions: [
             { label: "Enter marks", href: enterHref, icon: "edit" as const },
             { label: "View", href: viewHref, icon: "view" as const },

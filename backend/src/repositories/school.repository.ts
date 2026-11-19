@@ -184,10 +184,10 @@ export function findSchoolSessionById(id: string) {
 export function findSchoolByCode(code: string, excludeId?: string) {
   return prisma.school.findFirst({
     where: {
-      code: { equals: code, mode: "insensitive" },
+      code: { equals: code.trim(), mode: "insensitive" },
       ...(excludeId && { NOT: { id: excludeId } }),
     },
-    select: { id: true },
+    select: { id: true, name: true, code: true },
   });
 }
 

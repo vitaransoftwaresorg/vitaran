@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import { useSetDrivePathCrumbs } from "@/components/layout/drive-path-context";
 import { DriveBrowser, type DriveItem } from "@/features/documents/drive-browser";
 import { TYPE_LABELS } from "@/features/schools/constants";
 import { setAdminTeacherStatusAction } from "@/features/teachers/actions";
@@ -21,6 +23,16 @@ function schoolHref(schoolId: string) {
 
 export function TeachersDrive({ schools, schoolId, teachers = [] }: TeachersDriveProps) {
   const school = schools.find((item) => item.id === schoolId);
+  const setDrivePath = useSetDrivePathCrumbs();
+
+  useEffect(() => {
+    if (!setDrivePath) return;
+    if (schoolId && school) {
+      setDrivePath([{ label: school.name, href: schoolHref(school.id) }]);
+      return () => setDrivePath([]);
+    }
+    setDrivePath([]);
+  }, [school, schoolId, setDrivePath]);
 
   if (schoolId && school) {
     return (

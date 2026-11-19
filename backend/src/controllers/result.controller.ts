@@ -58,6 +58,29 @@ export const setResultSetPublished: RequestHandler<IdParams> = async (req, res) 
   sendSuccess(res, await resultService.setResultSetPublished(req.params.id, published));
 };
 
+export const setResultSheetPublished: RequestHandler = async (req, res) => {
+  const { id, classLevel } = sheetParams(req.params);
+  const { published } = req.body as PublishBody;
+  sendSuccess(res, await resultService.setResultSheetPublished(id, classLevel, published));
+};
+
+export const listPublicResultSets: RequestHandler = async (req, res) => {
+  const school = typeof req.query.school === "string" ? req.query.school : undefined;
+  sendSuccess(res, await resultService.listPublicResultSets(school));
+};
+
+export const getPublicResultSet: RequestHandler<IdParams> = async (req, res) => {
+  sendSuccess(res, await resultService.getPublicResultSet(req.params.id));
+};
+
+export const getPublicResultSheet: RequestHandler = async (req, res) => {
+  sendSuccess(res, await resultService.getPublicResultSheet(sheetParams(req.params)));
+};
+
+export const getPublicResultSheetFile: RequestHandler = async (req, res) => {
+  sendExcel(res, await resultService.getPublicResultSheetFile(sheetParams(req.params)));
+};
+
 export const deleteResultSet: RequestHandler<IdParams> = async (req, res) => {
   await resultService.deleteResultSet(req.params.id);
   res.status(204).end();

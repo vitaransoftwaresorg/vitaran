@@ -1,10 +1,9 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState, useTransition } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import { PageHeader } from "@/features/admin/page-header";
 import { useLiveContent } from "@/features/live/use-live-content";
-import { cn } from "@/lib/utils";
-import type { PdfDocument } from "@/types/document";
+import type { AnswerKey } from "@/types/answer-key";
 import { PortalAnswerKeysDrive } from "./portal-answer-keys-drive";
 import {
   loadSchoolPortalAnswerKeysAction,
@@ -21,7 +20,7 @@ type PortalAnswerKeysBoardProps = {
   description: string;
 };
 
-/** Reloads when admin publishes/hides keys — live stream + focus/visibility. */
+/** Reloads instantly when admin publishes/hides keys — live stream + focus/visibility. */
 export function PortalAnswerKeysBoard({
   role,
   basePath,
@@ -30,17 +29,16 @@ export function PortalAnswerKeysBoard({
   ownerLabel,
   description,
 }: PortalAnswerKeysBoardProps) {
-  const [documents, setDocuments] = useState<PdfDocument[] | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [documents, setDocuments] = useState<AnswerKey[] | null>(null);
 
   const reload = useCallback(() => {
-    startTransition(async () => {
+    void (async () => {
       const next =
         role === "school"
           ? await loadSchoolPortalAnswerKeysAction()
           : await loadTeacherPortalAnswerKeysAction();
       setDocuments(next);
-    });
+    })();
   }, [role]);
 
   useLiveContent("answer-keys", reload);
@@ -62,7 +60,7 @@ export function PortalAnswerKeysBoard({
   if (documents === null) {
     return (
       <>
-        <PageHeader title="Answer keys" description={description} />
+        <PageHeader description={description} />
         <div className="rounded-2xl border border-dashed border-neutral-200 bg-white p-10 text-center text-sm text-neutral-500">
           Loading answer keys…
         </div>
@@ -72,18 +70,16 @@ export function PortalAnswerKeysBoard({
 
   return (
     <>
-      <PageHeader title="Answer keys" count={documents.length} description={description} />
-      <div className={cn(pending && "opacity-70 transition-opacity")}>
-        <Suspense>
-          <PortalAnswerKeysDrive
-            programIds={programIds}
-            programNames={programNames}
-            ownerLabel={ownerLabel}
-            documents={documents}
-            basePath={basePath}
-          />
-        </Suspense>
-      </div>
+      <PageHeader count={documents.length} description={description} />
+      <Suspense>
+        <PortalAnswerKeysDrive
+          programIds={programIds}
+          programNames={programNames}
+          ownerLabel={ownerLabel}
+          documents={documents}
+          basePath={basePath}
+        />
+      </Suspense>
     </>
   );
 }

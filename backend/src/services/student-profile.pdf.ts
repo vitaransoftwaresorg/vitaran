@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, type PDFImage, type PDFPage, type RGB } from "pdf-lib";
 import { classWithSectionLabel, displaySectionName } from "../utils/section-label.js";
+import { downloadFileName } from "../utils/download-file-name.js";
 import {
   BRAND_50,
   BRAND_100,
@@ -502,7 +503,19 @@ export async function renderStudentProfilePdf(data: StudentProfilePdfData, logos
   const { pdf, fonts } = await createDocument();
   const [vitaran, school] = await Promise.all([embedLogo(pdf, logos.vitaran), embedLogo(pdf, logos.school)]);
   drawStudentProfile(pdf, fonts, { vitaran, school }, data);
-  pdf.setTitle(`Student profile - ${capitalizeWords(data.student.name)} - ${data.student.rollNo}`);
+  pdf.setTitle(
+    downloadFileName(
+      [
+        "Student-Profile",
+        data.student.schoolName,
+        data.student.programName,
+        `Class-${data.student.classLevel}`,
+        capitalizeWords(data.student.name),
+        data.student.rollNo,
+      ],
+      "pdf",
+    ).replace(/\.pdf$/i, ""),
+  );
   return Buffer.from(await pdf.save());
 }
 

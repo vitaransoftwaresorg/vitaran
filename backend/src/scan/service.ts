@@ -11,6 +11,7 @@ import * as studentRepository from "../repositories/student.repository.js";
 import { recordOmrResult } from "../services/result.service.js";
 import { AppError } from "../utils/app-error.js";
 import { notifyContentChanged } from "../utils/content-events.js";
+import { downloadFileName } from "../utils/download-file-name.js";
 import type { SchoolAccountDto } from "../services/school.service.js";
 import type { TeacherAccountDto } from "../services/teacher.service.js";
 import { asAnswers } from "../utils/answer-key-parse.js";
@@ -594,7 +595,10 @@ export async function getPdfBatchPageImage(context: ScanContext, batchId: string
   const imagePath = batch.items.find((item) => item.page === page)?.imagePath;
   if (!imagePath) throw new AppError(404, `No image kept for page ${page}`);
   const data = await loadBatchPageImage(imagePath);
-  return { data, fileName: `${safeName(batch.fileName.replace(/\.pdf$/i, ""))}-p${page}.jpg` };
+  return {
+    data,
+    fileName: downloadFileName([batch.fileName.replace(/\.pdf$/i, ""), `p${page}`], "jpg"),
+  };
 }
 
 /** Latest PDF this session uploaded, so leaving the page and coming back picks it up again. */
@@ -733,7 +737,10 @@ export async function getPreviewImage(context: ScanContext, previewId: string, k
   const data = await loadPendingImage(row.diskDir, kind === "raw" ? "raw" : "preview");
   return {
     data,
-    fileName: `${safeName(`${row.identity.rollNo}-${row.identity.studentName}`)}-${kind === "raw" ? "omr" : "evaluated"}.jpg`,
+    fileName: downloadFileName(
+      [row.identity.studentName, row.identity.rollNo, kind === "raw" ? "omr" : "evaluated"],
+      "jpg",
+    ),
   };
 }
 
@@ -872,15 +879,16 @@ async function pickImage(row: { image: Uint8Array; rawImage: Uint8Array | null; 
   return data;
 }
 
-const safeName = (value: string) => value.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "omr";
-
 export async function getScanImage(context: ScanContext, id: string, kind: ScanImageKind) {
   const own = contextSchool(context);
   const [row] = await scanRepository.findScanImages({ id, ...(own ? { schoolId: own.id } : {}) });
   if (!row) throw new AppError(404, "OMR not found");
   return {
     data: await pickImage(row, kind),
-    fileName: `${safeName(`${row.rollNo}-${row.studentName}-${row.testId}`)}-${kind === "raw" ? "omr" : "evaluated"}.jpg`,
+    fileName: downloadFileName(
+      [row.studentName, row.rollNo, row.testId, kind === "raw" ? "omr" : "evaluated"],
+      "jpg",
+    ),
   };
 }
 
@@ -903,7 +911,16 @@ export async function getClassScansPdf(
   }
   return {
     data: Buffer.from(await pdf.save()),
-    fileName: `Class-${filter.classLevel}-Test-${filter.testNumber}-${kind === "raw" ? "omr" : "evaluated"}.pdf`,
+    fileName: downloadFileName(
+      [
+        "OMR",
+        filter.program,
+        `Class-${filter.classLevel}`,
+        `Test-${filter.testNumber}`,
+        kind === "raw" ? "sheets" : "evaluated",
+      ],
+      "pdf",
+    ),
   };
 }
 

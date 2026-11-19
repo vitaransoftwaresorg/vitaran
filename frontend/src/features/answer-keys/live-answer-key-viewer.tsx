@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useLiveContent } from "@/features/live/use-live-content";
+import { programLabel } from "@/features/schools/constants";
 import type { AnswerKeyDetail } from "@/types/answer-key";
 import type { AnswerKeyObjection } from "@/types/answer-key-objection";
 import { AnswerKeyPdfActions } from "./answer-key-pdf-actions";
@@ -22,7 +23,6 @@ export function LiveAnswerKeyViewer({ role, answerKey }: LiveAnswerKeyViewerProp
   const [current, setCurrent] = useState(answerKey);
   const [objections, setObjections] = useState<AnswerKeyObjection[]>([]);
   const [raiseQuestion, setRaiseQuestion] = useState<number | null>(null);
-  const [, startReload] = useTransition();
 
   const apply = useCallback((next: AnswerKeyDetail) => {
     setCurrent((prev) => {
@@ -33,19 +33,17 @@ export function LiveAnswerKeyViewer({ role, answerKey }: LiveAnswerKeyViewerProp
   }, []);
 
   const reloadObjections = useCallback(() => {
-    startReload(async () => {
-      setObjections(await listPortalObjectionsAction(role, answerKey.id));
-    });
+    void listPortalObjectionsAction(role, answerKey.id).then(setObjections);
   }, [answerKey.id, role]);
 
   const reload = useCallback(() => {
-    startReload(async () => {
+    void (async () => {
       const next =
         role === "school"
           ? await loadSchoolAnswerKeyAction(answerKey.id)
           : await loadTeacherAnswerKeyAction(answerKey.id);
       if (next) apply(next);
-    });
+    })();
   }, [apply, answerKey.id, role]);
 
   useLiveContent("answer-keys", reload);
@@ -69,6 +67,7 @@ export function LiveAnswerKeyViewer({ role, answerKey }: LiveAnswerKeyViewerProp
       : Object.keys(current.answers).length;
 
   const meta = [
+    { label: "Program", value: programLabel(current.program, current.programName) },
     { label: "Test", value: String(current.testNumber) },
     ...(current.testId ? [{ label: "Test ID", value: current.testId }] : []),
     { label: "Class", value: String(current.classLevel) },
@@ -85,6 +84,11 @@ export function LiveAnswerKeyViewer({ role, answerKey }: LiveAnswerKeyViewerProp
             <p className="text-[10px] font-semibold tracking-[0.16em] text-brand-700 uppercase">
               Answer key
             </p>
+            {!current.published ? (
+              <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+                Not Published
+              </span>
+            ) : null}
             {openCount > 0 ? (
               <span className="shrink-0 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
                 {openCount} open
@@ -98,13 +102,19 @@ export function LiveAnswerKeyViewer({ role, answerKey }: LiveAnswerKeyViewerProp
             className="w-full sm:w-auto"
           />
         </div>
-        <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-3 lg:grid-cols-6">
+        <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
           {meta.map((item) => (
             <div key={item.label} className="min-w-0">
               <dt className="text-[10px] font-semibold tracking-wider text-neutral-500 uppercase">
                 {item.label}
               </dt>
-              <dd className="truncate text-sm font-bold text-neutral-950 tabular-nums">
+              <dd
+                className={
+                  item.label === "Program"
+                    ? "text-sm font-bold break-words text-neutral-950"
+                    : "truncate text-sm font-bold text-neutral-950 tabular-nums"
+                }
+              >
                 {item.value}
               </dd>
             </div>

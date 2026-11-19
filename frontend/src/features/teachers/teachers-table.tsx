@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { IconRowActions } from "@/components/shared/icon-row-actions";
 import { matchesSearch, TableSearch } from "@/components/shared/table-search";
@@ -15,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ProfileLink, schoolProfileHref } from "@/components/shared/profile-link";
+import { silenceLive } from "@/features/live/silence";
 import { subjectLabel } from "@/features/schools/constants";
 import { cn } from "@/lib/utils";
 import type { Teacher, TeacherStatus } from "@/types/teacher";
@@ -28,18 +28,74 @@ type TeachersTableProps = {
   showSchool?: boolean;
 };
 
+function StatusSwitch({
+  teacher,
+  status,
+  onToggleStatus,
+}: {
+  teacher: Teacher;
+  status: TeacherStatus;
+  onToggleStatus: TeachersTableProps["onToggleStatus"];
+}) {
+  const [pending, startTransition] = useTransition();
+  const [checked, setChecked] = useState(status === "ACTIVE");
+
+  // Sync from server only when idle — never yank this switch during a neighbor's save.
+  useEffect(() => {
+    if (!pending) setChecked(status === "ACTIVE");
+  }, [status, pending]);
+
+  const toggle = (next: boolean) => {
+    const previous = checked;
+    const nextStatus: TeacherStatus = next ? "ACTIVE" : "INACTIVE";
+    // Keep this tab from live-refreshing and blinking the other switches.
+    silenceLive(4_000);
+    setChecked(next);
+    startTransition(async () => {
+      try {
+        const result = await onToggleStatus(teacher.id, nextStatus);
+        if (!result.ok) {
+          setChecked(previous);
+          toast.error(result.message ?? "Update failed");
+          return;
+        }
+        toast.success(
+          `${teacher.name} is now ${TEACHER_STATUS_LABELS[nextStatus].toLowerCase()}`,
+        );
+      } catch {
+        setChecked(previous);
+        toast.error("Update failed");
+      }
+    });
+  };
+
+  return (
+    <div className="flex items-center gap-2.5">
+      <Switch
+        className="cursor-pointer"
+        checked={checked}
+        disabled={pending}
+        onCheckedChange={toggle}
+      />
+      <span
+        className={cn(
+          "rounded-full px-2 py-0.5 text-[11px] font-semibold",
+          checked ? "bg-emerald-50 text-emerald-800" : "bg-neutral-100 text-neutral-600",
+        )}
+      >
+        {TEACHER_STATUS_LABELS[checked ? "ACTIVE" : "INACTIVE"]}
+      </span>
+    </div>
+  );
+}
+
 export function TeachersTable({
   teachers,
   editHrefBase,
   onToggleStatus,
   showSchool,
 }: TeachersTableProps) {
-  const router = useRouter();
   const [query, setQuery] = useState("");
-  const [pendingId, setPendingId] = useState<string | null>(null);
-  /** Optimistic status so the switch flips immediately. */
-  const [statusById, setStatusById] = useState<Record<string, TeacherStatus>>({});
-  const [, startTransition] = useTransition();
 
   const filtered = useMemo(
     () =>
@@ -105,11 +161,7 @@ export function TeachersTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {filtered.map((teacher) => {
-            const status = statusById[teacher.id] ?? teacher.status;
-            const active = status === "ACTIVE";
-            const busy = pendingId === teacher.id;
-            return (
+          {filtered.map((teacher) => (
               <TableRow
                 key={teacher.id}
                 className="border-brand-100/70 hover:bg-brand-50/40"
@@ -154,49 +206,11 @@ export function TeachersTable({
                   )}
                 </TableCell>
                 <TableCell>
-                  <div className="flex items-center gap-2.5">
-                    <Switch
-                      className="cursor-pointer"
-                      checked={active}
-                      disabled={busy}
-                      onCheckedChange={(checked) => {
-                        const previous = status;
-                        const next: TeacherStatus = checked ? "ACTIVE" : "INACTIVE";
-                        setStatusById((prev) => ({ ...prev, [teacher.id]: next }));
-                        setPendingId(teacher.id);
-                        startTransition(async () => {
-                          try {
-                            const result = await onToggleStatus(teacher.id, next);
-                            if (!result.ok) {
-                              setStatusById((prev) => ({ ...prev, [teacher.id]: previous }));
-                              toast.error(result.message ?? "Update failed");
-                              return;
-                            }
-                            toast.success(
-                              `${teacher.name} is now ${TEACHER_STATUS_LABELS[next].toLowerCase()}`,
-                            );
-                            // Refresh in the background — don't block the switch on RSC.
-                            router.refresh();
-                          } catch {
-                            setStatusById((prev) => ({ ...prev, [teacher.id]: previous }));
-                            toast.error("Update failed");
-                          } finally {
-                            setPendingId(null);
-                          }
-                        });
-                      }}
-                    />
-                    <span
-                      className={cn(
-                        "rounded-full px-2 py-0.5 text-[11px] font-semibold",
-                        active
-                          ? "bg-emerald-50 text-emerald-800"
-                          : "bg-neutral-100 text-neutral-600",
-                      )}
-                    >
-                      {TEACHER_STATUS_LABELS[status]}
-                    </span>
-                  </div>
+                  <StatusSwitch
+                    teacher={teacher}
+                    status={teacher.status}
+                    onToggleStatus={onToggleStatus}
+                  />
                 </TableCell>
                 <TableCell className="pr-5 text-right">
                   <IconRowActions
@@ -206,8 +220,7 @@ export function TeachersTable({
                   />
                 </TableCell>
               </TableRow>
-            );
-          })}
+          ))}
         </TableBody>
       </Table>
       )}

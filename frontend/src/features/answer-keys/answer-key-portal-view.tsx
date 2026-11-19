@@ -6,11 +6,11 @@ import { cn } from "@/lib/utils";
 import type {
   AnswerKeyDetail,
   AnswerOption,
-  KeyAnswer,
   SubjectRange,
 } from "@/types/answer-key";
 import { isBonusKey, keyOptions } from "@/types/answer-key";
 import type { AnswerKeyObjection } from "@/types/answer-key-objection";
+import { AnswerKeyOptionsTable } from "./answer-key-options-table";
 import { objectionImageHref } from "./constants";
 import { ObjectionPhoto } from "./objection-photo";
 
@@ -20,7 +20,8 @@ type AnswerKeyPortalViewProps = {
   answerKey: AnswerKeyDetail;
   role: "school" | "teacher";
   objections: AnswerKeyObjection[];
-  onRaiseObjection: (questionNumber: number) => void;
+  /** Required when `allowObjections` is true (portal). Omit on the public site. */
+  onRaiseObjection?: (questionNumber: number) => void;
   /** Public site: answers only — no raise-objection controls. */
   allowObjections?: boolean;
 };
@@ -105,87 +106,6 @@ function QuestionObjectionCard({
   );
 }
 
-/** Rows per block — Q1–5 down the first column, Q6–10 down the next, like the OMR sheet. */
-const BLOCK_ROWS = 5;
-const MOBILE_COLUMNS = 3;
-const DESKTOP_COLUMNS = 5;
-
-/** Splits questions into blocks of `BLOCK_ROWS × columns`, each filled column by column. */
-function columnBlocks(questions: number[], columns: number) {
-  const size = BLOCK_ROWS * columns;
-  return Array.from({ length: Math.ceil(questions.length / size) }, (_, index) =>
-    questions.slice(index * size, (index + 1) * size),
-  );
-}
-
-function KeyBlocks({
-  questions,
-  answers,
-  columns,
-  className,
-}: {
-  questions: number[];
-  answers: Record<string, KeyAnswer>;
-  columns: number;
-  className?: string;
-}) {
-  return (
-    <div className={cn("space-y-3 p-3 sm:p-4", className)}>
-      {columnBlocks(questions, columns).map((block) => (
-        <div
-          key={block[0]}
-          className="grid grid-flow-col gap-1.5"
-          style={{
-            gridTemplateRows: `repeat(${BLOCK_ROWS}, auto)`,
-            gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-          }}
-        >
-          {block.map((question) => (
-            <KeyCell key={question} question={question} answer={answers[String(question)]} />
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function KeyCell({
-  question,
-  answer,
-}: {
-  question: number;
-  answer?: KeyAnswer;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-1.5 rounded-md border border-neutral-200 bg-white px-2 py-1.5">
-      <span className="text-xs font-bold text-neutral-700 tabular-nums">{question}</span>
-      <span className="text-sm font-bold text-neutral-950 tabular-nums">
-        {answer ?? <span className="text-amber-700">—</span>}
-      </span>
-    </div>
-  );
-}
-
-function AnswerKeyTable({
-  questions,
-  answers,
-}: {
-  questions: number[];
-  answers: Record<string, KeyAnswer>;
-}) {
-  return (
-    <section className="overflow-hidden rounded-xl border border-brand-200 bg-white shadow-[0_4px_16px_-8px_rgb(25_28_95/0.12)]">
-      <header className="border-b border-brand-100 bg-brand-50/60 px-3 py-2.5 sm:px-4">
-        <h2 className="text-sm font-bold text-brand-950">Answer key</h2>
-        <p className="text-xs text-neutral-500">{questions.length} questions · options only</p>
-      </header>
-
-      <KeyBlocks questions={questions} answers={answers} columns={MOBILE_COLUMNS} className="sm:hidden" />
-      <KeyBlocks questions={questions} answers={answers} columns={DESKTOP_COLUMNS} className="hidden sm:block" />
-    </section>
-  );
-}
-
 /** Read-only school/teacher display — not the admin edit form. */
 export function AnswerKeyPortalView({
   answerKey,
@@ -228,7 +148,7 @@ export function AnswerKeyPortalView({
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      <AnswerKeyTable questions={questions} answers={answerKey.answers} />
+      <AnswerKeyOptionsTable questions={questions} answers={answerKey.answers} />
 
       <div className="space-y-4 sm:space-y-5">
         <p className="text-sm font-bold text-neutral-900">
@@ -304,7 +224,7 @@ export function AnswerKeyPortalView({
                         <QuestionObjectionCard objection={objection} role={role} />
                       ) : null}
 
-                      {allowObjections ? (
+                      {allowObjections && onRaiseObjection ? (
                         <button
                           type="button"
                           onClick={() => onRaiseObjection(question)}

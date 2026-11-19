@@ -572,8 +572,10 @@ export async function renderRankCard(data: RankCardData, logos: RankCardLogos) {
 }
 
 /** One A4 page per card — slight inset so browser print margins don't spill onto a 2nd page. */
-export async function rankCardsPdf(cards: Buffer[]) {
+export async function rankCardsPdf(cards: Buffer[], title?: string) {
   const pdf = await PDFDocument.create();
+  if (title) pdf.setTitle(title);
+  pdf.setAuthor("Vitaran Learning");
   const pageW = 595.28;
   const pageH = 841.89;
   const inset = 8;

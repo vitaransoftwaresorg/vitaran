@@ -16,6 +16,7 @@ import {
   teacherEventsRouter,
 } from "./live.routes.js";
 import {
+  publicResultRouter,
   resultRouter,
   schoolResultRouter,
   teacherResultRouter,
@@ -52,6 +53,7 @@ apiRouter.use("/teachers", teacherRouter);
 apiRouter.use("/answer-keys", answerKeyRouter);
 apiRouter.use("/public/answer-keys", publicAnswerKeyRouter);
 apiRouter.use("/results", resultRouter);
+apiRouter.use("/public/results", publicResultRouter);
 apiRouter.use("/school/teachers", blockIfMaintenance, schoolTeacherRouter);
 apiRouter.use("/school/sections", blockIfMaintenance, schoolSectionRouter);
 apiRouter.use("/school/students", blockIfMaintenance, schoolStudentRouter);

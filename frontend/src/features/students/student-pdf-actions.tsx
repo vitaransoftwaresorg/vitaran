@@ -5,6 +5,7 @@ import { Download, Loader2, Printer } from "lucide-react";
 import { SharePdfButton } from "@/components/shared/share-pdf-button";
 import { printPdf } from "@/features/answer-keys/print-pdf";
 import { cn } from "@/lib/utils";
+import { downloadFileName } from "@/utils/download-file-name";
 import type { PerformancePortal } from "./performance-actions";
 
 const PROFILE_BASE: Record<PerformancePortal, string> = {
@@ -20,13 +21,34 @@ export const studentPdfHref = (portal: PerformancePortal, id: string, download =
 export function StudentPdfActions({
   portal,
   studentId,
+  studentName,
+  rollNo,
+  schoolName,
+  programName,
+  classLevel,
   outlineClassName,
 }: {
   portal: PerformancePortal;
   studentId: string;
+  studentName?: string;
+  rollNo?: string;
+  schoolName?: string;
+  programName?: string;
+  classLevel?: number;
   outlineClassName: string;
 }) {
   const [printing, setPrinting] = useState(false);
+  const fileName = downloadFileName(
+    [
+      "Student-Profile",
+      schoolName,
+      programName,
+      classLevel != null ? `Class-${classLevel}` : null,
+      studentName,
+      rollNo,
+    ],
+    "pdf",
+  );
 
   return (
     <>
@@ -36,19 +58,19 @@ export function StudentPdfActions({
         className={outlineClassName}
         onClick={() => {
           setPrinting(true);
-          printPdf(studentPdfHref(portal, studentId), () => setPrinting(false));
+          printPdf(studentPdfHref(portal, studentId), () => setPrinting(false), fileName);
         }}
       >
         {printing ? <Loader2 className="animate-spin" /> : <Printer />}
         Print
       </button>
-      <a href={studentPdfHref(portal, studentId, true)} className={outlineClassName}>
+      <a href={studentPdfHref(portal, studentId, true)} className={outlineClassName} download={fileName}>
         <Download />
         PDF
       </a>
       <SharePdfButton
         href={studentPdfHref(portal, studentId, true)}
-        fileName="student-profile.pdf"
+        fileName={fileName}
         title="student profile"
         preload
         className={outlineClassName}
@@ -70,16 +92,25 @@ export function ClassProfilesPdfActions({
   portal,
   studentIds,
   label = "profile cards",
+  scopeLabel,
+  schoolName,
   className,
 }: {
   portal: PerformancePortal;
   studentIds: string[];
   label?: string;
+  /** e.g. "Class 8-A" — used in the download filename. */
+  scopeLabel?: string;
+  schoolName?: string;
   className?: string;
 }) {
   const [printing, setPrinting] = useState(false);
   if (studentIds.length === 0) return null;
   const title = `${studentIds.length} student profile ${studentIds.length === 1 ? "card" : "cards"}`;
+  const fileName = downloadFileName(
+    ["Student-Profiles", schoolName, scopeLabel ?? label],
+    "pdf",
+  );
 
   return (
     <div className={cn("flex gap-2", className)}>
@@ -89,7 +120,7 @@ export function ClassProfilesPdfActions({
         disabled={printing}
         onClick={() => {
           setPrinting(true);
-          printPdf(classProfilesPdfHref(portal, studentIds), () => setPrinting(false));
+          printPdf(classProfilesPdfHref(portal, studentIds), () => setPrinting(false), fileName);
         }}
         className={cn(
           CLASS_BUTTON,
@@ -102,6 +133,7 @@ export function ClassProfilesPdfActions({
       <a
         href={classProfilesPdfHref(portal, studentIds, true)}
         title={`Download ${title}`}
+        download={fileName}
         className={cn(CLASS_BUTTON, "bg-brand-900 text-white hover:bg-brand-800 active:scale-[0.98]")}
       >
         <Download />
@@ -109,7 +141,7 @@ export function ClassProfilesPdfActions({
       </a>
       <SharePdfButton
         href={classProfilesPdfHref(portal, studentIds, true)}
-        fileName="student-profile-cards.pdf"
+        fileName={fileName}
         title={title}
         className={cn(
           CLASS_BUTTON,

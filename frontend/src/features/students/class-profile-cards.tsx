@@ -51,7 +51,12 @@ export function StudentsByClass({
                 {group.students.length === 1 ? "student" : "students"}
               </p>
             </div>
-            <ClassProfilesPdfActions portal={portal} studentIds={group.students.map((student) => student.id)} />
+            <ClassProfilesPdfActions
+              portal={portal}
+              studentIds={group.students.map((student) => student.id)}
+              scopeLabel={group.title}
+              schoolName={group.students[0]?.schoolName}
+            />
           </header>
           <StudentsTable students={group.students} mode={portal} />
         </section>

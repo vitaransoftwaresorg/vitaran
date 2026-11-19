@@ -16,6 +16,7 @@ export type AppSettingsDto = {
   maintenanceMode: boolean;
   teacherResourcesPublic: boolean;
   answerKeysPublic: boolean;
+  resultsPublic: boolean;
   vitaranEmails: string[];
   smeContacts: SmeContact[];
   updatedAt: string;
@@ -44,6 +45,7 @@ function toDto(row: NonNullable<Awaited<ReturnType<typeof settingsRepository.fin
     maintenanceMode: row.maintenanceMode,
     teacherResourcesPublic: row.teacherResourcesPublic,
     answerKeysPublic: row.answerKeysPublic,
+    resultsPublic: row.resultsPublic,
     vitaranEmails: row.vitaranEmails,
     smeContacts: asSmeContacts(row.smeContacts),
     updatedAt: row.updatedAt.toISOString(),
@@ -54,6 +56,7 @@ const EMPTY: AppSettingsDto = {
   maintenanceMode: false,
   teacherResourcesPublic: false,
   answerKeysPublic: false,
+  resultsPublic: false,
   vitaranEmails: [],
   smeContacts: [],
   updatedAt: new Date(0).toISOString(),
@@ -71,6 +74,7 @@ export async function getPublicSettings() {
     maintenanceMode: settings.maintenanceMode,
     teacherResourcesPublic: settings.teacherResourcesPublic,
     answerKeysPublic: settings.answerKeysPublic,
+    resultsPublic: settings.resultsPublic,
   };
 }
 
@@ -110,6 +114,7 @@ export async function updateAppSettings(input: UpdateAppSettingsInput) {
     maintenanceMode: input.maintenanceMode,
     teacherResourcesPublic: input.teacherResourcesPublic,
     answerKeysPublic: input.answerKeysPublic,
+    resultsPublic: input.resultsPublic,
     vitaranEmails: input.vitaranEmails,
     smeContacts: input.smeContacts.map((row) => ({
       name: row.name.trim(),
@@ -117,9 +122,18 @@ export async function updateAppSettings(input: UpdateAppSettingsInput) {
       email: row.email.trim().toLowerCase(),
     })) as Prisma.InputJsonValue,
   });
-  // Every portal shows the maintenance banner, so everyone hears it.
-  notifyContentChanged({ kind: "settings", schoolId: null });
   const after = toDto(row);
+  // Snapshot so school/teacher portals flip maintenance / public toggles without refresh.
+  notifyContentChanged({
+    kind: "settings",
+    schoolId: null,
+    settings: {
+      maintenanceMode: after.maintenanceMode,
+      teacherResourcesPublic: after.teacherResourcesPublic,
+      answerKeysPublic: after.answerKeysPublic,
+      resultsPublic: after.resultsPublic,
+    },
+  });
   void sendOnboardingEmails(after).catch((error) =>
     logger.error({ err: error }, "Failed to send objection onboarding emails"),
   );

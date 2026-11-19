@@ -21,8 +21,10 @@ export default async function ResultPage({ params, searchParams }: PageProps<"/a
     : [null, []];
   if (!resultSet || !sheet) notFound();
 
+  // Layout LiveRefresh keeps this page in sync across admin / school / teacher.
   return (
     <ResultSetView
+      key={`${resultSet.id}:${sheet.classLevel}:${scans.length}`}
       resultSet={resultSet}
       sheet={sheet}
       scans={scans}

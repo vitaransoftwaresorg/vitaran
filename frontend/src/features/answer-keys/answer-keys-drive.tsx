@@ -21,9 +21,9 @@ import { createAnswerKeyAction, deleteAnswerKeyAction } from "./actions";
 import { enteredTestId } from "./test-id";
 import { ANSWER_KEY_NOUN, ANSWER_KEYS_PATH } from "./constants";
 import {
-  ANSWER_KEYS_FOLDER_STORAGE,
   DRIVE_TESTS,
   answerKeysFolderHref,
+  writeAnswerKeysFolderTrail,
   type DrivePath,
   type DriveSchool,
 } from "./drive-path";
@@ -72,17 +72,6 @@ export function AnswerKeysDrive({
   const link = (next: DrivePath) => answerKeysFolderHref(next, programs);
   const drivePath: DrivePath = { ...path, schoolId };
 
-  useEffect(() => {
-    try {
-      window.sessionStorage.setItem(
-        ANSWER_KEYS_FOLDER_STORAGE,
-        `${window.location.pathname}${window.location.search}`,
-      );
-    } catch {
-      // ignore
-    }
-  }, [path]);
-
   const currentSchool =
     schools.find((school) => school.id === schoolId) ??
     items.find((item) => item.school?.id === schoolId)?.school;
@@ -124,6 +113,12 @@ export function AnswerKeysDrive({
       href: link({ program: path.program, schoolId, testNumber: path.testNumber }),
     });
   }
+
+  useEffect(() => {
+    writeAnswerKeysFolderTrail(`${window.location.pathname}${window.location.search}`, breadcrumbs.slice(1));
+    // path/schoolId drive the breadcrumb contents for this folder.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, schoolId]);
 
   const atRoot = !path.program && !path.schoolId;
   const inCustomSchools = Boolean(customProgram && path.program && !schoolId);

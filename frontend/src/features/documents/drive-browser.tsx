@@ -4,13 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  ChevronRight,
   Download,
   Eye,
   FileSpreadsheet,
   FileText,
-  LayoutGrid,
-  List,
   MoreVertical,
   Pencil,
   Plus,
@@ -18,6 +15,8 @@ import {
   Search,
   Upload,
 } from "lucide-react";
+import { toast } from "sonner";
+import { useSetDrivePathCrumbs } from "@/components/layout/drive-path-context";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -31,8 +30,6 @@ import { cn } from "@/lib/utils";
 import type { DeleteResult } from "@/types/document";
 import { DeleteDocumentButton } from "./delete-document-button";
 import { PublishSwitch } from "./publish-switch";
-
-const VIEW_KEY = "vitaran:drive-view";
 
 export type DriveCrumb = { label: string; href: string };
 
@@ -67,6 +64,8 @@ export type DriveItem = {
   testId?: string;
   onTestIdChange?: (testId: string) => void;
   onSaveTestId?: (testId: string) => void | Promise<void>;
+  /** Shown when the row is clicked but has no href (e.g. Not Published). */
+  blockedMessage?: string;
 };
 
 type DriveBrowserProps = {
@@ -96,14 +95,6 @@ function matchesDriveQuery(item: DriveItem, needle: string) {
   );
 }
 
-function readView(): "list" | "grid" {
-  try {
-    return window.localStorage.getItem(VIEW_KEY) === "grid" ? "grid" : "list";
-  } catch {
-    return "list";
-  }
-}
-
 export function DriveBrowser({
   breadcrumbs,
   items,
@@ -114,31 +105,39 @@ export function DriveBrowser({
 }: DriveBrowserProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [view, setView] = useState<"list" | "grid">("list");
+  /** Local publish flags so toggling one row doesn't require a page refresh. */
+  const [publishedById, setPublishedById] = useState<Record<string, boolean>>({});
+
+  const withPublish = (rows: DriveItem[]) =>
+    rows.map((item) => {
+      if (!item.onPublish) return item;
+      const published = publishedById[item.id] ?? item.published ?? false;
+      return {
+        ...item,
+        published,
+        detail: item.detail?.replace(/\b(Published|Hidden)\b/g, published ? "Published" : "Hidden"),
+        onPublish: async (next: boolean) => {
+          const result = await item.onPublish!(next);
+          if (result.ok) setPublishedById((prev) => ({ ...prev, [item.id]: next }));
+          return result;
+        },
+      };
+    });
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const pool = needle ? dedupeDriveItems([...items, ...(searchItems ?? [])]) : items;
+    const pool = withPublish(
+      needle ? dedupeDriveItems([...items, ...(searchItems ?? [])]) : items,
+    );
     if (!needle) return pool;
     return pool.filter((item) => matchesDriveQuery(item, needle));
-  }, [items, searchItems, query]);
+    // publishedById is applied inside withPublish
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, searchItems, query, publishedById]);
 
   const showTestId = filtered.some(
     (item) => item.testId !== undefined || item.onSaveTestId || item.onTestIdChange,
   );
-
-  useEffect(() => {
-    setView(showTestId ? "list" : readView());
-  }, [showTestId]);
-
-  const setViewMode = (next: "list" | "grid") => {
-    setView(next);
-    try {
-      window.localStorage.setItem(VIEW_KEY, next);
-    } catch {
-      // ignore
-    }
-  };
 
   const open = (item: DriveItem) => {
     if (item.kind === "empty") {
@@ -148,64 +147,39 @@ export function DriveBrowser({
     if (item.href) router.push(item.href);
   };
 
+  // Folder path lives in the top navbar only — never a second crumb row on the table.
+  const setDrivePath = useSetDrivePathCrumbs();
+  const folderCrumbsKey = breadcrumbs
+    .slice(1)
+    .map((crumb) => `${crumb.href}\0${crumb.label}`)
+    .join("\n");
+  const folderCrumbs = useMemo(() => {
+    // Drop the section root (Answer keys / Results / …) — already in route breadcrumbs.
+    return breadcrumbs.length > 1 ? breadcrumbs.slice(1) : [];
+    // Keyed by serialized path so parent re-renders don't wipe the trail.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [folderCrumbsKey]);
+
+  useEffect(() => {
+    if (!setDrivePath) return;
+    setDrivePath(folderCrumbs);
+  }, [folderCrumbs, setDrivePath]);
+
   return (
     <section className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
-      <div className="flex flex-wrap items-center gap-3 border-b border-neutral-200 px-3 py-2.5 sm:px-4">
-        <nav aria-label="Folder path" className="min-w-0 flex-1">
-          <ol className="flex flex-wrap items-center gap-0.5 text-sm">
-            {breadcrumbs.map((crumb, index) => {
-              const last = index === breadcrumbs.length - 1;
-              return (
-                <li key={`${crumb.href}-${crumb.label}`} className="flex min-w-0 items-center gap-0.5">
-                  {index > 0 ? (
-                    <ChevronRight className="size-3.5 shrink-0 text-neutral-400" />
-                  ) : null}
-                  {last ? (
-                    <span className="truncate font-medium text-neutral-950">{crumb.label}</span>
-                  ) : (
-                    <Link
-                      href={crumb.href}
-                      className="truncate rounded-md px-1.5 py-0.5 text-neutral-600 hover:bg-neutral-100 hover:text-neutral-950"
-                    >
-                      {crumb.label}
-                    </Link>
-                  )}
-                </li>
-              );
-            })}
-          </ol>
-        </nav>
-
-        <div className="flex items-center gap-1.5">
+      <div className="flex flex-wrap items-center justify-end gap-3 border-b border-neutral-200 px-3 py-2.5 sm:px-4">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:flex-none sm:justify-end">
           {headerAction}
-          <label className="relative hidden sm:block">
+          <label className="relative hidden min-w-0 flex-1 sm:block sm:flex-none">
             <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-neutral-400" />
             <Input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder={searchPlaceholder}
               aria-label={searchPlaceholder}
-              className="h-8 w-56 rounded-full border-neutral-200 bg-neutral-50 pr-3 pl-8 text-sm shadow-none"
+              className="h-8 w-full rounded-full border-neutral-200 bg-neutral-50 pr-3 pl-8 text-sm shadow-none sm:w-56"
             />
           </label>
-          <Button
-            type="button"
-            variant={view === "list" ? "secondary" : "ghost"}
-            size="icon-sm"
-            aria-label="List view"
-            onClick={() => setViewMode("list")}
-          >
-            <List />
-          </Button>
-          <Button
-            type="button"
-            variant={view === "grid" ? "secondary" : "ghost"}
-            size="icon-sm"
-            aria-label="Grid view"
-            onClick={() => setViewMode("grid")}
-          >
-            <LayoutGrid />
-          </Button>
         </div>
       </div>
 
@@ -227,7 +201,7 @@ export function DriveBrowser({
         <p className="px-6 py-16 text-center text-sm text-neutral-500">
           {items.length === 0 ? emptyText : "No matches in this folder"}
         </p>
-      ) : view === "list" ? (
+      ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -240,11 +214,22 @@ export function DriveBrowser({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((item) => (
+              {filtered.map((item) => {
+                const canOpen = Boolean(item.href) || item.kind === "folder" || item.kind === "empty";
+                const canAlert = Boolean(item.blockedMessage);
+                return (
                 <tr
                   key={item.id}
-                  className="group cursor-pointer border-b border-neutral-100 last:border-0 hover:bg-[#e8f0fe]"
-                  onClick={() => open(item)}
+                  className={cn(
+                    "group border-b border-neutral-100 last:border-0",
+                    canOpen || canAlert
+                      ? "cursor-pointer hover:bg-[#e8f0fe]"
+                      : "cursor-default opacity-90",
+                  )}
+                  onClick={() => {
+                    if (canOpen) open(item);
+                    else if (item.blockedMessage) toast.message(item.blockedMessage);
+                  }}
                 >
                   <td className="px-4 py-2">
                     <RowOpen item={item} onOpen={() => open(item)}>
@@ -270,38 +255,10 @@ export function DriveBrowser({
                     <RowActions item={item} />
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-          {filtered.map((item) => (
-            <div
-              key={item.id}
-              className="group relative flex flex-col items-start gap-2 rounded-xl border border-transparent p-3 text-left hover:border-neutral-200 hover:bg-[#e8f0fe]"
-            >
-              <RowOpen item={item} onOpen={() => open(item)} className="flex w-full items-start gap-2 text-left">
-                <ItemIcon item={item} large />
-                <span className="min-w-0 flex-1 pr-8">
-                  <span className="block truncate text-sm font-medium text-neutral-900">{item.name}</span>
-                  {item.detail ? (
-                    <span className="mt-0.5 block truncate text-xs text-neutral-500">{item.detail}</span>
-                  ) : null}
-                  {showTestId ? (
-                    <span className="mt-1.5 block" onClick={(event) => event.stopPropagation()}>
-                      <TestIdCell item={item} />
-                    </span>
-                  ) : null}
-                </span>
-              </RowOpen>
-              {item.kind !== "folder" ? (
-                <div className="absolute top-2 right-2 z-10">
-                  <RowActions item={item} />
-                </div>
-              ) : null}
-            </div>
-          ))}
         </div>
       )}
     </section>
@@ -387,31 +344,48 @@ function RowOpen({
     );
   }
 
-  return (
-    <button
-      type="button"
-      onClick={(event) => {
-        event.stopPropagation();
-        onOpen();
-      }}
-      className={cn("min-w-0 text-left", className)}
-    >
-      {children}
-    </button>
-  );
+  if (item.kind === "folder" || item.kind === "empty") {
+    return (
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          onOpen();
+        }}
+        className={cn("min-w-0 text-left", className)}
+      >
+        {children}
+      </button>
+    );
+  }
+
+  if (item.blockedMessage) {
+    return (
+      <button
+        type="button"
+        onClick={(event) => {
+          event.stopPropagation();
+          toast.message(item.blockedMessage);
+        }}
+        className={cn("min-w-0 text-left", className)}
+      >
+        {children}
+      </button>
+    );
+  }
+
+  // File listed without a link — not openable.
+  return <div className={cn("min-w-0", className)}>{children}</div>;
 }
 
-function ItemIcon({ item, large }: { item: DriveItem; large?: boolean }) {
-  const box = large ? "size-10" : "size-7";
-  const glyph = large ? "size-8" : "size-6";
-
+function ItemIcon({ item }: { item: DriveItem }) {
   if (item.kind === "folder") {
-    return <FolderGlyph className={glyph} />;
+    return <FolderGlyph className="size-6" />;
   }
 
   if (item.kind === "empty") {
     return (
-      <span className={cn("flex items-center justify-center rounded-lg bg-neutral-100 text-neutral-500", box)}>
+      <span className="flex size-7 items-center justify-center rounded-lg bg-neutral-100 text-neutral-500">
         {item.createLabel?.toLowerCase().includes("upload") ? (
           <Upload className="size-4" />
         ) : (
@@ -423,14 +397,14 @@ function ItemIcon({ item, large }: { item: DriveItem; large?: boolean }) {
 
   if (item.fileKind === "sheet") {
     return (
-      <span className={cn("flex items-center justify-center rounded-lg bg-emerald-50 text-emerald-700", box)}>
+      <span className="flex size-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
         <FileSpreadsheet className="size-4" />
       </span>
     );
   }
 
   return (
-    <span className={cn("flex items-center justify-center rounded-lg bg-blue-50 text-blue-700", box)}>
+    <span className="flex size-7 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
       <FileText className="size-4" />
     </span>
   );
@@ -487,6 +461,7 @@ function RowActions({ item }: { item: DriveItem }) {
       {item.onPublish ? (
         <span className="hidden lg:inline-flex">
           <PublishSwitch
+            key={`${item.id}:publish`}
             published={item.published ?? false}
             label={item.publishLabel ?? item.name}
             onToggle={item.onPublish}

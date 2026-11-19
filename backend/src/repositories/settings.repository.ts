@@ -37,6 +37,7 @@ export function upsertSettings(data: {
   maintenanceMode: boolean;
   teacherResourcesPublic: boolean;
   answerKeysPublic: boolean;
+  resultsPublic: boolean;
   vitaranEmails: string[];
   smeContacts: Prisma.InputJsonValue;
 }) {
@@ -47,6 +48,7 @@ export function upsertSettings(data: {
       maintenanceMode: data.maintenanceMode,
       teacherResourcesPublic: data.teacherResourcesPublic,
       answerKeysPublic: data.answerKeysPublic,
+      resultsPublic: data.resultsPublic,
       vitaranEmails: data.vitaranEmails,
       smeContacts: data.smeContacts,
     },
@@ -54,6 +56,7 @@ export function upsertSettings(data: {
       maintenanceMode: data.maintenanceMode,
       teacherResourcesPublic: data.teacherResourcesPublic,
       answerKeysPublic: data.answerKeysPublic,
+      resultsPublic: data.resultsPublic,
       vitaranEmails: data.vitaranEmails,
       smeContacts: data.smeContacts,
     },

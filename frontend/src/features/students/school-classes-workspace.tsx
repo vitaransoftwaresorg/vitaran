@@ -222,6 +222,8 @@ export function SchoolClassesWorkspace({
               <ClassProfilesPdfActions
                 portal="school"
                 studentIds={rosterStudents.map((student) => student.id)}
+                scopeLabel={title}
+                schoolName={rosterStudents[0]?.schoolName}
               />
               {full ? (
                 <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">

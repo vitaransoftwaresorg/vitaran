@@ -9,6 +9,9 @@ export const SCHOOL_RESULTS_PATH = "/school/results";
 /** Teacher portal results. */
 export const TEACHER_RESULTS_PATH = "/teacher/results";
 
+/** Public site results (when admin sets Results → Public). */
+export const PUBLIC_RESULTS_PATH = "/results";
+
 /** Class student table for manual marks. */
 export const resultEnterHref = (params: {
   schoolId: string;
@@ -26,8 +29,18 @@ export const resultEnterHref = (params: {
 };
 
 /** `basePath` is `/admin/results` or `/results`. */
-export const resultSetHref = (basePath: string, id: string, classLevel?: number) =>
-  classLevel ? `${basePath}/${id}?class=${classLevel}` : `${basePath}/${id}`;
+export const resultSetHref = (
+  basePath: string,
+  id: string,
+  classLevel?: number,
+  schoolCode?: string,
+) => {
+  const query = new URLSearchParams();
+  if (classLevel != null) query.set("class", String(classLevel));
+  if (schoolCode?.trim()) query.set("school", schoolCode.trim());
+  const suffix = query.size ? `?${query}` : "";
+  return `${basePath}/${id}${suffix}`;
+};
 export const resultSheetDownloadHref = (basePath: string, id: string, classLevel: number) =>
   `${basePath}/${id}/classes/${classLevel}/file`;
 

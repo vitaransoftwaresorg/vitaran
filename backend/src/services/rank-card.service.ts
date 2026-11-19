@@ -3,6 +3,7 @@ import * as programRepository from "../repositories/program.repository.js";
 import * as schoolRepository from "../repositories/school.repository.js";
 import type { ResultSheetParams } from "../schemas/result.schema.js";
 import { AppError } from "../utils/app-error.js";
+import { downloadFileName } from "../utils/download-file-name.js";
 import type { CellValue } from "../utils/excel.js";
 import {
   columnRole,
@@ -22,7 +23,6 @@ import type { SchoolAccountDto } from "./school.service.js";
 type OmrSubjects = Map<number, { right: number; wrong: number; blank: number }>;
 
 const cellText = (value: CellValue | undefined) => (value == null ? "" : String(value).trim());
-const safeName = (value: string) => value.replace(/[^A-Za-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "") || "rank-card";
 
 /** Saved OMR right / wrong / blank counts per subject column, keyed by roll number. */
 async function omrCounts(
@@ -137,15 +137,44 @@ export async function getRankCards(
   if (!picked.length) {
     throw new AppError(404, options.roll ? "No result saved for this student yet" : "No results saved for this class yet");
   }
-  const base = options.roll
-    ? `${picked[0]!.student.rollNo}-${picked[0]!.student.name}-Test-${resultSet.testNumber}-rank-card`
-    : `Class-${params.classLevel}-Test-${resultSet.testNumber}-rank-cards`;
+  const schoolName = picked[0]!.schoolName;
+  const programName = picked[0]!.programName;
+  const testId = picked[0]!.testId;
+  const fileName = options.roll
+    ? downloadFileName(
+        [
+          "Rank-Card",
+          schoolName,
+          programName,
+          `Class-${params.classLevel}`,
+          `Test-${resultSet.testNumber}`,
+          testId,
+          picked[0]!.student.name,
+          picked[0]!.student.rollNo,
+        ],
+        options.format === "jpg" ? "jpg" : "pdf",
+      )
+    : downloadFileName(
+        [
+          "Rank-Cards",
+          schoolName,
+          programName,
+          `Class-${params.classLevel}`,
+          `Test-${resultSet.testNumber}`,
+          testId,
+        ],
+        "pdf",
+      );
   if (options.format === "jpg") {
-    return { data: await renderRankCard(picked[0]!, logos), fileName: `${safeName(base)}.jpg`, type: "image/jpeg" };
+    return { data: await renderRankCard(picked[0]!, logos), fileName, type: "image/jpeg" };
   }
   const images: Buffer[] = [];
   for (const card of picked) images.push(await renderRankCard(card, logos));
-  return { data: await rankCardsPdf(images), fileName: `${safeName(base)}.pdf`, type: "application/pdf" };
+  return {
+    data: await rankCardsPdf(images, fileName.replace(/\.pdf$/i, "")),
+    fileName,
+    type: "application/pdf",
+  };
 }
 
 /** The class result in rank order as one printable PDF, for the school notice board. */
@@ -178,7 +207,17 @@ export async function getClassResultPdf(params: ResultSheetParams, viewer?: View
   );
   return {
     data,
-    fileName: `${safeName(`${first.schoolName}-Class-${params.classLevel}-Test-${resultSet.testNumber}-results`)}.pdf`,
+    fileName: downloadFileName(
+      [
+        "Results",
+        first.schoolName,
+        first.programName,
+        `Class-${params.classLevel}`,
+        `Test-${resultSet.testNumber}`,
+        first.testId,
+      ],
+      "pdf",
+    ),
     type: "application/pdf",
   };
 }

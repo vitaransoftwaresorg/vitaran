@@ -17,7 +17,15 @@ export const resultSetSummarySelect = {
   updatedAt: true,
   school: { select: { id: true, name: true, code: true, type: true } },
   sheets: {
-    select: { classLevel: true, rowCount: true, fileName: true, fileSize: true, updatedAt: true },
+    select: {
+      classLevel: true,
+      rowCount: true,
+      fileName: true,
+      fileSize: true,
+      published: true,
+      publishedAt: true,
+      updatedAt: true,
+    },
     orderBy: { classLevel: "asc" },
   },
 } satisfies Prisma.ResultSetSelect;
@@ -67,9 +75,70 @@ export function findResultSets(where: Prisma.ResultSetWhereInput, limit?: number
 export async function setResultSetPublished(id: string, published: boolean) {
   const current = await prisma.resultSet.findUnique({ where: { id }, select: { updatedAt: true } });
   if (!current) return null;
+  const publishedAt = published ? new Date() : null;
+  // updateMany would bump each sheet's @updatedAt — preserve them like answer-key publish.
+  const sheets = await prisma.resultSheet.findMany({
+    where: { resultSetId: id },
+    select: { id: true, updatedAt: true },
+  });
+  await Promise.all(
+    sheets.map((sheet) =>
+      prisma.resultSheet.update({
+        where: { id: sheet.id },
+        data: { published, publishedAt, updatedAt: sheet.updatedAt },
+      }),
+    ),
+  );
   return prisma.resultSet.update({
     where: { id },
-    data: { published, publishedAt: published ? new Date() : null, updatedAt: current.updatedAt },
+    data: { published, publishedAt, updatedAt: current.updatedAt },
+    select: resultSetSummarySelect,
+  });
+}
+
+/**
+ * Publish / hide one class sheet. Syncs the parent set's `published` flag so
+ * school list filters (set-level) stay correct when any class is live.
+ */
+export async function setResultSheetPublished(resultSetId: string, classLevel: number, published: boolean) {
+  const sheet = await prisma.resultSheet.findUnique({
+    where: { resultSetId_classLevel: { resultSetId, classLevel } },
+    select: {
+      id: true,
+      updatedAt: true,
+      resultSet: { select: { published: true, publishedAt: true, updatedAt: true } },
+    },
+  });
+  if (!sheet) return null;
+
+  const sheetPublishedAt = published ? new Date() : null;
+  // Publishing isn't an edit — keep updatedAt so keyed result tables don't remount/blink.
+  await prisma.resultSheet.update({
+    where: { id: sheet.id },
+    data: { published, publishedAt: sheetPublishedAt, updatedAt: sheet.updatedAt },
+  });
+
+  const anyPublished = published
+    ? true
+    : Boolean(
+        await prisma.resultSheet.findFirst({
+          where: { resultSetId, published: true },
+          select: { id: true },
+        }),
+      );
+
+  const set = sheet.resultSet;
+  return prisma.resultSet.update({
+    where: { id: resultSetId },
+    data: {
+      published: anyPublished,
+      publishedAt: anyPublished
+        ? set.published && set.publishedAt
+          ? set.publishedAt
+          : sheetPublishedAt ?? new Date()
+        : null,
+      updatedAt: set.updatedAt,
+    },
     select: resultSetSummarySelect,
   });
 }
@@ -92,6 +161,8 @@ export function findResultSheet(where: Prisma.ResultSheetWhereInput) {
       rowCount: true,
       fileName: true,
       fileSize: true,
+      published: true,
+      publishedAt: true,
       updatedAt: true,
       rows: { select: { values: true }, orderBy: { position: "asc" } },
     },

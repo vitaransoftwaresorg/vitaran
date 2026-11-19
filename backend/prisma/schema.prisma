@@ -449,6 +449,9 @@ model ResultSheet {
   fileSize    Int         @map("file_size")
   /// Original .xlsx bytes for download; never selected in list queries.
   data        Bytes
+  /// Schools only see this class once published (set-level `published` is derived from sheets).
+  published   Boolean     @default(false)
+  publishedAt DateTime?   @map("published_at") @db.Timestamptz(3)
   createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
   rows        ResultRow[]
@@ -483,6 +486,8 @@ model AppSettings {
   teacherResourcesPublic Boolean @default(false) @map("teacher_resources_public")
   /// When true, published regular answer keys are public on /answer-keys (no login).
   answerKeysPublic Boolean @default(false) @map("answer_keys_public")
+  /// When true, published results are public on /results (no login).
+  resultsPublic Boolean @default(false) @map("results_public")
   /// Inboxes for every answer-key objection.
   vitaranEmails    String[] @default([]) @map("vitaran_emails") @db.VarChar(254)
   /// SME contacts: [{ "name": "…", "subject": "MATHEMATICS", "email": "…" }]

@@ -18,7 +18,7 @@ export type PdfDocument = {
   answerCount?: number;
 };
 
-/** Schools only see what the admin has published. */
+/** Publish flag — portals still list unpublished items as "Not Published". */
 export type Publishable = {
   published: boolean;
   publishedAt: string | null;

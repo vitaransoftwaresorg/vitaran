@@ -34,6 +34,14 @@ export const listResultSetsQuerySchema = z.object({
   schoolId: z.uuid().optional(),
 });
 
+/** Public results: guests enter the school's ID (code), e.g. 1018. */
+export const listPublicResultSetsQuerySchema = z.object({
+  school: z.preprocess(
+    emptyToUndefined,
+    z.string().trim().min(1, "Enter the school ID").max(64).optional(),
+  ),
+});
+
 export const resultSetIdParamsSchema = z.object({
   id: z.uuid(),
 });

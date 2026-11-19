@@ -410,56 +410,75 @@ function AnswerGrid({
   const showPartial = keyHasMultiCorrect(keyAnswers);
   const onPaper = (question: number) =>
     ranges.length === 0 || ranges.some((range) => question >= range.from && question <= range.to);
-  const cells = Array.from({ length: 20 }, (_, row) =>
-    Array.from({ length: 5 }, (_, col) => col * 20 + row + 1),
-  ).flat();
+  /** Same 9-column integrated table as portal answer keys (column-major). */
+  const columns = 9;
+  const questions = Array.from({ length: 100 }, (_, index) => index + 1).filter(onPaper);
+  const rows = Math.max(1, Math.ceil(Math.max(questions.length, 1) / columns));
+  const cellAt = (row: number, col: number) => {
+    const index = col * rows + row;
+    if (index >= questions.length) return null;
+    return questions[index]!;
+  };
   return (
-    <div className="rounded-xl border border-neutral-200 p-3">
-      <p className="mb-1 text-xs font-semibold tracking-wider text-neutral-500 uppercase">Read vs answer key</p>
-      <p className="mb-2 text-[10px] text-neutral-500">
-        {showPartial
-          ? "Same 5 columns as the sheet. Green = correct, yellow = partial, red = wrong, amber = blank. Multi-correct keys split marks equally per option; wrong options add 0."
-          : "Same 5 columns as the sheet. Green = correct, red = wrong, amber = blank."}
-      </p>
-      <div className="mb-1 grid grid-cols-5 gap-x-2 text-[10px] font-semibold tracking-wider text-neutral-400 uppercase">
-        <span>1–20</span>
-        <span>21–40</span>
-        <span>41–60</span>
-        <span>61–80</span>
-        <span>81–100</span>
+    <div className="overflow-hidden rounded-xl border border-brand-200 bg-white">
+      <header className="border-b border-brand-100 bg-brand-50/60 px-3 py-2.5">
+        <p className="text-sm font-bold text-brand-950">Read vs answer key</p>
+        <p className="text-xs text-neutral-500">
+          {showPartial
+            ? "Green = correct, yellow = partial, red = wrong, amber = blank. Multi-correct keys split marks equally per option."
+            : "Green = correct, red = wrong, amber = blank."}
+        </p>
+      </header>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[36rem] border-collapse text-sm">
+          <tbody>
+            {Array.from({ length: rows }, (_, row) => (
+              <tr key={row}>
+                {Array.from({ length: columns }, (_, col) => {
+                  const question = cellAt(row, col);
+                  if (question == null) {
+                    return (
+                      <td key={col} className="border border-neutral-300 px-2 py-1.5" />
+                    );
+                  }
+                  const marked = answers[String(question)] ?? [];
+                  const expected = keyAnswers?.[String(question)];
+                  const tone = answerTone(marked, expected);
+                  const toneClass =
+                    tone === "correct"
+                      ? "text-emerald-800"
+                      : tone === "partial"
+                        ? "text-yellow-700"
+                        : tone === "wrong"
+                          ? "text-red-800"
+                          : tone === "blank"
+                            ? "text-amber-800"
+                            : "text-neutral-900";
+                  return (
+                    <td
+                      key={col}
+                      className={cn(
+                        "border border-neutral-300 px-2 py-1.5 text-center align-middle tabular-nums",
+                        toneClass,
+                      )}
+                    >
+                      <span className="inline-flex items-baseline justify-center gap-1.5">
+                        <span className="text-xs font-semibold opacity-70">{question}</span>
+                        <span className="text-sm font-bold">
+                          {tone === "blank" ? "—" : marked.join("")}
+                        </span>
+                        {(tone === "wrong" || tone === "partial") && expected ? (
+                          <span className="text-[10px] font-semibold text-neutral-400">{expected}</span>
+                        ) : null}
+                      </span>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-      <ol className="grid grid-cols-5 gap-x-2 gap-y-1 font-mono text-xs">
-        {cells.map((question) => {
-          if (!onPaper(question)) {
-            return (
-              <li key={question} className="text-neutral-300" title="Not part of this test">
-                {question}. ·
-              </li>
-            );
-          }
-          const marked = answers[String(question)] ?? [];
-          const expected = keyAnswers?.[String(question)];
-          const tone = answerTone(marked, expected);
-          const toneClass =
-            tone === "correct"
-              ? "text-emerald-800"
-              : tone === "partial"
-                ? "text-yellow-700"
-                : tone === "wrong"
-                  ? "text-red-800"
-                  : tone === "blank"
-                    ? "text-amber-800"
-                    : "text-neutral-900";
-          return (
-            <li key={question} className={toneClass}>
-              {question}. {tone === "blank" ? "—" : marked.join("")}
-              {(tone === "wrong" || tone === "partial") && expected ? (
-                <span className="text-[10px] text-neutral-400"> {expected}</span>
-              ) : null}
-            </li>
-          );
-        })}
-      </ol>
     </div>
   );
 }

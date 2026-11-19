@@ -9,11 +9,23 @@ const EMPTY: PublicSettings = {
   maintenanceMode: false,
   teacherResourcesPublic: false,
   answerKeysPublic: false,
+  resultsPublic: false,
 };
 
+function isPublicSettings(value: unknown): value is PublicSettings {
+  if (!value || typeof value !== "object") return false;
+  const row = value as Record<string, unknown>;
+  return (
+    typeof row.maintenanceMode === "boolean" &&
+    typeof row.teacherResourcesPublic === "boolean" &&
+    typeof row.answerKeysPublic === "boolean" &&
+    typeof row.resultsPublic === "boolean"
+  );
+}
+
 /**
- * Public settings for the marketing site.
- * Reloads immediately when admin saves (via /public-live settings events).
+ * Public settings for the marketing site and portal gates.
+ * Applies the SSE settings snapshot immediately, then reloads for a full sync.
  */
 export function usePublicSettings() {
   const [settings, setSettings] = useState<PublicSettings>(EMPTY);
@@ -34,7 +46,19 @@ export function usePublicSettings() {
     reload();
   }, [reload]);
 
-  useLiveContent("settings", reload, "/public-live", 150);
+  useLiveContent(
+    "settings",
+    (payload) => {
+      if (isPublicSettings(payload?.settings)) {
+        setSettings(payload.settings);
+        setReady(true);
+      }
+      reload();
+    },
+    "/public-live",
+    0,
+    { ignoreSilence: true },
+  );
 
   return { settings, ready, reload };
 }

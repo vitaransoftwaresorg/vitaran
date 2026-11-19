@@ -36,12 +36,14 @@ function streamContentEvents(
   write(`: connected\n\n`);
   write(`retry: ${RETRY_MS}\n\n`);
 
-  const unsubscribe = onContentChanged(({ kind, schoolId: targetSchoolId, adminOnly }) => {
+  const unsubscribe = onContentChanged(({ kind, schoolId: targetSchoolId, adminOnly, settings }) => {
     // Admin (`schoolId === null` listener) receives everything.
     // School/teacher only get their school or broadcast (`targetSchoolId === null`).
     if (schoolId && adminOnly) return;
     if (schoolId && targetSchoolId && targetSchoolId !== schoolId) return;
-    write(`event: change\ndata: ${JSON.stringify({ kind, schoolId: targetSchoolId })}\n\n`);
+    write(
+      `event: change\ndata: ${JSON.stringify({ kind, schoolId: targetSchoolId, settings })}\n\n`,
+    );
   });
 
   const heartbeat = setInterval(() => {
@@ -107,9 +109,9 @@ export const streamPublicEvents: RequestHandler = (req, res) => {
   write(`: connected\n\n`);
   write(`retry: ${RETRY_MS}\n\n`);
 
-  const unsubscribe = onContentChanged(({ kind }) => {
+  const unsubscribe = onContentChanged(({ kind, settings }) => {
     if (kind !== "settings") return;
-    write(`event: change\ndata: ${JSON.stringify({ kind })}\n\n`);
+    write(`event: change\ndata: ${JSON.stringify({ kind, settings })}\n\n`);
   });
 
   const heartbeat = setInterval(() => {

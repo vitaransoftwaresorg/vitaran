@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -9,9 +10,9 @@ import {
   type FocusEvent,
 } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { ChevronRight, Loader2, Save } from "lucide-react";
+import { Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
+import { useSetDrivePathCrumbs } from "@/components/layout/drive-path-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -25,7 +26,6 @@ import {
 import { matchesSearch, TableSearch } from "@/components/shared/table-search";
 import type { DriveCrumb } from "@/features/documents/drive-browser";
 import { ProfileLink, studentProfileHref } from "@/components/shared/profile-link";
-import { programLabel } from "@/features/schools/constants";
 import { cn } from "@/lib/utils";
 import type { LearningProgram } from "@/types/program";
 import type { ResultCell, ResultSet, ResultSheet } from "@/types/result";
@@ -205,6 +205,11 @@ export function ClassResultsBoard({
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
 
+  // When another device saves an OMR, LiveRefresh reloads props — pull marks into the table.
+  useEffect(() => {
+    setRows(buildRows(columns, students, sheet, path.classLevel));
+  }, [columns, students, sheet, path.classLevel]);
+
   const roles = useMemo(() => columns.map(columnRole), [columns]);
   const rollCol = roles.indexOf("roll");
   const nameCol = roles.indexOf("name");
@@ -232,14 +237,13 @@ export function ClassResultsBoard({
     [rows, query, rollCol, nameCol],
   );
 
-  const programTitle = useMemo(() => {
-    if (!path.program) return "";
-    const label = programLabel(
-      path.program,
-      programs.find((program) => program.code === path.program)?.name,
-    );
-    return label === school.name ? "" : label;
-  }, [path.program, programs, school.name]);
+  // Top navbar only — breadcrumbs prop is already folder levels (no "Results" root).
+  const setDrivePath = useSetDrivePathCrumbs();
+  useEffect(() => {
+    if (!setDrivePath) return;
+    setDrivePath(breadcrumbs);
+    return () => setDrivePath([]);
+  }, [breadcrumbs, setDrivePath]);
 
   const refocus = useRef<HTMLElement | null>(null);
 
@@ -331,42 +335,8 @@ export function ClassResultsBoard({
   return (
     <>
       <section className="overflow-hidden rounded-2xl border border-brand-100 bg-white shadow-[0_12px_32px_-20px_rgb(25_28_95/0.35)]">
-        <header className="flex flex-wrap items-center gap-3 border-b border-neutral-200 px-3 py-2.5 sm:px-4">
-          <nav aria-label="Folder path" className="min-w-0 flex-1">
-            <ol className="flex flex-wrap items-center gap-0.5 text-sm">
-              {breadcrumbs.map((crumb, index) => {
-                const last = index === breadcrumbs.length - 1;
-                return (
-                  <li
-                    key={`${crumb.label}:${index}`}
-                    className="flex min-w-0 items-center gap-0.5"
-                  >
-                    {index > 0 ? (
-                      <ChevronRight className="size-3.5 shrink-0 text-neutral-400" />
-                    ) : null}
-                    {last ? (
-                      <span className="truncate font-medium text-neutral-950">
-                        {crumb.label}
-                      </span>
-                    ) : (
-                      <Link
-                        href={crumb.href}
-                        className="truncate rounded-md px-1.5 py-0.5 text-neutral-600 hover:bg-neutral-100 hover:text-neutral-950"
-                      >
-                        {crumb.label}
-                      </Link>
-                    )}
-                  </li>
-                );
-              })}
-              {programTitle ? (
-                <li className="ml-2 truncate text-xs text-neutral-500">
-                  {programTitle}
-                </li>
-              ) : null}
-            </ol>
-          </nav>
-          <div className="flex flex-wrap items-center gap-2">
+        <header className="flex flex-wrap items-center justify-end gap-3 border-b border-neutral-200 px-3 py-2.5 sm:px-4">
+          <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
             <TableSearch value={query} onChange={setQuery} placeholder="Search students" />
             <ClassResultPdfDownload target={savedRolls.size ? cardTarget : null} />
             <ClassRankCardsDownload target={savedRolls.size ? cardTarget : null} />

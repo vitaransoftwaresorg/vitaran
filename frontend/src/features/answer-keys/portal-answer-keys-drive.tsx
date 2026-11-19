@@ -2,12 +2,14 @@
 
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { useEffect } from "react";
 import { documentAnswersHref, wasEdited } from "@/features/documents/constants";
 import { DriveBrowser, type DriveAction, type DriveCrumb, type DriveItem } from "@/features/documents/drive-browser";
 import { documentsForProgram, tabProgramIds } from "@/features/documents/school-documents";
 import { isRegularCatalog, portalPrograms } from "@/features/teachers-resources/portal-programs";
-import type { PdfDocument } from "@/types/document";
+import type { AnswerKey } from "@/types/answer-key";
 import { classLabel, formatDate } from "@/utils/format";
+import { writeAnswerKeysFolderTrail } from "./drive-path";
 import { answerKeyPdfHref, printPdf } from "./print-pdf";
 
 type PortalAnswerKeysDriveProps = {
@@ -15,7 +17,7 @@ type PortalAnswerKeysDriveProps = {
   programNames?: Record<string, string>;
   /** Customized school — its own name replaces the regular catalog title. */
   ownerLabel?: string;
-  documents: PdfDocument[];
+  documents: AnswerKey[];
   basePath: string;
 };
 
@@ -47,11 +49,21 @@ export function PortalAnswerKeysDrive({
 
   const keysFor = (programId: string) => documentsForProgram(documents, programId, programIds, ownerLabel);
 
-  const fileItem = (doc: PdfDocument, name: string): DriveItem => {
-    const view = documentAnswersHref(basePath, doc.id);
+  const folderHref = (() => {
+    const query = new URLSearchParams();
+    if (program && !single) query.set("program", program.id);
+    if (testNumber) query.set("test", String(testNumber));
+    return query.size ? `${basePath}?${query}` : basePath;
+  })();
+
+  const fileItem = (doc: AnswerKey, name: string): DriveItem => {
+    const view = documentAnswersHref(basePath, doc.id, folderHref);
     const answers = doc.answerCount ?? 0;
-    const actions: DriveAction[] = [{ label: "View answers", href: view, icon: "view" }];
-    if (answers > 0) {
+    const live = doc.published;
+    const actions: DriveAction[] = live
+      ? [{ label: "View answers", href: view, icon: "view" }]
+      : [];
+    if (live && answers > 0) {
       actions.push(
         { label: "Download PDF", href: answerKeyPdfHref(basePath, doc.id, true), icon: "download", download: true },
         {
@@ -64,24 +76,45 @@ export function PortalAnswerKeysDrive({
         },
       );
     }
+    const detailParts = [
+      answers > 0 ? plural(answers, "answer") : "Answers pending",
+      live ? null : "Not Published",
+    ].filter(Boolean);
     return {
       id: doc.id,
       name,
       kind: "file",
       fileKind: "key",
-      href: view,
+      // Unpublished keys are listed but not openable — click shows an alert.
+      href: live ? view : undefined,
+      blockedMessage: live
+        ? undefined
+        : "Not Published. This answer key will open here once the admin publishes it.",
       testId: doc.testId?.trim() ?? "",
-      detail: answers > 0 ? plural(answers, "answer") : "Answers pending",
-      modified: `${wasEdited(doc) ? "Updated" : "Published"} ${formatDate(doc.updatedAt)}`,
+      detail: detailParts.join(" · "),
+      modified: live
+        ? `${wasEdited(doc) ? "Updated" : "Published"} ${formatDate(doc.updatedAt)}`
+        : `Not Published · ${formatDate(doc.updatedAt)}`,
       actions,
     };
   };
 
   const breadcrumbs: DriveCrumb[] = [{ label: "Answer keys", href: basePath }];
-  if (program && !single) breadcrumbs.push({ label: program.title, href: href({ program: program.id }) });
+  // Always keep every folder level in the trail (program → test), including single-program schools.
+  if (program) {
+    breadcrumbs.push({ label: program.title, href: href({ program: program.id }) });
+  }
   if (program && testNumber) {
     breadcrumbs.push({ label: `Test ${testNumber}`, href: href({ program: program.id, test: testNumber }) });
   }
+
+  const folderCrumbs = breadcrumbs.slice(1);
+  const folderCrumbsKey = folderCrumbs.map((crumb) => `${crumb.href}\0${crumb.label}`).join("\n");
+  useEffect(() => {
+    writeAnswerKeysFolderTrail(folderHref, folderCrumbs);
+    // folderCrumbsKey tracks content; folderCrumbs is derived each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [folderHref, folderCrumbsKey]);
 
   let items: DriveItem[] = [];
   let emptyText = "No programs have been assigned to your school yet. Please contact Vitaran.";

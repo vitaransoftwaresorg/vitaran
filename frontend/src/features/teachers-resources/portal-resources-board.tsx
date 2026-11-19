@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PageHeader } from "@/features/admin/page-header";
-import { cn } from "@/lib/utils";
+import { useLiveContent } from "@/features/live/use-live-content";
 import {
   loadSchoolPortalResourcesAction,
   loadTeacherPortalResourcesAction,
@@ -16,20 +16,24 @@ type PortalResourcesBoardProps = {
   description: string;
 };
 
-/** Reloads offerings/assignments so admin class changes show without a hard refresh. */
+/** Reloads offerings/assignments instantly when admin changes classes or programs. */
 export function PortalResourcesBoard({ role, description }: PortalResourcesBoardProps) {
   const [payload, setPayload] = useState<PortalResourcesPayload | null>(null);
-  const [pending, startTransition] = useTransition();
 
   const reload = useCallback(() => {
-    startTransition(async () => {
+    void (async () => {
       const next =
         role === "school"
           ? await loadSchoolPortalResourcesAction()
           : await loadTeacherPortalResourcesAction();
       setPayload(next);
-    });
+    })();
   }, [role]);
+
+  useLiveContent("sections", reload);
+  useLiveContent("teachers", reload);
+  useLiveContent("programs", reload);
+  useLiveContent("schools", reload);
 
   useEffect(() => {
     reload();
@@ -48,7 +52,7 @@ export function PortalResourcesBoard({ role, description }: PortalResourcesBoard
   if (payload === null) {
     return (
       <>
-        <PageHeader title="Resources" description={description} />
+        <PageHeader description={description} />
         <div className="rounded-2xl border border-dashed border-neutral-200 bg-white p-10 text-center text-sm text-neutral-500">
           Loading resources…
         </div>
@@ -63,8 +67,8 @@ export function PortalResourcesBoard({ role, description }: PortalResourcesBoard
 
   return (
     <>
-      <PageHeader title="Resources" description={description} />
-      <div className={cn("-mx-4 -mb-4 sm:-mx-5 lg:-mx-6", pending && "opacity-70 transition-opacity")}>
+      <PageHeader description={description} />
+      <div className="-mx-4 -mb-4 sm:-mx-5 lg:-mx-6">
         <ResourcePage
           key={cacheKey}
           title="Teachers"

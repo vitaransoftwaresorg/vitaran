@@ -34,7 +34,6 @@ export default async function AdminTeachersPage({
   return (
     <>
       <PageHeader
-        title={school ? school.name : "Teachers"}
         description={
           school
             ? "Teachers at this school"

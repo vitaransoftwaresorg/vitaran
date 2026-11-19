@@ -78,16 +78,19 @@ export async function publishDocument(
   publish: () => Promise<unknown>,
   revalidate: string,
   noun: string,
+  /** When false, skip revalidate — optimistic UI + SSE update other sessions without blinking toggles. */
+  refreshCurrent = false,
 ): Promise<DeleteResult> {
   try {
     await publish();
-    revalidatePath(revalidate, "layout");
+    // Revalidating the page the toggle sits on remounts every switch (blink). Opt in only when needed.
+    if (refreshCurrent) revalidatePath(revalidate);
     return { ok: true };
   } catch (error) {
     unstable_rethrow(error);
 
     if (error instanceof ApiError && error.status === 404) {
-      revalidatePath(revalidate, "layout");
+      revalidatePath(revalidate);
       return { ok: false, message: `This ${noun} no longer exists.` };
     }
     return { ok: false, message: `We couldn't update the ${noun}. Please try again.` };

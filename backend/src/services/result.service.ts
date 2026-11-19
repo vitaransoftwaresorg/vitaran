@@ -44,10 +44,19 @@ import {
   resultSheetClassFilter,
   type ContentActor,
 } from "./content-access.js";
+import { downloadFileName } from "../utils/download-file-name.js";
 import { getObject, putObject } from "./object-storage.js";
 import { toSchoolRef, type SchoolAccountDto } from "./school.service.js";
+import * as settingsService from "./settings.service.js";
 
 const KIND = "results";
+
+async function assertResultsPublic() {
+  const { resultsPublic } = await settingsService.getAppSettings();
+  if (!resultsPublic) {
+    throw new AppError(403, "Results are private. Sign in to view them.");
+  }
+}
 
 type FieldIssue = { path: [string]; message: string };
 
@@ -61,8 +70,9 @@ function toResultSetDto({ school, sheets, createdAt, updatedAt, publishedAt, pro
     programCode,
     publishedAt: publishedAt?.toISOString() ?? null,
     school: { ...toSchoolRef(school), type: school.type },
-    classes: sheets.map(({ updatedAt: sheetUpdatedAt, ...sheet }) => ({
+    classes: sheets.map(({ updatedAt: sheetUpdatedAt, publishedAt: sheetPublishedAt, ...sheet }) => ({
       ...sheet,
+      publishedAt: sheetPublishedAt?.toISOString() ?? null,
       updatedAt: sheetUpdatedAt.toISOString(),
     })),
     createdAt: createdAt.toISOString(),
@@ -145,14 +155,16 @@ export async function getResultStats() {
   return { total, published };
 }
 
-/** Schools only reach their own results, and only once the admin has published them. */
-function withActorSheetFilter<T extends { classes: { classLevel: number }[] }>(
-  dto: T,
-  actor?: ContentActor,
-): T {
-  const allowed = actor ? resultSheetClassFilter(actor) : null;
-  if (!allowed) return dto;
-  return { ...dto, classes: dto.classes.filter((sheet) => allowed.includes(sheet.classLevel)) };
+/** Schools/teachers see all classes in their scope (unpublished sheets are labeled in the UI). */
+function withActorSheetFilter<
+  T extends { classes: { classLevel: number; published?: boolean }[] },
+>(dto: T, actor?: ContentActor): T {
+  if (!actor) return dto;
+  const allowed = resultSheetClassFilter(actor);
+  return {
+    ...dto,
+    classes: dto.classes.filter((sheet) => !allowed || allowed.includes(sheet.classLevel)),
+  };
 }
 
 function toContentActor(actor?: ContentActor | SchoolAccountDto): ContentActor | undefined {
@@ -262,6 +274,25 @@ async function answerKeySubjects(meta: ResultSetMeta, classLevel: number) {
 
 const defaultCaption = (classLevel: number, testNumber: number) => [`Class ${classLevel} · Test ${testNumber}`];
 
+function resultSheetDownloadName(
+  meta: Pick<ResultSetMeta, "programCode" | "programName" | "testId" | "testNumber"> & {
+    schoolName?: string | null;
+  },
+  classLevel: number,
+) {
+  return downloadFileName(
+    [
+      meta.schoolName,
+      meta.programName ?? meta.programCode,
+      `Class-${classLevel}`,
+      `Test-${meta.testNumber}`,
+      meta.testId,
+      "results",
+    ],
+    "xlsx",
+  );
+}
+
 async function writeClassSheet(
   meta: ResultSetMeta,
   existingId: string | null,
@@ -269,16 +300,18 @@ async function writeClassSheet(
   caption: string[],
   columns: string[],
   rows: CellValue[][],
-  fileName: string,
+  fileName?: string,
 ) {
+  const school = await schoolRepository.findSchoolById(meta.schoolId);
+  const resolvedName = fileName ?? resultSheetDownloadName({ ...meta, schoolName: school?.name }, classLevel);
   const xlsx = await sheetToXlsx(classLevel, caption, columns, rows);
   const stored = await putObject(`results/${meta.schoolId}/test-${meta.testNumber}/class-${classLevel}`, xlsx, {
-    fileName,
+    fileName: resolvedName,
     contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
   const sheet: NewResultSheet = {
     classLevel,
-    fileName,
+    fileName: resolvedName,
     fileSize: xlsx.length,
     data: new Uint8Array(stored),
     caption,
@@ -346,15 +379,7 @@ export async function saveManualResultSheet(input: ManualResultSheetInput) {
   const rows = recomputeSheet(columns, filled, input.classLevel);
   const caption = sheet?.caption.length ? sheet.caption : defaultCaption(input.classLevel, input.testNumber);
   return toResultSetDto(
-    await writeClassSheet(
-      meta,
-      resultSet?.id ?? null,
-      input.classLevel,
-      caption,
-      columns,
-      rows,
-      `class-${input.classLevel}-results.xlsx`,
-    ),
+    await writeClassSheet(meta, resultSet?.id ?? null, input.classLevel, caption, columns, rows),
   );
 }
 
@@ -416,7 +441,6 @@ export async function recordOmrResult(entry: OmrResultEntry) {
     caption,
     columns,
     recomputeSheet(columns, rows, entry.classLevel),
-    `class-${entry.classLevel}-results.xlsx`,
   );
 }
 
@@ -504,7 +528,23 @@ export async function getResultSheetFile(
   if (!file) throw new AppError(404, "Result not found");
   const data = await getObject(file.data);
   if (!data) throw new AppError(404, "Result file not found");
-  return { fileName: file.fileName, data };
+  const resultSet = await resultRepository.findResultSet({
+    id: params.id,
+    ...(contentActor && resultSetAccessFilter(contentActor)),
+  });
+  const fileName = resultSet
+    ? resultSheetDownloadName(
+        {
+          schoolName: resultSet.school.name,
+          programCode: resultSet.programCode,
+          programName: resultSet.programName,
+          testId: resultSet.testId,
+          testNumber: resultSet.testNumber,
+        },
+        params.classLevel,
+      )
+    : file.fileName;
+  return { fileName, data };
 }
 
 export async function listVisibleResultSets(actor: ContentActor) {
@@ -513,7 +553,9 @@ export async function listVisibleResultSets(actor: ContentActor) {
     actor.kind === "school" ? true : resultSetVisibleToTeacher(actor.teacher, set),
   );
   if (actor.kind !== "teacher") {
-    return visible.map((set) => withActorSheetFilter(toResultSetDto(set), actor));
+    return visible
+      .map((set) => withActorSheetFilter(toResultSetDto(set), actor))
+      .filter((set) => set.classes.length > 0);
   }
 
   const roster = await studentRepository.listSchoolRoster(actor.teacher.schoolId);
@@ -556,4 +598,64 @@ export async function setResultSetPublished(id: string, published: boolean) {
   if (!resultSet) throw new AppError(404, "Result not found");
   notifyContentChanged({ kind: KIND, schoolId: resultSet.school.id });
   return toResultSetDto(resultSet);
+}
+
+export async function setResultSheetPublished(id: string, classLevel: number, published: boolean) {
+  const resultSet = await resultRepository.setResultSheetPublished(id, classLevel, published);
+  if (!resultSet) throw new AppError(404, "Result not found");
+  notifyContentChanged({ kind: KIND, schoolId: resultSet.school.id });
+  return toResultSetDto(resultSet);
+}
+
+/** Public site: published results for one school (by School ID / code). */
+export async function listPublicResultSets(schoolCode?: string) {
+  await assertResultsPublic();
+  const code = schoolCode?.trim();
+  if (!code) {
+    return { school: null, items: [] as ReturnType<typeof toResultSetDto>[] };
+  }
+
+  const school = await schoolRepository.findSchoolByCode(code);
+  if (!school) {
+    return { school: null, items: [] as ReturnType<typeof toResultSetDto>[] };
+  }
+
+  // Include unpublished sets/classes — public drive lists them as "Not Published" (not openable).
+  const sets = await resultRepository.findResultSets({ schoolId: school.id });
+  const items = sets.map((set) => toResultSetDto(set)).filter((set) => set.classes.length > 0);
+
+  return {
+    school: { id: school.id, name: school.name, code: school.code },
+    items,
+  };
+}
+
+export async function getPublicResultSet(id: string) {
+  await assertResultsPublic();
+  const resultSet = await resultRepository.findResultSet({ id });
+  if (!resultSet) throw new AppError(404, "Result not found");
+  const dto = toResultSetDto(resultSet);
+  if (dto.classes.length === 0) throw new AppError(404, "Result not found");
+  return dto;
+}
+
+export async function getPublicResultSheet(params: ResultSheetParams) {
+  await assertResultsPublic();
+  const sheet = await resultRepository.findResultSheet({
+    classLevel: params.classLevel,
+    resultSet: { id: params.id },
+  });
+  if (!sheet) throw new AppError(404, "Result not found");
+  return getResultSheet(params);
+}
+
+export async function getPublicResultSheetFile(params: ResultSheetParams) {
+  await assertResultsPublic();
+  const sheet = await resultRepository.findResultSheet({
+    classLevel: params.classLevel,
+    published: true,
+    resultSet: { id: params.id, published: true },
+  });
+  if (!sheet) throw new AppError(404, "Result not found");
+  return getResultSheetFile(params);
 }

@@ -128,11 +128,11 @@ export function SchoolClassesBoard({
   >({});
 
   const reload = useCallback(() => {
-    startTransition(async () => {
+    void (async () => {
       const data = await loadSchoolSectionsAction();
       setOrganization(data.organization);
       setSlots(data.classTeacherSlots);
-    });
+    })();
   }, []);
 
   useLiveContent("sections", reload);
@@ -408,7 +408,6 @@ export function SchoolClassesBoard({
   if (organization === null) {
     return (
       <>
-        <PageHeader title="Classes" />
         <div className="rounded-2xl border border-dashed border-brand-200 bg-white p-10 text-center text-sm text-neutral-500 shadow-[0_4px_16px_-8px_rgb(25_28_95/0.12)]">
           Loading classes…
         </div>
@@ -478,7 +477,6 @@ export function SchoolClassesBoard({
   return (
     <>
       <PageHeader
-        title="Classes"
         count={totalCount}
         actions={
           classOptions.length > 0 ? (
@@ -499,12 +497,7 @@ export function SchoolClassesBoard({
           No classes yet. Click <strong>Create class</strong> to add one.
         </div>
       ) : (
-          <div
-            className={cn(
-              "overflow-hidden rounded-2xl border border-brand-200 bg-white shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)]",
-              pending && "opacity-70 transition-opacity",
-            )}
-          >
+          <div className="overflow-hidden rounded-2xl border border-brand-200 bg-white shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)]">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-100 bg-brand-50/40 px-3 py-2.5 sm:px-4">
               <p className="text-xs font-medium text-neutral-500 tabular-nums">
                 {filteredClassRows.length === classRows.length

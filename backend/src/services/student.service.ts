@@ -12,6 +12,7 @@ import type {
 } from "../schemas/student.schema.js";
 import { AppError } from "../utils/app-error.js";
 import { notifyContentChanged } from "../utils/content-events.js";
+import { downloadFileName } from "../utils/download-file-name.js";
 import { getObject } from "./object-storage.js";
 import { loadVitaranLogo } from "./rank-card.render.js";
 import { schoolTestResultsIndex, studentTestResults } from "./student-performance.service.js";
@@ -547,10 +548,21 @@ export async function getStudentProfilePdf(id: string, scope: PerformanceScope) 
     vitaran,
     school: logo?.logoData ? await getObject(logo.logoData) : null,
   });
-  return { fileName: `Student-Profile-${fileSafe(student.name) || "Student"}-${student.rollNo}.pdf`, data };
+  return {
+    fileName: downloadFileName(
+      [
+        "Student-Profile",
+        student.school.name,
+        student.programName,
+        `Class-${student.classLevel}`,
+        student.name,
+        student.rollNo,
+      ],
+      "pdf",
+    ),
+    data,
+  };
 }
-
-const fileSafe = (value: string) => value.trim().replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 function profilePdfData(
   student: StudentAccountDto,
@@ -606,7 +618,11 @@ export async function getStudentProfilesPdf(ids: string[], scope: PerformanceSco
         ),
       ),
     },
-    `Student profiles - ${scopeLabel}`,
+    downloadFileName(["Student-Profiles", students[0]?.school.name, scopeLabel], "pdf").replace(/\.pdf$/i, ""),
   );
-  return { fileName: `Student-Profiles-${fileSafe(scopeLabel)}.pdf`, data };
+  const schoolName = students[0]?.school.name;
+  return {
+    fileName: downloadFileName(["Student-Profiles", schoolName, scopeLabel], "pdf"),
+    data,
+  };
 }

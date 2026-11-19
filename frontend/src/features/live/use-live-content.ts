@@ -1,73 +1,69 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import type { LiveContentKind } from "./kinds";
+import { subscribeLive, type LiveChangePayload } from "./live-bus";
+import { isLiveSilenced } from "./silence";
 
-export type LiveContentKind =
-  | "answer-keys"
-  | "results"
-  | "students"
-  | "teachers"
-  | "schools"
-  | "sections"
-  | "objections"
-  | "programs"
-  | "settings";
+export type { LiveContentKind };
+export type { LiveChangePayload };
 
 const DEFAULT_LIVE_PATH = "/live";
-const REFRESH_DEBOUNCE_MS = 1_500;
-const MAX_RETRY_MS = 30_000;
+/** Coalesce bursty SSE (e.g. multi-page OMR) without feeling laggy. */
+const REFRESH_DEBOUNCE_MS = 50;
 
 /**
- * Calls `onChange` when another role publishes/edits matching content,
- * so portal and admin pages update without a manual refresh.
+ * Calls `onChange` when matching content changes on another session
+ * (admin / school / teacher), so pages update without a manual refresh.
+ * Shares one EventSource per path via the live bus.
  */
 export function useLiveContent(
   kind: LiveContentKind | "all",
-  onChange: () => void,
+  onChange: (payload?: LiveChangePayload) => void,
   path: string = DEFAULT_LIVE_PATH,
   debounceMs: number = REFRESH_DEBOUNCE_MS,
+  options?: {
+    /** Settings must still apply during local silence / maintenance pause. */
+    ignoreSilence?: boolean;
+  },
 ) {
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const ignoreSilence = options?.ignoreSilence === true;
+
   useEffect(() => {
-    let source: EventSource | undefined;
-    let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
-    let attempts = 0;
+    let pending: LiveChangePayload | undefined;
 
-    const refresh = () => {
-      clearTimeout(refreshTimer);
-      refreshTimer = setTimeout(onChange, Math.max(0, debounceMs));
+    const flush = () => {
+      const payload = pending;
+      pending = undefined;
+      if (!ignoreSilence && isLiveSilenced()) return;
+      onChangeRef.current(payload);
     };
 
-    const connect = () => {
-      source = new EventSource(path);
-
-      source.onopen = () => {
-        attempts = 0;
-      };
-
-      source.addEventListener("change", (event) => {
-        try {
-          const data = JSON.parse((event as MessageEvent<string>).data) as {
-            kind: LiveContentKind;
-          };
-          if (kind === "all" || data.kind === kind) refresh();
-        } catch {
-          // Ignore a malformed live event rather than crashing the page.
-        }
-      });
-
-      source.onerror = () => {
-        if (source?.readyState !== EventSource.CLOSED) return;
-        source.close();
-        retryTimer = setTimeout(connect, Math.min(MAX_RETRY_MS, 2_000 * 2 ** attempts++));
-      };
+    const schedule = (payload: LiveChangePayload) => {
+      if (!ignoreSilence && isLiveSilenced()) return;
+      pending = payload;
+      if (debounceMs <= 0) {
+        flush();
+        return;
+      }
+      // Leading-edge: fire once ASAP, ignore further events until the window ends.
+      if (refreshTimer) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = undefined;
+        flush();
+      }, debounceMs);
     };
 
-    connect();
+    const unsubscribe = subscribeLive(path, (payload) => {
+      if (kind === "all" || payload.kind === kind) schedule(payload);
+    });
+
     return () => {
-      source?.close();
-      clearTimeout(retryTimer);
+      unsubscribe();
       clearTimeout(refreshTimer);
     };
-  }, [kind, onChange, path, debounceMs]);
+  }, [kind, path, debounceMs, ignoreSilence]);
 }

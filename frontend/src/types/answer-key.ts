@@ -47,6 +47,8 @@ export type AnswerCorrection = {
 
 export type AnswerKey = PdfDocument & Publishable & {
   type: SchoolType;
+  /** Catalog display name for `program` when available. */
+  programName?: string | null;
   /** Freeform test ID shared with results. */
   testId: string;
   /** Set only for customized answer keys. */

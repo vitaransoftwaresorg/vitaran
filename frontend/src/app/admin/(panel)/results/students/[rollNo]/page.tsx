@@ -1,5 +1,4 @@
 import { notFound } from "next/navigation";
-import { LiveRefresh } from "@/features/live/live-refresh";
 import { StudentPerformanceView } from "@/features/results/student-performance-view";
 
 export default async function AdminStudentPerformancePage({
@@ -28,16 +27,13 @@ export default async function AdminStudentPerformancePage({
   }
 
   return (
-    <>
-      <LiveRefresh kind="results" />
-      <StudentPerformanceView
-        role="admin"
-        rollNo={rollNo}
-        classLevel={classLevel}
-        section={query.section ?? null}
-        programKey={query.programKey ?? null}
-        schoolId={query.schoolId}
-      />
-    </>
+    <StudentPerformanceView
+      role="admin"
+      rollNo={rollNo}
+      classLevel={classLevel}
+      section={query.section ?? null}
+      programKey={query.programKey ?? null}
+      schoolId={query.schoolId}
+    />
   );
 }

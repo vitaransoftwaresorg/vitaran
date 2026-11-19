@@ -23,11 +23,17 @@ import {
   listTeacherResultSets,
   saveManualResultSheet,
   setResultSetPublished,
+  setResultSheetPublished,
+  listPublicResultSets,
+  getPublicResultSet,
+  getPublicResultSheet,
+  getPublicResultSheetFile,
 } from "../controllers/result.controller.js";
 import { requireAdmin, requireSchool, requireTeacher } from "../middleware/authenticate.js";
 import { validate } from "../middleware/validate.js";
 import {
   classResultTemplateQuerySchema,
+  listPublicResultSetsQuerySchema,
   listResultSetsQuerySchema,
   manualResultSheetSchema,
   resultSetIdParamsSchema,
@@ -49,6 +55,12 @@ resultRouter.get("/stats", getResultStats);
 resultRouter.get("/:id", validateId, getResultSet);
 resultRouter.delete("/:id", validateId, deleteResultSet);
 resultRouter.patch("/:id/publish", validateId, validate(publishBodySchema, "body"), setResultSetPublished);
+resultRouter.patch(
+  "/:id/classes/:classLevel/publish",
+  validateSheet,
+  validate(publishBodySchema, "body"),
+  setResultSheetPublished,
+);
 resultRouter.get("/:id/classes/:classLevel", validateSheet, getResultSheet);
 resultRouter.get("/:id/classes/:classLevel/file", validateSheet, getResultSheetFile);
 resultRouter.get("/:id/classes/:classLevel/rank-cards", validateSheet, getRankCards);
@@ -77,4 +89,12 @@ teacherResultRouter.get("/:id/classes/:classLevel", validateSheet, getTeacherRes
 teacherResultRouter.get("/:id/classes/:classLevel/file", validateSheet, getTeacherResultSheetFile);
 teacherResultRouter.get("/:id/classes/:classLevel/rank-cards", validateSheet, getTeacherRankCards);
 teacherResultRouter.get("/:id/classes/:classLevel/result-pdf", validateSheet, getTeacherClassResultPdf);
+
+/** Public published results (gated by admin resultsPublic setting). */
+export const publicResultRouter = Router();
+
+publicResultRouter.get("/", validate(listPublicResultSetsQuerySchema, "query"), listPublicResultSets);
+publicResultRouter.get("/:id", validateId, getPublicResultSet);
+publicResultRouter.get("/:id/classes/:classLevel", validateSheet, getPublicResultSheet);
+publicResultRouter.get("/:id/classes/:classLevel/file", validateSheet, getPublicResultSheetFile);
 

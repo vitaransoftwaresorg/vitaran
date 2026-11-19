@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, type PDFPage } from "pdf-lib";
 import type { KeyAnswer, SubjectRange } from "../utils/answer-key-parse.js";
+import { downloadFileName } from "../utils/download-file-name.js";
 import {
   AMBER_700,
   BRAND_50,
@@ -70,7 +71,8 @@ function subjectsOf(data: AnswerKeyPdfData): SubjectRange[] {
 const keyOptions = (answer: KeyAnswer | undefined) =>
   !answer || answer === "ADD" ? [] : (answer.split("/") as string[]);
 
-const TABLE_ROWS = 10;
+/** Match the portal AnswerKeyOptionsTable (9 columns, column-major). */
+const TABLE_COLUMNS = 9;
 
 export async function renderAnswerKeyPdf(data: AnswerKeyPdfData, logos: AnswerKeyPdfLogos) {
   const pdf = await PDFDocument.create();
@@ -122,10 +124,11 @@ export async function renderAnswerKeyPdf(data: AnswerKeyPdfData, logos: AnswerKe
   });
   top += 72;
 
-  // Answer key table: Q1–Q10 down column 1, Q11–Q20 down column 2, …
-  const columns = Math.max(1, Math.ceil(questions.length / TABLE_ROWS));
+  // Answer key table: same 9-column layout as the portal (Q1 down col 1, …).
+  const columns = TABLE_COLUMNS;
+  const tableRows = Math.max(1, Math.ceil(questions.length / columns));
   const rowH = 17;
-  const tableH = 36 + 18 + TABLE_ROWS * rowH;
+  const tableH = 36 + tableRows * rowH;
   ensure(tableH);
   roundedRect(page, M, top, CONTENT, tableH, 8, { fill: WHITE, border: BRAND_200 });
   page.drawRectangle({ x: M + 0.5, y: H - top - 36, width: CONTENT - 1, height: 35, color: BRAND_50 });
@@ -135,34 +138,29 @@ export async function renderAnswerKeyPdf(data: AnswerKeyPdfData, logos: AnswerKe
   drawText(page, `${questions.length} questions · options only`, M + 12, top + 28, { font: fonts.regular, size: 8, color: N_500 });
   const tableTop = top + 36;
   const pairW = (CONTENT - 1) / columns;
-  page.drawRectangle({ x: M + 0.5, y: H - tableTop - 18, width: CONTENT - 1, height: 18, color: N_50 });
-  page.drawLine({ start: { x: M, y: H - tableTop - 18 }, end: { x: W - M, y: H - tableTop - 18 }, thickness: 0.6, color: N_200 });
-  for (let col = 0; col < columns; col++) {
+  for (let col = 1; col < columns; col++) {
     const x = M + col * pairW;
-    drawText(page, "Q", x + 7, tableTop + 12, { font: fonts.bold, size: 6.5, color: N_500, spacing: 0.6 });
-    drawText(page, "KEY", x + pairW * 0.48, tableTop + 12, { font: fonts.bold, size: 6.5, color: N_500, spacing: 0.6 });
-    if (col > 0) {
-      page.drawLine({
-        start: { x, y: H - tableTop - 18 },
-        end: { x, y: H - tableTop - 18 - TABLE_ROWS * rowH },
-        thickness: 0.5,
-        color: N_100,
-      });
-    }
+    page.drawLine({
+      start: { x, y: H - tableTop },
+      end: { x, y: H - tableTop - tableRows * rowH },
+      thickness: 0.5,
+      color: N_200,
+    });
   }
-  for (let row = 0; row < TABLE_ROWS; row++) {
-    const y = tableTop + 18 + row * rowH;
-    if (row > 0) page.drawLine({ start: { x: M, y: H - y }, end: { x: W - M, y: H - y }, thickness: 0.5, color: N_100 });
+  for (let row = 0; row < tableRows; row++) {
+    const y = tableTop + row * rowH;
+    if (row > 0) page.drawLine({ start: { x: M, y: H - y }, end: { x: W - M, y: H - y }, thickness: 0.5, color: N_200 });
     for (let col = 0; col < columns; col++) {
-      const question = questions[col * TABLE_ROWS + row];
+      const question = questions[col * tableRows + row];
       if (question == null) continue;
       const x = M + col * pairW;
       const answer = data.answers[String(question)];
-      drawText(page, String(question), x + 7, y + 11.5, { font: fonts.bold, size: 8, color: N_800 });
-      drawText(page, answer ?? "-", x + pairW * 0.48, y + 11.5, {
+      const label = `${question}  ${answer ?? "-"}`;
+      drawText(page, label, x + pairW / 2, y + 11.5, {
         font: fonts.bold,
-        size: 8.5,
+        size: 8,
         color: answer ? N_950 : AMBER_700,
+        align: "center",
       });
     }
   }
@@ -226,7 +224,13 @@ export async function renderAnswerKeyPdf(data: AnswerKeyPdfData, logos: AnswerKe
 
   drawPageFooters(pages, fonts, "Vitaran Learning · Answer key");
 
-  pdf.setTitle(`Answer key - Test ${data.testNumber} - Class ${data.classLevel}`);
+  // Title becomes the suggested name in Print → Save as PDF.
+  pdf.setTitle(
+    downloadFileName(
+      ["Answer-Key", data.programName, `Class-${data.classLevel}`, `Test-${data.testNumber}`, data.testId],
+      "pdf",
+    ).replace(/\.pdf$/i, ""),
+  );
   pdf.setAuthor("Vitaran Learning");
   return Buffer.from(await pdf.save());
 }

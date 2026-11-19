@@ -6,6 +6,7 @@ import {
   checkTestId,
   commitScan,
   commitScans,
+  listScansOrEmpty,
   previewScan,
   type CommitManyResult,
   type ScanPortal,
@@ -84,4 +85,13 @@ export async function commitScanAction(
   } catch (error) {
     return { ok: false, message: error instanceof ApiError ? error.message : "Could not save this scan" };
   }
+}
+
+/** Latest saved OMRs for this portal — used so another device can watch scans live. */
+export async function listRecentScansAction(portal: ScanPortal, limit = 30) {
+  const scans = await listScansOrEmpty(portal);
+  return scans
+    .slice()
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, limit);
 }

@@ -8,6 +8,9 @@ export type ResultClass = {
   rowCount: number;
   fileName: string;
   fileSize: number;
+  /** Per-class publish — publishing one class does not publish the others. */
+  published: boolean;
+  publishedAt: string | null;
   updatedAt: string;
 };
 

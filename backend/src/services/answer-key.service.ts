@@ -23,6 +23,7 @@ import {
 import { regradeScansForKey, scoringFingerprint } from "../scan/regrade.js";
 import { AppError } from "../utils/app-error.js";
 import { notifyContentChanged } from "../utils/content-events.js";
+import { downloadFileName } from "../utils/download-file-name.js";
 import { enteredTestId } from "../utils/test-id.js";
 import { renderAnswerKeyPdf } from "./answer-key.pdf.js";
 import { answerKeyAccessFilter, type ContentActor } from "./content-access.js";
@@ -33,8 +34,13 @@ import * as settingsService from "./settings.service.js";
 
 const KIND = "answer-keys";
 
-/** Published catalog keys only — never school-customized keys. */
+/** Regular catalog keys for the public site — never school-customized keys. */
 const PUBLIC_ANSWER_KEY_FILTER: Prisma.AnswerKeyWhereInput = {
+  type: SchoolType.REGULAR,
+};
+
+/** Openable public keys (PDF / answers) must be published. */
+const PUBLIC_ANSWER_KEY_LIVE_FILTER: Prisma.AnswerKeyWhereInput = {
   published: true,
   type: SchoolType.REGULAR,
 };
@@ -46,7 +52,31 @@ async function assertAnswerKeysPublic() {
   }
 }
 
-function toAnswerKeyDto(row: AnswerKeySummary | AnswerKeyDetail, forPortal = false) {
+let programNameCache: Map<string, string> | null = null;
+
+async function programNamesByCode() {
+  if (!programNameCache) {
+    const rows = await programRepository.findPrograms();
+    programNameCache = new Map(rows.map((row) => [row.code, row.name]));
+  }
+  return programNameCache;
+}
+
+async function answerKeyDto(row: AnswerKeySummary | AnswerKeyDetail, forPortal = false) {
+  const names = await programNamesByCode();
+  return toAnswerKeyDto(row, forPortal, names.get(row.programCode) ?? null);
+}
+
+async function answerKeyDtos(rows: Array<AnswerKeySummary | AnswerKeyDetail>, forPortal = false) {
+  const names = await programNamesByCode();
+  return rows.map((row) => toAnswerKeyDto(row, forPortal, names.get(row.programCode) ?? null));
+}
+
+function toAnswerKeyDto(
+  row: AnswerKeySummary | AnswerKeyDetail,
+  forPortal = false,
+  programName: string | null = null,
+) {
   const answers = asAnswers(row.answers);
   const explanations = asExplanations(row.explanations);
   const printedAnswers = asAnswers(row.printedAnswers);
@@ -59,6 +89,7 @@ function toAnswerKeyDto(row: AnswerKeySummary | AnswerKeyDetail, forPortal = fal
     id: row.id,
     program: row.programCode,
     programCode: row.programCode,
+    programName,
     type: row.type,
     testId: enteredTestId(row.testId),
     testNumber: row.testNumber,
@@ -221,7 +252,7 @@ export async function listRecentAnswerKeys({
   const rows = limit
     ? await answerKeyRepository.findRecentAnswerKeys(filter, limit)
     : await answerKeyRepository.findAnswerKeys(filter);
-  return rows.map((row) => toAnswerKeyDto(row));
+  return answerKeyDtos(rows);
 }
 
 /**
@@ -297,7 +328,7 @@ export async function getAnswerKeyStats() {
 export async function getAnswerKey(id: string) {
   const answerKey = await answerKeyRepository.findAnswerKeyById(id);
   if (!answerKey) throw new AppError(404, "Answer key not found");
-  return toAnswerKeyDto(answerKey);
+  return answerKeyDto(answerKey);
 }
 
 function emptyKeyFile() {
@@ -328,7 +359,7 @@ export async function uploadAnswerKey({ schoolId, program, ...meta }: UploadAnsw
     type: meta.type,
     schoolId: resolvedSchoolId,
   });
-  if (draft) return toAnswerKeyDto(draft);
+  if (draft) return answerKeyDto(draft);
 
   const created = await answerKeyRepository.createAnswerKey({
     type: meta.type,
@@ -346,7 +377,7 @@ export async function uploadAnswerKey({ schoolId, program, ...meta }: UploadAnsw
     schoolId: created.school?.id ?? null,
     adminOnly: true,
   });
-  return toAnswerKeyDto(created);
+  return answerKeyDto(created);
 }
 
 export async function updateAnswerKey(id: string, { schoolId, program, ...meta }: UpdateAnswerKeyQuery) {
@@ -364,12 +395,13 @@ export async function updateAnswerKey(id: string, { schoolId, program, ...meta }
   });
   // The key may have moved to another school, so tell every school.
   notifyContentChanged({ kind: KIND, schoolId: null, adminOnly: !answerKey.published });
-  return toAnswerKeyDto(answerKey);
+  return answerKeyDto(answerKey);
 }
 
 export async function listVisibleAnswerKeys(actor: ContentActor) {
-  return (await answerKeyRepository.findAnswerKeys(answerKeyAccessFilter(actor))).map((row) =>
-    toAnswerKeyDto(row, true),
+  return answerKeyDtos(
+    await answerKeyRepository.findAnswerKeys(answerKeyAccessFilter(actor)),
+    true,
   );
 }
 
@@ -395,7 +427,7 @@ export async function setAnswerKeyPublished(id: string, published: boolean) {
   const answerKey = await answerKeyRepository.setAnswerKeyPublished(id, published);
   if (!answerKey) throw new AppError(404, "Answer key not found");
   notifyContentChanged({ kind: KIND, schoolId: answerKey.school?.id ?? null });
-  return toAnswerKeyDto(answerKey);
+  return answerKeyDto(answerKey);
 }
 
 export async function deleteAnswerKey(id: string) {
@@ -411,7 +443,7 @@ export async function setAnswerKeyTestId(id: string, testId: string) {
   }
   const answerKey = await answerKeyRepository.updateAnswerKey(id, { testId });
   notifyContentChanged({ kind: KIND, schoolId: answerKey.school?.id ?? null });
-  return toAnswerKeyDto(answerKey);
+  return answerKeyDto(answerKey);
 }
 
 /** Admin edits one question's option and explanation after parse. */
@@ -455,7 +487,7 @@ export async function saveAnswerKeyAnswers(id: string, input: SaveAnswerKeyAnswe
   });
   notifyContentChanged({ kind: KIND, schoolId: answerKey.school?.id ?? null });
   if (scoringFingerprint(answerKey) !== scoringFingerprint(existing)) regradeScansForKey(id);
-  return toAnswerKeyDto(answerKey);
+  return answerKeyDto(answerKey);
 }
 
 /** Branded, printable answer key with Vitaran and the viewer's school logo. */
@@ -489,39 +521,43 @@ export async function getAnswerKeyPdf(id: string, actor: ContentActor) {
     },
     { vitaran, school: logo?.logoData ? await getObject(logo.logoData) : null },
   );
-  const name = ["Answer-Key", `Class-${row.classLevel}`, `Test-${row.testNumber}`, testId].filter(Boolean).join("-");
-  return { fileName: `${name}.pdf`, data };
+  return {
+    fileName: downloadFileName(
+      ["Answer-Key", programName, `Class-${row.classLevel}`, `Test-${row.testNumber}`, testId],
+      "pdf",
+    ),
+    data,
+  };
 }
 
 export async function getVisibleAnswerKey(id: string, actor: ContentActor) {
   const row = await answerKeyRepository.findVisibleAnswerKey(id, answerKeyAccessFilter(actor));
   if (!row) throw new AppError(404, "Answer key not found");
-  return toAnswerKeyDto(row);
+  return answerKeyDto(row);
 }
 
-/** Public site: list published regular answer keys (when admin toggle is on). */
+/** Public site: list regular answer keys (unpublished shown as Not Published, not openable). */
 export async function listPublicAnswerKeys() {
   await assertAnswerKeysPublic();
-  return (await answerKeyRepository.findAnswerKeys(PUBLIC_ANSWER_KEY_FILTER))
-    .map((row) => toAnswerKeyDto(row, true))
-    .filter((row) => (row.answerCount ?? 0) > 0);
+  return (await answerKeyDtos(await answerKeyRepository.findAnswerKeys(PUBLIC_ANSWER_KEY_FILTER), true)).filter(
+    (row) => (row.answerCount ?? 0) > 0,
+  );
 }
 
 export async function getPublicAnswerKey(id: string) {
   await assertAnswerKeysPublic();
   const row = await answerKeyRepository.findVisibleAnswerKey(id, PUBLIC_ANSWER_KEY_FILTER);
   if (!row) throw new AppError(404, "Answer key not found");
-  const dto = toAnswerKeyDto(row);
   if (Object.keys(asAnswers(row.answers)).length === 0) {
     throw new AppError(404, "Answer key not found");
   }
-  return dto;
+  return answerKeyDto(row);
 }
 
 /** Public branded PDF (Vitaran logo only — no school branding). */
 export async function getPublicAnswerKeyPdf(id: string) {
   await assertAnswerKeysPublic();
-  const row = await answerKeyRepository.findVisibleAnswerKey(id, PUBLIC_ANSWER_KEY_FILTER);
+  const row = await answerKeyRepository.findVisibleAnswerKey(id, PUBLIC_ANSWER_KEY_LIVE_FILTER);
   if (!row) throw new AppError(404, "Answer key not found");
   const answers = asAnswers(row.answers);
   if (Object.keys(answers).length === 0) throw new AppError(404, "No answers published for this test yet");
@@ -546,8 +582,11 @@ export async function getPublicAnswerKeyPdf(id: string) {
     },
     { vitaran, school: null },
   );
-  const name = ["Answer-Key", `Class-${row.classLevel}`, `Test-${row.testNumber}`, testId]
-    .filter(Boolean)
-    .join("-");
-  return { fileName: `${name}.pdf`, data };
+  return {
+    fileName: downloadFileName(
+      ["Answer-Key", program, `Class-${row.classLevel}`, `Test-${row.testNumber}`, testId],
+      "pdf",
+    ),
+    data,
+  };
 }

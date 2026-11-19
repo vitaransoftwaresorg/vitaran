@@ -6,14 +6,13 @@ import {
   listSchoolAnswerKeys,
   listTeacherAnswerKeys,
 } from "@/services/answer-keys";
-import type { AnswerKeyDetail } from "@/types/answer-key";
-import type { PdfDocument } from "@/types/document";
+import type { AnswerKey, AnswerKeyDetail } from "@/types/answer-key";
 
-export async function loadSchoolPortalAnswerKeysAction(): Promise<PdfDocument[]> {
+export async function loadSchoolPortalAnswerKeysAction(): Promise<AnswerKey[]> {
   return listSchoolAnswerKeys();
 }
 
-export async function loadTeacherPortalAnswerKeysAction(): Promise<PdfDocument[]> {
+export async function loadTeacherPortalAnswerKeysAction(): Promise<AnswerKey[]> {
   return listTeacherAnswerKeys();
 }
 

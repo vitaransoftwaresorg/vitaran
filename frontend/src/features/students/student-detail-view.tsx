@@ -128,7 +128,16 @@ export function StudentDetailView({
           {actionsVisible || portal ? (
             <div className="flex shrink-0 flex-wrap gap-2">
               {portal ? (
-                <StudentPdfActions portal={portal} studentId={student.id} outlineClassName={INVERTED_OUTLINE} />
+                <StudentPdfActions
+                  portal={portal}
+                  studentId={student.id}
+                  studentName={student.name}
+                  rollNo={student.rollNo}
+                  schoolName={student.school?.name ?? student.schoolName}
+                  programName={student.programName}
+                  classLevel={student.classLevel}
+                  outlineClassName={INVERTED_OUTLINE}
+                />
               ) : null}
               {actionsVisible && canDelete ? (
                 <button

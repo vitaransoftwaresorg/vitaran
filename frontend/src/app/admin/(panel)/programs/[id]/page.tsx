@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { BookOpen, Clock, Pencil } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ProgramNavTrail } from "@/features/programs/program-nav-trail";
 import { subjectLabel } from "@/features/schools/constants";
 import { SchoolTypeBadge } from "@/features/schools/school-type-badge";
 import { capitalizeWords } from "@/features/schools/schema";
@@ -45,29 +46,20 @@ export default async function ProgramDetailsPage({
   const program = await getProgram(id);
   if (!program) notFound();
 
+  const name = capitalizeWords(program.name);
+
   return (
     <div className="space-y-3">
-      <header className="flex flex-col gap-4 rounded-xl border border-brand-700 bg-linear-to-r from-brand-800 to-brand-950 px-5 py-4 text-white shadow-[0_10px_30px_-12px_rgb(25_28_95/0.55)] sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-[10px] font-semibold tracking-[0.2em] text-white/50 uppercase">
-            Catalog program
-          </p>
-          <h1 className="mt-0.5 truncate text-xl font-bold sm:text-2xl">
-            {capitalizeWords(program.name)}
-          </h1>
-          <p className="mt-1 font-mono text-sm text-white/70">{program.code}</p>
-        </div>
+      <ProgramNavTrail id={program.id} name={name} />
+      <div className="flex justify-end">
         <Link
           href={`/admin/programs/${program.id}/edit`}
-          className={cn(
-            buttonVariants({ size: "sm" }),
-            "border border-white/20 bg-white/10 text-white hover:bg-white/20",
-          )}
+          className={cn(buttonVariants({ size: "sm" }), "gap-1.5")}
         >
           <Pencil className="size-3.5" />
           Edit
         </Link>
-      </header>
+      </div>
 
       <div className="grid items-start gap-3 lg:grid-cols-2">
         <Panel title="Program details" icon={<BookOpen />}>

@@ -1,18 +1,18 @@
 import type { ReactNode } from "react";
-import Link from "next/link";
-import { cn } from "@/lib/utils";
 import { wasEdited } from "@/features/documents/constants";
 import { SchoolTypeBadge } from "@/features/schools/school-type-badge";
 import type { ResultSet, ResultSheet } from "@/types/result";
 import type { ClassScan } from "@/types/scan";
+import { downloadFileName } from "@/utils/download-file-name";
 import { formatDateTime } from "@/utils/format";
 import {
+  PUBLIC_RESULTS_PATH,
   RESULTS_PATH,
   SCHOOL_RESULTS_PATH,
   resultProgramLabel,
-  resultSetHref,
   resultSheetDownloadHref,
 } from "./constants";
+import { ResultClassTabs } from "./result-class-tabs";
 import { ResultSheetCard } from "./result-sheet-card";
 
 type ResultSetViewProps = {
@@ -28,6 +28,12 @@ type ResultSetViewProps = {
   actions?: ReactNode;
   /** Saved OMRs of the selected class; adds the rank card and OMR columns. */
   scans?: ClassScan[];
+  /** School/teacher: open student profile in-page instead of navigating away. */
+  onStudentClick?: (roll: string) => void;
+  /** School/teacher/public: unpublished class tabs show an alert instead of opening. */
+  blockUnpublishedClasses?: boolean;
+  /** Keep School ID on public class tab links. */
+  schoolCode?: string;
 };
 
 /** A test's results: a title line, a tab per uploaded class, and that class's students. */
@@ -39,6 +45,9 @@ export function ResultSetView({
   showDownload = true,
   actions,
   scans,
+  onStudentClick,
+  blockUnpublishedClasses = false,
+  schoolCode,
 }: ResultSetViewProps) {
   return (
     <div className="space-y-4">
@@ -58,50 +67,64 @@ export function ResultSetView({
                 <span aria-hidden className="text-neutral-300">·</span>
               </>
             )}
-            <span>
-              <span className="font-semibold text-neutral-800">
-                {wasEdited(resultSet) ? "Updated on" : "Published on"}
-              </span>{" "}
-              {formatDateTime(resultSet.updatedAt)}
-            </span>
+            {!sheet.published || !resultSet.published ? (
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+                Not Published
+              </span>
+            ) : (
+              <span>
+                <span className="font-semibold text-neutral-800">
+                  {wasEdited(resultSet) ? "Updated on" : "Published on"}
+                </span>{" "}
+                {formatDateTime(resultSet.updatedAt)}
+              </span>
+            )}
           </p>
         </div>
         {actions}
       </div>
 
-      {resultSet.classes.length > 1 && (
-        <nav aria-label="Class" className="flex gap-1.5 overflow-x-auto border-b border-brand-100">
-          {resultSet.classes.map((item) => {
-            const active = item.classLevel === sheet.classLevel;
-            return (
-              <Link
-                key={item.classLevel}
-                href={resultSetHref(basePath, resultSet.id, item.classLevel)}
-                aria-current={active ? "page" : undefined}
-                scroll={false}
-                className={cn(
-                  "-mb-px shrink-0 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors",
-                  active
-                    ? "border-brand-900 text-brand-900"
-                    : "border-transparent text-neutral-500 hover:border-brand-200 hover:text-brand-800",
-                )}
-              >
-                Class {item.classLevel}
-              </Link>
-            );
-          })}
-        </nav>
-      )}
+      <ResultClassTabs
+        classes={resultSet.classes}
+        activeClassLevel={sheet.classLevel}
+        basePath={basePath}
+        resultSetId={resultSet.id}
+        blockUnpublished={blockUnpublishedClasses}
+        schoolCode={schoolCode}
+      />
 
       <ResultSheetCard
         key={sheet.classLevel}
-        studentLink={studentLinkFor(basePath, resultSet.school.id)}
+        studentLink={
+          onStudentClick ? undefined : studentLinkFor(basePath, resultSet.school.id) ?? undefined
+        }
+        onStudentClick={onStudentClick}
         sheet={sheet}
         downloadHref={resultSheetDownloadHref(basePath, resultSet.id, sheet.classLevel)}
+        downloadFileName={downloadFileName(
+          [
+            resultSet.school.name,
+            resultProgramLabel(resultSet),
+            `Class-${sheet.classLevel}`,
+            `Test-${resultSet.testNumber}`,
+            resultSet.testId,
+            "results",
+          ],
+          "xlsx",
+        )}
         showDownload={showDownload}
         files={
           scans
-            ? { basePath, resultSetId: resultSet.id, scans, path: classScanFilter(resultSet, sheet.classLevel) }
+            ? {
+                basePath,
+                resultSetId: resultSet.id,
+                scans,
+                path: classScanFilter(resultSet, sheet.classLevel),
+                schoolName: resultSet.school.name,
+                programLabel: resultProgramLabel(resultSet),
+                testNumber: resultSet.testNumber,
+                testId: resultSet.testId,
+              }
             : undefined
         }
       />
@@ -109,10 +132,11 @@ export function ResultSetView({
   );
 }
 
-/** Registration numbers in the sheet open that student's profile in the same portal. */
+/** Registration numbers in the sheet open that student's profile in the same portal. Public has no links. */
 function studentLinkFor(basePath: string, schoolId: string) {
   if (basePath === RESULTS_PATH) return { base: "/admin/schools/students/roll", query: `?school=${schoolId}` };
   if (basePath === SCHOOL_RESULTS_PATH) return { base: "/school/students/roll" };
+  if (basePath === PUBLIC_RESULTS_PATH) return null;
   return { base: "/teacher/students/roll" };
 }
 

@@ -1,5 +1,6 @@
 import type { Font } from "opentype.js";
 import { PDFDocument, StandardFonts, setCharacterSpacing, type PDFImage, type PDFPage, type RGB } from "pdf-lib";
+import { downloadFileName } from "../utils/download-file-name.js";
 import {
   BRAND_50,
   BRAND_200,
@@ -432,7 +433,19 @@ function drawFooters(ctx: Ctx, pages: PDFPage[]) {
 /** One class's result for printing and pinning on a notice board, in rank order. */
 export async function renderClassResultPdf(data: ClassResultPdfData, assets: ClassResultPdfAssets) {
   const pdf = await PDFDocument.create();
-  pdf.setTitle(`${data.schoolName} - Class ${data.classLevel} - Test ${data.testNumber} Results`);
+  pdf.setTitle(
+    downloadFileName(
+      [
+        "Results",
+        data.schoolName,
+        data.programName,
+        `Class-${data.classLevel}`,
+        `Test-${data.testNumber}`,
+        data.testId,
+      ],
+      "pdf",
+    ).replace(/\.pdf$/i, ""),
+  );
   pdf.setAuthor("Vitaran Learning");
   const fonts: Fonts = {
     regular: await pdf.embedFont(StandardFonts.Helvetica),

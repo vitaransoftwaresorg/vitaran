@@ -14,9 +14,9 @@ import {
 } from "./schema";
 
 function revalidateAnswerKeyViews() {
-  revalidatePath(ANSWER_KEYS_PATH, "layout");
-  revalidatePath(`${SCHOOL_BASE_PATH}/answer-keys`, "layout");
-  revalidatePath(`${TEACHER_BASE_PATH}/answer-keys`, "layout");
+  revalidatePath(ANSWER_KEYS_PATH);
+  revalidatePath(`${SCHOOL_BASE_PATH}/answer-keys`);
+  revalidatePath(`${TEACHER_BASE_PATH}/answer-keys`);
 }
 
 type AnswerKeySaveInput = ReturnType<typeof getAnswerKeySchema>["_output"];
@@ -109,13 +109,14 @@ export async function setAnswerKeyTestIdAction(id: string, testId: string) {
 }
 
 export async function setAnswerKeyPublishedAction(id: string, published: boolean) {
-  const result = await publishDocument(
+  // No revalidatePath — refreshes the current page and blinks every publish switch.
+  // Optimistic UI + SSE update portals / other tabs.
+  return publishDocument(
     () => answerKeyService.setAnswerKeyPublished(id, published),
     ANSWER_KEYS_PATH,
     ANSWER_KEY_NOUN,
+    false,
   );
-  if (result.ok) revalidateAnswerKeyViews();
-  return result;
 }
 
 export async function saveAnswerKeyAnswersAction(

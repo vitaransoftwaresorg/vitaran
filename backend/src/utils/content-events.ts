@@ -11,12 +11,21 @@ export type ContentKind =
   | "programs"
   | "settings";
 
+export type PublicSettingsSnapshot = {
+  maintenanceMode: boolean;
+  teacherResourcesPublic: boolean;
+  answerKeysPublic: boolean;
+  resultsPublic: boolean;
+};
+
 export type ContentChange = {
   kind: ContentKind;
   /** Schools affected; `null` means every school (e.g. regular answer keys / catalog). */
   schoolId: string | null;
   /** Only admin sessions hear it, e.g. edits to unpublished keys or results. */
   adminOnly?: boolean;
+  /** Present on `settings` events so clients can flip toggles without a round-trip. */
+  settings?: PublicSettingsSnapshot;
 };
 
 /**

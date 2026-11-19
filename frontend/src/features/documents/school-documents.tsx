@@ -41,12 +41,12 @@ export function tabProgramIds(programIds: string[], ownerLabel?: string) {
   return custom.length > 0 ? custom : programIds.slice(0, 1);
 }
 
-export function documentsForProgram(
-  documents: PdfDocument[],
+export function documentsForProgram<T extends PdfDocument>(
+  documents: T[],
   programId: string,
   programIds: string[],
   ownerLabel?: string,
-) {
+): T[] {
   const custom = customProgramIds(programIds);
   return documents.filter((document) => {
     if (document.program === programId) return true;

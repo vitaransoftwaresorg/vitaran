@@ -83,6 +83,8 @@ export default async function AdminAllStudentsPage({
                 <ClassProfilesPdfActions
                   portal="admin"
                   studentIds={roster.map((student) => student.id)}
+                  scopeLabel={title}
+                  schoolName={school.name}
                 />
               ) : null}
               <Link
