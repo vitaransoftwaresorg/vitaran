@@ -317,31 +317,43 @@ function level(rgba: Rgba, x: number, y: number, channel: Channel) {
   return channel === "min" ? Math.min(r, g, b) : Math.max(r, g, b);
 }
 
-/** Paper brightness near a bubble (bright percentile of a ring just outside it). */
+/**
+ * Paper brightness near a bubble. Sample two rings outside the printed rim and take a bright
+ * percentile so ink that spills across the border does not drag the paper estimate down
+ * (a dark paper estimate makes a filled bubble look empty).
+ */
 function paperNear(rgba: Rgba, x: number, y: number, r: number, channel: Channel) {
   const values: number[] = [];
-  for (let a = 0; a < 24; a++) {
-    const t = (a / 24) * Math.PI * 2;
-    values.push(level(rgba, x + Math.cos(t) * r * 1.9, y + Math.sin(t) * r * 1.9, channel));
+  for (const scale of [1.85, 2.35]) {
+    for (let a = 0; a < 24; a++) {
+      const t = (a / 24) * Math.PI * 2;
+      values.push(level(rgba, x + Math.cos(t) * r * scale, y + Math.sin(t) * r * scale, channel));
+    }
   }
   values.sort((p, q) => p - q);
-  return values[Math.floor(values.length * 0.75)]!;
+  return values[Math.floor(values.length * 0.85)]!;
 }
 
-/** Share of the bubble interior that is clearly darker than the paper around it. */
+/**
+ * Share of the bubble that is clearly darker than the paper around it.
+ * Sample out near the printed rim (not only the core) so ticks / fills that cross the
+ * bubble border still register; soft relative darkness catches light pencil on the edge.
+ */
 function interiorInk(rgba: Rgba, x: number, y: number, r: number, channel: Channel, paper: number) {
-  const thr = paper * 0.7;
-  const inner = r * 0.62;
-  let dark = 0;
-  let n = 0;
+  const thr = paper * 0.72;
+  const inner = r * 0.82;
+  const samples: number[] = [];
   for (let dy = -inner; dy <= inner; dy += 1) {
     for (let dx = -inner; dx <= inner; dx += 1) {
       if (dx * dx + dy * dy > inner * inner) continue;
-      n += 1;
-      if (level(rgba, x + dx, y + dy, channel) < thr) dark += 1;
+      samples.push(level(rgba, x + dx, y + dy, channel));
     }
   }
-  return n ? dark / n : 0;
+  if (!samples.length) return 0;
+  const hard = samples.filter((v) => v < thr).length / samples.length;
+  const mean = samples.reduce((sum, v) => sum + v, 0) / samples.length;
+  const soft = samples.filter((v) => v < mean - 12).length / samples.length;
+  return Math.max(hard, soft * 0.9);
 }
 
 /**

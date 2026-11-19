@@ -9,7 +9,9 @@ import type { ScanPortal } from "@/services/scans";
 import { previewScanAction } from "./actions";
 import { getScanBatch, setScanBatch, type PdfFailure } from "./batch-store";
 import { asJpegFile } from "./camera";
+import { OmrRollRecovery } from "./omr-roll-recovery";
 import { fetchFailedPageImage, resolvePdfFailure } from "./pdf-batch";
+import { isRollUnreadError, ROLL_LENGTH, rollInput } from "./roll-helpers";
 
 /** Failed PDF pages: look at what the reader saw, then photograph the paper sheet again. */
 export function FailedPages({
@@ -27,6 +29,7 @@ export function FailedPages({
   const targetRef = useRef<number | null>(null);
   const [rescanning, setRescanning] = useState<number | null>(null);
   const [viewing, setViewing] = useState<PdfFailure | null>(null);
+  const [savingPage, setSavingPage] = useState<number | null>(null);
 
   function pickPhoto(page: number) {
     targetRef.current = page;
@@ -63,6 +66,47 @@ export function FailedPages({
     }
   }
 
+  async function saveWithRoll(failure: PdfFailure, typedRoll: string) {
+    if (!failure.hasImage) {
+      toast.error("No page image to save — scan this sheet again.");
+      return;
+    }
+    const typed = rollInput(typedRoll);
+    if (typed.length !== ROLL_LENGTH) {
+      toast.error("Enter the 7-digit registration number, then save.");
+      return;
+    }
+    setSavingPage(failure.page);
+    try {
+      const url = await fetchFailedPageImage(failure.page);
+      const blob = await fetch(url).then((response) => response.blob());
+      URL.revokeObjectURL(url);
+      const form = new FormData();
+      form.append("file", await asJpegFile(blob));
+      form.append("testId", testId);
+      form.append("rollNo", typed);
+      const result = await previewScanAction(portal, form);
+      if (!result.ok) {
+        toast.error(`Page ${failure.page}: ${result.message}`);
+        return;
+      }
+      const reg = result.result.scan.student.rollNo;
+      if (getScanBatch().some((item) => item.scan.student.rollNo === reg)) {
+        toast.warning(`Page ${failure.page}: Reg ${reg} is already in this list.`);
+        resolvePdfFailure(failure.page);
+        return;
+      }
+      setScanBatch([...getScanBatch(), result.result]);
+      resolvePdfFailure(failure.page);
+      setViewing((current) => (current?.page === failure.page ? null : current));
+      toast.success(`Page ${failure.page} saved · ${result.result.scan.student.name}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save this page.");
+    } finally {
+      setSavingPage(null);
+    }
+  }
+
   return (
     <details className="text-xs text-red-700" open>
       <summary className="cursor-pointer font-medium">
@@ -80,41 +124,55 @@ export function FailedPages({
           if (file) void rescan(file);
         }}
       />
-      <ul className="mt-2 max-h-64 divide-y divide-red-100 overflow-y-auto rounded-lg border border-red-100 bg-red-50/40">
-        {failures.map((failure) => (
-          <li key={failure.page} className="flex items-center gap-2 px-3 py-2">
-            <p className="min-w-0 flex-1">
-              <span className="font-semibold">Page {failure.page}</span>
-              <span className="text-red-600"> · {failure.message}</span>
-            </p>
-            {failure.hasImage ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="h-7 shrink-0 gap-1 px-2 text-xs"
-                onClick={() => setViewing(failure)}
-              >
-                <Eye className="size-3.5" />
-                View
-              </Button>
-            ) : null}
-            <Button
-              type="button"
-              size="sm"
-              className="h-7 shrink-0 gap-1 px-2 text-xs"
-              disabled={disabled || rescanning != null}
-              onClick={() => pickPhoto(failure.page)}
-            >
-              {rescanning === failure.page ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Camera className="size-3.5" />
-              )}
-              {rescanning === failure.page ? "Reading…" : "Scan again"}
-            </Button>
-          </li>
-        ))}
+      <ul className="mt-2 max-h-96 divide-y divide-red-100 overflow-y-auto rounded-lg border border-red-100 bg-red-50/40">
+        {failures.map((failure) => {
+          const unreadRoll = isRollUnreadError(failure.message);
+          const busy = rescanning === failure.page || savingPage === failure.page;
+          return (
+            <li key={failure.page} className="space-y-2 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <p className="min-w-0 flex-1">
+                  <span className="font-semibold">Page {failure.page}</span>
+                  {!unreadRoll ? <span className="text-red-600"> · {failure.message}</span> : null}
+                </p>
+                {failure.hasImage ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 shrink-0 gap-1 px-2 text-xs"
+                    onClick={() => setViewing(failure)}
+                  >
+                    <Eye className="size-3.5" />
+                    View
+                  </Button>
+                ) : null}
+                <Button
+                  type="button"
+                  size="sm"
+                  className="h-7 shrink-0 gap-1 px-2 text-xs"
+                  disabled={disabled || busy}
+                  onClick={() => pickPhoto(failure.page)}
+                >
+                  {rescanning === failure.page ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Camera className="size-3.5" />
+                  )}
+                  {rescanning === failure.page ? "Reading…" : "Scan again"}
+                </Button>
+              </div>
+              {unreadRoll ? (
+                <OmrRollRecovery
+                  portal={portal}
+                  message={failure.message}
+                  busy={disabled || busy}
+                  onSaveWithRoll={(roll) => void saveWithRoll(failure, roll)}
+                />
+              ) : null}
+            </li>
+          );
+        })}
       </ul>
 
       <Sheet open={viewing != null} onOpenChange={(open) => (open ? null : setViewing(null))}>

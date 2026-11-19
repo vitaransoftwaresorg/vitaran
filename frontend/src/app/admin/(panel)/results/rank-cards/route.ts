@@ -7,5 +7,5 @@ export async function GET(request: Request) {
     roll: query.get("roll") || undefined,
     format: query.get("format") === "jpg" ? "jpg" : "pdf",
   });
-  return fileResponse(request, upstream, "Rank card not found. Save the results first.");
+  return fileResponse(request, upstream, "Report card not found. Save the results first.");
 }

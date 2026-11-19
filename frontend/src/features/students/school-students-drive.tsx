@@ -3,8 +3,10 @@
 import { DriveBrowser, type DriveCrumb, type DriveItem } from "@/features/documents/drive-browser";
 import { programLabel } from "@/features/schools/constants";
 import { displaySectionName } from "@/features/schools/section-label";
+import { subjectsForSchoolClass } from "@/features/students/report-subjects";
 import { StudentsTable } from "@/features/students/students-table";
 import type { ClassOrganization } from "@/types/section";
+import type { SchoolProgramOffering } from "@/types/program";
 import type { Student } from "@/types/student";
 
 export const SCHOOL_STUDENTS_PATH = "/school/students";
@@ -15,6 +17,7 @@ type SchoolStudentsDriveProps = {
   section?: string;
   organization?: ClassOrganization | null;
   students?: Student[];
+  schoolPrograms?: SchoolProgramOffering[];
 };
 
 type ClassFolder = {
@@ -105,6 +108,7 @@ export function SchoolStudentsDrive({
   section,
   organization,
   students = [],
+  schoolPrograms,
 }: SchoolStudentsDriveProps) {
   if (classLevel != null) {
     const roster = studentsInClass(students, classLevel, section);
@@ -113,6 +117,7 @@ export function SchoolStudentsDrive({
         students={roster}
         mode="school"
         baseHref={SCHOOL_STUDENTS_PATH}
+        subjects={subjectsForSchoolClass(schoolPrograms, classLevel, roster[0]?.programId)}
         emptyMessage={
           section
             ? "No students in this class section yet."

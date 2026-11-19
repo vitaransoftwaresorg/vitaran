@@ -14,14 +14,23 @@ import {
   getAdminStudentPerformance,
   getAdminStudentProfilePdf,
   getAdminStudentProfilesPdf,
+  getAdminStudentRankCardsPdf,
+  getAdminStudentReportCardPdf,
+  getAdminStudentsReportCardsPdf,
   getStudent,
   getStudentPerformance,
   getStudentProfilePdf,
   getStudentProfilesPdf,
+  getStudentRankCardsPdf,
+  getStudentReportCardPdf,
+  getStudentsReportCardsPdf,
   getTeacherStudent,
   getTeacherStudentPerformance,
   getTeacherStudentProfilePdf,
   getTeacherStudentProfilesPdf,
+  getTeacherStudentRankCardsPdf,
+  getTeacherStudentReportCardPdf,
+  getTeacherStudentsReportCardsPdf,
   getAdminSchoolStudentCounts,
   getSchoolStudentCounts,
   listAdminSchoolStudents,
@@ -40,13 +49,17 @@ import {
   createStudentsBulkSchema,
   listStudentsQuerySchema,
   setStudentStatusSchema,
+  classReportCardsQuerySchema,
   studentIdParamsSchema,
   studentProfilesPdfQuerySchema,
+  studentReportCardsQuerySchema,
   updateStudentSchema,
 } from "../schemas/student.schema.js";
 
 const validateStudentId = validate(studentIdParamsSchema, "params");
 const validateProfileIds = validate(studentProfilesPdfQuerySchema, "query");
+const validateReportCards = validate(studentReportCardsQuerySchema, "query");
+const validateClassReportCards = validate(classReportCardsQuerySchema, "query");
 const schoolIdParams = z.object({ schoolId: z.uuid() });
 const schoolStudentParams = z.object({ schoolId: z.uuid(), id: z.uuid() });
 
@@ -58,8 +71,11 @@ schoolStudentRouter.get("/", validate(listStudentsQuerySchema, "query"), listStu
 schoolStudentRouter.post("/", validate(createStudentSchema), createStudent);
 schoolStudentRouter.post("/bulk", validate(createStudentsBulkSchema), createStudentsBulk);
 schoolStudentRouter.get("/profiles/pdf", validateProfileIds, getStudentProfilesPdf);
+schoolStudentRouter.get("/report-cards", validateClassReportCards, getStudentsReportCardsPdf);
 schoolStudentRouter.get("/:id", validateStudentId, getStudent);
 schoolStudentRouter.get("/:id/performance", validateStudentId, getStudentPerformance);
+schoolStudentRouter.get("/:id/rank-cards", validateStudentId, getStudentRankCardsPdf);
+schoolStudentRouter.get("/:id/report-cards", validateStudentId, validateReportCards, getStudentReportCardPdf);
 schoolStudentRouter.get("/:id/pdf", validateStudentId, getStudentProfilePdf);
 schoolStudentRouter.patch("/:id", validateStudentId, validate(updateStudentSchema), updateStudent);
 schoolStudentRouter.patch(
@@ -118,8 +134,11 @@ export const adminStudentRouter = Router();
 adminStudentRouter.use(requireAdmin);
 adminStudentRouter.get("/", validate(listStudentsQuerySchema, "query"), listAdminStudents);
 adminStudentRouter.get("/profiles/pdf", validateProfileIds, getAdminStudentProfilesPdf);
+adminStudentRouter.get("/report-cards", validateClassReportCards, getAdminStudentsReportCardsPdf);
 adminStudentRouter.get("/:id", validateStudentId, getAdminStudent);
 adminStudentRouter.get("/:id/performance", validateStudentId, getAdminStudentPerformance);
+adminStudentRouter.get("/:id/rank-cards", validateStudentId, getAdminStudentRankCardsPdf);
+adminStudentRouter.get("/:id/report-cards", validateStudentId, validateReportCards, getAdminStudentReportCardPdf);
 adminStudentRouter.get("/:id/pdf", validateStudentId, getAdminStudentProfilePdf);
 adminStudentRouter.patch("/:id", validateStudentId, validate(updateStudentSchema), updateAdminStudent);
 adminStudentRouter.delete("/:id", validateStudentId, deleteAdminStudent);
@@ -130,6 +149,14 @@ teacherStudentRouter.use(requireTeacher);
 teacherStudentRouter.get("/dashboard", getTeacherDashboard);
 teacherStudentRouter.get("/", validate(listStudentsQuerySchema, "query"), listTeacherStudents);
 teacherStudentRouter.get("/profiles/pdf", validateProfileIds, getTeacherStudentProfilesPdf);
+teacherStudentRouter.get("/report-cards", validateClassReportCards, getTeacherStudentsReportCardsPdf);
 teacherStudentRouter.get("/:id", validateStudentId, getTeacherStudent);
 teacherStudentRouter.get("/:id/performance", validateStudentId, getTeacherStudentPerformance);
+teacherStudentRouter.get("/:id/rank-cards", validateStudentId, getTeacherStudentRankCardsPdf);
+teacherStudentRouter.get(
+  "/:id/report-cards",
+  validateStudentId,
+  validateReportCards,
+  getTeacherStudentReportCardPdf,
+);
 teacherStudentRouter.get("/:id/pdf", validateStudentId, getTeacherStudentProfilePdf);

@@ -13,7 +13,8 @@ import { capitalizeWords } from "@/features/schools/schema";
 import { deleteStudentInPlaceAction } from "@/features/students/actions";
 import { deleteAdminStudentInPlaceAction } from "@/features/students/admin-student-actions";
 import type { StudentDetail, StudentTestResult } from "@/types/student";
-import type { PerformancePortal } from "./performance-actions";
+import { subjectsForClassLevel } from "@/features/schools/constants";
+import type { PerformancePortal } from "./portal";
 import { StudentPerformance } from "./student-performance";
 import { StudentPdfActions } from "./student-pdf-actions";
 import { StudentPerformanceLoader } from "./student-performance-loader";
@@ -136,6 +137,14 @@ export function StudentDetailView({
                   schoolName={student.school?.name ?? student.schoolName}
                   programName={student.programName}
                   classLevel={student.classLevel}
+                  subjects={[
+                    ...new Set([
+                      ...(performance ?? []).flatMap((test) =>
+                        test.subjects.map((subject) => subject.label),
+                      ),
+                      ...subjectsForClassLevel(student.classLevel),
+                    ]),
+                  ]}
                   outlineClassName={INVERTED_OUTLINE}
                 />
               ) : null}
@@ -217,9 +226,27 @@ export function StudentDetailView({
       </div>
 
       {performance ? (
-        <StudentPerformance results={performance} portal={portal} />
+        <StudentPerformance
+          results={performance}
+          portal={portal}
+          student={{
+            id: student.id,
+            name: student.name,
+            rollNo: student.rollNo,
+            schoolName: student.school?.name ?? student.schoolName,
+          }}
+        />
       ) : portal ? (
-        <StudentPerformanceLoader portal={portal} studentId={student.id} />
+        <StudentPerformanceLoader
+          portal={portal}
+          studentId={student.id}
+          student={{
+            id: student.id,
+            name: student.name,
+            rollNo: student.rollNo,
+            schoolName: student.school?.name ?? student.schoolName,
+          }}
+        />
       ) : null}
     </div>
   );

@@ -10,6 +10,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { displaySectionName } from "@/features/schools/section-label";
 import { deleteStudentInPlaceAction } from "@/features/students/actions";
 import { deleteAdminStudentInPlaceAction } from "@/features/students/admin-student-actions";
+import { subjectsForClassLevel } from "@/features/schools/constants";
+import { StudentReportCardLinks } from "@/features/students/student-report-downloads";
 import { PROFILE_LINK_CLASS, ProfileLink, schoolProfileHref } from "@/components/shared/profile-link";
 import { cn } from "@/lib/utils";
 import type { Student } from "@/types/student";
@@ -26,6 +28,8 @@ type StudentsTableProps = {
   /** School portal in-page: detail at `${baseHref}/${id}` */
   baseHref?: string;
   showSchool?: boolean;
+  /** Subject labels for the Reports → Subjects menu (shared across the roster when set). */
+  subjects?: string[];
   onView?: (id: string) => void;
   onEdit?: (id: string) => void;
   onDeleted?: () => void;
@@ -37,6 +41,7 @@ export function StudentsTable({
   mode = "school",
   baseHref,
   showSchool = false,
+  subjects,
   onView,
   onEdit,
   onDeleted,
@@ -71,8 +76,9 @@ export function StudentsTable({
     );
   }
 
-  const showActions = mode === "school" || mode === "admin";
+  const showActions = true;
   const canMutate = mode === "school" || mode === "admin";
+  const reportPortal = mode;
 
   function detailHref(student: StudentRow) {
     if (mode === "admin") return `/admin/schools/students/${student.id}`;
@@ -109,6 +115,7 @@ export function StudentsTable({
               <th className="px-4 py-2.5">Section</th>
               <th className="hidden px-4 py-2.5 md:table-cell">Program</th>
               <th className="px-4 py-2.5">Status</th>
+              <th className="hidden px-3 py-2.5 lg:table-cell">Report Cards</th>
               {showActions ? <th className="px-4 py-2.5 text-right">Actions</th> : null}
             </tr>
           </thead>
@@ -178,6 +185,16 @@ export function StudentsTable({
                     >
                       {student.status === "ACTIVE" ? "Active" : "Inactive"}
                     </span>
+                  </td>
+                  <td className="hidden px-3 py-2.5 lg:table-cell">
+                    <StudentReportCardLinks
+                      portal={reportPortal}
+                      studentId={student.id}
+                      studentName={student.name}
+                      rollNo={student.rollNo}
+                      schoolName={student.schoolName}
+                      subjects={subjects ?? subjectsForClassLevel(student.classLevel)}
+                    />
                   </td>
                   {showActions ? (
                     <td className="px-4 py-2.5">

@@ -1,7 +1,9 @@
 import { displaySectionName } from "@/features/schools/section-label";
 import { capitalizeWords } from "@/features/schools/schema";
+import type { SchoolProgramOffering } from "@/types/program";
 import type { Student } from "@/types/student";
-import type { PerformancePortal } from "./performance-actions";
+import type { PerformancePortal } from "./portal";
+import { subjectsForSchoolClass } from "./report-subjects";
 import { ClassProfilesPdfActions } from "./student-pdf-actions";
 import { StudentsTable } from "./students-table";
 
@@ -28,10 +30,12 @@ function classGroups(students: Student[]): ClassGroup[] {
 export function StudentsByClass({
   portal,
   students,
+  schoolPrograms,
   emptyMessage,
 }: {
   portal: PerformancePortal;
   students: Student[];
+  schoolPrograms?: SchoolProgramOffering[];
   emptyMessage?: string;
 }) {
   const groups = classGroups(students);
@@ -41,26 +45,33 @@ export function StudentsByClass({
 
   return (
     <div className="space-y-5">
-      {groups.map((group) => (
-        <section key={group.key} className="space-y-2">
-          <header className="flex flex-wrap items-center justify-between gap-2 px-1">
-            <div className="min-w-0">
-              <h2 className="text-sm font-semibold text-neutral-950">{group.title}</h2>
-              <p className="truncate text-xs text-neutral-500">
-                {group.program} · {group.students.length}{" "}
-                {group.students.length === 1 ? "student" : "students"}
-              </p>
-            </div>
-            <ClassProfilesPdfActions
-              portal={portal}
-              studentIds={group.students.map((student) => student.id)}
-              scopeLabel={group.title}
-              schoolName={group.students[0]?.schoolName}
-            />
-          </header>
-          <StudentsTable students={group.students} mode={portal} />
-        </section>
-      ))}
+      {groups.map((group) => {
+        const sample = group.students[0];
+        const subjects = sample
+          ? subjectsForSchoolClass(schoolPrograms, sample.classLevel, sample.programId)
+          : [];
+        return (
+          <section key={group.key} className="space-y-2">
+            <header className="flex flex-wrap items-center justify-between gap-2 px-1">
+              <div className="min-w-0">
+                <h2 className="text-sm font-semibold text-neutral-950">{group.title}</h2>
+                <p className="truncate text-xs text-neutral-500">
+                  {group.program} · {group.students.length}{" "}
+                  {group.students.length === 1 ? "student" : "students"}
+                </p>
+              </div>
+              <ClassProfilesPdfActions
+                portal={portal}
+                studentIds={group.students.map((student) => student.id)}
+                scopeLabel={group.title}
+                schoolName={sample?.schoolName}
+                subjects={subjects}
+              />
+            </header>
+            <StudentsTable students={group.students} mode={portal} subjects={subjects} />
+          </section>
+        );
+      })}
     </div>
   );
 }

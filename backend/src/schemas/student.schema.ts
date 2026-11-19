@@ -92,6 +92,38 @@ export const studentProfilesPdfQuerySchema = z.object({
     .pipe(z.array(z.uuid()).min(1).max(300)),
 });
 
+/** year = all tests; tests = per-test rank cards; subjects = one subject or all subjects across tests. */
+export const reportCardKindSchema = z.enum(["year", "tests", "subjects"]).default("tests");
+
+const reportSubjectSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim() && value.trim().toLowerCase() !== "all" ? value.trim() : undefined),
+  z.string().trim().min(1).max(64).optional(),
+);
+
+/** When kind=tests: omit/all = every test; else one test number (1–18). */
+const reportTestSchema = z.preprocess((value) => {
+  if (value == null || value === "") return undefined;
+  if (typeof value === "string" && value.trim().toLowerCase() === "all") return undefined;
+  const n = typeof value === "number" ? value : Number(String(value).trim());
+  return Number.isInteger(n) ? n : value;
+}, z.number().int().min(1).max(18).optional());
+
+export const studentReportCardsQuerySchema = z.object({
+  kind: reportCardKindSchema,
+  /** When kind=subjects: omit/all = every subject; else one subject label (e.g. MATHEMATICS). */
+  subject: reportSubjectSchema,
+  /** When kind=tests: omit/all = every test; else one test number. */
+  test: reportTestSchema,
+});
+
+export const classReportCardsQuerySchema = studentProfilesPdfQuerySchema.extend({
+  kind: reportCardKindSchema,
+  subject: reportSubjectSchema,
+  test: reportTestSchema,
+});
+
+export type ReportCardKind = z.infer<typeof reportCardKindSchema>;
+
 export const setStudentStatusSchema = z.object({
   status: z.enum(StudentStatus),
 });

@@ -46,6 +46,39 @@ export type RankCardData = {
 
 export type RankCardLogos = { vitaran: Buffer | null; school: Buffer | null };
 
+export type YearReportTest = {
+  testNumber: number;
+  testId: string | null;
+  subjects: Array<{ label: string; marks: number | null; max: number | null; percentage: number | null }>;
+  total: number | null;
+  totalMax: number | null;
+  percentage: number | null;
+  classRank: number | null;
+  sectionRank: number | null;
+};
+
+export type YearReportCardData = {
+  schoolName: string;
+  programName: string;
+  student: { name: string; rollNo: string; classLabel: string };
+  tests: YearReportTest[];
+};
+
+export type SubjectReportCardData = {
+  schoolName: string;
+  programName: string;
+  student: { name: string; rollNo: string; classLabel: string };
+  tests: Array<{ testNumber: number }>;
+  subjects: Array<{
+    label: string;
+    scores: Array<{ marks: number | null; max: number | null; percentage: number | null }>;
+    average: number | null;
+  }>;
+  overallAverage: number | null;
+  /** When set, card is for one subject only. */
+  focusSubject?: string;
+};
+
 const esc = (value: string) =>
   value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
@@ -324,7 +357,7 @@ function buildCardSvg(data: RankCardData, schoolBadge: boolean, titleFont: Font 
   parts.push(`<line x1="40" y1="${bandY + 8}" x2="${W - 40}" y2="${bandY + 8}" stroke="url(#gold)" stroke-width="2"/>`);
   parts.push(`<line x1="40" y1="${bandY + 128}" x2="${W - 40}" y2="${bandY + 128}" stroke="url(#gold)" stroke-width="2"/>`);
   parts.push(diamond(300, bandY + 64, 8), diamond(W - 300, bandY + 64, 8));
-  parts.push(text(W / 2, bandY + 89, "RANK CARD", 60, { color: "url(#goldText)", weight: 700, anchor: "middle", spacing: 14 }));
+  parts.push(text(W / 2, bandY + 89, "REPORT CARD", 60, { color: "url(#goldText)", weight: 700, anchor: "middle", spacing: 14 }));
 
   // Student hero; the class-rank medal is only for the top three.
   const heroY = 386;
@@ -516,7 +549,7 @@ function buildCardSvg(data: RankCardData, schoolBadge: boolean, titleFont: Font 
   parts.push(`<path d="M40 ${footY} H${W - 40} V${H - 62} a22 22 0 0 1 -22 22 H62 a22 22 0 0 1 -22 -22 Z" fill="url(#band)"/>`);
   parts.push(`<line x1="40" y1="${footY}" x2="${W - 40}" y2="${footY}" stroke="url(#gold)" stroke-width="2"/>`);
   parts.push(
-    text(W / 2, footY + 44, "COMPUTER-GENERATED RANK CARD", 17, {
+    text(W / 2, footY + 44, "COMPUTER-GENERATED REPORT CARD", 17, {
       color: "#f1d980",
       weight: 700,
       anchor: "middle",
@@ -554,9 +587,10 @@ export function loadTitleFont() {
 }
 
 export async function renderRankCard(data: RankCardData, logos: RankCardLogos) {
+  const titleFont = await loadTitleFont();
+  let schoolLogo = false;
   const layers: OverlayOptions[] = [];
   if (logos.vitaran) layers.push({ input: await logoTile(logos.vitaran, 230, 104), left: 66, top: 68 });
-  let schoolLogo = false;
   if (logos.school) {
     try {
       layers.push({ input: await logoTile(logos.school, 150, 128), left: W - 216, top: 58 });
@@ -565,7 +599,406 @@ export async function renderRankCard(data: RankCardData, logos: RankCardLogos) {
       // Unreadable school logo: falls back to the initials badge.
     }
   }
-  return sharp(Buffer.from(cardSvg(data, !schoolLogo, await loadTitleFont())))
+  return sharp(Buffer.from(cardSvg(data, !schoolLogo, titleFont)))
+    .composite(layers)
+    .jpeg({ quality: 92 })
+    .toBuffer();
+}
+
+function cardDefs() {
+  return `<defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbe9a6"/><stop offset="0.5" stop-color="#d9ad38"/><stop offset="1" stop-color="#a47912"/></linearGradient>
+    <linearGradient id="goldText" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff1bd"/><stop offset="1" stop-color="#e0b23e"/></linearGradient>
+    <linearGradient id="navy" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#232a78"/><stop offset="1" stop-color="#0d1140"/></linearGradient>
+    <linearGradient id="band" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#0d1140"/><stop offset="0.5" stop-color="#232a78"/><stop offset="1" stop-color="#0d1140"/></linearGradient>
+    <pattern id="lines" width="22" height="22" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="22" stroke="#ffffff" stroke-opacity="0.045" stroke-width="8"/></pattern>
+  </defs>`;
+}
+
+function cardFrame() {
+  return [
+    `<rect width="${W}" height="${H}" fill="#f6f2e7"/>`,
+    `<rect x="26" y="26" width="${W - 52}" height="${H - 52}" rx="30" fill="#fffdf8" stroke="url(#gold)" stroke-width="4"/>`,
+    `<rect x="40" y="40" width="${W - 80}" height="${H - 80}" rx="22" fill="none" stroke="${GOLD}" stroke-opacity="0.45" stroke-width="1.5"/>`,
+  ].join("");
+}
+
+function cardHeader(schoolName: string, programName: string, schoolBadge: boolean, titleFont: Font | null) {
+  const parts: string[] = [];
+  if (titleFont) parts.push(schoolTitle(titleFont, schoolName.toUpperCase()));
+  else {
+    const name = schoolNameLines(schoolName.toUpperCase());
+    name.lines.forEach((line, index) => {
+      parts.push(
+        text(W / 2, name.top + index * (name.size + 6), line, name.size, {
+          color: NAVY,
+          weight: 800,
+          anchor: "middle",
+          spacing: 1.5,
+        }),
+      );
+    });
+  }
+  parts.push(text(W / 2, 176, fit(programName, 44), 23, { color: MUTED, weight: 600, anchor: "middle", spacing: 1 }));
+  if (schoolBadge) {
+    const cx = W - 140;
+    parts.push(`<circle cx="${cx}" cy="122" r="62" fill="url(#navy)" stroke="url(#gold)" stroke-width="4"/>`);
+    parts.push(`<circle cx="${cx}" cy="122" r="51" fill="none" stroke="${GOLD}" stroke-opacity="0.6" stroke-width="1.5"/>`);
+    parts.push(text(cx, 138, initials(schoolName), 44, { color: "url(#goldText)", weight: 800, anchor: "middle" }));
+  }
+  return parts.join("");
+}
+
+function titleBand(label: string) {
+  const bandY = 214;
+  return [
+    `<rect x="40" y="${bandY}" width="${W - 80}" height="136" fill="url(#band)"/>`,
+    `<rect x="40" y="${bandY}" width="${W - 80}" height="136" fill="url(#lines)"/>`,
+    `<line x1="40" y1="${bandY + 8}" x2="${W - 40}" y2="${bandY + 8}" stroke="url(#gold)" stroke-width="2"/>`,
+    `<line x1="40" y1="${bandY + 128}" x2="${W - 40}" y2="${bandY + 128}" stroke="url(#gold)" stroke-width="2"/>`,
+    diamond(300, bandY + 64, 8),
+    diamond(W - 300, bandY + 64, 8),
+    text(W / 2, bandY + 89, label, 52, { color: "url(#goldText)", weight: 700, anchor: "middle", spacing: 10 }),
+  ].join("");
+}
+
+function studentHeroBlock(student: { name: string; rollNo: string; classLabel: string }) {
+  const heroY = 386;
+  const heroH = 200;
+  const parts: string[] = [
+    `<rect x="64" y="${heroY}" width="${W - 128}" height="${heroH}" rx="26" fill="#ffffff" stroke="#e8dcb4" stroke-width="2"/>`,
+    text(100, heroY + 46, "STUDENT", 17, { color: GOLD_DARK, weight: 800, spacing: 5 }),
+    text(100, heroY + 100, fit(student.name.toUpperCase(), 26), 46, { color: NAVY, weight: 700 }),
+    `<rect x="100" y="${heroY + 116}" width="110" height="4" rx="2" fill="url(#gold)"/>`,
+  ];
+  (
+    [
+      ["REG. NO", student.rollNo || "-"],
+      ["CLASS", student.classLabel || "-"],
+    ] as Array<[string, string]>
+  ).forEach(([label, value], index) => {
+    const x = 100 + index * 280;
+    parts.push(`<rect x="${x}" y="${heroY + 136}" width="260" height="48" rx="14" fill="#f8f4e8" stroke="#ece2c2" stroke-width="1.5"/>`);
+    parts.push(text(x + 18, heroY + 156, label, 14, { color: MUTED, weight: 700, spacing: 2.5 }));
+    parts.push(text(x + 18, heroY + 176, value, 22, { color: INK, weight: 800 }));
+  });
+  return parts.join("");
+}
+
+function fourStats(
+  stats: Array<{ label: string; value: string; hint?: string }>,
+  y = 620,
+) {
+  const gap = 22;
+  const statW = (W - 128 - gap * 3) / 4;
+  const statH = 170;
+  const label = (x: number, value: string) =>
+    text(x + statW / 2, y + 40, value, 16, { color: "#f1d980", weight: 800, anchor: "middle", spacing: 2.5 });
+  return stats
+    .map((stat, index) => {
+      const x = 64 + index * (statW + gap);
+      return statCard(
+        x,
+        y,
+        statW,
+        statH,
+        [
+          label(x, stat.label),
+          text(x + statW / 2, y + 108, stat.value, 42, { color: "#ffffff", weight: 800, anchor: "middle" }),
+          text(x + statW / 2, y + 144, stat.hint ?? "", 18, { color: "#c3c8f2", anchor: "middle" }),
+        ].join(""),
+      );
+    })
+    .join("");
+}
+
+function cardFooter(label: string, remarkCopy: string, contentEnd: number) {
+  const parts: string[] = [];
+  const remarkSize = 22;
+  const remarkLeft = 166;
+  const remarkMaxW = W - remarkLeft - 88;
+  const remarkLines = wrapLines(paintFont, remarkCopy, remarkSize, remarkMaxW).slice(0, 3);
+  const remarkBoxH = 52 + remarkLines.length * (remarkSize + 10);
+  const footY = H - 108;
+  const signY = footY - 78;
+  const remarkY = Math.min(Math.max(contentEnd + 24, 1180), signY - remarkBoxH - 36);
+  parts.push(
+    `<rect x="64" y="${remarkY}" width="${W - 128}" height="${remarkBoxH}" rx="22" fill="#fbf6e6" stroke="${GOLD}" stroke-opacity="0.5" stroke-width="1.5"/>`,
+  );
+  parts.push(`<rect x="64" y="${remarkY + 18}" width="6" height="${Math.max(40, remarkBoxH - 36)}" rx="3" fill="url(#gold)"/>`);
+  parts.push(text(remarkLeft, remarkY + 34, "REMARK", 15, { color: GOLD_DARK, weight: 800, spacing: 4 }));
+  remarkLines.forEach((line, index) => {
+    parts.push(text(remarkLeft, remarkY + 64 + index * (remarkSize + 10), line, remarkSize, { color: NAVY, italic: true }));
+  });
+  const signCenters = [210, W - 210];
+  ["Class Teacher", "Principal"].forEach((value, index) => {
+    const x = signCenters[index]!;
+    parts.push(`<line x1="${x - 150}" y1="${signY}" x2="${x + 150}" y2="${signY}" stroke="#bfb592" stroke-width="1.5"/>`);
+    parts.push(text(x, signY + 32, value, 20, { color: MUTED, weight: 600, anchor: "middle", spacing: 1 }));
+  });
+  parts.push(`<path d="M40 ${footY} H${W - 40} V${H - 62} a22 22 0 0 1 -22 22 H62 a22 22 0 0 1 -22 -22 Z" fill="url(#band)"/>`);
+  parts.push(`<line x1="40" y1="${footY}" x2="${W - 40}" y2="${footY}" stroke="url(#gold)" stroke-width="2"/>`);
+  parts.push(
+    text(W / 2, footY + 44, label, 17, {
+      color: "#f1d980",
+      weight: 700,
+      anchor: "middle",
+      spacing: 3,
+    }),
+  );
+  return parts.join("");
+}
+
+function avgOf(values: Array<number | null>) {
+  const filled = values.filter((value): value is number => value != null);
+  return filled.length ? filled.reduce((sum, value) => sum + value, 0) / filled.length : null;
+}
+
+function buildYearReportSvg(data: YearReportCardData, schoolBadge: boolean, titleFont: Font | null) {
+  const previousFont = paintFont;
+  paintFont = titleFont;
+  try {
+    const parts: string[] = [cardDefs(), cardFrame()];
+    parts.push(cardHeader(data.schoolName, data.programName, schoolBadge, titleFont));
+    parts.push(titleBand("YEAR REPORT CARD"));
+    parts.push(studentHeroBlock(data.student));
+
+    const percents = data.tests.map((test) => test.percentage);
+    const ranks = data.tests.map((test) => test.classRank).filter((rank): rank is number => rank != null);
+    const best = (() => {
+      const filled = percents.filter((value): value is number => value != null);
+      return filled.length ? Math.max(...filled) : null;
+    })();
+    parts.push(
+      fourStats([
+        { label: "TESTS", value: String(data.tests.length), hint: "this year" },
+        { label: "AVERAGE", value: data.tests.length ? `${Math.round(avgOf(percents) ?? 0)}%` : "-", hint: "overall" },
+        { label: "BEST SCORE", value: best == null ? "-" : `${Math.round(best)}%`, hint: "highest test" },
+        {
+          label: "BEST RANK",
+          value: ranks.length ? `${Math.min(...ranks)}${ordinalSuffix(Math.min(...ranks))}` : "-",
+          hint: "class",
+        },
+      ]),
+    );
+
+    const subjects = [...new Set(data.tests.flatMap((test) => test.subjects.map((subject) => subject.label)))];
+    const tableY = 830;
+    parts.push(sectionTitle(tableY, "ALL TESTS THIS YEAR"));
+    const headY = tableY + 40;
+    const testCol = 150;
+    const trailing = 70;
+    const subjectW = subjects.length ? Math.max(70, (W - 128 - testCol - trailing * 2) / subjects.length) : 90;
+    parts.push(text(90, headY, "TEST", 14, { color: MUTED, weight: 800, spacing: 2 }));
+    subjects.forEach((label, index) => {
+      parts.push(
+        text(90 + testCol + index * subjectW + subjectW / 2, headY, fit(label, 8), 13, {
+          color: MUTED,
+          weight: 800,
+          anchor: "middle",
+          spacing: 1,
+        }),
+      );
+    });
+    parts.push(text(W - 64 - trailing * 1.5, headY, "TOTAL", 13, { color: MUTED, weight: 800, anchor: "middle" }));
+    parts.push(text(W - 64 - trailing * 0.5, headY, "RANK", 13, { color: MUTED, weight: 800, anchor: "middle" }));
+
+    const rowCount = Math.max(1, data.tests.length);
+    const rowGap = rowCount > 8 ? 4 : 8;
+    const rowH = Math.min(56, Math.floor(520 / rowCount) - rowGap);
+    const rowsTop = headY + 16;
+    data.tests.forEach((test, index) => {
+      const y = rowsTop + index * (rowH + rowGap);
+      const mid = y + rowH / 2;
+      parts.push(`<rect x="64" y="${y}" width="${W - 128}" height="${rowH}" rx="14" fill="#ffffff" stroke="#ece4c9" stroke-width="1.5"/>`);
+      parts.push(text(90, mid + 6, `Test ${test.testNumber}`, 18, { color: NAVY, weight: 800 }));
+      subjects.forEach((label, sIndex) => {
+        const subject = test.subjects.find((entry) => entry.label === label);
+        const cx = 90 + testCol + sIndex * subjectW + subjectW / 2;
+        const color = SUBJECT_COLORS[sIndex % SUBJECT_COLORS.length]!;
+        if (subject?.marks != null) {
+          parts.push(
+            text(cx, mid + 6, `${num(subject.marks)}${subject.max ? `/${num(subject.max)}` : ""}`, 16, {
+              color: INK,
+              weight: 700,
+              anchor: "middle",
+            }),
+          );
+        } else {
+          parts.push(text(cx, mid + 6, "-", 16, { color: MUTED, anchor: "middle" }));
+        }
+        void color;
+      });
+      parts.push(
+        text(W - 64 - trailing * 1.5, mid + 6, test.total == null ? "-" : num(test.total), 18, {
+          color: NAVY,
+          weight: 800,
+          anchor: "middle",
+        }),
+      );
+      parts.push(
+        text(W - 64 - trailing * 0.5, mid + 6, test.classRank == null ? "-" : String(Math.round(test.classRank)), 18, {
+          color: GOLD_DARK,
+          weight: 800,
+          anchor: "middle",
+        }),
+      );
+    });
+    const contentEnd = rowsTop + data.tests.length * (rowH + rowGap);
+    parts.push(cardFooter("COMPUTER-GENERATED YEAR REPORT CARD", remark(avgOf(percents)), contentEnd));
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${parts.join("")}</svg>`;
+  } finally {
+    paintFont = previousFont;
+  }
+}
+
+function buildSubjectReportSvg(data: SubjectReportCardData, schoolBadge: boolean, titleFont: Font | null) {
+  const previousFont = paintFont;
+  paintFont = titleFont;
+  try {
+    const parts: string[] = [cardDefs(), cardFrame()];
+    parts.push(cardHeader(data.schoolName, data.programName, schoolBadge, titleFont));
+    const focus = data.focusSubject?.trim().toUpperCase();
+    parts.push(
+      titleBand(
+        focus
+          ? fit(`${focus} REPORT`, 22)
+          : "SUBJECT REPORT CARD",
+      ),
+    );
+    parts.push(studentHeroBlock(data.student));
+
+    const avgs = data.subjects.map((subject) => subject.average);
+    const best = (() => {
+      const filled = avgs.filter((value): value is number => value != null);
+      return filled.length ? Math.max(...filled) : null;
+    })();
+    parts.push(
+      fourStats(
+        focus
+          ? [
+              { label: "SUBJECT", value: fit(focus, 10), hint: "selected" },
+              { label: "TESTS", value: String(data.tests.length), hint: "compared" },
+              {
+                label: "AVERAGE",
+                value: data.overallAverage == null ? "-" : `${Math.round(data.overallAverage)}%`,
+                hint: "this subject",
+              },
+              {
+                label: "BEST",
+                value: best == null ? "-" : `${Math.round(best)}%`,
+                hint: "best test",
+              },
+            ]
+          : [
+              { label: "SUBJECTS", value: String(data.subjects.length), hint: "tracked" },
+              { label: "TESTS", value: String(data.tests.length), hint: "compared" },
+              { label: "BEST AVG", value: best == null ? "-" : `${Math.round(best)}%`, hint: "top subject" },
+              {
+                label: "OVERALL",
+                value: data.overallAverage == null ? "-" : `${Math.round(data.overallAverage)}%`,
+                hint: "all tests",
+              },
+            ],
+      ),
+    );
+
+    const tableY = 830;
+    parts.push(sectionTitle(tableY, focus ? `${focus} ACROSS ALL TESTS` : "SUBJECTS ACROSS ALL TESTS"));
+    const headY = tableY + 40;
+    const labelW = 170;
+    const avgW = 90;
+    const testW = data.tests.length ? Math.max(70, (W - 128 - labelW - avgW) / data.tests.length) : 90;
+    parts.push(text(90, headY, "SUBJECT", 14, { color: MUTED, weight: 800, spacing: 2 }));
+    data.tests.forEach((test, index) => {
+      parts.push(
+        text(90 + labelW + index * testW + testW / 2, headY, `T${test.testNumber}`, 14, {
+          color: MUTED,
+          weight: 800,
+          anchor: "middle",
+        }),
+      );
+    });
+    parts.push(text(W - 64 - avgW / 2, headY, "AVG", 14, { color: MUTED, weight: 800, anchor: "middle" }));
+
+    const rowCount = Math.max(1, data.subjects.length);
+    const rowGap = rowCount > 7 ? 5 : 10;
+    const rowH = Math.min(64, Math.floor(520 / rowCount) - rowGap);
+    const rowsTop = headY + 16;
+    data.subjects.forEach((subject, index) => {
+      const y = rowsTop + index * (rowH + rowGap);
+      const mid = y + rowH / 2;
+      const color = SUBJECT_COLORS[index % SUBJECT_COLORS.length]!;
+      parts.push(`<rect x="64" y="${y}" width="${W - 128}" height="${rowH}" rx="14" fill="#ffffff" stroke="#ece4c9" stroke-width="1.5"/>`);
+      parts.push(`<circle cx="98" cy="${mid}" r="16" fill="${color}"/>`);
+      parts.push(text(98, mid + 6, subject.label.slice(0, 1), 16, { color: "#ffffff", weight: 800, anchor: "middle" }));
+      parts.push(text(124, mid + 7, fit(subject.label, 14), 20, { color: INK, weight: 800 }));
+      subject.scores.forEach((score, sIndex) => {
+        const cx = 90 + labelW + sIndex * testW + testW / 2;
+        if (score.marks != null) {
+          parts.push(
+            text(cx, mid + 6, `${num(score.marks)}${score.max ? `/${num(score.max)}` : ""}`, 16, {
+              color: INK,
+              weight: 700,
+              anchor: "middle",
+            }),
+          );
+        } else {
+          parts.push(text(cx, mid + 6, "-", 16, { color: MUTED, anchor: "middle" }));
+        }
+      });
+      const avgLabel = subject.average == null ? "-" : `${Math.round(subject.average)}%`;
+      parts.push(
+        text(W - 64 - avgW / 2, mid + 7, avgLabel, 20, {
+          color: subject.average != null && subject.average >= 75 ? "#16794a" : GOLD_DARK,
+          weight: 800,
+          anchor: "middle",
+        }),
+      );
+    });
+    const contentEnd = rowsTop + data.subjects.length * (rowH + rowGap);
+    parts.push(
+      cardFooter("COMPUTER-GENERATED SUBJECT REPORT CARD", remark(data.overallAverage), contentEnd),
+    );
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${parts.join("")}</svg>`;
+  } finally {
+    paintFont = previousFont;
+  }
+}
+
+export async function renderYearReportCard(data: YearReportCardData, logos: RankCardLogos) {
+  const titleFont = await loadTitleFont();
+  let schoolLogo = false;
+  const layers: OverlayOptions[] = [];
+  if (logos.vitaran) layers.push({ input: await logoTile(logos.vitaran, 230, 104), left: 66, top: 68 });
+  if (logos.school) {
+    try {
+      layers.push({ input: await logoTile(logos.school, 150, 128), left: W - 216, top: 58 });
+      schoolLogo = true;
+    } catch {
+      // Unreadable school logo: falls back to the initials badge.
+    }
+  }
+  return sharp(Buffer.from(buildYearReportSvg(data, !schoolLogo, titleFont)))
+    .composite(layers)
+    .jpeg({ quality: 92 })
+    .toBuffer();
+}
+
+export async function renderSubjectReportCard(data: SubjectReportCardData, logos: RankCardLogos) {
+  const titleFont = await loadTitleFont();
+  let schoolLogo = false;
+  const layers: OverlayOptions[] = [];
+  if (logos.vitaran) layers.push({ input: await logoTile(logos.vitaran, 230, 104), left: 66, top: 68 });
+  if (logos.school) {
+    try {
+      layers.push({ input: await logoTile(logos.school, 150, 128), left: W - 216, top: 58 });
+      schoolLogo = true;
+    } catch {
+      // Unreadable school logo: falls back to the initials badge.
+    }
+  }
+  return sharp(Buffer.from(buildSubjectReportSvg(data, !schoolLogo, titleFont)))
     .composite(layers)
     .jpeg({ quality: 92 })
     .toBuffer();

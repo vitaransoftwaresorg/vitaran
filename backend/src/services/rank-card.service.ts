@@ -143,7 +143,7 @@ export async function getRankCards(
   const fileName = options.roll
     ? downloadFileName(
         [
-          "Rank-Card",
+          "Report-Card",
           schoolName,
           programName,
           `Class-${params.classLevel}`,
@@ -156,7 +156,7 @@ export async function getRankCards(
       )
     : downloadFileName(
         [
-          "Rank-Cards",
+          "Report-Cards",
           schoolName,
           programName,
           `Class-${params.classLevel}`,

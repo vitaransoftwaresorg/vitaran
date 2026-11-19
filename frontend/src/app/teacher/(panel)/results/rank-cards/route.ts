@@ -9,5 +9,5 @@ export async function GET(request: Request) {
     { roll: query.get("roll") || undefined, format: query.get("format") === "jpg" ? "jpg" : "pdf" },
     "teacher",
   );
-  return fileResponse(request, upstream, "Rank card not found. Results are not saved yet.");
+  return fileResponse(request, upstream, "Report card not found. Results are not saved yet.");
 }

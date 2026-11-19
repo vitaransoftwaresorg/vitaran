@@ -19,7 +19,9 @@ import {
   TEACHER_RESULTS_PATH,
 } from "@/features/results/constants";
 import { OmrCell } from "@/features/results/omr-files";
-import type { PerformancePortal } from "./performance-actions";
+import { RankCardCell } from "@/features/results/rank-card-files";
+import type { PerformancePortal } from "./portal";
+import { StudentReportDownloads } from "./student-report-downloads";
 
 const SUBJECT_COLORS = ["#2f5bea", "#0f9f6e", "#e8622c", "#d63384", "#7048e8", "#0b93b8", "#c28a0a"];
 const TOTAL_COLOR = "#10133f";
@@ -56,13 +58,22 @@ function omrBasePath(portal?: PerformancePortal) {
   return RESULTS_PATH;
 }
 
-/** A student's saved tests: summary, a test-by-test percentage chart and every test in order. */
+type PerformanceStudent = {
+  id?: string;
+  name: string;
+  rollNo: string;
+  schoolName?: string;
+};
+
+/** A student's saved tests: subject-wise report, chart, and every test with rank cards. */
 export function StudentPerformance({
   results,
   portal,
+  student,
 }: {
   results: StudentTestResult[];
   portal?: PerformancePortal;
+  student?: PerformanceStudent;
 }) {
   const omrPath = omrBasePath(portal);
   const subjects = [...new Set(results.flatMap((test) => test.subjects.map((subject) => subject.label)))];
@@ -74,7 +85,7 @@ export function StudentPerformance({
       <section className="rounded-xl border border-dashed border-brand-200 bg-white px-6 py-12 text-center">
         <BarChart3 className="mx-auto size-8 text-brand-300" />
         <p className="mt-3 text-sm font-semibold text-neutral-900">No test results yet</p>
-        <p className="mt-1 text-sm text-neutral-500">Performance appears here once results are saved.</p>
+        <p className="mt-1 text-sm text-neutral-500">Subject-wise report cards appear here once results are saved.</p>
       </section>
     );
   }
@@ -243,12 +254,24 @@ export function StudentPerformance({
       </section>
 
       <section className="overflow-hidden rounded-xl border border-brand-200 bg-white shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)]">
-        <header className="border-b border-brand-100 bg-brand-50/60 px-4 py-2.5">
-          <h2 className="text-sm font-semibold text-brand-950">All tests</h2>
-          <p className="text-xs text-neutral-500">In test order</p>
+        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-100 bg-brand-50/60 px-4 py-2.5">
+          <div>
+            <h2 className="text-sm font-semibold text-brand-950">Subject-wise report</h2>
+            <p className="text-xs text-neutral-500">Marks by subject · view or download each report card</p>
+          </div>
+          {portal && student?.id ? (
+            <StudentReportDownloads
+              portal={portal}
+              studentId={student.id}
+              studentName={student.name}
+              rollNo={student.rollNo}
+              schoolName={student.schoolName}
+              subjects={subjects}
+            />
+          ) : null}
         </header>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
+          <table className="w-full min-w-[720px] text-sm">
             <thead className="border-b border-brand-100 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase print:table-row-group">
               <tr>
                 <th className="px-4 py-2.5 text-left">Test</th>
@@ -263,6 +286,7 @@ export function StudentPerformance({
                 <th className="px-3 py-2.5 text-right">Total</th>
                 <th className="px-3 py-2.5 text-right">Class rank</th>
                 <th className="px-3 py-2.5 text-right">Section rank</th>
+                <th className="px-3 py-2.5 text-center">Report card</th>
                 <th className="px-4 py-2.5 text-center">OMR</th>
               </tr>
             </thead>
@@ -324,6 +348,27 @@ export function StudentPerformance({
                   <td className="px-3 py-3 text-right">
                     <RankBadge rank={test.sectionRank} />
                   </td>
+                  <td className="px-3 py-3 text-center">
+                    {student?.rollNo ? (
+                      <RankCardCell
+                        roll={student.rollNo}
+                        name={student.name}
+                        target={{
+                          resultSetId: test.resultSetId,
+                          classLevel: test.classLevel,
+                          basePath: omrPath,
+                          schoolName: student.schoolName,
+                          programLabel: test.programName,
+                          testNumber: test.testNumber,
+                          testId: test.testId ?? undefined,
+                        }}
+                      />
+                    ) : (
+                      <span className="inline-flex items-center justify-center text-neutral-300" title="Report card">
+                        <Award className="size-4" />
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-center">
                     <OmrCell
                       viewOnly
@@ -331,7 +376,7 @@ export function StudentPerformance({
                         test.scanId
                           ? {
                               id: test.scanId,
-                              rollNo: "",
+                              rollNo: student?.rollNo ?? "",
                               studentName: test.testId
                                 ? `Test ID ${test.testId}`
                                 : `Test ${test.testNumber}`,

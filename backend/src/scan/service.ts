@@ -55,9 +55,9 @@ async function keepSample(bytes: Buffer, fileName: string) {
 
 const IMAGE_MAX = 8 * 1024 * 1024;
 const PDF_MAX = 500 * 1024 * 1024;
-const PREVIEW_TTL_MS = 45 * 60 * 1000;
-/** A 500-page PDF can take ~25+ minutes to read; idle TTL counts from the last finished page. */
-const PDF_BATCH_TTL_MS = 8 * 60 * 60 * 1000;
+const PREVIEW_TTL_MS = 30 * 60 * 1000;
+/** Idle TTL from the last finished page (refreshed as each page completes). */
+const PDF_BATCH_TTL_MS = 30 * 60 * 1000;
 
 type PdfBatchItem = {
   page: number;
@@ -647,7 +647,11 @@ export async function previewScan(
     corners: identity.corners,
   });
   const sessionSchool = contextSchool(context);
-  const enrolled = await resolveStudent(sessionSchool, [typedRoll, read.rollNo, ...read.rollCandidates]);
+  // Typed registration is authoritative — do not fall back to a different bubble read.
+  const enrolled = await resolveStudent(
+    sessionSchool,
+    typedRoll ? [typedRoll] : [read.rollNo, ...read.rollCandidates],
+  );
   const school: ScanSchool = sessionSchool ?? {
     id: enrolled.school.id,
     name: enrolled.school.name,
@@ -744,10 +748,63 @@ export async function getPreviewImage(context: ScanContext, previewId: string, k
   };
 }
 
-export async function commitScan(context: ScanContext, previewId: string) {
+export async function commitScan(
+  context: ScanContext,
+  previewId: string,
+  options: { rollNo?: string } = {},
+) {
+  if (options.rollNo) await rebindPendingRoll(context, previewId, options.rollNo);
   const { scan, schoolId } = await saveScan(context, previewId);
   notifyContentChanged({ kind: "results", schoolId });
   return { scan };
+}
+
+/** Point a pending preview at another enrolled student (manual registration on review). */
+async function rebindPendingRoll(context: ScanContext, previewId: string, rollNo: string) {
+  const row = pending.get(previewId);
+  if (!row || row.expires < Date.now()) {
+    if (row) void removePendingDir(row.diskDir);
+    pending.delete(previewId);
+    throw new AppError(410, "Scan expired. Scan again.");
+  }
+  if (row.context.kind !== context.kind) throw new AppError(403, "This preview belongs to another session");
+  const clean = rollNo.replace(/\D/g, "");
+  if (!/^\d{7}$/.test(clean)) {
+    throw new AppError(422, "Registration number must be 7 digits");
+  }
+  if (clean === row.identity.rollNo && row.studentId) return;
+  const enrolled = await resolveStudent(row.school, [clean]);
+  const { key } = await resolveKey(row.school, [row.identity.testId], {
+    name: enrolled.name,
+    rollNo: enrolled.rollNo,
+    classLevel: enrolled.classLevel,
+    programCode: enrolled.program?.code ?? null,
+  });
+  if (key.id !== row.key.id) {
+    const readFlags = row.flags.filter((flag) => flag.reason !== "Un-attempted");
+    if (row.bubbles) {
+      const sheet = await loadPendingImage(row.diskDir, "sheet");
+      const { score, image } = await evaluatedImage(sheet, row.bubbles, row.answers, key);
+      row.score = score;
+      await replacePendingPreview(row.diskDir, image);
+    } else {
+      row.score = scoreSheet(row.answers, key.answers, key.subjectRanges, {
+        correctMarks: key.correctMarks,
+        wrongMarks: key.wrongMarks,
+      });
+    }
+    row.flags = sheetFlags(row.score, readFlags);
+    row.key = { ...row.key, ...key };
+  }
+  row.identity = {
+    ...row.identity,
+    rollNo: enrolled.rollNo,
+    studentName: enrolled.name || row.identity.studentName,
+    classLevel: enrolled.classLevel,
+    sectionName: displaySectionName(enrolled.section?.name),
+    programName: enrolled.program?.name || row.identity.programName,
+  };
+  row.studentId = enrolled.schoolId === row.school.id ? enrolled.id : null;
 }
 
 /** Most sheets "Save all" sends in one request; the page sends a big batch in chunks for progress. */

@@ -1,3 +1,5 @@
+"use client";
+
 import { ProfileLink, schoolProfileHref } from "@/components/shared/profile-link";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { rememberAdminNavLabel } from "@/features/admin/nav-labels";
 import type { SchoolSummary } from "@/types/school";
 import { formatDate } from "@/utils/format";
 import { BOARD_LABELS } from "./constants";
@@ -58,7 +61,11 @@ export function SchoolsTable({ schools }: { schools: SchoolSummary[] }) {
                   </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0">
-                  <ProfileLink href={schoolProfileHref(school.id)} className="block truncate">
+                  <ProfileLink
+                    href={schoolProfileHref(school.id)}
+                    className="block truncate"
+                    onClick={() => rememberAdminNavLabel("school", school.id, school.name)}
+                  >
                     {school.name}
                   </ProfileLink>
                   <span className="font-mono text-xs text-muted-foreground">{school.code}</span>

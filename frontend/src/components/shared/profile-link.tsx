@@ -32,12 +32,25 @@ export function ProfileLink({
   title,
 }: {
   href?: string | null;
-  /** In-page open (e.g. results → profile stack) instead of navigating away. */
+  /** With href: runs before navigate (e.g. cache nav label). Without href: in-page open. */
   onClick?: () => void;
   children: ReactNode;
   className?: string;
   title?: string;
 }) {
+  if (href) {
+    return (
+      <Link
+        href={href}
+        title={title}
+        prefetch={false}
+        onClick={onClick}
+        className={cn(PROFILE_LINK_CLASS, className)}
+      >
+        {children}
+      </Link>
+    );
+  }
   if (onClick) {
     return (
       <button
@@ -50,15 +63,5 @@ export function ProfileLink({
       </button>
     );
   }
-  if (!href) return <span className={cn("font-medium text-neutral-950", className)}>{children}</span>;
-  return (
-    <Link
-      href={href}
-      title={title}
-      prefetch={false}
-      className={cn(PROFILE_LINK_CLASS, className)}
-    >
-      {children}
-    </Link>
-  );
+  return <span className={cn("font-medium text-neutral-950", className)}>{children}</span>;
 }

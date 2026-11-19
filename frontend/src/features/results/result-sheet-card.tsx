@@ -254,7 +254,7 @@ export function ResultSheetCard({
               {files ? (
                 <>
                   <TableHead className="h-auto border border-neutral-300 bg-brand-50 px-2.5 py-3 text-center align-middle text-[11px] font-semibold tracking-wide whitespace-nowrap text-brand-900 uppercase">
-                    Rank card
+                    Report card
                   </TableHead>
                   <TableHead className="h-auto border border-neutral-300 bg-brand-50 px-2.5 py-3 text-center align-middle text-[11px] font-semibold tracking-wide whitespace-nowrap text-brand-900 uppercase">
                     OMR

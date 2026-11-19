@@ -105,13 +105,10 @@ function emptyRow(fields?: Partial<Omit<Row, "key">>): Row {
   };
 }
 
+/** True when the row has student data — section alone (from class defaults) does not count. */
 const isFilled = (row: Row) =>
   Boolean(
-    row.name.trim() ||
-      row.rollNo.trim() ||
-      row.parentName.trim() ||
-      row.parentPhone.trim() ||
-      (row.sectionId && row.sectionId !== NONE),
+    row.name.trim() || row.rollNo.trim() || row.parentName.trim() || row.parentPhone.trim(),
   );
 
 export function BulkStudentForm({
@@ -313,6 +310,7 @@ export function BulkStudentForm({
         return;
       }
       claimDraft();
+      // Drop blank starter rows (they often only have a default section) so import fills from the top.
       const kept = rows.filter(isFilled);
       const room = Math.max(0, MAX_IMPORT_ROWS - kept.length);
       const defaultSection = fixedSection || sectionId !== NONE ? sectionId : NONE;
@@ -330,7 +328,11 @@ export function BulkStudentForm({
               : defaultSection,
         });
       });
-      setRows(added.length || kept.length ? [...kept, ...added] : [emptyRow({ sectionId: defaultSection })]);
+      setRows(
+        added.length || kept.length
+          ? [...kept, ...added, emptyRow({ sectionId: defaultSection })]
+          : [emptyRow({ sectionId: defaultSection })],
+      );
       const skipped = students.length - added.length;
       setImportNote(
         `Imported ${added.length} student${added.length === 1 ? "" : "s"} from ${file.name}` +

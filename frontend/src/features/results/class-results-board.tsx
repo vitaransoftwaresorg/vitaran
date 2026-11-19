@@ -382,7 +382,7 @@ export function ClassResultsBoard({
                     </TableHead>
                   ))}
                   <TableHead className="text-center text-xs font-bold uppercase">
-                    Rank card
+                    Report card
                   </TableHead>
                   <TableHead className="text-center text-xs font-bold uppercase">
                     OMR

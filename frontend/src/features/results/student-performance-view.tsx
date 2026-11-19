@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/features/admin/page-header";
 import { classWithSectionLabel } from "@/features/schools/section-label";
-import type { PerformancePortal } from "@/features/students/performance-actions";
+import type { PerformancePortal } from "@/features/students/portal";
 import { StudentPerformance } from "@/features/students/student-performance";
 import {
   findStudentIdByRoll,
@@ -75,7 +75,16 @@ export async function StudentPerformanceView({
           student.programName ? ` · ${student.programName}` : ""
         }`}
       />
-      <StudentPerformance results={performance} portal={role} />
+      <StudentPerformance
+        results={performance}
+        portal={role}
+        student={{
+          id: student.id,
+          name: student.name,
+          rollNo: student.rollNo,
+          schoolName: student.school?.name ?? student.schoolName,
+        }}
+      />
     </div>
   );
 }

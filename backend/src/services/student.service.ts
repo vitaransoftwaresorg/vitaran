@@ -13,14 +13,24 @@ import type {
 import { AppError } from "../utils/app-error.js";
 import { notifyContentChanged } from "../utils/content-events.js";
 import { downloadFileName } from "../utils/download-file-name.js";
+import type { ContentActor } from "./content-access.js";
 import { getObject } from "./object-storage.js";
-import { loadVitaranLogo } from "./rank-card.render.js";
+import { getRankCards } from "./rank-card.service.js";
+import {
+  loadVitaranLogo,
+  rankCardsPdf,
+  renderSubjectReportCard,
+  renderYearReportCard,
+} from "./rank-card.render.js";
+import { mergePdfBuffers } from "./report-card.pdf.js";
+import type { ReportCardKind } from "../schemas/student.schema.js";
 import { schoolTestResultsIndex, studentTestResults } from "./student-performance.service.js";
 import {
   renderStudentProfilePdf,
   renderStudentProfilesPdf,
   type StudentProfilePdfData,
 } from "./student-profile.pdf.js";
+import type { SchoolAccountDto } from "./school.service.js";
 import type { TeacherAccountDto } from "./teacher.service.js";
 
 const KIND = "students" as const;
@@ -534,6 +544,224 @@ async function scopedStudent(id: string, scope: PerformanceScope) {
 export async function getStudentPerformance(id: string, scope: PerformanceScope) {
   const student = await scopedStudent(id, scope);
   return studentTestResults(student, { publishedOnly: scope.kind !== "admin" });
+}
+
+async function studentReportLogos(schoolId: string) {
+  const [logo, vitaran] = await Promise.all([
+    schoolRepository.findSchoolLogo(schoolId),
+    loadVitaranLogo(),
+  ]);
+  return {
+    vitaran,
+    school: logo?.logoData ? await getObject(logo.logoData) : null,
+  };
+}
+
+/** Test-wise report cards — every saved test, or one test number when `testNumber` is set. */
+export async function getStudentRankCardsPdf(
+  id: string,
+  scope: PerformanceScope,
+  viewer?: ContentActor | SchoolAccountDto,
+  testNumber?: number,
+) {
+  const student = toStudentAccountDto(await scopedStudent(id, scope));
+  const results = await studentTestResults(student, { publishedOnly: scope.kind !== "admin" });
+  const wanted = testNumber != null ? results.filter((row) => row.testNumber === testNumber) : results;
+  if (wanted.length === 0) {
+    throw new AppError(
+      404,
+      testNumber != null ? `No report card for Test ${testNumber} yet` : "No test-wise report cards yet",
+    );
+  }
+
+  const images: Buffer[] = [];
+  for (const result of [...wanted].reverse()) {
+    try {
+      const card = await getRankCards(
+        { id: result.resultSetId, classLevel: result.classLevel },
+        { roll: student.rollNo, format: "jpg" },
+        viewer,
+      );
+      images.push(Buffer.from(card.data));
+    } catch {
+      // Skip tests with no saved sheet / marks for this student.
+    }
+  }
+  if (images.length === 0) {
+    throw new AppError(
+      404,
+      testNumber != null ? `No report card for Test ${testNumber} yet` : "No test-wise report cards yet",
+    );
+  }
+
+  const fileName = downloadFileName(
+    [
+      testNumber != null ? `Test-${testNumber}-Report` : "Test-Report-Cards",
+      student.school.name,
+      student.programName,
+      `Class-${student.classLevel}`,
+      student.name,
+      student.rollNo,
+    ],
+    "pdf",
+  );
+  return {
+    fileName,
+    data: await rankCardsPdf(images, fileName.replace(/\.pdf$/i, "")),
+  };
+}
+
+/** One student's year / test-wise / subject report card PDF (rank-card visual style). */
+export async function getStudentReportCardPdf(
+  id: string,
+  kind: ReportCardKind,
+  scope: PerformanceScope,
+  viewer?: ContentActor | SchoolAccountDto,
+  subject?: string,
+  testNumber?: number,
+) {
+  if (kind === "tests") return getStudentRankCardsPdf(id, scope, viewer, testNumber);
+
+  const student = toStudentAccountDto(await scopedStudent(id, scope));
+  const results = await studentTestResults(student, { publishedOnly: scope.kind !== "admin" });
+  if (results.length === 0) throw new AppError(404, "No report card data yet");
+
+  const logos = await studentReportLogos(student.schoolId);
+  const classLabel = classWithSectionLabel(student.classLevel, student.sectionName);
+  const tests = [...results].sort((a, b) => a.testNumber - b.testNumber || a.date.localeCompare(b.date));
+  const wanted = subject?.trim().toUpperCase() || null;
+
+  let card: Buffer;
+  if (kind === "year") {
+    card = await renderYearReportCard(
+      {
+        schoolName: student.school.name,
+        programName: student.programName,
+        student: { name: student.name, rollNo: student.rollNo, classLabel },
+        tests: tests.map((test) => ({
+          testNumber: test.testNumber,
+          testId: test.testId,
+          subjects: test.subjects,
+          total: test.total,
+          totalMax: test.totalMax,
+          percentage: test.percentage,
+          classRank: test.classRank,
+          sectionRank: test.sectionRank,
+        })),
+      },
+      logos,
+    );
+  } else {
+    const labels = [
+      ...new Set(tests.flatMap((test) => test.subjects.map((row) => row.label))),
+    ].filter((label) => !wanted || label.toUpperCase() === wanted);
+    if (!labels.length) {
+      throw new AppError(404, wanted ? `No results for ${wanted}` : "No subject report data yet");
+    }
+    const subjectRows = labels.map((label) => {
+      const scores = tests.map((test) => {
+        const row = test.subjects.find((entry) => entry.label === label);
+        return {
+          marks: row?.marks ?? null,
+          max: row?.max ?? null,
+          percentage: row?.percentage ?? null,
+        };
+      });
+      const filled = scores.map((score) => score.percentage).filter((value): value is number => value != null);
+      return {
+        label,
+        scores,
+        average: filled.length ? filled.reduce((sum, value) => sum + value, 0) / filled.length : null,
+      };
+    });
+    const overallFilled = wanted
+      ? subjectRows[0]!.scores.map((score) => score.percentage).filter((value): value is number => value != null)
+      : tests.map((test) => test.percentage).filter((value): value is number => value != null);
+    card = await renderSubjectReportCard(
+      {
+        schoolName: student.school.name,
+        programName: student.programName,
+        student: { name: student.name, rollNo: student.rollNo, classLabel },
+        tests: tests.map((test) => ({ testNumber: test.testNumber })),
+        subjects: subjectRows,
+        overallAverage: overallFilled.length
+          ? overallFilled.reduce((sum, value) => sum + value, 0) / overallFilled.length
+          : null,
+        focusSubject: wanted ?? undefined,
+      },
+      logos,
+    );
+  }
+
+  const prefix = kind === "year" ? "Year-Report" : wanted ? `Subject-${wanted}` : "Subject-Report-All";
+  const fileName = downloadFileName(
+    [
+      prefix,
+      student.school.name,
+      student.programName,
+      `Class-${student.classLevel}`,
+      student.name,
+      student.rollNo,
+    ],
+    "pdf",
+  );
+  return {
+    fileName,
+    data: await rankCardsPdf([card], fileName.replace(/\.pdf$/i, "")),
+  };
+}
+
+/**
+ * Class pack: one PDF with every student's card on its own page(s).
+ * Year / tests (rank cards) / subjects (all or one subject).
+ */
+export async function getStudentsReportCardsPdf(
+  ids: string[],
+  kind: ReportCardKind,
+  scope: PerformanceScope,
+  viewer?: ContentActor | SchoolAccountDto,
+  subject?: string,
+  testNumber?: number,
+) {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) throw new AppError(404, "No students to print");
+
+  const parts: Buffer[] = [];
+  let schoolName: string | undefined;
+  let scopeLabel = "Students";
+  const classes = new Set<string>();
+
+  for (const id of unique) {
+    try {
+      const file = await getStudentReportCardPdf(id, kind, scope, viewer, subject, testNumber);
+      parts.push(Buffer.from(file.data));
+      const student = toStudentAccountDto(await scopedStudent(id, scope));
+      schoolName ??= student.school.name;
+      classes.add(classWithSectionLabel(student.classLevel, student.sectionName));
+    } catch (error) {
+      if (error instanceof AppError && error.statusCode === 404) continue;
+      throw error;
+    }
+  }
+  if (parts.length === 0) throw new AppError(404, "No report cards yet for these students");
+  if (classes.size === 1) scopeLabel = [...classes][0]!;
+
+  const wanted = subject?.trim().toUpperCase() || null;
+  const prefix =
+    kind === "year"
+      ? "Year-Reports"
+      : kind === "subjects"
+        ? wanted
+          ? `Subject-${wanted}`
+          : "Subject-Reports-All"
+        : testNumber != null
+          ? `Test-${testNumber}-Reports`
+          : "Test-Report-Cards";
+  const fileName = downloadFileName([prefix, schoolName, scopeLabel], "pdf");
+  return {
+    fileName,
+    data: await mergePdfBuffers(parts, fileName.replace(/\.pdf$/i, "")),
+  };
 }
 
 /** Printable profile: details, performance trend and every test. */

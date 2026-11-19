@@ -191,6 +191,128 @@ export const getTeacherStudentProfilePdf: RequestHandler<{ id: string }> = async
   sendPdf(res, await studentService.getStudentProfilePdf(req.params.id, { kind: "teacher", teacher }));
 };
 
+export const getAdminStudentRankCardsPdf: RequestHandler<{ id: string }> = async (req, res) => {
+  sendPdf(res, await studentService.getStudentRankCardsPdf(req.params.id, { kind: "admin" }));
+};
+
+export const getStudentRankCardsPdf: RequestHandler<{ id: string }> = async (req, res) => {
+  const school = res.locals.school as SchoolAccountDto;
+  sendPdf(
+    res,
+    await studentService.getStudentRankCardsPdf(
+      req.params.id,
+      { kind: "school", schoolId: school.id },
+      school,
+    ),
+  );
+};
+
+export const getTeacherStudentRankCardsPdf: RequestHandler<{ id: string }> = async (req, res) => {
+  const teacher = res.locals.teacher as TeacherAccountDto;
+  sendPdf(
+    res,
+    await studentService.getStudentRankCardsPdf(req.params.id, { kind: "teacher", teacher }, {
+      kind: "teacher",
+      teacher,
+    }),
+  );
+};
+
+function reportQuery(req: { query: unknown }) {
+  const query = req.query as {
+    kind?: "year" | "tests" | "subjects";
+    subject?: string;
+    test?: number;
+    ids?: string[];
+  };
+  return {
+    kind: query.kind ?? "tests",
+    subject: query.subject,
+    test: query.test,
+    ids: query.ids ?? [],
+  };
+}
+
+export const getAdminStudentReportCardPdf: RequestHandler<{ id: string }> = async (req, res) => {
+  const { kind, subject, test } = reportQuery(req);
+  sendPdf(
+    res,
+    await studentService.getStudentReportCardPdf(req.params.id, kind, { kind: "admin" }, undefined, subject, test),
+  );
+};
+
+export const getStudentReportCardPdf: RequestHandler<{ id: string }> = async (req, res) => {
+  const school = res.locals.school as SchoolAccountDto;
+  const { kind, subject, test } = reportQuery(req);
+  sendPdf(
+    res,
+    await studentService.getStudentReportCardPdf(
+      req.params.id,
+      kind,
+      { kind: "school", schoolId: school.id },
+      school,
+      subject,
+      test,
+    ),
+  );
+};
+
+export const getTeacherStudentReportCardPdf: RequestHandler<{ id: string }> = async (req, res) => {
+  const teacher = res.locals.teacher as TeacherAccountDto;
+  const { kind, subject, test } = reportQuery(req);
+  sendPdf(
+    res,
+    await studentService.getStudentReportCardPdf(
+      req.params.id,
+      kind,
+      { kind: "teacher", teacher },
+      { kind: "teacher", teacher },
+      subject,
+      test,
+    ),
+  );
+};
+
+export const getAdminStudentsReportCardsPdf: RequestHandler = async (req, res) => {
+  const { ids, kind, subject, test } = reportQuery(req);
+  sendPdf(
+    res,
+    await studentService.getStudentsReportCardsPdf(ids, kind, { kind: "admin" }, undefined, subject, test),
+  );
+};
+
+export const getStudentsReportCardsPdf: RequestHandler = async (req, res) => {
+  const school = res.locals.school as SchoolAccountDto;
+  const { ids, kind, subject, test } = reportQuery(req);
+  sendPdf(
+    res,
+    await studentService.getStudentsReportCardsPdf(
+      ids,
+      kind,
+      { kind: "school", schoolId: school.id },
+      school,
+      subject,
+      test,
+    ),
+  );
+};
+
+export const getTeacherStudentsReportCardsPdf: RequestHandler = async (req, res) => {
+  const teacher = res.locals.teacher as TeacherAccountDto;
+  const { ids, kind, subject, test } = reportQuery(req);
+  sendPdf(
+    res,
+    await studentService.getStudentsReportCardsPdf(
+      ids,
+      kind,
+      { kind: "teacher", teacher },
+      { kind: "teacher", teacher },
+      subject,
+      test,
+    ),
+  );
+};
+
 const profileIds = (req: { query: unknown }) => (req.query as { ids: string[] }).ids;
 
 export const getAdminStudentProfilesPdf: RequestHandler = async (req, res) => {

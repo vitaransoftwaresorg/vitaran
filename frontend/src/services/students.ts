@@ -1,4 +1,5 @@
 import "server-only";
+import type { ReportCardKind } from "@/features/students/portal";
 import { ApiError } from "@/services/api-client";
 import { adminApi, adminFetch } from "@/services/admin-api";
 import { schoolApi, schoolFetch } from "@/services/school-api";
@@ -13,6 +14,8 @@ import type {
   StudentTestResult,
   UpdateStudentInput,
 } from "@/types/student";
+
+export type { ReportCardKind } from "@/features/students/portal";
 
 type ListParams = {
   schoolId?: string;
@@ -227,6 +230,90 @@ export function fetchSchoolStudentPdf(id: string) {
 
 export function fetchTeacherStudentPdf(id: string) {
   return teacherFetch(`/teacher/students/${encodeURIComponent(id)}/pdf`);
+}
+
+/** All test-wise rank cards for one student (one PDF). */
+export function fetchAdminStudentRankCards(id: string) {
+  return adminFetch(`/students/${encodeURIComponent(id)}/rank-cards`);
+}
+
+export function fetchSchoolStudentRankCards(id: string) {
+  return schoolFetch(`/school/students/${encodeURIComponent(id)}/rank-cards`);
+}
+
+export function fetchTeacherStudentRankCards(id: string) {
+  return teacherFetch(`/teacher/students/${encodeURIComponent(id)}/rank-cards`);
+}
+
+function reportCardsQuery(
+  kind: ReportCardKind,
+  options?: { ids?: string[]; subject?: string; test?: number },
+) {
+  const query = new URLSearchParams({ kind });
+  if (options?.ids?.length) query.set("ids", options.ids.join(","));
+  if (options?.subject) query.set("subject", options.subject);
+  if (options?.test != null) query.set("test", String(options.test));
+  return query.toString();
+}
+
+export function fetchAdminStudentReportCard(
+  id: string,
+  kind: ReportCardKind,
+  subject?: string,
+  test?: number,
+) {
+  return adminFetch(
+    `/students/${encodeURIComponent(id)}/report-cards?${reportCardsQuery(kind, { subject, test })}`,
+  );
+}
+
+export function fetchSchoolStudentReportCard(
+  id: string,
+  kind: ReportCardKind,
+  subject?: string,
+  test?: number,
+) {
+  return schoolFetch(
+    `/school/students/${encodeURIComponent(id)}/report-cards?${reportCardsQuery(kind, { subject, test })}`,
+  );
+}
+
+export function fetchTeacherStudentReportCard(
+  id: string,
+  kind: ReportCardKind,
+  subject?: string,
+  test?: number,
+) {
+  return teacherFetch(
+    `/teacher/students/${encodeURIComponent(id)}/report-cards?${reportCardsQuery(kind, { subject, test })}`,
+  );
+}
+
+export function fetchAdminStudentsReportCards(
+  ids: string[],
+  kind: ReportCardKind,
+  subject?: string,
+  test?: number,
+) {
+  return adminFetch(`/students/report-cards?${reportCardsQuery(kind, { ids, subject, test })}`);
+}
+
+export function fetchSchoolStudentsReportCards(
+  ids: string[],
+  kind: ReportCardKind,
+  subject?: string,
+  test?: number,
+) {
+  return schoolFetch(`/school/students/report-cards?${reportCardsQuery(kind, { ids, subject, test })}`);
+}
+
+export function fetchTeacherStudentsReportCards(
+  ids: string[],
+  kind: ReportCardKind,
+  subject?: string,
+  test?: number,
+) {
+  return teacherFetch(`/teacher/students/report-cards?${reportCardsQuery(kind, { ids, subject, test })}`);
 }
 
 /** `ids` is a comma-separated list of student ids, in print order. */

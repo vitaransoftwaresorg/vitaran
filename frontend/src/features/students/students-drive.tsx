@@ -1,7 +1,7 @@
 "use client";
 
 import { DriveBrowser, type DriveCrumb, type DriveItem } from "@/features/documents/drive-browser";
-import { programLabel, TYPE_LABELS } from "@/features/schools/constants";
+import { programLabel, subjectsForClassLevel, TYPE_LABELS } from "@/features/schools/constants";
 import { displaySectionName } from "@/features/schools/section-label";
 import { STUDENTS_PATH, studentsForSchoolOfferings } from "@/features/students/school-roster";
 import { StudentsTable } from "@/features/students/students-table";
@@ -131,6 +131,7 @@ export function StudentsDrive({
       <StudentsTable
         students={roster}
         mode="admin"
+        subjects={subjectsForClassLevel(classLevel)}
         emptyMessage={
           section ? "No students in this class section yet." : "No students in this class yet."
         }

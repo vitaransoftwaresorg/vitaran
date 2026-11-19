@@ -28,6 +28,7 @@ export default async function TeacherStudentsPage() {
       <StudentsByClass
         portal="teacher"
         students={list.items}
+        schoolPrograms={teacher.school.schoolPrograms}
         emptyMessage="No students in your classes yet."
       />
     </>

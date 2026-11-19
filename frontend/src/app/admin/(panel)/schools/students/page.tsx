@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/features/admin/page-header";
+import { subjectsForClassLevel } from "@/features/schools/constants";
 import { ClassProfilesPdfActions } from "@/features/students/student-pdf-actions";
 import { StudentsDrive } from "@/features/students/students-drive";
 import { studentsForSchoolOfferings } from "@/features/students/school-roster";
@@ -79,12 +80,13 @@ export default async function AdminAllStudentsPage({
         actions={
           school ? (
             <div className="flex flex-wrap items-center gap-2">
-              {inClass ? (
+              {inClass && classLevel != null ? (
                 <ClassProfilesPdfActions
                   portal="admin"
                   studentIds={roster.map((student) => student.id)}
                   scopeLabel={title}
                   schoolName={school.name}
+                  subjects={subjectsForClassLevel(classLevel)}
                 />
               ) : null}
               <Link

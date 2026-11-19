@@ -58,9 +58,19 @@ export function DrivePathProvider({ children }: { children: ReactNode }) {
       setCrumbsState(readAnswerKeysFolderCrumbs());
       return;
     }
-    if (!pathname.includes("/answer-keys") && !pathname.includes("/results") && !pathname.includes("/students") && !pathname.includes("/teachers")) {
-      setCrumbsState([]);
+    // Paths that push their own trail (SchoolNavTrail / ProgramNavTrail / drives).
+    // Keep their crumbs across Suspense remounts; clear only when leaving those areas.
+    if (
+      pathname.includes("/answer-keys") ||
+      pathname.includes("/results") ||
+      pathname.includes("/students") ||
+      pathname.includes("/teachers") ||
+      pathname.includes("/schools/") ||
+      /\/programs\/[^/]+/.test(pathname)
+    ) {
+      return;
     }
+    setCrumbsState([]);
   }, [pathname]);
 
   const value = useMemo(() => ({ crumbs, setCrumbs }), [crumbs, setCrumbs]);

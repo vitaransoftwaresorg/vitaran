@@ -96,6 +96,8 @@ type SchoolClassesPanelData = {
   classTeacherSlots: ClassTeacherSlot[];
   seatsUsedLabel: string;
   teachersHref: string;
+  /** School total strength budget — class/section seats cannot exceed this. */
+  strength?: { studentStrength: number | null; used: number };
 };
 
 type SchoolFormProps = {
@@ -788,6 +790,7 @@ function SchoolFormWizard({
                     : "No seats assigned yet")
                 }
                 teachersHref={classesPanel?.teachersHref ?? "/admin/teachers"}
+                strength={classesPanel?.strength}
                 persist="deferred"
                 onDeferredChange={setClassDrafts}
               />

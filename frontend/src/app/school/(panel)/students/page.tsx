@@ -6,6 +6,7 @@ import { PageHeader } from "@/features/admin/page-header";
 import { verifySchoolSession } from "@/features/school-auth/session";
 import { displaySectionName } from "@/features/schools/section-label";
 import { SchoolStudentsDrive } from "@/features/students/school-students-drive";
+import { subjectsForSchoolClass } from "@/features/students/report-subjects";
 import { ClassProfilesPdfActions } from "@/features/students/student-pdf-actions";
 import { cn } from "@/lib/utils";
 import { listSchoolClassOrganization } from "@/services/sections";
@@ -61,6 +62,14 @@ export default async function SchoolStudentsPage({
       })
     : [];
   const rosterCount = inClass ? roster.length : students.length;
+  const classSubjects =
+    inClass && classLevel != null
+      ? subjectsForSchoolClass(
+          school.schoolPrograms,
+          classLevel,
+          roster[0]?.programId ?? students.find((student) => student.classLevel === classLevel)?.programId,
+        )
+      : [];
 
   return (
     <>
@@ -76,6 +85,7 @@ export default async function SchoolStudentsPage({
                 studentIds={roster.map((student) => student.id)}
                 scopeLabel={title}
                 schoolName={school.name}
+                subjects={classSubjects}
               />
             ) : null}
             <Link
@@ -99,6 +109,7 @@ export default async function SchoolStudentsPage({
         section={section}
         organization={organization}
         students={students}
+        schoolPrograms={school.schoolPrograms}
       />
     </>
   );

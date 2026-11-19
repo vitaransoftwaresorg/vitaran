@@ -69,11 +69,6 @@ export function pickTestId(candidates: string[], knownIds: string[], reject: str
   return "";
 }
 
-function shiftedDown(digits: string) {
-  if (!/^[1-9]{6,7}$/.test(digits)) return "";
-  return [...digits].map((digit) => String(Number(digit) - 1)).join("");
-}
-
 export function pickRollNo(candidates: string[], knownRolls: string[]) {
   const values = unique(candidates.filter((value) => /^\d{7}$/.test(value)));
   if (!values.length) return "";
@@ -83,12 +78,21 @@ export function pickRollNo(candidates: string[], knownRolls: string[]) {
   const exactHits = pool.filter((value) => known.some((roll) => roll.toUpperCase() === value.toUpperCase()));
   if (exactHits.length === 1) return known.find((roll) => roll.toUpperCase() === exactHits[0]!.toUpperCase())!;
   if (exactHits.length > 1) {
-    const unshifted = exactHits.find((hit) => exactHits.some((other) => shiftedDown(other) === hit));
-    if (unshifted) return unshifted;
-    if (pool[0] && exactHits.includes(pool[0])) return pool[0];
+    // Prefer the strongest raw read among matches — do not always pick the N−1 form.
+    for (const value of pool) {
+      if (!exactHits.some((hit) => hit.toUpperCase() === value.toUpperCase())) continue;
+      return known.find((roll) => roll.toUpperCase() === value.toUpperCase()) ?? value;
+    }
     return exactHits[0]!;
   }
   if (!known.length) return pool[0]!;
+  // Prefer the strongest candidate (pool is score-sorted) that is within one edit of a known roll.
+  for (const value of pool) {
+    const near = known.filter(
+      (roll) => Math.abs(roll.length - value.length) <= 1 && levenshtein(roll, value) <= 1,
+    );
+    if (near.length === 1) return near[0]!;
+  }
   const close = new Map<string, number>();
   for (const value of pool) {
     for (const roll of known) {

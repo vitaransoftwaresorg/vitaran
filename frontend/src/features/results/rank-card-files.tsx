@@ -69,7 +69,7 @@ function PrintRankCardButton({
   );
 }
 
-/** View / download / print one student's rank card. */
+/** View / download / print one student's test-wise report card. */
 export function RankCardCell({
   target,
   roll,
@@ -82,9 +82,9 @@ export function RankCardCell({
   if (!target || !roll) return <span className="text-neutral-300">—</span>;
   const jpgHref = rankCardHref(target, { roll, format: "jpg" });
   const downloadHref = rankCardHref(target, { roll, format: "pdf", download: true });
-  const rankCardName = downloadFileName(
+  const reportCardName = downloadFileName(
     [
-      "Rank-Card",
+      "Report-Card",
       target.schoolName,
       target.programLabel,
       `Class-${target.classLevel}`,
@@ -99,7 +99,7 @@ export function RankCardCell({
     <div className="flex items-center justify-center gap-1">
       <Dialog.Root>
         <Dialog.Trigger
-          title="View rank card"
+          title="View report card"
           className="inline-flex size-8 items-center justify-center rounded-md text-violet-700 hover:bg-violet-50"
         >
           <Eye className="size-4" />
@@ -109,13 +109,13 @@ export function RankCardCell({
           <Dialog.Popup className="fixed top-1/2 left-1/2 z-[60] flex h-[94vh] w-[94vw] max-w-3xl -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl bg-white shadow-2xl outline-none duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
             <header className="flex items-center gap-2 border-b border-neutral-200 px-4 py-2.5">
               <Dialog.Title className="min-w-0 flex-1 truncate text-sm font-semibold text-neutral-900">
-                Rank card · {name} · {roll}
+                Report card · {name} · {roll}
               </Dialog.Title>
               <PrintRankCardButton
                 href={jpgHref}
                 mode="image"
-                title="Print rank card"
-                fileName={rankCardName.replace(/\.pdf$/i, ".jpg")}
+                title="Print report card"
+                fileName={reportCardName.replace(/\.pdf$/i, ".jpg")}
                 label="Print"
                 className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-neutral-200 px-2.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-60 [&_svg]:size-3.5"
               />
@@ -128,8 +128,8 @@ export function RankCardCell({
               </a>
               <SharePdfButton
                 href={downloadHref}
-                fileName={rankCardName}
-                title={`rank card of ${name}`}
+                fileName={reportCardName}
+                title={`report card of ${name}`}
                 preload
                 className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-neutral-200 px-2.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-60 [&_svg]:size-3.5"
               >
@@ -145,7 +145,7 @@ export function RankCardCell({
             <div className="min-h-0 flex-1 bg-neutral-100 p-3">
               <img
                 src={jpgHref}
-                alt={`Rank card of ${name}`}
+                alt={`Report card of ${name}`}
                 className="size-full object-contain"
               />
             </div>
@@ -155,21 +155,21 @@ export function RankCardCell({
       <PrintRankCardButton
         href={jpgHref}
         mode="image"
-        title="Print rank card"
-        fileName={rankCardName.replace(/\.pdf$/i, ".jpg")}
+        title="Print report card"
+        fileName={reportCardName.replace(/\.pdf$/i, ".jpg")}
         className="inline-flex size-8 items-center justify-center rounded-md text-violet-700 hover:bg-violet-50 disabled:opacity-60 [&_svg]:size-4"
       />
       <a
         href={downloadHref}
-        title="Download rank card (PDF)"
+        title="Download report card (PDF)"
         className="inline-flex size-8 items-center justify-center rounded-md text-violet-700 hover:bg-violet-50"
       >
         <Download className="size-4" />
       </a>
       <SharePdfButton
         href={downloadHref}
-        fileName={rankCardName}
-        title={`rank card of ${name}`}
+        fileName={reportCardName}
+        title={`report card of ${name}`}
         className="inline-flex size-8 items-center justify-center rounded-md text-violet-700 hover:bg-violet-50 disabled:opacity-60 [&_svg]:size-4"
       />
     </div>
@@ -225,21 +225,21 @@ export function ClassResultPdfDownload({ target }: { target: CardTarget | null }
   );
 }
 
-/** Whole class as one PDF, one rank card per page in rank order. */
+/** Whole class as one PDF, one report card per page in rank order. */
 export function ClassRankCardsDownload({ target }: { target: CardTarget | null }) {
   if (!target) {
     return (
       <Button type="button" variant="outline" size="sm" className="h-9 rounded-lg" disabled title="Save results first">
         <Award />
-        Rank cards
+        Report cards
       </Button>
     );
   }
   const pdfHref = rankCardHref(target, { format: "pdf" });
   const downloadHref = rankCardHref(target, { format: "pdf", download: true });
-  const classRankCardsName = downloadFileName(
+  const classReportCardsName = downloadFileName(
     [
-      "Rank-Cards",
+      "Report-Cards",
       target.schoolName,
       target.programLabel,
       `Class-${target.classLevel}`,
@@ -252,8 +252,8 @@ export function ClassRankCardsDownload({ target }: { target: CardTarget | null }
     <div className="flex items-center gap-1">
       <PrintRankCardButton
         href={pdfHref}
-        title="Print all rank cards"
-        fileName={classRankCardsName}
+        title="Print all report cards"
+        fileName={classReportCardsName}
         label="Print"
         className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-input bg-background px-3 text-sm font-semibold text-violet-800 hover:bg-violet-50 disabled:opacity-60 [&_svg]:size-4"
       />
@@ -265,12 +265,12 @@ export function ClassRankCardsDownload({ target }: { target: CardTarget | null }
         render={<a href={downloadHref} />}
       >
         <Award />
-        Rank cards
+        Report cards
       </Button>
       <SharePdfButton
         href={downloadHref}
-        fileName={classRankCardsName}
-        title={`Class ${target.classLevel} rank cards`}
+        fileName={classReportCardsName}
+        title={`Class ${target.classLevel} report cards`}
         className="inline-flex size-9 items-center justify-center rounded-lg border border-input bg-background text-violet-700 hover:bg-violet-50 disabled:opacity-60 [&_svg]:size-4"
       />
     </div>

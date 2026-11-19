@@ -6,8 +6,9 @@ import {
   getTeacherStudentPerformance,
 } from "@/services/students";
 import type { StudentTestResult } from "@/types/student";
+import type { PerformancePortal } from "./portal";
 
-export type PerformancePortal = "admin" | "school" | "teacher";
+export type { PerformancePortal } from "./portal";
 
 export async function loadStudentPerformanceAction(
   portal: PerformancePortal,

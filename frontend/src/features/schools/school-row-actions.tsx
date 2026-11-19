@@ -11,10 +11,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { rememberAdminNavLabel } from "@/features/admin/nav-labels";
 import { DeleteSchoolDialog } from "./delete-school-dialog";
 
 export function SchoolRowActions({ school }: { school: { id: string; name: string } }) {
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const remember = () => rememberAdminNavLabel("school", school.id, school.name);
 
   return (
     <>
@@ -27,11 +29,13 @@ export function SchoolRowActions({ school }: { school: { id: string; name: strin
           <MoreHorizontal />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-40">
-          <DropdownMenuItem render={<Link href={`/admin/schools/${school.id}`} />}>
+          <DropdownMenuItem render={<Link href={`/admin/schools/${school.id}`} onClick={remember} />}>
             <Eye />
             View details
           </DropdownMenuItem>
-          <DropdownMenuItem render={<Link href={`/admin/schools/${school.id}/edit`} />}>
+          <DropdownMenuItem
+            render={<Link href={`/admin/schools/${school.id}/edit`} onClick={remember} />}
+          >
             <Pencil />
             Edit
           </DropdownMenuItem>

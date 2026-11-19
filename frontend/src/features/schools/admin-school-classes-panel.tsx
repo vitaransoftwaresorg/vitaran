@@ -68,7 +68,9 @@ type AdminSchoolClassesPanelProps = {
   classTeacherSlots: ClassTeacherSlot[];
   seatsUsedLabel: string;
   teachersHref: string;
-  /** When deferred, Add/Delete stay local until the school form Save. */
+  /** Cap class/section seats by school total strength. */
+  strength?: { studentStrength: number | null; used: number };
+  /** When deferred, Add/Delete stay local until school Save. Seat edits on saved rows save immediately. */
   persist?: "immediate" | "deferred";
   onDeferredChange?: (changes: DeferredClassChanges) => void;
 };
@@ -80,6 +82,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
   classTeacherSlots,
   seatsUsedLabel,
   teachersHref,
+  strength,
   persist = "immediate",
   onDeferredChange,
 }: AdminSchoolClassesPanelProps) {
@@ -265,6 +268,9 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     if (!studentCount.trim()) nextErrors.studentCount = "Enter seats";
     else if (!Number.isInteger(count) || count < 1) {
       nextErrors.studentCount = "Enter a valid seat count (1 or more)";
+    } else {
+      const over = strengthError(count);
+      if (over) nextErrors.studentCount = over;
     }
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors);
@@ -337,6 +343,54 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     setEditErrors({});
   }
 
+  function seatsRemaining(excludeCurrentSeats = 0) {
+    const ceiling = strength?.studentStrength;
+    if (ceiling == null) return null;
+    const draftSeats = draftCreates.reduce((sum, row) => sum + row.studentCount, 0);
+    const deletedSeats = organization.sections
+      .filter((section) => draftDeletes.includes(section.id))
+      .reduce((sum, section) => sum + section.studentCount, 0);
+    const used = (strength?.used ?? 0) - excludeCurrentSeats - deletedSeats + draftSeats;
+    return Math.max(0, ceiling - used);
+  }
+
+  function strengthError(count: number, excludeCurrentSeats = 0) {
+    const remaining = seatsRemaining(excludeCurrentSeats);
+    if (remaining == null) return undefined;
+    if (count > remaining) {
+      return `Only ${remaining} seat${remaining === 1 ? "" : "s"} left under school strength (${formatNumber(strength!.studentStrength!)} total)`;
+    }
+    return undefined;
+  }
+
+  function persistSeatEdit(editingRow: ClassRow, count: number, sectionName: string) {
+    if (!schoolId) return;
+    startTransition(async () => {
+      if (editingRow.kind === "section") {
+        const result = await updateAdminSectionAction(schoolId, editingRow.id, {
+          name: sectionName,
+          studentCount: count,
+        });
+        if (!result.ok) {
+          setEditErrors({ studentCount: result.message });
+          return;
+        }
+        toast.success(`Section ${editingRow.classLevel}-${sectionName} updated`);
+      } else {
+        const result = await updateAdminWholeClassAction(schoolId, editingRow.id, {
+          studentCount: count,
+        });
+        if (!result.ok) {
+          setEditErrors({ studentCount: result.message });
+          return;
+        }
+        toast.success(`Class ${editingRow.classLevel}-A seats updated`);
+      }
+      setEditing(null);
+      router.refresh();
+    });
+  }
+
   function saveEdit() {
     if (!editing) return;
     const count = Number(editSeats);
@@ -344,6 +398,9 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     if (!editSeats.trim()) nextErrors.studentCount = "Enter seats";
     else if (!Number.isInteger(count) || count < 1) {
       nextErrors.studentCount = "Enter a valid seat count (1 or more)";
+    } else {
+      const over = strengthError(count, editing.seats);
+      if (over) nextErrors.studentCount = over;
     }
     if (editing.kind === "section" && !editName.trim()) {
       nextErrors.name = "Section name is required";
@@ -354,52 +411,31 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     }
     setEditErrors({});
 
-    if (deferred) {
-      if (editing.draft || editing.id.startsWith("draft-")) {
-        setDraftCreates((prev) =>
-          prev.map((item) =>
-            item.draftId === editing.id
-              ? {
-                  ...item,
-                  studentCount: count,
-                  name: editing.kind === "section" ? editName.trim().toUpperCase() : item.name,
-                }
-              : item,
-          ),
-        );
-        toast.success("Seats updated — save the school to keep this change");
-        setEditing(null);
-        return;
-      }
-      toast.error("Save the school first, then edit this class’s seats");
+    const sectionName = editName.trim().toUpperCase();
+
+    if (deferred && (editing.draft || editing.id.startsWith("draft-"))) {
+      setDraftCreates((prev) =>
+        prev.map((item) =>
+          item.draftId === editing.id
+            ? {
+                ...item,
+                studentCount: count,
+                name: editing.kind === "section" ? sectionName : item.name,
+              }
+            : item,
+        ),
+      );
+      toast.success("Seats updated — save the school to keep this change");
+      setEditing(null);
       return;
     }
 
-    if (!schoolId) return;
-    startTransition(async () => {
-      if (editing.kind === "section") {
-        const result = await updateAdminSectionAction(schoolId, editing.id, {
-          name: editName.trim().toUpperCase(),
-          studentCount: count,
-        });
-        if (!result.ok) {
-          setEditErrors({ studentCount: result.message });
-          return;
-        }
-        toast.success(`Section ${editing.classLevel}-${editName.trim().toUpperCase()} updated`);
-      } else {
-        const result = await updateAdminWholeClassAction(schoolId, editing.id, {
-          studentCount: count,
-        });
-        if (!result.ok) {
-          setEditErrors({ studentCount: result.message });
-          return;
-        }
-        toast.success(`Class ${editing.classLevel}-A seats updated`);
-      }
-      setEditing(null);
-      router.refresh();
-    });
+    // Existing class/section: save seat counts immediately (within school strength).
+    if (!schoolId) {
+      toast.error("Save the school first, then edit this class’s seats");
+      return;
+    }
+    persistSeatEdit(editing, count, sectionName);
   }
 
   function removeSection(row: ClassRow) {
@@ -483,7 +519,8 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
 
       {deferred ? (
         <p className="border-b border-brand-100 bg-neutral-50/80 px-4 py-2 text-xs text-neutral-500">
-          Options follow Programs & classes checks. Added classes are kept when you save the school.
+          Seat counts save right away (within school strength). New classes are kept when you save the
+          school.
         </p>
       ) : null}
 

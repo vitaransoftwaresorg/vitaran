@@ -16,7 +16,18 @@ import * as scanService from "./service.js";
 
 const IMAGE_MAX = 8 * 1024 * 1024;
 const PDF_MAX = 500 * 1024 * 1024;
-const commitSchema = z.object({ previewId: z.uuid() });
+const commitSchema = z.object({
+  previewId: z.uuid(),
+  /** Examiner-entered registration — overrides the bubble read before save. */
+  rollNo: z.preprocess(
+    (value) => (typeof value === "string" && value.trim() === "" ? undefined : value),
+    z
+      .string()
+      .trim()
+      .regex(/^\d{7}$/, "Registration number must be 7 digits")
+      .optional(),
+  ),
+});
 
 const readImage = multer({
   storage: multer.memoryStorage(),
@@ -137,7 +148,14 @@ function omrRouter(contextOf: (res: Response) => scanService.ScanContext) {
     },
   );
   router.post("/commit", validate(commitSchema), async (req, res) => {
-    sendSuccess(res, await scanService.commitScan(contextOf(res), (req.body as { previewId: string }).previewId), 201);
+    const body = req.body as { previewId: string; rollNo?: string };
+    sendSuccess(
+      res,
+      await scanService.commitScan(contextOf(res), body.previewId, {
+        rollNo: body.rollNo,
+      }),
+      201,
+    );
   });
   router.get("/check-test/:testId", async (req, res) => {
     const testId = z.string().trim().regex(/^\d{6}$/, "Test ID must be exactly 6 digits").parse(req.params.testId);

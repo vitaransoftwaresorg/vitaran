@@ -12,7 +12,9 @@ import { registerOmrPdfDirect } from "./client-upload";
 import { startPdfJob } from "./pdf-batch";
 import { checkTestIdAction } from "./actions";
 import { DocumentScanner } from "./document-scanner";
+import { OmrRollRecovery } from "./omr-roll-recovery";
 import { requestTiltPermission } from "./phone-tilt";
+import { isRollUnreadError, ROLL_LENGTH, rollInput } from "./roll-helpers";
 import { FULL_PAGE_QUAD, type SheetQuad } from "./sheet-detect";
 import { getOmrUploadAuthAction } from "./upload-auth";
 import type { ScanQueueItem } from "./queue-item";
@@ -138,6 +140,8 @@ export function ScanCamera({
   const cameraRef = useRef<HTMLInputElement>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [testCheck, setTestCheck] = useState<TestCheckState | null>(null);
+  const [rollError, setRollError] = useState<string | null>(null);
+  const retryRef = useRef<{ source: Blob; corners?: SheetQuad } | null>(null);
   const enteredTest = testId.trim();
   const testComplete = TEST_ID_PATTERN.test(enteredTest);
   const checked = testComplete && testCheck?.value === enteredTest ? testCheck : null;
@@ -194,11 +198,13 @@ export function ScanCamera({
     <p className="text-[11px] font-medium text-red-700">{checked.message}</p>
   );
 
-  async function readPhoto(source: Blob, corners?: SheetQuad) {
+  async function readPhoto(source: Blob, corners?: SheetQuad, forcedRoll?: string) {
     const file = await asJpegFile(source);
     const form = new FormData();
     form.append("file", file);
     if (testId.trim()) form.append("testId", testId.trim());
+    const roll = rollInput(forcedRoll ?? "");
+    if (roll.length === ROLL_LENGTH) form.append("rollNo", roll);
     if (corners) form.append("corners", JSON.stringify(corners.map((p) => [p.x, p.y])));
     return scanAction(form);
   }
@@ -207,12 +213,19 @@ export function ScanCamera({
     if (!(await verifyTestId())) return;
     setBusy(true);
     setStatus("Reading sheet…");
+    setRollError(null);
     try {
       const result = await readPhoto(source, corners);
       if (!result.ok) {
         toast.error(result.message);
+        if (isRollUnreadError(result.message)) {
+          retryRef.current = { source, corners };
+          setRollError(result.message);
+        }
         return;
       }
+      retryRef.current = null;
+      setRollError(null);
       onScanned(result.result);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not read this sheet. Try again.");
@@ -220,6 +233,48 @@ export function ScanCamera({
       setBusy(false);
       setStatus("");
     }
+  }
+
+  async function saveFailedWithRoll(typedRoll: string) {
+    const pending = retryRef.current;
+    if (!pending) return;
+    const typed = rollInput(typedRoll);
+    if (typed.length !== ROLL_LENGTH) {
+      toast.error("Enter the 7-digit registration number, then save.");
+      return;
+    }
+    if (!(await verifyTestId())) return;
+    setBusy(true);
+    setStatus("Saving with registration…");
+    try {
+      const result = await readPhoto(pending.source, pending.corners, typed);
+      if (!result.ok) {
+        toast.error(result.message);
+        // Keep the unread recovery form open so they can fix the number.
+        if (isRollUnreadError(result.message)) setRollError(result.message);
+        return;
+      }
+      retryRef.current = null;
+      setRollError(null);
+      onScanned(result.result);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save this sheet. Try again.");
+    } finally {
+      setBusy(false);
+      setStatus("");
+    }
+  }
+
+  function failedRollPanel() {
+    if (!rollError || !isRollUnreadError(rollError)) return null;
+    return (
+      <OmrRollRecovery
+        portal={portal}
+        message={rollError}
+        busy={busy}
+        onSaveWithRoll={(roll) => void saveFailedWithRoll(roll)}
+      />
+    );
   }
 
   async function submitPdf(file: File) {
@@ -294,22 +349,25 @@ export function ScanCamera({
   if (!phone) {
     return (
       <div className="space-y-3">
-        <div className="space-y-1.5 rounded-2xl border border-neutral-200 bg-white p-4">
-          <Label htmlFor="scan-test-desktop" className="text-xs font-semibold tracking-wider text-neutral-500 uppercase">
-            Test ID
-          </Label>
-          <Input
-            id="scan-test-desktop"
-            inputMode="numeric"
-            autoComplete="off"
-            maxLength={TEST_ID_LENGTH}
-            value={testId}
-            disabled={busy}
-            placeholder="6 digits, as on the OMR"
-            className="h-11 rounded-xl px-3.5 text-base tracking-widest tabular-nums"
-            onChange={(event) => onTestId?.(testIdInput(event.currentTarget.value))}
-          />
-          {testHint}
+        <div className="space-y-3 rounded-2xl border border-neutral-200 bg-white p-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="scan-test-desktop" className="text-xs font-semibold tracking-wider text-neutral-500 uppercase">
+              Test ID
+            </Label>
+            <Input
+              id="scan-test-desktop"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={TEST_ID_LENGTH}
+              value={testId}
+              disabled={busy}
+              placeholder="6 digits, as on the OMR"
+              className="h-11 rounded-xl px-3.5 text-base tracking-widest tabular-nums"
+              onChange={(event) => onTestId?.(testIdInput(event.currentTarget.value))}
+            />
+            {testHint}
+          </div>
+          {failedRollPanel()}
         </div>
         <label
           aria-disabled={!testReady || busy}
@@ -400,6 +458,7 @@ export function ScanCamera({
           />
           {testHint}
         </div>
+        {failedRollPanel()}
       </div>
       <input
         ref={cameraRef}

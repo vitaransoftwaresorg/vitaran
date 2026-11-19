@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/features/admin/page-header";
 import { SchoolForm } from "@/features/schools/school-form";
-import { SchoolNavTrail } from "@/features/schools/school-nav-trail";
 import { listPrograms } from "@/services/programs";
 import {
   getAdminSchoolSectionStrength,
@@ -31,7 +30,6 @@ export default async function EditSchoolPage({ params }: PageProps<"/admin/schoo
 
   return (
     <div>
-      <SchoolNavTrail id={school.id} name={school.name} leaf="Edit" />
       <PageHeader description={`School code ${school.code}`} />
       <SchoolForm
         school={school}
@@ -41,6 +39,10 @@ export default async function EditSchoolPage({ params }: PageProps<"/admin/schoo
           classTeacherSlots,
           seatsUsedLabel,
           teachersHref: `/admin/teachers?school=${school.id}`,
+          strength: {
+            studentStrength: strength.studentStrength,
+            used: strength.used,
+          },
         }}
       />
     </div>

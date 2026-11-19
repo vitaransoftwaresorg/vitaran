@@ -1,12 +1,22 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useDrivePathCrumbs } from "@/components/layout/drive-path-context";
+import { schoolIdFromAdminPath, useAdminNavLabel } from "@/features/admin/nav-labels";
 import {
   isAnswerKeyEditorPath,
   readAnswerKeysReturnHref,
 } from "@/features/answer-keys/drive-path";
+
+/** false during SSR + hydration; true after mount so sessionStorage reads can't mismatch HTML. */
+function useHasClientStore() {
+  return useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
+}
 
 export type PortalNavCrumb = { label: string; href: string };
 
@@ -64,15 +74,21 @@ export function usePortalNavCrumbs(routeCrumbs: PortalNavCrumb[]): PortalNavCrum
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const driveCrumbs = useDrivePathCrumbs();
+  const schoolId = schoolIdFromAdminPath(pathname);
+  // Must use getServerSnapshot=null so SSR HTML matches the first client paint.
+  const schoolName = useAdminNavLabel("school", schoolId);
+  const hasClientStore = useHasClientStore();
+  const answerKeysReturnHref = hasClientStore ? readAnswerKeysReturnHref() : null;
 
   return useMemo(() => {
     const folders = driveCrumbs.filter((crumb) => !isSectionRootLabel(crumb.label));
 
     if (isAnswerKeyEditorPath(pathname)) {
       const section = sectionThrough(routeCrumbs, (href) => /\/answer-keys$/.test(href));
-      const returnHref = readAnswerKeysReturnHref();
       const withFolderHome = section.map((crumb) =>
-        /\/answer-keys$/.test(crumb.href) && returnHref ? { ...crumb, href: returnHref } : crumb,
+        /\/answer-keys$/.test(crumb.href) && answerKeysReturnHref
+          ? { ...crumb, href: answerKeysReturnHref }
+          : crumb,
       );
       const leafLabel = pathname.endsWith("/edit") ? "Edit" : "Enter answers";
       return dedupeCrumbs([...withFolderHome, ...folders, { label: leafLabel, href: pathname }]);
@@ -129,9 +145,22 @@ export function usePortalNavCrumbs(routeCrumbs: PortalNavCrumb[]): PortalNavCrum
     if (/\/schools\/[^/]+/.test(pathname) && !pathname.endsWith("/schools/new")) {
       const section = sectionThrough(routeCrumbs, (href) => /\/schools$/.test(href));
       const rest = routeCrumbs.slice(section.length).filter((crumb) => crumb.label !== "Details");
-      return dedupeCrumbs([...section, ...folders, ...rest]);
+      const schoolHref = schoolId ? `/admin/schools/${schoolId}` : null;
+      const named =
+        schoolName && schoolHref && !folders.some((crumb) => crumb.href === schoolHref)
+          ? [{ label: schoolName, href: schoolHref }, ...folders]
+          : folders;
+      return dedupeCrumbs([...section, ...named, ...rest]);
     }
 
     return dedupeCrumbs([...routeCrumbs, ...folders]);
-  }, [routeCrumbs, driveCrumbs, pathname, searchParams]);
+  }, [
+    routeCrumbs,
+    driveCrumbs,
+    pathname,
+    searchParams,
+    schoolId,
+    schoolName,
+    answerKeysReturnHref,
+  ]);
 }

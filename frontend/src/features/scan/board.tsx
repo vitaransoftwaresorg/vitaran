@@ -20,7 +20,6 @@ import { ScanCamera } from "./camera";
 import { FailedPages } from "./failed-pages";
 import { resumePdfJob, stopPdfJob } from "./pdf-batch";
 import type { ScanQueueItem } from "./queue-item";
-import { RecentSavedScans } from "./recent-saved-scans";
 import type { ScanPortal } from "@/services/scans";
 import { formatMarks, type ScanPreview } from "@/types/scan";
 
@@ -28,10 +27,6 @@ const BASE: Record<ScanPortal, string> = {
   admin: "/admin/omr-scan",
   school: "/school/omr-scan",
   teacher: "/teacher/omr-scan",
-};
-
-const LIVE_PATH: Partial<Record<ScanPortal, string>> = {
-  admin: "/admin/live",
 };
 
 /** Sheets per "Save all" request (backend limit 25), so progress moves and no request runs too long. */
@@ -389,8 +384,6 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
             {queued > 0 ? `${queued} photo${queued === 1 ? "" : "s"} waiting` : ""}
           </p>
         )}
-
-        <RecentSavedScans portal={portal} livePath={LIVE_PATH[portal]} />
       </div>
     </div>
   );

@@ -1,23 +1,62 @@
 "use client";
 
 import { useState } from "react";
-import { Download, Loader2, Printer } from "lucide-react";
+import { ChevronDown, Download, Loader2, Printer } from "lucide-react";
 import { SharePdfButton } from "@/components/shared/share-pdf-button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { printPdf } from "@/features/answer-keys/print-pdf";
 import { cn } from "@/lib/utils";
 import { downloadFileName } from "@/utils/download-file-name";
-import type { PerformancePortal } from "./performance-actions";
+import { REPORT_TEST_NUMBERS, type PerformancePortal, type ReportCardKind } from "./portal";
+import {
+  classProfilesPdfHref,
+  classReportCardsHref,
+  studentPdfHref,
+} from "./report-card-hrefs";
+import { StudentReportDownloads } from "./student-report-downloads";
 
-const PROFILE_BASE: Record<PerformancePortal, string> = {
-  admin: "/admin/schools/students",
-  school: "/school/students",
-  teacher: "/teacher/students",
-};
+export {
+  classProfilesPdfHref,
+  classReportCardsHref,
+  studentPdfHref,
+  studentRankCardsHref,
+  studentReportCardHref,
+} from "./report-card-hrefs";
+export { StudentReportCardLinks, StudentReportDownloads } from "./student-report-downloads";
+export type { PerformancePortal, ReportCardKind } from "./portal";
 
-export const studentPdfHref = (portal: PerformancePortal, id: string, download = false) =>
-  `${PROFILE_BASE[portal]}/${encodeURIComponent(id)}/pdf${download ? "?download=1" : ""}`;
+const titleCase = (label: string) =>
+  label.toLowerCase().replace(/(^|\s)\S/g, (char) => char.toUpperCase());
 
-/** Print and download the branded student profile PDF (on the dark profile header). */
+const MENU_TRIGGER =
+  "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-semibold whitespace-nowrap transition-colors [&_svg]:size-3.5";
+
+function reportFileName(
+  kind: ReportCardKind,
+  parts: Array<string | number | null | undefined>,
+  options?: { subject?: string; test?: number },
+) {
+  const prefix =
+    kind === "year"
+      ? "Year-Report"
+      : kind === "subjects"
+        ? options?.subject
+          ? `Subject-${options.subject}`
+          : "Subject-Report-All"
+        : options?.test != null
+          ? `Test-${options.test}-Report`
+          : "Test-Report-Cards";
+  return downloadFileName([prefix, ...parts], "pdf");
+}
+
+/** Print and download profile PDF + report downloads for one student. */
 export function StudentPdfActions({
   portal,
   studentId,
@@ -26,6 +65,7 @@ export function StudentPdfActions({
   schoolName,
   programName,
   classLevel,
+  subjects = [],
   outlineClassName,
 }: {
   portal: PerformancePortal;
@@ -35,6 +75,7 @@ export function StudentPdfActions({
   schoolName?: string;
   programName?: string;
   classLevel?: number;
+  subjects?: string[];
   outlineClassName: string;
 }) {
   const [printing, setPrinting] = useState(false);
@@ -68,6 +109,17 @@ export function StudentPdfActions({
         <Download />
         PDF
       </a>
+      <StudentReportDownloads
+        portal={portal}
+        studentId={studentId}
+        studentName={studentName}
+        rollNo={rollNo}
+        schoolName={schoolName}
+        programName={programName}
+        classLevel={classLevel}
+        subjects={subjects}
+        triggerClassName={outlineClassName}
+      />
       <SharePdfButton
         href={studentPdfHref(portal, studentId, true)}
         fileName={fileName}
@@ -81,39 +133,48 @@ export function StudentPdfActions({
   );
 }
 
-export const classProfilesPdfHref = (portal: PerformancePortal, studentIds: string[], download = false) =>
-  `${PROFILE_BASE[portal]}/profiles/pdf?ids=${studentIds.map(encodeURIComponent).join(",")}${download ? "&download=1" : ""}`;
-
-const CLASS_BUTTON =
-  "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-semibold whitespace-nowrap transition-colors [&_svg]:size-3.5";
-
-/** Print or download every listed student's profile card as one PDF (one student per page). */
+/**
+ * Class downloads: one PDF with every student on separate pages.
+ * Year · Tests (All or one) · Subjects (All or one).
+ */
 export function ClassProfilesPdfActions({
   portal,
   studentIds,
   label = "profile cards",
   scopeLabel,
   schoolName,
+  subjects = [],
+  tests = REPORT_TEST_NUMBERS,
   className,
 }: {
   portal: PerformancePortal;
   studentIds: string[];
   label?: string;
-  /** e.g. "Class 8-A" — used in the download filename. */
   scopeLabel?: string;
   schoolName?: string;
+  subjects?: string[];
+  tests?: number[];
   className?: string;
 }) {
   const [printing, setPrinting] = useState(false);
   if (studentIds.length === 0) return null;
   const title = `${studentIds.length} student profile ${studentIds.length === 1 ? "card" : "cards"}`;
-  const fileName = downloadFileName(
-    ["Student-Profiles", schoolName, scopeLabel ?? label],
-    "pdf",
+  const fileName = downloadFileName(["Student-Profiles", schoolName, scopeLabel ?? label], "pdf");
+  const meta = [schoolName, scopeLabel];
+  const uniqueSubjects = [...new Set(subjects.map((label) => label.trim().toUpperCase()).filter(Boolean))];
+  const uniqueTests = [...new Set(tests.filter((n) => Number.isInteger(n) && n >= 1 && n <= 18))].sort(
+    (a, b) => a - b,
   );
 
+  function classLink(kind: ReportCardKind, options?: { subject?: string; test?: number }) {
+    return {
+      href: classReportCardsHref(portal, studentIds, kind, { download: true, ...options }),
+      download: reportFileName(kind, meta, options),
+    };
+  }
+
   return (
-    <div className={cn("flex gap-2", className)}>
+    <div className={cn("flex flex-wrap gap-2", className)}>
       <button
         type="button"
         title={`Print ${title}`}
@@ -123,7 +184,7 @@ export function ClassProfilesPdfActions({
           printPdf(classProfilesPdfHref(portal, studentIds), () => setPrinting(false), fileName);
         }}
         className={cn(
-          CLASS_BUTTON,
+          MENU_TRIGGER,
           "border border-brand-200 bg-white text-brand-900 hover:border-brand-900 hover:bg-brand-50 disabled:opacity-60",
         )}
       >
@@ -134,22 +195,89 @@ export function ClassProfilesPdfActions({
         href={classProfilesPdfHref(portal, studentIds, true)}
         title={`Download ${title}`}
         download={fileName}
-        className={cn(CLASS_BUTTON, "bg-brand-900 text-white hover:bg-brand-800 active:scale-[0.98]")}
+        className={cn(MENU_TRIGGER, "bg-brand-900 text-white hover:bg-brand-800 active:scale-[0.98]")}
       >
         <Download />
-        PDF
+        Profiles
       </a>
-      <SharePdfButton
-        href={classProfilesPdfHref(portal, studentIds, true)}
-        fileName={fileName}
-        title={title}
+      <a
+        {...classLink("year")}
+        title="Year report — one page per student"
         className={cn(
-          CLASS_BUTTON,
-          "border border-brand-200 bg-white text-brand-900 hover:border-brand-900 hover:bg-brand-50 disabled:opacity-60",
+          MENU_TRIGGER,
+          "border border-violet-200 bg-white text-violet-900 hover:border-violet-700 hover:bg-violet-50",
         )}
       >
-        Share
-      </SharePdfButton>
+        <Download />
+        Year Report
+      </a>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          title="Tests report — All or one test"
+          className={cn(
+            MENU_TRIGGER,
+            "border border-violet-200 bg-white text-violet-900 hover:border-violet-700 hover:bg-violet-50",
+          )}
+        >
+          <Download />
+          Tests Report
+          <ChevronDown className="opacity-70" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-44 max-h-72 overflow-y-auto">
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>Class tests report</DropdownMenuLabel>
+            <DropdownMenuItem render={<a {...classLink("tests")} />} className="cursor-pointer">
+              All tests
+            </DropdownMenuItem>
+            {uniqueTests.map((test) => (
+              <DropdownMenuItem
+                key={test}
+                render={<a {...classLink("tests", { test })} />}
+                className="cursor-pointer"
+              >
+                Test {test}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          title="Subjects report — All or one subject"
+          className={cn(
+            MENU_TRIGGER,
+            "border border-violet-200 bg-white text-violet-900 hover:border-violet-700 hover:bg-violet-50",
+          )}
+        >
+          <Download />
+          Subjects Report
+          <ChevronDown className="opacity-70" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-48">
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>Class subjects report</DropdownMenuLabel>
+            <DropdownMenuItem render={<a {...classLink("subjects")} />} className="cursor-pointer">
+              All subjects
+            </DropdownMenuItem>
+            {uniqueSubjects.map((subject) => (
+              <DropdownMenuItem
+                key={subject}
+                render={<a {...classLink("subjects", { subject })} />}
+                className="cursor-pointer"
+              >
+                {titleCase(subject)}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }
+
+/** @deprecated Prefer StudentReportDownloads — kept for older call sites. */
+export const REPORT_CARD_KINDS: Array<{ kind: ReportCardKind; label: string; short: string }> = [
+  { kind: "year", label: "Year report", short: "Year" },
+  { kind: "tests", label: "Test-wise report cards", short: "Tests" },
+  { kind: "subjects", label: "Subject-wise report", short: "Subjects" },
+];

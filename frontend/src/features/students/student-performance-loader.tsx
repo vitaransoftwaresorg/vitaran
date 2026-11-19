@@ -2,11 +2,20 @@
 
 import { useEffect, useState } from "react";
 import type { StudentTestResult } from "@/types/student";
-import { loadStudentPerformanceAction, type PerformancePortal } from "./performance-actions";
+import { loadStudentPerformanceAction } from "./performance-actions";
+import type { PerformancePortal } from "./portal";
 import { StudentPerformance } from "./student-performance";
 
 /** For in-page student views that have no server-loaded results. */
-export function StudentPerformanceLoader({ portal, studentId }: { portal: PerformancePortal; studentId: string }) {
+export function StudentPerformanceLoader({
+  portal,
+  studentId,
+  student,
+}: {
+  portal: PerformancePortal;
+  studentId: string;
+  student: { id: string; name: string; rollNo: string; schoolName?: string };
+}) {
   const [loaded, setLoaded] = useState<{ id: string; results: StudentTestResult[] } | null>(null);
 
   useEffect(() => {
@@ -26,5 +35,5 @@ export function StudentPerformanceLoader({ portal, studentId }: { portal: Perfor
       </div>
     );
   }
-  return <StudentPerformance results={loaded.results} portal={portal} />;
+  return <StudentPerformance results={loaded.results} portal={portal} student={student} />;
 }

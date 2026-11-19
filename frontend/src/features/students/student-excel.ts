@@ -88,8 +88,18 @@ export async function readStudentsExcel(file: File): Promise<ImportedStudent[]> 
     if (found.size >= 2) map = found;
     return found.size >= 2;
   });
-  if (headerIndex >= 0) start = headerIndex + 1;
-  else map = new Map(TEMPLATE_COLUMNS.map((column, index) => [column.key, index]));
+  if (headerIndex >= 0) {
+    start = headerIndex + 1;
+  } else {
+    // No header row — use template order, but skip leading blank columns (common spacer col A).
+    const offset = rows.reduce((min, cells) => {
+      const first = cells.findIndex(Boolean);
+      if (first < 0) return min;
+      return Math.min(min, first);
+    }, Number.POSITIVE_INFINITY);
+    const shift = Number.isFinite(offset) ? offset : 0;
+    map = new Map(TEMPLATE_COLUMNS.map((column, index) => [column.key, index + shift]));
+  }
 
   const pick = (cells: string[], column: Column) => {
     const index = map.get(column);

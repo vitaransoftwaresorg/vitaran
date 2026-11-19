@@ -210,6 +210,12 @@ export function SchoolClassesWorkspace({
         ? `Class ${focus.row.classLevel}-${focus.row.name}`
         : `Class ${focus.row.classLevel}`;
     const description = `${capitalizeWords(focus.row.programName)} · ${enrolled}/${seats} seats used`;
+    const classSubjects =
+      schoolPrograms
+        .find((program) => program.programId === focus.row.programId)
+        ?.classes.find((row) => row.classLevel === focus.row.classLevel)?.subjects ??
+      schoolPrograms.find((program) => program.programId === focus.row.programId)?.catalogSubjects ??
+      [];
 
     return (
       <div className="space-y-3">
@@ -224,6 +230,7 @@ export function SchoolClassesWorkspace({
                 studentIds={rosterStudents.map((student) => student.id)}
                 scopeLabel={title}
                 schoolName={rosterStudents[0]?.schoolName}
+                subjects={classSubjects}
               />
               {full ? (
                 <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
@@ -245,6 +252,7 @@ export function SchoolClassesWorkspace({
         <StudentsTable
           students={rosterStudents}
           mode="school"
+          subjects={classSubjects}
           emptyMessage="No students yet. Click Add student above."
           onView={(id) => openStudent(id, focus)}
           onEdit={(id) => {

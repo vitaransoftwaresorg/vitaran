@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useLayoutEffect, useMemo } from "react";
 import { useSetDrivePathCrumbs } from "@/components/layout/drive-path-context";
 
 /** Pushes the program name into the top navbar (Dashboard › Programs › Name). */
@@ -15,15 +15,19 @@ export function ProgramNavTrail({
   leaf?: string;
 }) {
   const setDrivePath = useSetDrivePathCrumbs();
-
-  useEffect(() => {
-    if (!setDrivePath) return;
+  const crumbs = useMemo(() => {
     const href = `/admin/programs/${id}`;
-    const crumbs = [{ label: name, href }];
-    if (leaf) crumbs.push({ label: leaf, href: `${href}/edit` });
+    const rows = [{ label: name, href }];
+    if (leaf) rows.push({ label: leaf, href: `${href}/edit` });
+    return rows;
+  }, [id, name, leaf]);
+
+  useLayoutEffect(() => {
+    if (!setDrivePath) return;
     setDrivePath(crumbs);
-    return () => setDrivePath([]);
-  }, [id, name, leaf, setDrivePath]);
+    // Do not clear on unmount — Suspense soft-refresh would wipe the top nav.
+    // DrivePathProvider clears when leaving /programs/… routes.
+  }, [crumbs, setDrivePath]);
 
   return null;
 }

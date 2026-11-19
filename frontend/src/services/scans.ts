@@ -48,9 +48,16 @@ export function previewScan(
   return route.api<ScanPreview>(route.preview, { method: "POST", body });
 }
 
-export function commitScan(portal: ScanPortal, previewId: string) {
+export function commitScan(portal: ScanPortal, previewId: string, options?: { rollNo?: string }) {
   const route = client(portal);
-  return route.api<{ scan: OmScan }>(route.commit, { method: "POST", body: { previewId } });
+  const rollNo = options?.rollNo?.replace(/\D/g, "");
+  return route.api<{ scan: OmScan }>(route.commit, {
+    method: "POST",
+    body: {
+      previewId,
+      ...(rollNo ? { rollNo } : {}),
+    },
+  });
 }
 
 export type CommitManyResult = { previewId: string; ok: true; scan: OmScan } | { previewId: string; ok: false; message: string };

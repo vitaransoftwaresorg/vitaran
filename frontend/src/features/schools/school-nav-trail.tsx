@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useLayoutEffect, useMemo } from "react";
 import { useSetDrivePathCrumbs } from "@/components/layout/drive-path-context";
+import { rememberAdminNavLabel } from "@/features/admin/nav-labels";
 
 /** Pushes the school name into the top navbar (Dashboard › Schools › Name). */
 export function SchoolNavTrail({
@@ -14,15 +15,17 @@ export function SchoolNavTrail({
   leaf?: string;
 }) {
   const setDrivePath = useSetDrivePathCrumbs();
-
-  useEffect(() => {
-    if (!setDrivePath) return;
+  const crumbs = useMemo(() => {
     const href = `/admin/schools/${id}`;
-    const crumbs = [{ label: name, href }];
-    if (leaf) crumbs.push({ label: leaf, href: `${href}/edit` });
-    setDrivePath(crumbs);
-    return () => setDrivePath([]);
-  }, [id, name, leaf, setDrivePath]);
+    const rows = [{ label: name, href }];
+    if (leaf) rows.push({ label: leaf, href: `${href}/edit` });
+    return rows;
+  }, [id, name, leaf]);
+
+  useLayoutEffect(() => {
+    rememberAdminNavLabel("school", id, name);
+    setDrivePath?.(crumbs);
+  }, [id, name, crumbs, setDrivePath]);
 
   return null;
 }
