@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Clock, MapPin, School } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -14,7 +13,6 @@ import { CredentialMailBar } from "@/features/auth/credential-mail-bar";
 import { AdminSchoolClassesPanel } from "@/features/schools/admin-school-classes-panel";
 import { uniqueSubjectsFromOfferings } from "@/features/schools/offerings";
 import { SchoolDetailActions } from "@/features/schools/school-detail-actions";
-import { SchoolNavTrail } from "@/features/schools/school-nav-trail";
 import {
   getAdminSchoolSectionStrength,
   listAdminSchoolSections,
@@ -76,7 +74,6 @@ export default async function SchoolDetailsPage({ params }: PageProps<"/admin/sc
 
   return (
     <div className="space-y-3">
-      <SchoolNavTrail id={school.id} name={school.name} />
       <header className="rounded-xl border border-brand-700 bg-linear-to-r from-brand-800 to-brand-950 px-5 py-4 text-white shadow-[0_10px_30px_-12px_rgb(25_28_95/0.55)]">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 items-start gap-3">
@@ -129,40 +126,6 @@ export default async function SchoolDetailsPage({ params }: PageProps<"/admin/sc
             value={school.studentStrength ? formatNumber(school.studentStrength) : EMPTY}
           />
           <Chip label="Programs" value={school.schoolPrograms.length} />
-          <Link
-            href={`/admin/schools/${school.id}/students`}
-            className="min-w-18 rounded-md border border-white/15 bg-white/10 px-3 py-1.5 text-center transition-colors hover:bg-white/20"
-          >
-            <p className="text-[9px] font-semibold tracking-wider text-white/50 uppercase">
-              Students
-            </p>
-            <p className="text-sm font-bold text-white">View</p>
-          </Link>
-          <Link
-            href={`/admin/schools/${school.id}/programs`}
-            className="min-w-18 rounded-md border border-white/15 bg-white/10 px-3 py-1.5 text-center transition-colors hover:bg-white/20"
-          >
-            <p className="text-[9px] font-semibold tracking-wider text-white/50 uppercase">
-              Programs
-            </p>
-            <p className="text-sm font-bold text-white">View</p>
-          </Link>
-          <Link
-            href={`/admin/teachers?school=${school.id}`}
-            className="min-w-18 rounded-md border border-white/15 bg-white/10 px-3 py-1.5 text-center transition-colors hover:bg-white/20"
-          >
-            <p className="text-[9px] font-semibold tracking-wider text-white/50 uppercase">
-              Teachers
-            </p>
-            <p className="text-sm font-bold text-white">View</p>
-          </Link>
-          <Link
-            href={`/admin/schools/${school.id}/teachers/new`}
-            className="min-w-18 rounded-md border border-white/15 bg-white/10 px-3 py-1.5 text-center transition-colors hover:bg-white/20"
-          >
-            <p className="text-[9px] font-semibold tracking-wider text-white/50 uppercase">Add</p>
-            <p className="text-sm font-bold text-white">Teacher</p>
-          </Link>
         </div>
       </header>
 
