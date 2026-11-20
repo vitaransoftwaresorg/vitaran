@@ -212,6 +212,40 @@ export function deleteStudent(id: string) {
   return prisma.student.delete({ where: { id } });
 }
 
+export function listRollsBySectionId(sectionId: string) {
+  return prisma.student.findMany({
+    where: { sectionId },
+    select: { rollNo: true },
+  });
+}
+
+export function listWholeClassRolls(
+  schoolId: string,
+  programId: string,
+  classLevel: number,
+) {
+  return prisma.student.findMany({
+    where: { schoolId, programId, classLevel, sectionId: null },
+    select: { rollNo: true },
+  });
+}
+
+/** Roster rows tied to a named section — removed when that section is deleted. */
+export function deleteStudentsBySectionId(sectionId: string) {
+  return prisma.student.deleteMany({ where: { sectionId } });
+}
+
+/** Whole-class roster (no section) for one program/class — removed when that class is deleted. */
+export function deleteWholeClassStudents(
+  schoolId: string,
+  programId: string,
+  classLevel: number,
+) {
+  return prisma.student.deleteMany({
+    where: { schoolId, programId, classLevel, sectionId: null },
+  });
+}
+
 export function isRollTaken(schoolId: string, rollNo: string, excludeId?: string) {
   return prisma.student.findFirst({
     where: {

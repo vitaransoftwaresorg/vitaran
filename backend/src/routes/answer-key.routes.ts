@@ -3,6 +3,7 @@ import multer from "multer";
 import {
   checkAnswerKeyTestId,
   deleteAnswerKey,
+  getAdminAnswerKeyPdf,
   getAnswerKey,
   getAnswerKeyStats,
   getPublicAnswerKey,
@@ -88,6 +89,7 @@ answerKeyRouter.patch(
   resolveAdminObjection,
 );
 answerKeyRouter.get("/:id", validateId, getAnswerKey);
+answerKeyRouter.get("/:id/pdf", validateId, getAdminAnswerKeyPdf);
 answerKeyRouter.patch(
   "/:id/test-id",
   validateId,

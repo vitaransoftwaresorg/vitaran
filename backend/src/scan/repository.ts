@@ -130,3 +130,19 @@ export function findOmScans(where: Prisma.OmScanWhereInput) {
     take: 80,
   });
 }
+
+/** Drop saved OMR rows for registration numbers leaving the school roster. */
+export function deleteOmScansByRolls(schoolId: string, rollNos: string[]) {
+  const rolls = [...new Set(rollNos.map((roll) => roll.trim()).filter(Boolean))];
+  if (rolls.length === 0) return Promise.resolve({ count: 0 });
+  return prisma.omScan.deleteMany({
+    where: {
+      schoolId,
+      OR: rolls.map((rollNo) => ({ rollNo: { equals: rollNo, mode: "insensitive" as const } })),
+    },
+  });
+}
+
+export function deleteOmScansByClass(schoolId: string, classLevel: number) {
+  return prisma.omScan.deleteMany({ where: { schoolId, classLevel } });
+}

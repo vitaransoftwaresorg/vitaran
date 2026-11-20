@@ -118,7 +118,7 @@ export async function updateProgramAction(
   _state: ProgramFormState,
   formData: FormData,
 ): Promise<ProgramFormState> {
-  return save(formData, (input) => programService.updateProgram(id, input));
+  return save(formData, ({ code: _code, ...input }) => programService.updateProgram(id, input));
 }
 
 export async function isProgramCodeTakenAction(code: string, excludeId?: string): Promise<boolean> {

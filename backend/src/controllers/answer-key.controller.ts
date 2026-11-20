@@ -40,6 +40,10 @@ export const getAnswerKey: RequestHandler<IdParams> = async (req, res) => {
   sendSuccess(res, await answerKeyService.getAnswerKey(req.params.id));
 };
 
+export const getAdminAnswerKeyPdf: RequestHandler<IdParams> = async (req, res) => {
+  sendPdf(res, await answerKeyService.getAdminAnswerKeyPdf(req.params.id));
+};
+
 export const uploadAnswerKey: RequestHandler = async (req, res) => {
   sendSuccess(
     res,

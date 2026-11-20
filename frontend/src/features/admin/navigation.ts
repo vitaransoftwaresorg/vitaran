@@ -119,8 +119,28 @@ function crumbLabel(segment: string, previous: string | undefined) {
 export type AdminBreadcrumb = { label: string; href: string };
 
 export function getAdminBreadcrumbs(pathname: string): AdminBreadcrumb[] {
-  const segments = pathname.split("/").filter(Boolean).slice(1);
   const crumbs: AdminBreadcrumb[] = [{ label: "Dashboard", href: "/admin" }];
+
+  // URL is /admin/schools/students, but Students is a sibling of Schools in the sidebar —
+  // do not insert a clickable "Schools" crumb that jumps to the schools list.
+  if (pathname === "/admin/schools/students" || pathname.startsWith("/admin/schools/students/")) {
+    crumbs.push({ label: "Students", href: "/admin/schools/students" });
+    const rest = pathname
+      .slice("/admin/schools/students".length)
+      .split("/")
+      .filter(Boolean);
+    rest.forEach((segment, index) => {
+      if (UUID.test(segment)) return;
+      const previous = rest[index - 1];
+      crumbs.push({
+        label: crumbLabel(segment, previous),
+        href: `/admin/schools/students/${rest.slice(0, index + 1).join("/")}`,
+      });
+    });
+    return crumbs;
+  }
+
+  const segments = pathname.split("/").filter(Boolean).slice(1);
 
   segments.forEach((segment, index) => {
     const previous = segments[index - 1];

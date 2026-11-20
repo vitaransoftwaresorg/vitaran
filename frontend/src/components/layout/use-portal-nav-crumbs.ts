@@ -123,15 +123,30 @@ export function usePortalNavCrumbs(routeCrumbs: PortalNavCrumb[]): PortalNavCrum
       return dedupeCrumbs([...section, ...folders, ...rest]);
     }
 
-    // Teachers school folder: Dashboard › School › Teachers
+    // Students drive: "Schools" = this page’s school list (/admin/schools/students), not /admin/schools.
+    if (pathname === "/admin/schools/students" || pathname.startsWith("/admin/schools/students/")) {
+      const dashboard = routeCrumbs[0] ? [routeCrumbs[0]] : [];
+      const schoolsHere = { label: "Schools", href: "/admin/schools/students" };
+      const school = searchParams.get("school");
+      if (!school && pathname === "/admin/schools/students") {
+        return dedupeCrumbs([...dashboard, schoolsHere]);
+      }
+      const rest = routeCrumbs
+        .slice(2)
+        .filter((crumb) => crumb.label !== "Students" && crumb.label !== "Details");
+      return dedupeCrumbs([...dashboard, schoolsHere, ...folders, ...rest]);
+    }
+
+    // Teachers drive: "Schools" = this page’s school list (/admin/teachers), not /admin/schools.
+    // Inside a school: one leaf (school name), not School › Teachers.
     if (/\/teachers$/.test(pathname)) {
       const dashboard = routeCrumbs[0] ? [routeCrumbs[0]] : [];
-      const teachersCrumb = routeCrumbs.find((crumb) => /\/teachers$/.test(crumb.href));
+      const schoolsHere = { label: "Schools", href: "/admin/teachers" };
       const school = searchParams.get("school") ?? searchParams.get("schoolId");
-      if (!school || !teachersCrumb) {
-        return dedupeCrumbs([...dashboard, ...(teachersCrumb ? [teachersCrumb] : [])]);
+      if (!school) {
+        return dedupeCrumbs([...dashboard, schoolsHere]);
       }
-      return dedupeCrumbs([...dashboard, ...folders, teachersCrumb]);
+      return dedupeCrumbs([...dashboard, schoolsHere, ...folders]);
     }
 
     // Program detail / edit: Dashboard › Programs › Name [› Edit]
@@ -142,7 +157,13 @@ export function usePortalNavCrumbs(routeCrumbs: PortalNavCrumb[]): PortalNavCrum
 
     // School detail / edit: Dashboard › Schools › Name [› Edit]
     // Nested school routes (programs, classes, …) keep school name before the leaf.
-    if (/\/schools\/[^/]+/.test(pathname) && !pathname.endsWith("/schools/new")) {
+    // Skip the Students drive — handled above (URL is /admin/schools/students).
+    if (
+      /\/schools\/[^/]+/.test(pathname) &&
+      !pathname.endsWith("/schools/new") &&
+      pathname !== "/admin/schools/students" &&
+      !pathname.startsWith("/admin/schools/students/")
+    ) {
       const section = sectionThrough(routeCrumbs, (href) => /\/schools$/.test(href));
       const rest = routeCrumbs.slice(section.length).filter((crumb) => crumb.label !== "Details");
       const schoolHref = schoolId ? `/admin/schools/${schoolId}` : null;

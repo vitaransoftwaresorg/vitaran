@@ -8,6 +8,7 @@ import {
   createAdminSchoolStudent,
   createAdminSchoolStudentsBulk,
   deleteAdminStudent,
+  findStudentIdByRoll,
   getAdminStudent,
   updateAdminStudent,
 } from "@/services/students";
@@ -330,5 +331,28 @@ export async function deleteAdminStudentInPlaceAction(id: string) {
   await deleteAdminStudent(id);
   revalidateAdminStudentPaths(student?.schoolId);
   return { ok: true as const };
+}
+
+/** Open a student profile from the admin Students page search. */
+export async function findAdminStudentByRollAction(roll: string, schoolId?: string) {
+  const normalized = roll.replace(/\D/g, "").slice(0, 7);
+  if (!/^\d{7}$/.test(normalized)) {
+    return { ok: false as const, message: "Enter the 7-digit registration number" };
+  }
+  try {
+    const id = await findStudentIdByRoll("admin", normalized, schoolId);
+    if (!id) {
+      return {
+        ok: false as const,
+        message: schoolId
+          ? `No student with registration number ${normalized} in this school`
+          : `No student with registration number ${normalized}`,
+      };
+    }
+    return { ok: true as const, id };
+  } catch (error) {
+    unstable_rethrow(error);
+    return { ok: false as const, message: "Could not look up this registration number" };
+  }
 }
 

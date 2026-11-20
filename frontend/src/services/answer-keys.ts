@@ -161,6 +161,11 @@ export function fetchTeacherAnswerKeyPdf(id: string) {
   return teacherFetch(`${itemPath(TEACHER_BASE, id)}/pdf`);
 }
 
+/** Admin printable/downloadable answer key PDF. */
+export function fetchAdminAnswerKeyPdf(id: string) {
+  return adminFetch(`${itemPath(BASE, id)}/pdf`);
+}
+
 export function listSchoolAnswerKeyObjections(answerKeyId: string) {
   return schoolApi<AnswerKeyObjection[]>(`${itemPath(SCHOOL_BASE, answerKeyId)}/objections`);
 }

@@ -215,3 +215,81 @@ export function updateResultSet(
 export function deleteResultSet(id: string) {
   return prisma.resultSet.delete({ where: { id }, select: { schoolId: true, published: true } });
 }
+
+/** Every class sheet for a school (with student rows) — used to strip deleted rolls. */
+export function listSchoolSheetsWithRows(schoolId: string) {
+  return prisma.resultSheet.findMany({
+    where: { resultSet: { schoolId } },
+    select: {
+      id: true,
+      classLevel: true,
+      caption: true,
+      columns: true,
+      fileName: true,
+      resultSet: {
+        select: {
+          id: true,
+          programCode: true,
+          programName: true,
+          programKey: true,
+          testId: true,
+          testNumber: true,
+          published: true,
+        },
+      },
+      rows: { select: { values: true }, orderBy: { position: "asc" } },
+    },
+    orderBy: [{ resultSet: { testNumber: "asc" } }, { classLevel: "asc" }],
+  });
+}
+
+/** Removes one class sheet; deletes the parent set when it has no sheets left. */
+export async function deleteClassSheetOrSet(resultSetId: string, classLevel: number) {
+  await prisma.resultSheet.deleteMany({ where: { resultSetId, classLevel } });
+  const remaining = await prisma.resultSheet.count({ where: { resultSetId } });
+  if (remaining > 0) return { deletedSet: false as const, published: false };
+  const deleted = await prisma.resultSet.delete({
+    where: { id: resultSetId },
+    select: { published: true },
+  });
+  return { deletedSet: true as const, published: deleted.published };
+}
+
+/** Wipes every class sheet for a school class (optionally scoped to one program). */
+export async function deleteClassSheetsForSchool(
+  schoolId: string,
+  classLevel: number,
+  programKey?: string,
+) {
+  const sheets = await prisma.resultSheet.findMany({
+    where: {
+      classLevel,
+      resultSet: {
+        schoolId,
+        ...(programKey ? { programKey } : {}),
+      },
+    },
+    select: { resultSetId: true, resultSet: { select: { published: true } } },
+  });
+  if (sheets.length === 0) return { removedSheets: 0, anyPublished: false };
+
+  const setIds = [...new Set(sheets.map((row) => row.resultSetId))];
+  await prisma.resultSheet.deleteMany({
+    where: {
+      classLevel,
+      resultSetId: { in: setIds },
+    },
+  });
+
+  let anyPublished = sheets.some((row) => row.resultSet.published);
+  for (const resultSetId of setIds) {
+    const remaining = await prisma.resultSheet.count({ where: { resultSetId } });
+    if (remaining > 0) continue;
+    const deleted = await prisma.resultSet.delete({
+      where: { id: resultSetId },
+      select: { published: true },
+    });
+    anyPublished = anyPublished || deleted.published;
+  }
+  return { removedSheets: sheets.length, anyPublished };
+}

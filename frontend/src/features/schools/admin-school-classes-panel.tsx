@@ -616,7 +616,13 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
 
   function removeSection(row: ClassRow) {
     if (row.kind !== "section") return;
-    if (!window.confirm(`Delete section ${row.classLevel}-${row.section}?`)) return;
+    if (
+      !window.confirm(
+        `Delete section ${row.classLevel}-${row.section}? Students in this section will also be removed from the roster, results, and ranks.`,
+      )
+    ) {
+      return;
+    }
 
     if (deferred) {
       if (row.draft || row.id.startsWith("draft-")) {

@@ -471,6 +471,76 @@ export async function deleteResultSet(id: string) {
   notifyContentChanged({ kind: KIND, schoolId, adminOnly: !published });
 }
 
+/**
+ * Drop registration numbers from every result sheet at the school and recalculate ranks.
+ * Empty class sheets (and empty result sets) are removed.
+ */
+export async function purgeRollsFromResults(schoolId: string, rollNos: string[]) {
+  const folded = new Set(
+    rollNos.map((roll) => foldRoll(roll)).filter((roll) => roll.length > 0),
+  );
+  if (folded.size === 0) return;
+
+  const sheets = await resultRepository.listSchoolSheetsWithRows(schoolId);
+  let touchedPublished = false;
+
+  for (const sheet of sheets) {
+    const columns = (sheet.columns as string[]) ?? [];
+    const rollCol = columns.map(columnRole).indexOf("roll");
+    if (rollCol < 0) continue;
+
+    const rows = sheet.rows.map(({ values }) => values as CellValue[]);
+    const kept = rows.filter((row) => !folded.has(foldRoll(row[rollCol])));
+    if (kept.length === rows.length) continue;
+
+    if (sheet.resultSet.published) touchedPublished = true;
+
+    if (kept.length === 0) {
+      const removed = await resultRepository.deleteClassSheetOrSet(
+        sheet.resultSet.id,
+        sheet.classLevel,
+      );
+      if (removed.published) touchedPublished = true;
+      continue;
+    }
+
+    const meta: ResultSetMeta = {
+      schoolId,
+      programCode: sheet.resultSet.programCode,
+      programName: sheet.resultSet.programName,
+      programKey: sheet.resultSet.programKey,
+      testId: sheet.resultSet.testId,
+      testNumber: sheet.resultSet.testNumber,
+    };
+    await writeClassSheet(
+      meta,
+      sheet.resultSet.id,
+      sheet.classLevel,
+      sheet.caption,
+      columns,
+      recomputeSheet(columns, kept, sheet.classLevel),
+      sheet.fileName,
+    );
+  }
+
+  notifyContentChanged({ kind: KIND, schoolId, adminOnly: !touchedPublished });
+}
+
+/** Remove every class sheet for a school class (ranks/lists for that class go with it). */
+export async function purgeClassFromResults(
+  schoolId: string,
+  classLevel: number,
+  programKey?: string,
+) {
+  const { removedSheets, anyPublished } = await resultRepository.deleteClassSheetsForSchool(
+    schoolId,
+    classLevel,
+    programKey,
+  );
+  if (removedSheets === 0) return;
+  notifyContentChanged({ kind: KIND, schoolId, adminOnly: !anyPublished });
+}
+
 const sheetWhere = ({ id, classLevel }: ResultSheetParams, actor?: ContentActor) => ({
   classLevel,
   resultSet: { id, ...(actor && resultSetAccessFilter(actor)) },

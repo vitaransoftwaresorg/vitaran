@@ -27,6 +27,7 @@ import {
   type DrivePath,
   type DriveSchool,
 } from "./drive-path";
+import { answerKeyPdfHref, printPdf } from "./print-pdf";
 
 export type { DrivePath, DriveSchool } from "./drive-path";
 
@@ -240,6 +241,28 @@ export function AnswerKeysDrive({
 
         const href = documentAnswersHref(ANSWER_KEYS_PATH, file.id, link(drivePath));
         const publishLabel = `Class ${classLevel} answer key`;
+        const actions = [
+          { label: "View", href, icon: "view" as const },
+          { label: "Update", href, icon: "edit" as const },
+          ...(filled > 0
+            ? [
+                {
+                  label: "Download PDF",
+                  href: answerKeyPdfHref(ANSWER_KEYS_PATH, file.id, true),
+                  icon: "download" as const,
+                  download: true,
+                },
+                {
+                  label: "Print",
+                  icon: "print" as const,
+                  onSelect: () => {
+                    toast.message("Preparing the answer key to print…");
+                    printPdf(answerKeyPdfHref(ANSWER_KEYS_PATH, file.id));
+                  },
+                },
+              ]
+            : []),
+        ];
         return {
           id: file.id,
           name: `Class ${classLevel}`,
@@ -254,10 +277,7 @@ export function AnswerKeysDrive({
           onPublish: publishAction.bind(null, file.id),
           onDelete: () => deleteAnswerKeyAction(file.id),
           deleteNoun: ANSWER_KEY_NOUN,
-          actions: [
-            { label: "View", href, icon: "view" as const },
-            { label: "Update", href, icon: "edit" as const },
-          ],
+          actions,
         };
       }),
     );
@@ -283,6 +303,7 @@ export function AnswerKeysDrive({
     const label = inTest
       ? `Class ${file.classLevel} answer key`
       : `Test ${file.testNumber} · Class ${file.classLevel} answer key`;
+    const answers = file.answerCount ?? 0;
     return [
       {
         id: file.id,
@@ -292,14 +313,32 @@ export function AnswerKeysDrive({
         href,
         testId,
         detail: file.published
-          ? `${file.answerCount ?? 0} answers · Published`
-          : `${file.answerCount ?? 0} answers · Hidden`,
+          ? `${answers} answers · Published`
+          : `${answers} answers · Hidden`,
         publishLabel: label,
         onDelete: () => deleteAnswerKeyAction(file.id),
         deleteNoun: ANSWER_KEY_NOUN,
         actions: [
           { label: "View", href, icon: "view" as const },
           { label: "Update", href, icon: "edit" as const },
+          ...(answers > 0
+            ? [
+                {
+                  label: "Download PDF",
+                  href: answerKeyPdfHref(ANSWER_KEYS_PATH, file.id, true),
+                  icon: "download" as const,
+                  download: true,
+                },
+                {
+                  label: "Print",
+                  icon: "print" as const,
+                  onSelect: () => {
+                    toast.message("Preparing the answer key to print…");
+                    printPdf(answerKeyPdfHref(ANSWER_KEYS_PATH, file.id));
+                  },
+                },
+              ]
+            : []),
         ],
       },
     ];

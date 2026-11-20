@@ -12,6 +12,8 @@ import { AppError } from "../utils/app-error.js";
 import { notifyContentChanged } from "../utils/content-events.js";
 import { TeacherStatus } from "../generated/prisma/enums.js";
 import { DEFAULT_SECTION_NAME } from "../utils/section-label.js";
+import * as resultService from "./result.service.js";
+import * as scanRepository from "../scan/repository.js";
 
 const KIND = "sections" as const;
 
@@ -133,11 +135,20 @@ async function usedSeats(
   schoolId: string,
   opts?: { excludeSectionId?: string; excludeClassId?: string },
 ) {
-  const [sections, classes] = await Promise.all([
+  const [sectionSum, sectionRows, wholeRows] = await Promise.all([
     sectionRepository.sumStudentCount(schoolId, opts?.excludeSectionId),
-    schoolClassRepository.sumSchoolClassStudentCount(schoolId, opts?.excludeClassId),
+    sectionRepository.listSectionsBySchool(schoolId),
+    schoolClassRepository.listSchoolClassesBySchool(schoolId),
   ]);
-  return (sections._sum.studentCount ?? 0) + (classes._sum.studentCount ?? 0);
+  // Sections replace whole-class rows for that class level — never count both.
+  const levelsWithSections = new Set(sectionRows.map((row) => row.classLevel));
+  let wholeSum = 0;
+  for (const row of wholeRows) {
+    if (opts?.excludeClassId && row.id === opts.excludeClassId) continue;
+    if (levelsWithSections.has(row.classLevel)) continue;
+    wholeSum += row.studentCount;
+  }
+  return (sectionSum._sum.studentCount ?? 0) + wholeSum;
 }
 
 async function assertStrengthAllows(
@@ -214,8 +225,16 @@ export async function listClassOrganization(schoolId: string): Promise<ClassOrga
     schoolClassRepository.listSchoolClassesBySchool(schoolId),
     sectionRepository.listSectionsBySchool(schoolId),
   ]);
+  const levelsWithSections = new Set(sectionRows.map((row) => row.classLevel));
+  // Drop superseded whole-class rows so their seat count cannot override sections.
+  const orphans = wholeRows.filter((row) => levelsWithSections.has(row.classLevel));
+  if (orphans.length > 0) {
+    await Promise.all(orphans.map((row) => schoolClassRepository.deleteSchoolClass(row.id)));
+  }
   return {
-    wholeClasses: wholeRows.map(toWholeClassDto),
+    wholeClasses: wholeRows
+      .filter((row) => !levelsWithSections.has(row.classLevel))
+      .map(toWholeClassDto),
     sections: sectionRows.map((row) => toSectionDto(row)),
   };
 }
@@ -226,7 +245,15 @@ export async function createSection(schoolId: string, input: CreateSectionInput)
   // Blank name → Section A (classes without other sections default to A).
   const sectionName = input.name?.trim() || DEFAULT_SECTION_NAME;
 
-  await assertStrengthAllows(schoolId, input.studentCount);
+  const existingWhole = await schoolClassRepository.findSchoolClassByLevel(
+    schoolId,
+    input.classLevel,
+  );
+
+  // Free the whole-class seats when this create replaces that row.
+  await assertStrengthAllows(schoolId, input.studentCount, {
+    excludeClassId: existingWhole?.id,
+  });
 
   const conflict = await sectionRepository.findSectionNameConflict(
     schoolId,
@@ -249,8 +276,47 @@ export async function createSection(schoolId: string, input: CreateSectionInput)
     input.classLevel,
   );
 
-  await schoolClassRepository.deleteSchoolClassByLevel(schoolId, input.classLevel);
-  await releaseClassLevelTeacher(schoolId, input.programId, input.classLevel);
+  // If a whole-class seat budget exists, turn it into Section A with its own count
+  // before adding another section — so Integrated class seats do not replace section seats.
+  if (existingWhole) {
+    const sectionsAtLevel = (await sectionRepository.listSectionsBySchool(schoolId)).filter(
+      (row) => row.classLevel === input.classLevel,
+    );
+    const creatingDefault =
+      sectionName.toUpperCase() === DEFAULT_SECTION_NAME.toUpperCase();
+
+    if (sectionsAtLevel.length === 0 && !creatingDefault) {
+      await schoolClassRepository.deleteSchoolClass(existingWhole.id);
+      await releaseClassLevelTeacher(
+        schoolId,
+        existingWhole.programId,
+        existingWhole.classLevel,
+      );
+      const sectionA = await sectionRepository.createSection({
+        schoolId,
+        classLevel: existingWhole.classLevel,
+        name: DEFAULT_SECTION_NAME,
+        programId: existingWhole.programId,
+        studentCount: existingWhole.studentCount,
+        classTeacherId: null,
+      });
+      await studentRepository.assignWholeClassStudentsToSection(
+        schoolId,
+        existingWhole.programId,
+        existingWhole.classLevel,
+        sectionA.id,
+      );
+    } else {
+      await schoolClassRepository.deleteSchoolClass(existingWhole.id);
+      await releaseClassLevelTeacher(
+        schoolId,
+        existingWhole.programId,
+        existingWhole.classLevel,
+      );
+    }
+  } else {
+    await releaseClassLevelTeacher(schoolId, input.programId, input.classLevel);
+  }
 
   const row = await sectionRepository.createSection({
     schoolId,
@@ -368,8 +434,29 @@ export async function deleteSection(schoolId: string, id: string) {
   if (!existing || existing.schoolId !== schoolId) {
     throw new AppError(404, "Section not found");
   }
+  const rolls = (await studentRepository.listRollsBySectionId(id)).map((row) => row.rollNo);
+  if (rolls.length > 0) {
+    await resultService.purgeRollsFromResults(schoolId, rolls);
+    await scanRepository.deleteOmScansByRolls(schoolId, rolls);
+  }
+  await studentRepository.deleteStudentsBySectionId(id);
   await sectionRepository.deleteSection(id);
+
+  // Last section for this class → drop the class sheet / OMRs so ranks lists stay in sync.
+  const siblingsLeft = (await sectionRepository.listSectionsBySchool(schoolId)).some(
+    (row) => row.classLevel === existing.classLevel,
+  );
+  const wholeLeft = await schoolClassRepository.findSchoolClassByLevel(
+    schoolId,
+    existing.classLevel,
+  );
+  if (!siblingsLeft && !wholeLeft) {
+    await resultService.purgeClassFromResults(schoolId, existing.classLevel, existing.program.code);
+    await scanRepository.deleteOmScansByClass(schoolId, existing.classLevel);
+  }
+
   notifyContentChanged({ kind: KIND, schoolId });
+  notifyContentChanged({ kind: "students", schoolId });
 }
 
 export async function deleteSchoolClass(schoolId: string, id: string) {
@@ -377,9 +464,24 @@ export async function deleteSchoolClass(schoolId: string, id: string) {
   if (!existing || existing.schoolId !== schoolId) {
     throw new AppError(404, "Class not found");
   }
+  const rolls = (
+    await studentRepository.listWholeClassRolls(schoolId, existing.programId, existing.classLevel)
+  ).map((row) => row.rollNo);
+  if (rolls.length > 0) {
+    await resultService.purgeRollsFromResults(schoolId, rolls);
+    await scanRepository.deleteOmScansByRolls(schoolId, rolls);
+  }
+  await resultService.purgeClassFromResults(schoolId, existing.classLevel, existing.program.code);
+  await scanRepository.deleteOmScansByClass(schoolId, existing.classLevel);
+  await studentRepository.deleteWholeClassStudents(
+    schoolId,
+    existing.programId,
+    existing.classLevel,
+  );
   await releaseClassLevelTeacher(schoolId, existing.programId, existing.classLevel);
   await schoolClassRepository.deleteSchoolClass(id);
   notifyContentChanged({ kind: KIND, schoolId });
+  notifyContentChanged({ kind: "students", schoolId });
 }
 
 export async function setSectionClassTeacher(

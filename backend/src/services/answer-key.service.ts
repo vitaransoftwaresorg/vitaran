@@ -560,6 +560,47 @@ export async function getPublicAnswerKey(id: string) {
   return answerKeyDto(row);
 }
 
+/** Admin printable PDF — school branding when the key belongs to a school. */
+export async function getAdminAnswerKeyPdf(id: string) {
+  const row = await answerKeyRepository.findAnswerKeyById(id);
+  if (!row) throw new AppError(404, "Answer key not found");
+  const answers = asAnswers(row.answers);
+  if (Object.keys(answers).length === 0) throw new AppError(404, "No answers published for this test yet");
+
+  const programName =
+    (await programRepository.findProgramByCode(row.programCode))?.name ?? row.programCode;
+  const schoolName = row.school?.name ?? "Vitaran Learning";
+  const [vitaran, logo] = await Promise.all([
+    loadVitaranLogo(),
+    row.school ? schoolRepository.findSchoolLogo(row.school.id) : Promise.resolve(null),
+  ]);
+  const testId = enteredTestId(row.testId);
+
+  const data = await renderAnswerKeyPdf(
+    {
+      schoolName,
+      programName: programName === schoolName ? `Class ${row.classLevel}` : programName,
+      testNumber: row.testNumber,
+      testId: testId ?? null,
+      classLevel: row.classLevel,
+      correctMarks: row.correctMarks ?? 1,
+      wrongMarks: row.wrongMarks ?? 0,
+      publishedAt: row.publishedAt ?? row.updatedAt,
+      answers,
+      explanations: asExplanations(row.explanations),
+      subjectRanges: asSubjectRanges(row.subjectRanges),
+    },
+    { vitaran, school: logo?.logoData ? await getObject(logo.logoData) : null },
+  );
+  return {
+    fileName: downloadFileName(
+      ["Answer-Key", programName, `Class-${row.classLevel}`, `Test-${row.testNumber}`, testId],
+      "pdf",
+    ),
+    data,
+  };
+}
+
 /** Public branded PDF (Vitaran logo only — no school branding). */
 export async function getPublicAnswerKeyPdf(id: string) {
   await assertAnswerKeysPublic();

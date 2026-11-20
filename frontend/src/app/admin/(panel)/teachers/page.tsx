@@ -34,12 +34,8 @@ export default async function AdminTeachersPage({
   return (
     <>
       <PageHeader
-        description={
-          school
-            ? "Teachers at this school"
-            : "Open a school to view and manage its teachers"
-        }
-        count={school ? teachers.length : schools.length}
+        description={school ? undefined : "Open a school to view and manage its teachers"}
+        count={school ? undefined : schools.length}
         actions={
           school ? (
             <Link

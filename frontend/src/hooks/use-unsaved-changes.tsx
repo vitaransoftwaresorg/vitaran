@@ -11,22 +11,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { useLeaveGuard } from "@/lib/leave-guard";
 
-type PendingNav = { href: string } | { back: true };
-
-function resolveHref(raw: string) {
-  try {
-    const url = new URL(raw, window.location.origin);
-    if (url.origin !== window.location.origin) return null;
-    return `${url.pathname}${url.search}${url.hash}`;
-  } catch {
-    return null;
-  }
-}
+type PendingNav = { leave: () => void };
 
 /**
- * Blocks leaving a dirty edit form via Cancel, sidebar links, or browser back.
- * Shows Save / Discard / Keep editing. Call `markClean()` after a successful save.
+ * Blocks leaving a dirty edit form via Cancel, sidebar links, or portal Back.
+ * Shows Leave / Keep editing. Call `markClean()` after a successful save.
  */
 export function useUnsavedChanges(
   dirty: boolean,
@@ -42,85 +33,53 @@ export function useUnsavedChanges(
 
   const markClean = useCallback(() => {
     allowLeave.current = true;
+    setPending(null);
   }, []);
 
   useEffect(() => {
-    if (!dirty) {
-      allowLeave.current = false;
-      return;
-    }
+    if (!dirty) allowLeave.current = false;
+  }, [dirty]);
+
+  useEffect(() => {
+    if (!dirty) return;
 
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (allowLeave.current) return;
       event.preventDefault();
       event.returnValue = "";
     };
 
-    const onDocumentClick = (event: MouseEvent) => {
-      if (!dirtyRef.current || allowLeave.current) return;
-      if (event.defaultPrevented) return;
-      if (event.button !== 0) return;
-      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-
-      const target = event.target;
-      if (!(target instanceof Element)) return;
-      const anchor = target.closest("a[href]");
-      if (!(anchor instanceof HTMLAnchorElement)) return;
-      if (anchor.target === "_blank" || anchor.hasAttribute("download")) return;
-
-      const href = resolveHref(anchor.getAttribute("href") ?? "");
-      if (!href) return;
-
-      const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-      if (href === current) return;
-
-      event.preventDefault();
-      event.stopPropagation();
-      setPending({ href });
-    };
-
-    window.history.pushState({ unsavedGuard: true }, "");
-    const onPopState = () => {
-      if (!dirtyRef.current || allowLeave.current) return;
-      window.history.pushState({ unsavedGuard: true }, "");
-      setPending({ back: true });
-    };
-
     window.addEventListener("beforeunload", onBeforeUnload);
-    document.addEventListener("click", onDocumentClick, true);
-    window.addEventListener("popstate", onPopState);
-
-    return () => {
-      window.removeEventListener("beforeunload", onBeforeUnload);
-      document.removeEventListener("click", onDocumentClick, true);
-      window.removeEventListener("popstate", onPopState);
-    };
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [dirty]);
+
+  useLeaveGuard(
+    dirty,
+    (proceed) => {
+      if (allowLeave.current || !dirtyRef.current) {
+        proceed();
+        return;
+      }
+      setPending({ leave: proceed });
+    },
+    (href) => router.push(href),
+  );
 
   const guardCancelClick = useCallback(
     (href: string) => (event: React.MouseEvent) => {
       if (!dirtyRef.current || allowLeave.current) return;
       event.preventDefault();
-      setPending({ href });
+      setPending({ leave: () => router.push(href) });
     },
-    [],
+    [router],
   );
 
-  const discard = () => {
+  const leave = () => {
     if (!pending) return;
     allowLeave.current = true;
-    const next = pending;
+    const next = pending.leave;
     setPending(null);
-    if ("href" in next) router.push(next.href);
-    else router.back();
-  };
-
-  const saveAndLeave = () => {
-    const form = formRef.current;
-    if (!form) return;
-    allowLeave.current = true;
-    setPending(null);
-    if (typeof form.requestSubmit === "function") form.requestSubmit();
-    else form.submit();
+    next();
   };
 
   const dialog = (
@@ -132,20 +91,17 @@ export function useUnsavedChanges(
     >
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Save your changes?</AlertDialogTitle>
+          <AlertDialogTitle>Leave without saving?</AlertDialogTitle>
           <AlertDialogDescription>
-            You have unsaved edits on this page. Save them, discard, or keep editing.
+            You have unsaved edits. Leave to discard them, or stay and save from the page.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <Button type="button" variant="ghost" onClick={() => setPending(null)}>
             Keep editing
           </Button>
-          <Button type="button" variant="outline" onClick={discard}>
-            Discard
-          </Button>
-          <Button type="button" onClick={saveAndLeave}>
-            Save changes
+          <Button type="button" variant="outline" onClick={leave}>
+            Leave
           </Button>
         </AlertDialogFooter>
       </AlertDialogContent>

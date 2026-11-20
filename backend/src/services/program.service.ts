@@ -73,13 +73,10 @@ export async function updateProgram(id: string, input: UpdateProgramInput) {
   const current = await programRepository.findProgramById(id);
   if (!current) throw new AppError(404, "Program not found");
 
-  if (input.code && input.code !== current.code) {
-    const existing = await programRepository.findProgramByCode(input.code);
-    if (existing) {
-      throw new AppError(409, "Program code already exists", [
-        { path: ["code"], message: "This code is already used" },
-      ]);
-    }
+  if (input.code !== undefined && input.code !== current.code) {
+    throw new AppError(400, "Program code can’t be changed", [
+      { path: ["code"], message: "Code can’t be changed after the program is created" },
+    ]);
   }
 
   const classFrom = input.classFrom ?? current.classFrom;
@@ -97,20 +94,7 @@ export async function updateProgram(id: string, input: UpdateProgramInput) {
     classFrom: input.classFrom,
     classTo: input.classTo,
     subjects: input.subjects,
-    code: input.code,
   });
-
-  // Keep answer keys in sync when the stable code changes.
-  if (input.code && input.code !== current.code) {
-    await prisma.answerKey.updateMany({
-      where: { programCode: current.code },
-      data: { programCode: input.code },
-    });
-    await prisma.resultSet.updateMany({
-      where: { programCode: current.code },
-      data: { programCode: input.code, programKey: input.code },
-    });
-  }
 
   notifyContentChanged({ kind: KIND, schoolId: null });
   return toDto(updated)!;

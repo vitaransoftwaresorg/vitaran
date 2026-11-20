@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/features/admin/page-header";
 import { subjectsForClassLevel } from "@/features/schools/constants";
+import { AdminStudentRollSearch } from "@/features/students/admin-student-roll-search";
 import { ClassProfilesPdfActions } from "@/features/students/student-pdf-actions";
 import { StudentsDrive } from "@/features/students/students-drive";
 import { studentsForSchoolOfferings } from "@/features/students/school-roster";
@@ -48,18 +49,16 @@ export default async function AdminAllStudentsPage({
     : [[], null];
 
   const inClass = Boolean(school && classLevel != null);
-  const title = school
-    ? inClass
+  // School / class names live in the top-nav trail — don't repeat them as a page title.
+  const classScopeLabel =
+    inClass && classLevel != null
       ? section
-        ? `Class ${classLevel}-${section}`
-        : `Class ${classLevel}`
-      : school.name
-    : "Students";
+        ? `Class ${classLevel}-${section} students`
+        : `Class ${classLevel} students`
+      : undefined;
   const description = school
     ? inClass
-      ? section
-        ? `${school.name} · students`
-        : `${school.name} · all sections`
+      ? undefined
       : "Open a class to view students"
     : "Open a school to view its classes";
   const roster = inClass
@@ -69,22 +68,22 @@ export default async function AdminAllStudentsPage({
         return (student.sectionName?.trim().toUpperCase() || "A") === section;
       })
     : [];
-  const rosterCount = inClass ? roster.length : undefined;
 
   return (
     <>
       <PageHeader
-        title={title}
+        title={school ? undefined : "Students"}
         description={description}
-        count={school ? rosterCount : schools.length}
+        count={school ? undefined : schools.length}
+        toolbar={<AdminStudentRollSearch schoolId={school?.id} />}
         actions={
           school ? (
             <div className="flex flex-wrap items-center gap-2">
-              {inClass && classLevel != null ? (
+              {inClass && classLevel != null && classScopeLabel ? (
                 <ClassProfilesPdfActions
                   portal="admin"
                   studentIds={roster.map((student) => student.id)}
-                  scopeLabel={title}
+                  scopeLabel={classScopeLabel}
                   schoolName={school.name}
                   subjects={subjectsForClassLevel(classLevel)}
                 />

@@ -223,33 +223,52 @@ export function ProgramForm({ program, action }: ProgramFormProps) {
 
         <Field data-invalid={Boolean(errors?.code) || codeTaken || undefined}>
           <FieldLabel htmlFor="code">Code *</FieldLabel>
-          <Input
-            id="code"
-            name="code"
-            value={code}
-            required
-            maxLength={64}
-            spellCheck={false}
-            autoCapitalize="characters"
-            className="uppercase"
-            placeholder="e.g. INTEGRATED"
-            onChange={(event) => onCodeChange(event.currentTarget.value)}
-          />
-          {codeHint ? (
-            <p
-              className={
-                codeTaken
-                  ? "text-xs font-medium text-red-600"
-                  : codeChecking
-                    ? "text-xs font-medium text-neutral-500"
-                    : "text-xs font-medium text-emerald-700"
-              }
-            >
-              {codeHint}
-            </p>
-          ) : errors?.code ? (
-            <FieldError>{errors.code[0]}</FieldError>
-          ) : null}
+          {isEdit ? (
+            <>
+              <input type="hidden" name="code" value={program.code} />
+              <Input
+                id="code"
+                value={program.code}
+                readOnly
+                disabled
+                spellCheck={false}
+                className="uppercase bg-neutral-50 text-neutral-700"
+              />
+              <p className="text-xs font-medium text-neutral-500">
+                Code can’t be changed after the program is created.
+              </p>
+            </>
+          ) : (
+            <>
+              <Input
+                id="code"
+                name="code"
+                value={code}
+                required
+                maxLength={64}
+                spellCheck={false}
+                autoCapitalize="characters"
+                className="uppercase"
+                placeholder="e.g. INTEGRATED"
+                onChange={(event) => onCodeChange(event.currentTarget.value)}
+              />
+              {codeHint ? (
+                <p
+                  className={
+                    codeTaken
+                      ? "text-xs font-medium text-red-600"
+                      : codeChecking
+                        ? "text-xs font-medium text-neutral-500"
+                        : "text-xs font-medium text-emerald-700"
+                  }
+                >
+                  {codeHint}
+                </p>
+              ) : errors?.code ? (
+                <FieldError>{errors.code[0]}</FieldError>
+              ) : null}
+            </>
+          )}
         </Field>
 
         <Field data-invalid={errors?.classFrom ? true : undefined}>

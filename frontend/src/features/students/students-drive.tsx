@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import { useSetDrivePathCrumbs } from "@/components/layout/drive-path-context";
 import { DriveBrowser, type DriveCrumb, type DriveItem } from "@/features/documents/drive-browser";
 import { programLabel, subjectsForClassLevel, TYPE_LABELS } from "@/features/schools/constants";
 import { displaySectionName } from "@/features/schools/section-label";
@@ -119,6 +121,24 @@ export function StudentsDrive({
   students = [],
 }: StudentsDriveProps) {
   const school = schools.find((item) => item.id === schoolId);
+  const setDrivePath = useSetDrivePathCrumbs();
+
+  useEffect(() => {
+    if (!setDrivePath) return;
+    if (schoolId && school && classLevel != null) {
+      const classLabel = section
+        ? `Class ${classLevel}-${section} students`
+        : `Class ${classLevel} students`;
+      setDrivePath([
+        { label: school.name, href: schoolHref(school.id) },
+        { label: classLabel, href: classHref(school.id, classLevel) },
+      ]);
+      return () => setDrivePath([]);
+    }
+    if (!(schoolId && school)) {
+      setDrivePath([]);
+    }
+  }, [school, schoolId, classLevel, section, setDrivePath]);
 
   if (schoolId && school && classLevel != null) {
     const roster = studentsInClass(

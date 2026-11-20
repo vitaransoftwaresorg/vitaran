@@ -19,6 +19,8 @@ import type { AnswerKeyDetail, AnswerOption, KeyAnswer, SubjectRange } from "@/t
 import { isBonusKey, isMultiKey, joinKeyOptions, keyOptions } from "@/types/answer-key";
 import { saveAnswerKeyAnswersAction } from "./actions";
 import { AnswerKeyOptionsTable } from "./answer-key-options-table";
+import { AnswerKeyPdfActions } from "./answer-key-pdf-actions";
+import { ANSWER_KEYS_PATH } from "./constants";
 import { enteredTestId, TEST_ID_LENGTH, TEST_ID_MESSAGE, TEST_ID_PATTERN, testIdDigits } from "./test-id";
 import { TestIdStatus, useTestIdCheck } from "./test-id-status";
 
@@ -368,12 +370,19 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
             {incomplete.length} incomplete
           </button>
         ) : null}
-        {!readOnly && (
-          <Button type="button" className="ml-auto" onClick={save} disabled={pending}>
-            {saving ? <Loader2 className="animate-spin" /> : <Save />}
-            Save
-          </Button>
-        )}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <AnswerKeyPdfActions
+            basePath={ANSWER_KEYS_PATH}
+            id={answerKey.id}
+            disabled={Object.keys(answers).length === 0}
+          />
+          {!readOnly ? (
+            <Button type="button" onClick={save} disabled={pending}>
+              {saving ? <Loader2 className="animate-spin" /> : <Save />}
+              Save
+            </Button>
+          ) : null}
+        </div>
       </div>
       {questionMode === "mcq" ? (
         <p className="text-xs text-neutral-500">

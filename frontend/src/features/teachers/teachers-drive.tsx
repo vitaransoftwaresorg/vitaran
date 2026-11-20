@@ -28,11 +28,18 @@ export function TeachersDrive({ schools, schoolId, teachers = [] }: TeachersDriv
   useEffect(() => {
     if (!setDrivePath) return;
     if (schoolId && school) {
-      setDrivePath([{ label: school.name, href: schoolHref(school.id) }]);
+      const n = teachers.length;
+      setDrivePath([
+        { label: school.name, href: schoolHref(school.id) },
+        {
+          label: `${n} Teacher${n === 1 ? "" : "s"}`,
+          href: schoolHref(school.id),
+        },
+      ]);
       return () => setDrivePath([]);
     }
     setDrivePath([]);
-  }, [school, schoolId, setDrivePath]);
+  }, [school, schoolId, teachers.length, setDrivePath]);
 
   if (schoolId && school) {
     return (
