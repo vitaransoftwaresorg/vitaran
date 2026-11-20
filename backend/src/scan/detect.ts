@@ -136,8 +136,10 @@ type RollRead = { digits: string; score: number };
 
 /**
  * Pick one digit per column using fill above that column's empty baseline.
- * Printed digit glyphs ink empty bubbles differently (8 > 1); absolute fill alone
- * misreads neighbouring similar regs like 6179101 vs 6179106.
+ * Rules (all 7 columns):
+ * - exactly one bubble must be clearly filled
+ * - empty column → reject (never invent "0")
+ * - two+ filled bubbles → reject (multi-mark)
  */
 function digitsFromGrid(
   rgba: Rgba,
@@ -153,6 +155,8 @@ function digitsFromGrid(
   const searchX = search <= 0 ? 0 : Math.min(search, Math.max(1, colPitch * 0.12), radius * 0.3);
   // Keep Y search tight — walking into the row above/below flips every digit by ±1.
   const searchY = search <= 0 ? 0 : Math.min(search, colPitch * 0.14, radius * 0.28);
+  /** Ink above empty baseline that counts as a real pen fill (not a printed glyph). */
+  const FILL_MIN = 0.18;
   let digits = "";
   let score = 0;
   for (const cx of xs) {
@@ -161,15 +165,16 @@ function digitsFromGrid(
     // Empty bubbles ≈ lower fills (printed glyph only); filled bubble sits well above.
     const empty = ordered[Math.floor(ordered.length * 0.3)] ?? 0;
     const above = fills.map((fill) => Math.max(0, fill - empty));
-    const ranked = above
-      .map((value, digit) => ({ value, digit }))
+    const filled = above
+      .map((value, digit) => ({ value, digit, raw: fills[digit]! }))
+      .filter((row) => row.value >= FILL_MIN && row.raw >= empty + 0.15)
       .sort((a, b) => b.value - a.value);
-    const top = ranked[0]!;
-    const second = ranked[1]?.value ?? 0;
-    const lead = top.value - second;
-    if (top.value < 0.08 || lead < 0.04) return null;
+    // Exactly one filled bubble per column — empty must not become "0", multi-mark is unread.
+    if (filled.length !== 1) return null;
+    const top = filled[0]!;
+    const second = [...above].sort((a, b) => b - a)[1] ?? 0;
     digits += String(top.digit);
-    score += lead;
+    score += top.value - second;
   }
   return /^\d{7}$/.test(digits) ? { digits, score } : null;
 }

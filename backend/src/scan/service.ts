@@ -307,7 +307,7 @@ async function resolveStudent(school: ScanSchool | null, candidates: string[]) {
         422,
         typed
           ? `No student with registration number ${typed} in this school.`
-          : "Unable to find the registration number. Fill the registration bubbles.",
+          : "Unable to read the registration number. Fill exactly one bubble in each of the 7 columns.",
       );
     }
     const enrolled = await studentRepository.findActiveStudentInSchool(school.id, rollNo);
@@ -327,7 +327,10 @@ async function resolveStudent(school: ScanSchool | null, candidates: string[]) {
   const matched = uniqueHits.filter((row) => row.rollNo.toUpperCase() === rollNo.toUpperCase());
   if (matched.length === 1) return matched[0]!;
   if (!rollNo && !digits.length) {
-    throw new AppError(422, "Unable to find the registration number. Fill the registration bubbles.");
+    throw new AppError(
+      422,
+      "Unable to read the registration number. Fill exactly one bubble in each of the 7 columns.",
+    );
   }
   throw new AppError(422, `No student with registration number ${rollNo || digits[0] || ""}.`);
 }
