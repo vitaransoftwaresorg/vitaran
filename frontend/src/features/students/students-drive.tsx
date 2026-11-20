@@ -8,6 +8,7 @@ import { displaySectionName } from "@/features/schools/section-label";
 import {
   STUDENTS_PATH,
   seatsForClass,
+  sectionIdsForClass,
   studentsInClass,
 } from "@/features/students/school-roster";
 import { StudentsTable } from "@/features/students/students-table";
@@ -151,15 +152,7 @@ export function StudentsDrive({
   }, [school, schoolId, classLevel, section, setDrivePath]);
 
   if (schoolId && school && classLevel != null) {
-    const sectionIds = section
-      ? organization?.sections
-          .filter(
-            (row) =>
-              row.classLevel === classLevel &&
-              row.name.trim().toUpperCase() === section.toUpperCase(),
-          )
-          .map((row) => row.id)
-      : undefined;
+    const sectionIds = sectionIdsForClass(organization, classLevel, section);
     const roster = studentsInClass(students, classLevel, section, { sectionIds });
     const seats = seatsForClass(organization, classLevel, section);
     const classCount = studentsInClass(students, classLevel).length;

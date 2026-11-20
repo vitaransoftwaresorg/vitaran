@@ -5,7 +5,11 @@ import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/features/admin/page-header";
 import { verifySchoolSession } from "@/features/school-auth/session";
 import { SchoolStudentsDrive } from "@/features/students/school-students-drive";
-import { seatsForClass, studentsInClass } from "@/features/students/school-roster";
+import {
+  seatsForClass,
+  sectionIdsForClass,
+  studentsInClass,
+} from "@/features/students/school-roster";
 import { subjectsForSchoolClass } from "@/features/students/report-subjects";
 import { ClassProfilesPdfActions } from "@/features/students/student-pdf-actions";
 import { cn } from "@/lib/utils";
@@ -33,12 +37,18 @@ export default async function SchoolStudentsPage({
 
   const school = await verifySchoolSession();
 
-  const [studentsPage, organization] = await Promise.all([
-    listSchoolStudents({ pageSize: 500, status: "ACTIVE" }),
-    listSchoolClassOrganization(),
-  ]);
-
-  // Same roster results use — keep program filter off so students who have marks still appear.
+  const organization = await listSchoolClassOrganization();
+  const sectionIds =
+    classLevel != null && section
+      ? sectionIdsForClass(organization, classLevel, section)
+      : undefined;
+  // Scope by class/section so large schools are not truncated by the 500-row page size.
+  const studentsPage = await listSchoolStudents({
+    pageSize: 500,
+    status: "ACTIVE",
+    ...(classLevel != null ? { classLevel } : {}),
+    ...(sectionIds?.length === 1 ? { sectionId: sectionIds[0] } : {}),
+  });
   const students = studentsPage.items;
 
   const inClass = classLevel != null;
@@ -52,16 +62,6 @@ export default async function SchoolStudentsPage({
       ? `${school.name} · students`
       : `${school.name} · all sections`
     : "Open a class to view students";
-  const sectionIds =
-    inClass && classLevel != null && section
-      ? organization.sections
-          .filter(
-            (row) =>
-              row.classLevel === classLevel &&
-              row.name.trim().toUpperCase() === section.toUpperCase(),
-          )
-          .map((row) => row.id)
-      : undefined;
   const roster =
     inClass && classLevel != null
       ? studentsInClass(students, classLevel, section, { sectionIds })

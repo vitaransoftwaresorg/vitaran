@@ -7,7 +7,11 @@ import { subjectsForClassLevel } from "@/features/schools/constants";
 import { AdminStudentRollSearch } from "@/features/students/admin-student-roll-search";
 import { ClassProfilesPdfActions } from "@/features/students/student-pdf-actions";
 import { StudentsDrive } from "@/features/students/students-drive";
-import { seatsForClass, studentsInClass } from "@/features/students/school-roster";
+import {
+  seatsForClass,
+  sectionIdsForClass,
+  studentsInClass,
+} from "@/features/students/school-roster";
 import { cn } from "@/lib/utils";
 import { listAdminSchoolSections } from "@/services/sections";
 import { listSchoolOptions } from "@/services/schools";
@@ -39,15 +43,23 @@ export default async function AdminAllStudentsPage({
   const schools = await listSchoolOptions();
   const school = schoolId ? schools.find((item) => item.id === schoolId) : undefined;
 
-  // Same school roster results use — do not drop students by program offering filter.
-  const [students, organization] = school
-    ? await Promise.all([
-        listAdminSchoolStudents(school.id, { pageSize: 500, status: "ACTIVE" }).then(
-          (page) => page.items,
-        ),
-        listAdminSchoolSections(school.id),
-      ])
-    : [[], null];
+  // Load organization first so section filters can use ids; scope the roster fetch by class
+  // so production schools with >500 students still show the open section.
+  const organization = school ? await listAdminSchoolSections(school.id) : null;
+  const sectionIds =
+    school && classLevel != null && section
+      ? sectionIdsForClass(organization, classLevel, section)
+      : undefined;
+  const students = school
+    ? (
+        await listAdminSchoolStudents(school.id, {
+          pageSize: 500,
+          status: "ACTIVE",
+          ...(classLevel != null ? { classLevel } : {}),
+          ...(sectionIds?.length === 1 ? { sectionId: sectionIds[0] } : {}),
+        })
+      ).items
+    : [];
 
   const inClass = Boolean(school && classLevel != null);
   // School / class names live in the top-nav trail — don't repeat them as a page title.
@@ -62,16 +74,6 @@ export default async function AdminAllStudentsPage({
       ? undefined
       : "Open a class to view students"
     : "Open a school to view its classes";
-  const sectionIds =
-    inClass && classLevel != null && section && organization
-      ? organization.sections
-          .filter(
-            (row) =>
-              row.classLevel === classLevel &&
-              row.name.trim().toUpperCase() === section.toUpperCase(),
-          )
-          .map((row) => row.id)
-      : undefined;
   const roster =
     inClass && classLevel != null
       ? studentsInClass(students, classLevel, section, { sectionIds })

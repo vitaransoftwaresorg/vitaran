@@ -31,6 +31,31 @@ export function studentsForSchoolOfferings(school: SchoolOption, students: Stude
   return filterStudentsByProgramCodes(students, codes);
 }
 
+/** Normalize section labels so "A", "a", and "Section A" match. */
+export function sectionMatchKey(name: string | null | undefined) {
+  return displaySectionName(name)
+    .trim()
+    .toUpperCase()
+    .replace(/^SECTION\s+/, "")
+    .trim();
+}
+
+/** Section row ids for a class level + section letter/name (handles "A" vs "Section A"). */
+export function sectionIdsForClass(
+  organization: ClassOrganization | null | undefined,
+  classLevel: number,
+  section?: string,
+) {
+  if (!organization || !section) return undefined;
+  const wanted = sectionMatchKey(section);
+  const ids = organization.sections
+    .filter(
+      (row) => row.classLevel === classLevel && sectionMatchKey(row.name) === wanted,
+    )
+    .map((row) => row.id);
+  return ids.length > 0 ? ids : undefined;
+}
+
 /** One class (optional section) from a full school roster — shared by admin and school drives. */
 export function studentsInClass(
   students: Student[],
@@ -38,7 +63,7 @@ export function studentsInClass(
   section?: string,
   options?: { sectionIds?: string[] },
 ) {
-  const wanted = section?.trim().toUpperCase();
+  const wanted = section ? sectionMatchKey(section) : "";
   return students
     .filter((student) => {
       if (student.classLevel !== classLevel) return false;
@@ -48,9 +73,10 @@ export function studentsInClass(
         if (student.sectionId && options.sectionIds.includes(student.sectionId)) return true;
         // Whole-class students (no section row) display as the default section letter.
         if (!student.sectionId && wanted === DEFAULT_SECTION_NAME) return true;
-        return false;
+        // Id list missed them — still match by section name (prod naming variants).
+        return sectionMatchKey(student.sectionName) === wanted;
       }
-      return displaySectionName(student.sectionName).toUpperCase() === wanted;
+      return sectionMatchKey(student.sectionName) === wanted;
     })
     .sort(
       (a, b) =>
@@ -71,12 +97,9 @@ export function seatsForClass(
 ) {
   if (!organization) return 0;
   if (section) {
+    const wanted = sectionMatchKey(section);
     return organization.sections
-      .filter(
-        (row) =>
-          row.classLevel === classLevel &&
-          displaySectionName(row.name).toUpperCase() === section.toUpperCase(),
-      )
+      .filter((row) => row.classLevel === classLevel && sectionMatchKey(row.name) === wanted)
       .reduce((sum, row) => sum + row.studentCount, 0);
   }
   const classSections = organization.sections.filter((row) => row.classLevel === classLevel);

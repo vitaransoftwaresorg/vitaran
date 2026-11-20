@@ -4,7 +4,11 @@ import { DriveBrowser, type DriveCrumb, type DriveItem } from "@/features/docume
 import { programLabel } from "@/features/schools/constants";
 import { displaySectionName } from "@/features/schools/section-label";
 import { subjectsForSchoolClass } from "@/features/students/report-subjects";
-import { seatsForClass, studentsInClass } from "@/features/students/school-roster";
+import {
+  seatsForClass,
+  sectionIdsForClass,
+  studentsInClass,
+} from "@/features/students/school-roster";
 import { StudentsTable } from "@/features/students/students-table";
 import type { ClassOrganization } from "@/types/section";
 import type { SchoolProgramOffering } from "@/types/program";
@@ -120,15 +124,7 @@ export function SchoolStudentsDrive({
   schoolPrograms,
 }: SchoolStudentsDriveProps) {
   if (classLevel != null) {
-    const sectionIds = section
-      ? organization?.sections
-          .filter(
-            (row) =>
-              row.classLevel === classLevel &&
-              row.name.trim().toUpperCase() === section.toUpperCase(),
-          )
-          .map((row) => row.id)
-      : undefined;
+    const sectionIds = sectionIdsForClass(organization, classLevel, section);
     const roster = studentsInClass(students, classLevel, section, { sectionIds });
     const seats = seatsForClass(organization, classLevel, section);
     const classCount = studentsInClass(students, classLevel).length;
