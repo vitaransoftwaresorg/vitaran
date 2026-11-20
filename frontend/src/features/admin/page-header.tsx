@@ -14,10 +14,12 @@ type PageHeaderProps = {
 export function PageHeader({ title, description, count, toolbar, actions }: PageHeaderProps) {
   if (!title && !description && !toolbar && !actions && count === undefined) return null;
 
+  const showCountAlone = !title && count !== undefined;
+
   return (
-    <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-center">
+    <div className="mb-6 flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-center lg:gap-4">
       {(title || description || count !== undefined) && (
-        <div className="min-w-0 lg:mr-auto">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 lg:mr-auto">
           {title ? (
             <h1 className="flex items-center gap-2.5 text-xl font-bold text-brand-900 sm:text-2xl">
               {title}
@@ -27,18 +29,25 @@ export function PageHeader({ title, description, count, toolbar, actions }: Page
                 </span>
               )}
             </h1>
-          ) : count !== undefined ? (
+          ) : null}
+          {showCountAlone ? (
             <p className="text-sm font-semibold text-neutral-500 tabular-nums">{count} items</p>
           ) : null}
-          {description && (
-            <p className={title ? "mt-1 text-sm text-muted-foreground" : "text-sm text-muted-foreground"}>
+          {description ? (
+            <p
+              className={
+                title
+                  ? "basis-full text-sm text-muted-foreground"
+                  : "text-sm font-medium text-neutral-600 tabular-nums"
+              }
+            >
               {description}
             </p>
-          )}
+          ) : null}
         </div>
       )}
       {toolbar}
-      {actions && <div className="flex shrink-0 flex-wrap gap-2">{actions}</div>}
+      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }

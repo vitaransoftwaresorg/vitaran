@@ -81,7 +81,7 @@ const SEGMENT_LABELS: Record<string, string> = {
 function crumbLabel(segment: string, previous: string | undefined) {
   if (segment === "new") {
     if (previous === "teachers") return "Add teacher";
-    if (previous === "students") return "Add student";
+    if (previous === "students") return "Add students";
     return "Add";
   }
   if (SEGMENT_LABELS[segment]) return SEGMENT_LABELS[segment];

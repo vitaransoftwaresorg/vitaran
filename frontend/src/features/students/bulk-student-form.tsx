@@ -14,15 +14,6 @@ import {
   Trash2,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -39,7 +30,6 @@ import {
 } from "@/features/students/actions";
 import { displaySectionName } from "@/features/schools/section-label";
 import { capitalizeWords, toPhoneDigits } from "@/features/schools/schema";
-import { useLeaveGuard } from "@/lib/leave-guard";
 import { capitalizeInput, capitalizeWords as titleCase } from "@/lib/name-case";
 import {
   clearStudentDraft,
@@ -141,28 +131,12 @@ export function BulkStudentForm({
   /** A draft from an earlier visit waits for Restore / Discard before this visit's rows are kept over it. */
   const [draftDecided, setDraftDecided] = useState(false);
   const draftPending = draft != null && !draftDecided;
-  /** Saved, or the user chose to leave: no more prompts or draft writes. */
+  /** Saved successfully — stop writing drafts. */
   const [done, setDone] = useState(false);
-  const [leaveTo, setLeaveTo] = useState<{ proceed: () => void } | null>(null);
 
   useEffect(() => {
     if (state.success && state.count != null) onSuccess?.(state.count);
   }, [state.success, state.count, onSuccess]);
-
-  const programItems = useMemo(
-    () => schoolPrograms.map((p) => ({ value: p.programId, label: p.programName })),
-    [schoolPrograms],
-  );
-
-  const classOptions = useMemo(() => {
-    const offering = schoolPrograms.find((p) => p.programId === programId);
-    return (offering?.classes ?? []).map((c) => c.classLevel).sort((a, b) => a - b);
-  }, [schoolPrograms, programId]);
-
-  const classItems = useMemo(
-    () => classOptions.map((level) => ({ value: String(level), label: `Class ${level}` })),
-    [classOptions],
-  );
 
   const placementReady = Boolean(programId) && classLevel != null;
 
@@ -174,10 +148,12 @@ export function BulkStudentForm({
   }, [sections, programId, classLevel, placementReady]);
 
   const hasNamedSections = sectionOptions.length > 0;
-  /** Locked to one section from the list URL — no per-row picker. */
-  const fixedSection = lockPlacement && Boolean(defaults?.sectionId);
-  /** Mix A/B (and more) in one add/import when the class has named sections. */
-  const perRowSection = hasNamedSections && !fixedSection;
+  /**
+   * From Students (class/section open): placement is fixed — never show a section picker.
+   * Free Add students (no class context): allow per-row section when the class has sections.
+   */
+  const fixedSection = lockPlacement;
+  const perRowSection = hasNamedSections && !lockPlacement;
 
   useEffect(() => {
     if (!placementReady) return;
@@ -185,11 +161,27 @@ export function BulkStudentForm({
       if (sectionId !== NONE) setSectionId(NONE);
       return;
     }
+    // Locked from class/section: keep the default section on every row.
+    if (lockPlacement && defaults?.sectionId) {
+      if (sectionId !== defaults.sectionId) setSectionId(defaults.sectionId);
+      setRows((current) => {
+        if (current.every((row) => row.sectionId === defaults.sectionId)) return current;
+        return current.map((row) => ({ ...row, sectionId: defaults.sectionId! }));
+      });
+      return;
+    }
     if (sectionId === NONE) return;
     if (!sectionOptions.some((s) => s.id === sectionId)) {
       setSectionId(NONE);
     }
-  }, [placementReady, hasNamedSections, sectionOptions, sectionId]);
+  }, [
+    placementReady,
+    hasNamedSections,
+    sectionOptions,
+    sectionId,
+    lockPlacement,
+    defaults?.sectionId,
+  ]);
 
   const sectionItems = useMemo(() => {
     if (!placementReady) return [];
@@ -201,14 +193,6 @@ export function BulkStudentForm({
       label: `Section ${s.name}`,
     }));
   }, [placementReady, hasNamedSections, sectionOptions]);
-
-  const sectionSelectValue = !placementReady
-    ? null
-    : hasNamedSections
-      ? sectionId === NONE
-        ? null
-        : sectionId
-      : NONE;
 
   const placementLabel = useMemo(() => {
     const program = schoolPrograms.find((p) => p.programId === programId);
@@ -364,11 +348,6 @@ export function BulkStudentForm({
       setState({ message: "Pick a program and class" });
       return;
     }
-    if (hasNamedSections && !perRowSection && (sectionId === NONE || !sectionId)) {
-      setState({ message: "Pick a section" });
-      return;
-    }
-
     if (perRowSection) {
       const missing: Record<number, Record<string, string>> = {};
       rows.forEach((row, index) => {
@@ -428,26 +407,6 @@ export function BulkStudentForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- draftSnapshot reads exactly these
   }, [rows, programId, classLevel, sectionId, draftDecided, done, draftKey, filledCount]);
 
-  useLeaveGuard(
-    filledCount > 0 && !done,
-    (proceed) => setLeaveTo({ proceed }),
-    (href) => router.push(href),
-  );
-
-  function leave(choice: "save" | "draft" | "discard") {
-    const target = leaveTo;
-    setLeaveTo(null);
-    if (!target) return;
-    if (choice === "save") {
-      submit(target.proceed);
-      return;
-    }
-    if (choice === "draft") writeStudentDraft(draftKey, draftSnapshot());
-    else clearStudentDraft(draftKey);
-    setDone(true);
-    target.proceed();
-  }
-
   return (
     <div className="space-y-4">
       {draftPending && draft ? (
@@ -477,37 +436,6 @@ export function BulkStudentForm({
         </div>
       ) : null}
 
-      <AlertDialog open={leaveTo != null} onOpenChange={(open) => (open ? null : setLeaveTo(null))}>
-        <AlertDialogContent className="sm:max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Save students before leaving?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {filledCount} student{filledCount === 1 ? " is" : "s are"} not saved yet. Save them now, or keep a
-              draft on this device to finish later.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="sm:justify-between">
-            <AlertDialogCancel>Stay</AlertDialogCancel>
-            <div className="flex flex-col-reverse gap-2 sm:flex-row">
-              <Button
-                type="button"
-                variant="ghost"
-                className="text-red-700 hover:bg-red-50 hover:text-red-800"
-                onClick={() => leave("discard")}
-              >
-                Discard
-              </Button>
-              <Button type="button" variant="outline" onClick={() => leave("draft")}>
-                Keep draft
-              </Button>
-              <Button type="button" onClick={() => leave("save")}>
-                Save students
-              </Button>
-            </div>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       {state.message ? (
         <Alert variant="destructive">
           <AlertCircle className="size-4" />
@@ -515,112 +443,15 @@ export function BulkStudentForm({
         </Alert>
       ) : null}
 
-      {lockPlacement ? (
+      {placementReady ? (
         <p className="rounded-lg border border-brand-100 bg-brand-50/60 px-3 py-2 text-sm font-medium text-brand-950">
           {capitalizeWords(placementLabel)}
         </p>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Field>
-            <FieldLabel>Program *</FieldLabel>
-            <Select
-              value={programId || null}
-              items={programItems}
-              onValueChange={(v) => {
-                setProgramId(v ?? "");
-                setClassLevel(undefined);
-                setSectionId(NONE);
-                setState({});
-              }}
-            >
-              <SelectTrigger className="h-9 w-full">
-                <SelectValue placeholder="Select program" />
-              </SelectTrigger>
-              <SelectContent>
-                {programItems.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-
-          <Field>
-            <FieldLabel>Class *</FieldLabel>
-            <Select
-              value={classLevel != null ? String(classLevel) : null}
-              items={classItems}
-              onValueChange={(v) => {
-                setClassLevel(v ? Number(v) : undefined);
-                setSectionId(NONE);
-                setState({});
-              }}
-              disabled={!programId}
-            >
-              <SelectTrigger className="h-9 w-full">
-                <SelectValue placeholder="Select class" />
-              </SelectTrigger>
-              <SelectContent>
-                {classItems.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-
-          <Field>
-            <FieldLabel>
-              {perRowSection
-                ? "Default section"
-                : hasNamedSections
-                  ? "Section *"
-                  : placementReady
-                    ? "(Section A)"
-                    : "Section"}
-            </FieldLabel>
-            <Select
-              value={sectionSelectValue}
-              items={sectionItems}
-              onValueChange={(v) => {
-                const next = v ?? NONE;
-                setSectionId(next);
-                if (perRowSection && next !== NONE) {
-                  setRows((current) =>
-                    current.map((row) =>
-                      !row.sectionId || row.sectionId === NONE ? { ...row, sectionId: next } : row,
-                    ),
-                  );
-                }
-                setState({});
-              }}
-              disabled={!placementReady || (!hasNamedSections && placementReady)}
-            >
-              <SelectTrigger className="h-9 w-full">
-                <SelectValue
-                  placeholder={
-                    !placementReady
-                      ? "Pick program and class first"
-                      : perRowSection
-                        ? "Optional default for new rows"
-                        : hasNamedSections
-                          ? "Select section"
-                          : `Section ${displaySectionName(null)}`
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {sectionItems.map((item) => (
-                  <SelectItem key={item.value} value={item.value}>
-                    {item.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-        </div>
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          Open <span className="font-semibold">Add students</span> from a class so program and
+          class are set automatically.
+        </p>
       )}
 
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-brand-200 bg-brand-50/40 px-3 py-2.5">
@@ -629,7 +460,8 @@ export function BulkStudentForm({
           <p className="text-sm font-semibold text-brand-950">Import from Excel</p>
           <p className="text-xs text-neutral-500">
             Reg No *, {perRowSection ? "Section *, " : ""}Student name optional · Parent optional · up to{" "}
-            {MAX_IMPORT_ROWS} · mix sections in one file
+            {MAX_IMPORT_ROWS}
+            {perRowSection ? " · mix sections in one file" : ""}
           </p>
         </div>
         <input

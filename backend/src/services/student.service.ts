@@ -30,8 +30,7 @@ import {
   renderStudentProfilesPdf,
   type StudentProfilePdfData,
 } from "./student-profile.pdf.js";
-import * as resultService from "./result.service.js";
-import * as scanRepository from "../scan/repository.js";
+import { removeRollsFromSchoolData } from "./roster-lifecycle.js";
 import type { SchoolAccountDto } from "./school.service.js";
 import type { TeacherAccountDto } from "./teacher.service.js";
 
@@ -437,10 +436,9 @@ export async function deleteStudent(id: string, schoolId?: string) {
   if (!existing || (schoolId && existing.schoolId !== schoolId)) {
     throw new AppError(404, "Student not found");
   }
-  await resultService.purgeRollsFromResults(existing.schoolId, [existing.rollNo]);
-  await scanRepository.deleteOmScansByRolls(existing.schoolId, [existing.rollNo]);
+  // Roster is parent — removing a student clears Results / OMR / ranks for that roll.
+  await removeRollsFromSchoolData(existing.schoolId, [existing.rollNo]);
   await studentRepository.deleteStudent(id);
-  notifyContentChanged({ kind: KIND, schoolId: existing.schoolId });
   return { ok: true as const };
 }
 

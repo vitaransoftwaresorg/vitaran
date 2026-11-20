@@ -4,7 +4,7 @@ import { DriveBrowser, type DriveCrumb, type DriveItem } from "@/features/docume
 import { programLabel } from "@/features/schools/constants";
 import { displaySectionName } from "@/features/schools/section-label";
 import { subjectsForSchoolClass } from "@/features/students/report-subjects";
-import { studentsInClass } from "@/features/students/school-roster";
+import { seatsForClass, studentsInClass } from "@/features/students/school-roster";
 import { StudentsTable } from "@/features/students/students-table";
 import type { ClassOrganization } from "@/types/section";
 import type { SchoolProgramOffering } from "@/types/program";
@@ -34,35 +34,14 @@ function classHref(classLevel: number) {
   return `${SCHOOL_STUDENTS_PATH}?${new URLSearchParams({ class: String(classLevel) })}`;
 }
 
-function seatsForClass(
-  organization: ClassOrganization | null | undefined,
-  classLevel: number,
-  section?: string,
-) {
-  if (!organization) return 0;
-  if (section) {
-    return organization.sections
-      .filter(
-        (row) =>
-          row.classLevel === classLevel &&
-          displaySectionName(row.name).toUpperCase() === section.toUpperCase(),
-      )
-      .reduce((sum, row) => sum + row.studentCount, 0);
+function emptyRosterMessage(section: string | undefined, seats: number, classCount = 0) {
+  if (section && classCount > 0) {
+    return `No students in section ${section}. ${classCount} student${classCount === 1 ? " is" : "s are"} in this class under another section — open the class (without a section filter) to see them.`;
   }
-  const sectionSeats = organization.sections
-    .filter((row) => row.classLevel === classLevel)
-    .reduce((sum, row) => sum + row.studentCount, 0);
-  const wholeSeats = organization.wholeClasses
-    .filter((row) => row.classLevel === classLevel)
-    .reduce((sum, row) => sum + row.studentCount, 0);
-  return sectionSeats + wholeSeats;
-}
-
-function emptyRosterMessage(section: string | undefined, seats: number) {
   if (seats > 0) {
     return section
-      ? `Class section has ${seats} seats, but no students added to the roster yet.`
-      : `Class has ${seats} seats, but no students added to the roster yet.`;
+      ? `Class section has ${seats} seats, but no students on the roster yet. Add students here — Results only lists roster rolls.`
+      : `Class has ${seats} seats, but no students on the roster yet.`;
   }
   return section
     ? "No students in this class section yet."
@@ -97,8 +76,13 @@ function classFoldersForSchool(
     if (!folder.programs.includes(programName)) folder.programs.push(programName);
   };
 
-  // Folders follow Classes & sections only — not orphan student rows.
+  const levelsWithSections = new Set(
+    (organization?.sections ?? []).map((section) => section.classLevel),
+  );
+
+  // Class total seats = sum of section seats (skip whole-class when sections exist).
   for (const row of organization?.wholeClasses ?? []) {
+    if (levelsWithSections.has(row.classLevel)) continue;
     const folder = ensure(row.classLevel);
     folder.seats += row.studentCount;
     addSection(folder, "A");
@@ -136,15 +120,25 @@ export function SchoolStudentsDrive({
   schoolPrograms,
 }: SchoolStudentsDriveProps) {
   if (classLevel != null) {
-    const roster = studentsInClass(students, classLevel, section);
+    const sectionIds = section
+      ? organization?.sections
+          .filter(
+            (row) =>
+              row.classLevel === classLevel &&
+              row.name.trim().toUpperCase() === section.toUpperCase(),
+          )
+          .map((row) => row.id)
+      : undefined;
+    const roster = studentsInClass(students, classLevel, section, { sectionIds });
     const seats = seatsForClass(organization, classLevel, section);
+    const classCount = studentsInClass(students, classLevel).length;
     return (
       <StudentsTable
         students={roster}
         mode="school"
         baseHref={SCHOOL_STUDENTS_PATH}
         subjects={subjectsForSchoolClass(schoolPrograms, classLevel, roster[0]?.programId)}
-        emptyMessage={emptyRosterMessage(section, seats)}
+        emptyMessage={emptyRosterMessage(section, seats, classCount)}
       />
     );
   }
@@ -155,13 +149,15 @@ export function SchoolStudentsDrive({
   const items: DriveItem[] = folders.map((folder) => {
     const programDetail = folder.programs.map((name) => programLabel(name, name)).join(", ");
     const sectionDetail =
-      folder.sections.length > 0 ? `Sections ${folder.sections.join(", ")}` : null;
-    const countDetail =
+      folder.sections.length > 0
+        ? `${folder.sections.length} section${folder.sections.length === 1 ? "" : "s"}`
+        : null;
+    const seatsDetail = folder.seats > 0 ? `${folder.seats} seats` : null;
+    const rosterDetail =
       folder.studentCount > 0
         ? `${folder.studentCount} student${folder.studentCount === 1 ? "" : "s"}`
-        : folder.seats > 0
-          ? `${folder.seats} seats`
-          : "Empty";
+        : null;
+    const countDetail = [rosterDetail, seatsDetail].filter(Boolean).join(" · ") || "Empty";
     return {
       id: folder.key,
       name: `Class ${folder.classLevel}`,

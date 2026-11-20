@@ -12,8 +12,10 @@ import { AppError } from "../utils/app-error.js";
 import { notifyContentChanged } from "../utils/content-events.js";
 import { TeacherStatus } from "../generated/prisma/enums.js";
 import { DEFAULT_SECTION_NAME } from "../utils/section-label.js";
-import * as resultService from "./result.service.js";
-import * as scanRepository from "../scan/repository.js";
+import {
+  removeClassFromSchoolData,
+  removeRollsFromSchoolData,
+} from "./roster-lifecycle.js";
 
 const KIND = "sections" as const;
 
@@ -437,13 +439,10 @@ async function purgeClassRosterAndResults(
   const rolls = (await studentRepository.listRollsByClassLevel(schoolId, classLevel)).map(
     (row) => row.rollNo,
   );
-  if (rolls.length > 0) {
-    await resultService.purgeRollsFromResults(schoolId, rolls);
-    await scanRepository.deleteOmScansByRolls(schoolId, rolls);
-  }
+  // Roster is parent — class teardown removes students and every Results/OMR/rank row for them.
+  if (rolls.length > 0) await removeRollsFromSchoolData(schoolId, rolls);
   await studentRepository.deleteStudentsByClassLevel(schoolId, classLevel);
-  await resultService.purgeClassFromResults(schoolId, classLevel, programCode ?? undefined);
-  await scanRepository.deleteOmScansByClass(schoolId, classLevel);
+  await removeClassFromSchoolData(schoolId, classLevel, programCode);
 }
 
 export async function deleteSection(schoolId: string, id: string) {
@@ -465,10 +464,7 @@ export async function deleteSection(schoolId: string, id: string) {
     await purgeClassRosterAndResults(schoolId, existing.classLevel, existing.program.code);
   } else {
     const rolls = (await studentRepository.listRollsBySectionId(id)).map((row) => row.rollNo);
-    if (rolls.length > 0) {
-      await resultService.purgeRollsFromResults(schoolId, rolls);
-      await scanRepository.deleteOmScansByRolls(schoolId, rolls);
-    }
+    if (rolls.length > 0) await removeRollsFromSchoolData(schoolId, rolls);
     await studentRepository.deleteStudentsBySectionId(id);
   }
 
@@ -492,10 +488,7 @@ export async function deleteSchoolClass(schoolId: string, id: string) {
     const rolls = (
       await studentRepository.listWholeClassRolls(schoolId, existing.programId, existing.classLevel)
     ).map((row) => row.rollNo);
-    if (rolls.length > 0) {
-      await resultService.purgeRollsFromResults(schoolId, rolls);
-      await scanRepository.deleteOmScansByRolls(schoolId, rolls);
-    }
+    if (rolls.length > 0) await removeRollsFromSchoolData(schoolId, rolls);
     await studentRepository.deleteWholeClassStudents(
       schoolId,
       existing.programId,

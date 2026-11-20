@@ -187,23 +187,32 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
   const [query, setQuery] = useState("");
 
   const classRows: ClassRow[] = useMemo(() => {
+    // When a class has sections, section seats are the count — hide whole-class rows for that level.
+    const levelsWithSections = new Set([
+      ...organization.sections
+        .filter((section) => !draftDeletes.includes(section.id))
+        .map((section) => section.classLevel),
+      ...draftCreates.map((row) => row.classLevel),
+    ]);
     const rows: ClassRow[] = [
-      ...organization.wholeClasses.map((row) => {
-        const ct = classCtByKey.get(`${row.programId}:${row.classLevel}`);
-        return {
-          key: `w-${row.id}`,
-          kind: "whole" as const,
-          id: row.id,
-          classLevel: row.classLevel,
-          section: "A",
-          programId: row.programId,
-          programName: row.programName,
-          subjects: accessSubjects(row.programId, row.classLevel),
-          seats: row.studentCount,
-          teacherId: ct?.teacherId ?? null,
-          teacherName: ct?.teacherName ?? null,
-        };
-      }),
+      ...organization.wholeClasses
+        .filter((row) => !levelsWithSections.has(row.classLevel))
+        .map((row) => {
+          const ct = classCtByKey.get(`${row.programId}:${row.classLevel}`);
+          return {
+            key: `w-${row.id}`,
+            kind: "whole" as const,
+            id: row.id,
+            classLevel: row.classLevel,
+            section: "A",
+            programId: row.programId,
+            programName: row.programName,
+            subjects: accessSubjects(row.programId, row.classLevel),
+            seats: row.studentCount,
+            teacherId: ct?.teacherId ?? null,
+            teacherName: ct?.teacherName ?? null,
+          };
+        }),
       ...organization.sections
         .filter((section) => !draftDeletes.includes(section.id))
         .map((section) => ({
@@ -334,13 +343,18 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     setErrors((prev) => ({ ...prev, subjects: undefined }));
   }, [programId, classLevel]);
 
-  function classStudentsHref(level: number, section: string) {
+  /** Opens the school Students drive for this class — same roster Results uses. */
+  function classStudentsHref(level: number, section: string, kind: "section" | "whole") {
     if (!schoolId) return teachersHref;
-    return `${STUDENTS_PATH}?${new URLSearchParams({
+    const params = new URLSearchParams({
       school: schoolId,
       class: String(level),
-      section,
-    })}`;
+    });
+    // Whole class → full class roster. Named section keeps a section filter.
+    if (kind === "section" && section.trim()) {
+      params.set("section", section.trim().toUpperCase());
+    }
+    return `${STUDENTS_PATH}?${params}`;
   }
 
   function resetCreate() {
@@ -705,7 +719,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
         {!embedded ? (
           <span className="font-medium text-neutral-600 tabular-nums">{seatsUsedLabel}</span>
         ) : null}
-        {!readOnly && studentsSchoolHref ? (
+        {studentsSchoolHref ? (
           <Link
             href={studentsSchoolHref}
             className="font-semibold text-brand-900 transition-colors hover:text-brand-700"
@@ -1096,7 +1110,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
             <tbody>
               {filteredRows.map((row) => {
                 const studentsLink = schoolId
-                  ? classStudentsHref(row.classLevel, row.section)
+                  ? classStudentsHref(row.classLevel, row.section, row.kind)
                   : null;
                 return (
                   <tr

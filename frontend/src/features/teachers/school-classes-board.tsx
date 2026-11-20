@@ -196,25 +196,31 @@ export function SchoolClassesBoard({
     );
   }
 
-  const totalCount = organization.wholeClasses.length + organization.sections.length;
+  const levelsWithSections = new Set(organization.sections.map((section) => section.classLevel));
+  const wholeVisible = organization.wholeClasses.filter(
+    (row) => !levelsWithSections.has(row.classLevel),
+  ).length;
+  const totalCount = wholeVisible + organization.sections.length;
 
   const classRows = [
-    ...organization.wholeClasses.map((row) => {
-      const slot = classCtByKey.get(`${row.programId}:${row.classLevel}`);
-      return {
-        key: `w-${row.id}`,
-        kind: "class" as const,
-        row,
-        programName: row.programName,
-        classLevel: row.classLevel,
-        sectionLabel: "A",
-        enrolled: enrolledByWhole[row.id] ?? 0,
-        seats: row.studentCount,
-        teacherId: slot?.teacherId ?? null,
-        teacherName: slot?.teacherName ?? null,
-        open: () => onOpenStudents?.({ kind: "whole", row }),
-      };
-    }),
+    ...organization.wholeClasses
+      .filter((row) => !levelsWithSections.has(row.classLevel))
+      .map((row) => {
+        const slot = classCtByKey.get(`${row.programId}:${row.classLevel}`);
+        return {
+          key: `w-${row.id}`,
+          kind: "class" as const,
+          row,
+          programName: row.programName,
+          classLevel: row.classLevel,
+          sectionLabel: "A",
+          enrolled: enrolledByWhole[row.id] ?? 0,
+          seats: row.studentCount,
+          teacherId: slot?.teacherId ?? null,
+          teacherName: slot?.teacherName ?? null,
+          open: () => onOpenStudents?.({ kind: "whole", row }),
+        };
+      }),
     ...organization.sections.map((section) => ({
       key: `s-${section.id}`,
       kind: "section" as const,

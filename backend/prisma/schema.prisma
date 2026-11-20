@@ -362,7 +362,8 @@ model AnswerKeyObjection {
 }
 
 /// One captured sheet. Saved only after the operator confirms the preview.
-/// Identity comes from the sheet — no student roster is required.
+/// Marks are written to Results only when the roll is on the school roster;
+/// deleting a student/section/class removes matching OMR rows.
 model OmScan {
   id             String    @id @default(uuid()) @db.Uuid
   schoolId       String    @map("school_id") @db.Uuid

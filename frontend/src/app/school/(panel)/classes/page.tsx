@@ -1,5 +1,4 @@
 import { SchoolClassesWorkspace } from "@/features/students/school-classes-workspace";
-import { filterStudentsByProgramCodes } from "@/features/students/school-roster";
 import { verifySchoolSession } from "@/features/school-auth/session";
 import { listSchoolClassOrganization } from "@/services/sections";
 import { getSchoolStudentCounts, listSchoolStudents } from "@/services/students";
@@ -13,7 +12,7 @@ export default async function SchoolClassesPage() {
       listSchoolClassTeacherSlots(),
       listSchoolClassOrganization(),
       getSchoolStudentCounts(),
-      listSchoolStudents({ pageSize: 500 }),
+      listSchoolStudents({ pageSize: 500, status: "ACTIVE" }),
     ]);
 
   const enrolledByWhole: Record<string, number> = {};
@@ -24,7 +23,8 @@ export default async function SchoolClassesPage() {
     enrolledByWhole[row.id] = match?.count ?? 0;
   }
 
-  const students = filterStudentsByProgramCodes(studentsPage.items, school.programCodes);
+  // One school roster for Classes, Students, and Results — no program-offerings filter.
+  const students = studentsPage.items;
 
   return (
     <SchoolClassesWorkspace
