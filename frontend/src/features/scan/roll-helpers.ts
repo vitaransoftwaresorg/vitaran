@@ -8,6 +8,7 @@ export function rollInput(value: string) {
 export function isRollUnreadError(message: string) {
   return (
     /could not read the registration/i.test(message) ||
+    /unable to find the registration/i.test(message) ||
     /fill the registration bubbles/i.test(message)
   );
 }

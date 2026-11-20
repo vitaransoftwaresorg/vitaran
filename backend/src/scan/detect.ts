@@ -55,29 +55,53 @@ function pixel(rgba: Rgba, x: number, y: number) {
   return { r: rgba.data[i] ?? 0, g: rgba.data[i + 1] ?? 0, b: rgba.data[i + 2] ?? 0 };
 }
 
+/** Any colour as ink — used only for finding printed bubble rings. */
 function grayAt(rgba: Rgba, x: number, y: number) {
   const { r, g, b } = pixel(rgba, x, y);
   return Math.min(r, g, b);
 }
 
+/**
+ * Dark pen / pencil only. Red printed digits and rings stay bright on max(R,G,B),
+ * so empty bubbles with a "8" glyph no longer look filled.
+ */
+function darkAt(rgba: Rgba, x: number, y: number) {
+  const { r, g, b } = pixel(rgba, x, y);
+  return Math.max(r, g, b);
+}
+
 function paperThr(rgba: Rgba, x0: number, y0: number, x1: number, y1: number) {
   const values: number[] = [];
   for (let y = y0; y < y1; y += 2) {
-    for (let x = x0; x < x1; x += 2) values.push(grayAt(rgba, x, y));
+    for (let x = x0; x < x1; x += 2) values.push(darkAt(rgba, x, y));
   }
   values.sort((a, b) => a - b);
-  return (values[Math.floor(values.length * 0.7)] ?? 200) * 0.66;
+  return (values[Math.floor(values.length * 0.7)] ?? 200) * 0.72;
+}
+
+/** Mean darkness 0..1 inside the bubble core (dark ink channel). */
+function coreDark(rgba: Rgba, x: number, y: number, radius: number) {
+  const inner = Math.max(2, Math.round(radius * 0.55));
+  let sum = 0;
+  let n = 0;
+  for (let dy = -inner; dy <= inner; dy += 1) {
+    for (let dx = -inner; dx <= inner; dx += 1) {
+      if (dx * dx + dy * dy > inner * inner) continue;
+      sum += 255 - darkAt(rgba, x + dx, y + dy);
+      n += 1;
+    }
+  }
+  return n ? sum / (n * 255) : 0;
 }
 
 function coreFill(rgba: Rgba, x: number, y: number, radius: number, thr: number) {
-  // Mid interior: wide enough for edge ticks, tight enough to ignore most printed rim.
-  const inner = Math.max(2, Math.round(radius * 0.7));
+  const inner = Math.max(2, Math.round(radius * 0.55));
   let ink = 0;
   let n = 0;
   for (let dy = -inner; dy <= inner; dy += 1) {
     for (let dx = -inner; dx <= inner; dx += 1) {
       if (dx * dx + dy * dy > inner * inner) continue;
-      if (grayAt(rgba, x + dx, y + dy) < thr) ink += 1;
+      if (darkAt(rgba, x + dx, y + dy) < thr) ink += 1;
       n += 1;
     }
   }
@@ -93,13 +117,15 @@ function cellFill(
   searchX: number,
   searchY = searchX,
 ) {
-  if (searchX <= 0 && searchY <= 0) return coreFill(rgba, cx, cy, radius, thr);
+  // Prefer continuous darkness — catches soft pencil; hard fill backs it up.
+  const probe = (x: number, y: number) => Math.max(coreDark(rgba, x, y, radius), coreFill(rgba, x, y, radius, thr));
+  if (searchX <= 0 && searchY <= 0) return probe(cx, cy);
   let best = 0;
   const stepX = searchX <= 0 ? 1 : Math.max(1, Math.round(searchX / 3));
   const stepY = searchY <= 0 ? 1 : Math.max(1, Math.round(searchY / 3));
   for (let dy = -searchY; dy <= searchY; dy += stepY) {
     for (let dx = -searchX; dx <= searchX; dx += stepX) {
-      const fill = coreFill(rgba, cx + dx, cy + dy, radius, thr);
+      const fill = probe(cx + dx, cy + dy);
       if (fill > best) best = fill;
     }
   }
@@ -124,8 +150,9 @@ function digitsFromGrid(
   if (xs.length !== ROLL_COLS || ys.length !== ROLL_ROWS) return null;
   const colPitch =
     xs.length > 1 ? median(xs.slice(1).map((x, i) => x - xs[i]!)) : radius * 3;
-  const searchX = search <= 0 ? 0 : Math.min(search, Math.max(1, colPitch * 0.14), radius * 0.35);
-  const searchY = search <= 0 ? 0 : Math.min(search, colPitch * 0.28);
+  const searchX = search <= 0 ? 0 : Math.min(search, Math.max(1, colPitch * 0.12), radius * 0.3);
+  // Keep Y search tight — walking into the row above/below flips every digit by ±1.
+  const searchY = search <= 0 ? 0 : Math.min(search, colPitch * 0.14, radius * 0.28);
   let digits = "";
   let score = 0;
   for (const cx of xs) {
@@ -140,7 +167,7 @@ function digitsFromGrid(
     const top = ranked[0]!;
     const second = ranked[1]?.value ?? 0;
     const lead = top.value - second;
-    if (top.value < 0.1 || lead < 0.055) return null;
+    if (top.value < 0.08 || lead < 0.04) return null;
     digits += String(top.digit);
     score += lead;
   }
@@ -148,9 +175,8 @@ function digitsFromGrid(
 }
 
 /**
- * Vertical lattice alignment. Prefer the unshifted grid — a free ±1 row pick
- * often "wins" with similar fill and forces every digit to N−1 or N+1.
- * Only accept a full-row move when it is clearly stronger.
+ * Fine vertical nudge only (±0.15 row). Full ±1 shifts look "confident" while
+ * reading every digit as N±1 — never auto-accept those.
  */
 function digitsFromGridRobust(
   rgba: Rgba,
@@ -164,26 +190,13 @@ function digitsFromGridRobust(
   const rowPitch = median(ys.slice(1).map((y, i) => y - ys[i]!));
   const base = digitsFromGrid(rgba, xs, ys, radius, thr, search);
   let best = base;
-  for (const frac of [0.2, -0.2, 0.5, -0.5, 1, -1]) {
+  for (const frac of [0.15, -0.15]) {
     const shifted = ys.map((y) => y + frac * rowPitch);
     const read = digitsFromGrid(rgba, xs, shifted, radius, thr, search);
     if (!read) continue;
-    const need = Math.abs(frac) >= 1 ? 1.1 : 1.03;
-    if (!best || read.score > best.score * need) best = read;
+    if (!best || read.score > best.score * 1.08) best = read;
   }
   return best;
-}
-
-/** Undo systematic +1 / −1 row misalignment (every digit off by one). */
-function rowShiftDigits(digits: string, delta: number) {
-  if (!/^\d{7}$/.test(digits)) return "";
-  let out = "";
-  for (const ch of digits) {
-    const next = Number(ch) + delta;
-    if (next < 0 || next > 9) return "";
-    out += String(next);
-  }
-  return out;
 }
 
 function axisProfile(
@@ -199,6 +212,7 @@ function axisProfile(
   const out = new Array<number>(Math.max(0, Math.floor(size))).fill(0);
   for (let y = y0; y < y1; y += 1) {
     for (let x = x0; x < x1; x += 1) {
+      // Ring finding still uses any-colour ink so pale red bubbles register.
       if (grayAt(rgba, x, y) >= thr) continue;
       out[Math.floor(axis === "x" ? x - x0 : y - y0)]! += 1;
     }
@@ -291,11 +305,45 @@ function fitPitchCentres(profile: number[], count: number, pitchHint: number) {
   return best;
 }
 
-function axisCentres(profile: number[], count: number, pitchHint: number, minWidth: number) {
+function axisCentresX(profile: number[], count: number, pitchHint: number, minWidth: number) {
+  // Pitch-fit helps when adjacent filled columns merge into one ink run.
   return (
     fitPitchCentres(profile, count, pitchHint) ??
     takeSpaced(runCentres(profile, minWidth, 2), count, pitchHint)
   );
+}
+
+function axisCentresY(profile: number[], count: number, pitchHint: number, minWidth: number) {
+  // Do not ink-maximise Y — filled rows pull the lattice and shift every digit ±1.
+  return (
+    takeSpaced(runCentres(profile, minWidth, 2), count, pitchHint) ??
+    fitPitchCentres(profile, count, pitchHint)
+  );
+}
+
+/** Every evenly spaced window of `count` centres — the true 0–9 lattice is one of these. */
+function spacedWindows(centres: number[], count: number, pitchHint: number) {
+  if (centres.length < count) return [] as number[][];
+  const out: number[][] = [];
+  for (let i = 0; i <= centres.length - count; i += 1) {
+    const slice = centres.slice(i, i + count);
+    const gaps = slice.slice(1).map((x, k) => x - slice[k]!);
+    const mean = gaps.reduce((sum, gap) => sum + gap, 0) / gaps.length;
+    if (mean < pitchHint * 0.7 || mean > pitchHint * 1.35) continue;
+    const spread = gaps.reduce((sum, gap) => sum + Math.abs(gap - mean), 0) / gaps.length;
+    if (spread > pitchHint * 0.22) continue;
+    out.push(slice);
+  }
+  return out;
+}
+
+function ringPaperThr(rgba: Rgba, x0: number, y0: number, x1: number, y1: number) {
+  const values: number[] = [];
+  for (let y = y0; y < y1; y += 2) {
+    for (let x = x0; x < x1; x += 2) values.push(grayAt(rgba, x, y));
+  }
+  values.sort((a, b) => a - b);
+  return (values[Math.floor(values.length * 0.7)] ?? 200) * 0.66;
 }
 
 function rollFromBox(
@@ -310,31 +358,39 @@ function rollFromBox(
   const colPitch = (x1 - x0) / ROLL_COLS;
   const rowPitch = (y1 - y0) / ROLL_ROWS;
   const thr = paperThr(rgba, x0, y0, x1, y1);
+  const ringThr = ringPaperThr(rgba, x0, y0, x1, y1);
   const radius = Math.max(3, Math.min(colPitch, rowPitch) * 0.32);
-  const search = Math.max(2, Math.min(colPitch, rowPitch) * 0.22);
-  let xs: number[];
-  let ys: number[];
-  if (peaked) {
-    const xsRel = axisCentres(
-      axisProfile(rgba, x0, y0, x1, y1, "x", thr),
-      ROLL_COLS,
-      colPitch,
-      Math.max(3, colPitch * 0.2),
-    );
-    const ysRel = axisCentres(
-      axisProfile(rgba, x0, y0, x1, y1, "y", thr),
-      ROLL_ROWS,
-      rowPitch,
-      Math.max(3, rowPitch * 0.2),
-    );
-    if (!xsRel || !ysRel) return null;
-    xs = xsRel.map((x) => x0 + x);
-    ys = ysRel.map((y) => y0 + y);
-  } else {
-    xs = Array.from({ length: ROLL_COLS }, (_, c) => x0 + (c + 0.5) * colPitch);
-    ys = Array.from({ length: ROLL_ROWS }, (_, r) => y0 + (r + 0.5) * rowPitch);
+  const search = Math.max(2, Math.min(colPitch, rowPitch) * 0.18);
+  if (!peaked) {
+    const xs = Array.from({ length: ROLL_COLS }, (_, c) => x0 + (c + 0.5) * colPitch);
+    const ys = Array.from({ length: ROLL_ROWS }, (_, r) => y0 + (r + 0.5) * rowPitch);
+    return digitsFromGridRobust(rgba, xs, ys, radius, thr, search);
   }
-  return digitsFromGridRobust(rgba, xs, ys, radius, thr, peaked ? 0 : search);
+  const xsRel = axisCentresX(
+    axisProfile(rgba, x0, y0, x1, y1, "x", ringThr),
+    ROLL_COLS,
+    colPitch,
+    Math.max(3, colPitch * 0.2),
+  );
+  if (!xsRel) return null;
+  const xs = xsRel.map((x) => x0 + x);
+  const yProfile = axisProfile(rgba, x0, y0, x1, y1, "y", ringThr);
+  const rowPitchHint = rowPitch;
+  const centres = runCentres(yProfile, Math.max(3, rowPitchHint * 0.2), 2).map((y) => y0 + y);
+  const windows =
+    spacedWindows(centres, ROLL_ROWS, rowPitchHint).length > 0
+      ? spacedWindows(centres, ROLL_ROWS, rowPitchHint)
+      : [
+          axisCentresY(yProfile, ROLL_ROWS, rowPitchHint, Math.max(3, rowPitchHint * 0.2))?.map(
+            (y) => y0 + y,
+          ) ?? null,
+        ].filter((row): row is number[] => !!row);
+  let best: RollRead | null = null;
+  for (const ys of windows) {
+    const read = digitsFromGridRobust(rgba, xs, ys, radius, thr, 0);
+    if (read && (!best || read.score > best.score)) best = read;
+  }
+  return best;
 }
 
 function rollFromHough(rgba: Rgba): RollRead | null {
@@ -342,42 +398,60 @@ function rollFromHough(rgba: Rgba): RollRead | null {
   const gray = new cv.Mat();
   cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
   const circles = houghCircles(gray).filter(
-    (c) => c.y > rgba.height * 0.08 && c.y < rgba.height * 0.42 && c.x > rgba.width * 0.04 && c.x < rgba.width * 0.4,
+    (c) =>
+      c.y > rgba.height * 0.1 &&
+      c.y < rgba.height * 0.48 &&
+      c.x > rgba.width * 0.03 &&
+      c.x < rgba.width * 0.48,
   );
   src.delete();
-  const radius = median(circles.map((c) => c.r)) || Math.min(rgba.width, rgba.height) * 0.008;
-  const colMeans = uniqueCenters(circles.map((c) => c.x), radius * 1.3)
-    .filter((row) => row.n >= 4)
-    .sort((a, b) => a.mean - b.mean)
-    .map((row) => row.mean);
-  const rowMeans = uniqueCenters(circles.map((c) => c.y), radius * 1.15)
-    .filter((row) => row.n >= 3)
-    .sort((a, b) => a.mean - b.mean)
-    .map((row) => row.mean);
   gray.delete();
+  if (circles.length < 40) return null;
+  const radius = median(circles.map((c) => c.r)) || Math.min(rgba.width, rgba.height) * 0.008;
+  // Merge a little wider so split detections of the same bubble do not invent extra rows.
+  const colGroups = uniqueCenters(circles.map((c) => c.x), radius * 1.45).filter((row) => row.n >= 4);
+  const rowGroups = uniqueCenters(circles.map((c) => c.y), radius * 1.35).filter((row) => row.n >= 4);
+  const colMeans = colGroups.sort((a, b) => a.mean - b.mean).map((row) => row.mean);
+  const rowMeans = rowGroups.sort((a, b) => a.mean - b.mean).map((row) => row.mean);
   if (colMeans.length < ROLL_COLS || rowMeans.length < ROLL_ROWS) return null;
   const colPitch =
     median(colMeans.slice(1).map((x, i) => x - colMeans[i]!)) || radius * 2.6;
   const rowPitch =
     median(rowMeans.slice(1).map((y, i) => y - rowMeans[i]!)) || radius * 2.4;
-  // Even spacing — do not take the leftmost 7 clusters (header noise / partial columns).
-  const colXs = takeSpaced(colMeans, ROLL_COLS, colPitch) ?? spacedWindow(colMeans, ROLL_COLS);
+  // Prefer the densest evenly spaced 7 columns (registration grid, not answer options).
+  const colWindows = spacedWindows(colMeans, ROLL_COLS, colPitch);
+  let colXs: number[] | null = null;
+  let colSupport = -1;
+  for (const window of colWindows.length ? colWindows : [takeSpaced(colMeans, ROLL_COLS, colPitch)].filter(Boolean) as number[][]) {
+    const support = window.reduce((sum, x) => {
+      const hit = colGroups.find((g) => Math.abs(g.mean - x) < radius);
+      return sum + (hit?.n ?? 0);
+    }, 0);
+    if (support > colSupport) {
+      colSupport = support;
+      colXs = window;
+    }
+  }
   if (!colXs) return null;
-  // Try a few 10-row windows when extra clusters exist; do not prefer the bottom
-  // window — that shifts the lattice down and reads every digit as N−1.
-  const rowCandidates = [
-    takeSpaced(rowMeans, ROLL_ROWS, rowPitch),
-    spacedWindow(rowMeans.slice(0, ROLL_ROWS), ROLL_ROWS),
-    rowMeans.length > ROLL_ROWS ? spacedWindow(rowMeans.slice(1, 1 + ROLL_ROWS), ROLL_ROWS) : null,
-    spacedWindow(rowMeans.slice(-ROLL_ROWS), ROLL_ROWS),
-  ];
-  const thr = paperThr(rgba, rgba.width * 0.04, rgba.height * 0.08, rgba.width * 0.4, rgba.height * 0.42);
+  const thr = paperThr(rgba, rgba.width * 0.04, rgba.height * 0.1, rgba.width * 0.45, rgba.height * 0.48);
+  // Try every evenly spaced 10-row window. Handwriting boxes / answer-grid rows also
+  // cluster; only the real 0–9 lattice gives one clear dark bubble per column.
+  const rowWindows = spacedWindows(rowMeans, ROLL_ROWS, rowPitch);
+  const candidates =
+    rowWindows.length > 0
+      ? rowWindows
+      : [
+          takeSpaced(rowMeans, ROLL_ROWS, rowPitch),
+          spacedWindow(rowMeans.slice(0, ROLL_ROWS), ROLL_ROWS),
+          rowMeans.length > ROLL_ROWS
+            ? spacedWindow(rowMeans.slice(1, 1 + ROLL_ROWS), ROLL_ROWS)
+            : null,
+        ].filter((row): row is number[] => !!row);
   let best: RollRead | null = null;
-  for (const rowYs of rowCandidates) {
-    if (!rowYs) continue;
-    const read = digitsFromGridRobust(rgba, colXs, rowYs, radius, thr, radius * 0.45);
-    // Prefer earlier (unshifted) windows unless another is clearly stronger.
-    if (read && (!best || read.score > best.score * 1.08)) best = read;
+  for (const rowYs of candidates) {
+    const read = digitsFromGridRobust(rgba, colXs, rowYs, radius, thr, radius * 0.22);
+    if (!read) continue;
+    if (!best || read.score > best.score) best = read;
   }
   return best;
 }
@@ -404,23 +478,20 @@ function spacedWindow(centres: number[], count: number) {
 export function readRollBubbleCandidates(rgba: Rgba) {
   const reads: RollRead[] = [];
   const add = (read: RollRead | null) => {
-    if (!read || !/^\d{7}$/.test(read.digits)) return;
+    // Unbubbled sheets collapse to 0000000 / 1111111 — drop those before ranking.
+    if (!read || !/^\d{7}$/.test(read.digits) || /^(\d)\1{6}$/.test(read.digits)) return;
     const existing = reads.find((row) => row.digits === read.digits);
     if (existing) existing.score = Math.max(existing.score, read.score);
     else reads.push(read);
   };
+  // Hough circle lattice first — more stable than ink-window guesses on photos.
   add(rollFromHough(rgba));
   for (const box of ROLL_WINDOWS) {
     add(rollFromBox(rgba, box, true));
     add(rollFromBox(rgba, box, false));
   }
-  // Keep ±1 every-digit variants for roster matching only — never prefer them over the raw read.
-  for (const read of [...reads]) {
-    const down = rowShiftDigits(read.digits, -1);
-    if (down) add({ digits: down, score: read.score * 0.85 });
-    const up = rowShiftDigits(read.digits, 1);
-    if (up) add({ digits: up, score: read.score * 0.85 });
-  }
+  // Do not invent ±1-every-digit strings. Those bind to the wrong enrolled student
+  // when the raw bubble read was already correct (or only one digit off).
   reads.sort((a, b) => b.score - a.score);
   return reads.map((read) => read.digits);
 }
@@ -429,9 +500,10 @@ function houghCircles(gray: CvMat) {
   const blur = new cv.Mat();
   const circlesMat = new cv.Mat();
   cv.medianBlur(gray, blur, 5);
-  const minR = Math.max(4, Math.round(Math.min(gray.cols, gray.rows) * 0.0065));
-  const maxR = Math.max(minR + 2, Math.round(Math.min(gray.cols, gray.rows) * 0.015));
-  cv.HoughCircles(blur, circlesMat, cv.HOUGH_GRADIENT, 1.2, minR * 1.7, 70, 14, minR, maxR);
+  const minR = Math.max(4, Math.round(Math.min(gray.cols, gray.rows) * 0.006));
+  const maxR = Math.max(minR + 2, Math.round(Math.min(gray.cols, gray.rows) * 0.014));
+  // Slightly looser accumulator so filled (ink-dark) bubbles still count as circles.
+  cv.HoughCircles(blur, circlesMat, cv.HOUGH_GRADIENT, 1.1, minR * 1.5, 55, 12, minR, maxR);
   const circles: Circle[] = [];
   for (let i = 0; i < circlesMat.cols; i += 1) {
     circles.push({

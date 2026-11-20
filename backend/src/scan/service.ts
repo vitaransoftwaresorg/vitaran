@@ -32,7 +32,13 @@ import {
 import { readQueued } from "./queue.js";
 import type { BubbleMap } from "./detect.js";
 import { markedSheetPreview } from "./marked-preview.js";
-import { pickRollNo, pickTestId, type SheetCorners, type SheetRead } from "./read-sheet.js";
+import {
+  isPlausibleRoll,
+  pickRollNo,
+  pickTestId,
+  type SheetCorners,
+  type SheetRead,
+} from "./read-sheet.js";
 import { getObject, putObject } from "../services/object-storage.js";
 import { evaluatedImage, scoringFingerprint } from "./regrade.js";
 import * as scanRepository from "./repository.js";
@@ -296,12 +302,12 @@ async function resolveStudent(school: ScanSchool | null, candidates: string[]) {
     const knownRolls = (await studentRepository.listSchoolRolls(school.id)).map((row) => row.rollNo);
     const rollNo = pickRollNo(candidates, knownRolls);
     if (!rollNo) {
-      const typed = candidates.find((value) => /^\d{7}$/.test(value));
+      const typed = candidates.find((value) => isPlausibleRoll(value));
       throw new AppError(
         422,
         typed
           ? `No student with registration number ${typed} in this school.`
-          : "Could not read the registration number. Fill the registration bubbles.",
+          : "Unable to find the registration number. Fill the registration bubbles.",
       );
     }
     const enrolled = await studentRepository.findActiveStudentInSchool(school.id, rollNo);
@@ -310,9 +316,9 @@ async function resolveStudent(school: ScanSchool | null, candidates: string[]) {
     }
     return enrolled;
   }
-  const digits = [...new Set(candidates.filter((value) => /^\d{7}$/.test(value)))];
+  const digits = [...new Set(candidates.filter(isPlausibleRoll))];
   const hits = [];
-  for (const roll of digits.length ? digits : [pickRollNo(candidates, [])]) {
+  for (const roll of digits.length ? digits : [pickRollNo(candidates, [])].filter(Boolean)) {
     hits.push(...(await studentRepository.findActiveStudentsByRollNo(roll)));
   }
   const uniqueHits = [...new Map(hits.map((row) => [row.id, row])).values()];
@@ -320,7 +326,10 @@ async function resolveStudent(school: ScanSchool | null, candidates: string[]) {
   const rollNo = pickRollNo(candidates, uniqueHits.map((row) => row.rollNo));
   const matched = uniqueHits.filter((row) => row.rollNo.toUpperCase() === rollNo.toUpperCase());
   if (matched.length === 1) return matched[0]!;
-  throw new AppError(422, `No student with registration number ${rollNo || candidates[0] || ""}.`);
+  if (!rollNo && !digits.length) {
+    throw new AppError(422, "Unable to find the registration number. Fill the registration bubbles.");
+  }
+  throw new AppError(422, `No student with registration number ${rollNo || digits[0] || ""}.`);
 }
 
 function asMarked(answers: Pending["answers"]): Record<string, Array<"A" | "B" | "C" | "D">> {

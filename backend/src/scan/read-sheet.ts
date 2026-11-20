@@ -69,16 +69,20 @@ export function pickTestId(candidates: string[], knownIds: string[], reject: str
   return "";
 }
 
+/** Empty / unbubbled grids often collapse to 0000000 — never treat that as a real reg. */
+export function isPlausibleRoll(value: string) {
+  return /^\d{7}$/.test(value) && value !== "0000000" && !/^(\d)\1{6}$/.test(value);
+}
+
 export function pickRollNo(candidates: string[], knownRolls: string[]) {
-  const values = unique(candidates.filter((value) => /^\d{7}$/.test(value)));
+  const values = unique(candidates.filter(isPlausibleRoll));
   if (!values.length) return "";
-  const long = values.filter((value) => value.length === 7);
-  const pool = long.length ? long : values;
+  const pool = values;
   const known = unique(knownRolls);
   const exactHits = pool.filter((value) => known.some((roll) => roll.toUpperCase() === value.toUpperCase()));
   if (exactHits.length === 1) return known.find((roll) => roll.toUpperCase() === exactHits[0]!.toUpperCase())!;
   if (exactHits.length > 1) {
-    // Prefer the strongest raw read among matches — do not always pick the N−1 form.
+    // Prefer the strongest bubble read among exact roster hits.
     for (const value of pool) {
       if (!exactHits.some((hit) => hit.toUpperCase() === value.toUpperCase())) continue;
       return known.find((roll) => roll.toUpperCase() === value.toUpperCase()) ?? value;
@@ -86,22 +90,13 @@ export function pickRollNo(candidates: string[], knownRolls: string[]) {
     return exactHits[0]!;
   }
   if (!known.length) return pool[0]!;
-  // Prefer the strongest candidate (pool is score-sorted) that is within one edit of a known roll.
-  for (const value of pool) {
-    const near = known.filter(
-      (roll) => Math.abs(roll.length - value.length) <= 1 && levenshtein(roll, value) <= 1,
-    );
-    if (near.length === 1) return near[0]!;
-  }
-  const close = new Map<string, number>();
-  for (const value of pool) {
-    for (const roll of known) {
-      if (Math.abs(roll.length - value.length) > 1) continue;
-      if (levenshtein(roll, value) !== 1) continue;
-      close.set(roll, (close.get(roll) ?? 0) + 1);
-    }
-  }
-  if (close.size === 1) return [...close.keys()][0]!;
+  // One-edit snap only for the strongest (first) raw candidate — never for weaker
+  // alternate grids. Sequential regs (…101 vs …106) make broad snaps dangerous.
+  const primary = pool[0]!;
+  const near = known.filter(
+    (roll) => Math.abs(roll.length - primary.length) <= 1 && levenshtein(roll, primary) <= 1,
+  );
+  if (near.length === 1) return near[0]!;
   return "";
 }
 
@@ -121,7 +116,7 @@ function levenshtein(a: string, b: string) {
 
 function cleanRoll(value?: string) {
   const digits = (value ?? "").replace(/\D/g, "");
-  return /^\d{7}$/.test(digits) ? digits : "";
+  return isPlausibleRoll(digits) ? digits : "";
 }
 
 function cleanTest(value?: string) {
@@ -153,11 +148,13 @@ export async function readSheet(image: Buffer, identity: SheetIdentity = {}): Pr
   const printed = givenTest
     ? { name: "", testId: givenTest, testCandidates: [givenTest], examDate: "" }
     : await readPrintedDetails(prepared.rgba);
-  const rollCandidates = givenRoll ? [givenRoll] : readRollBubbleCandidates(prepared.rgba);
-  const rollNo = givenRoll || rollCandidates.find((value) => /^\d{7}$/.test(value)) || "";
+  const rollCandidates = givenRoll
+    ? [givenRoll]
+    : readRollBubbleCandidates(prepared.rgba).filter(isPlausibleRoll);
+  const rollNo = givenRoll || rollCandidates[0] || "";
   if (!rollNo) {
     logger.warn({ rollCandidates, markCount: bubbles.markCount }, "registration bubbles missed");
-    throw new AppError(422, "Could not read the registration number. Fill the registration bubbles.");
+    throw new AppError(422, "Unable to find the registration number. Fill the registration bubbles.");
   }
   const testCandidates = givenTest
     ? [givenTest]

@@ -84,6 +84,14 @@ const esc = (value: string) =>
 
 const fit = (value: string, max: number) => (value.length > max ? `${value.slice(0, max - 1)}...` : value);
 
+/** Trim with an ellipsis so glyph text stays inside `maxWidth`. */
+function fitToWidth(font: Font | null, value: string, size: number, maxWidth: number, spacingPx = 0) {
+  if (measureText(font, value, size, spacingPx) <= maxWidth) return value;
+  let cut = value;
+  while (cut.length > 1 && measureText(font, `${cut}...`, size, spacingPx) > maxWidth) cut = cut.slice(0, -1);
+  return `${cut.trimEnd()}...`;
+}
+
 const num = (value: number | null | undefined, digits = 2) =>
   value == null ? "-" : String(Math.round(value * 10 ** digits) / 10 ** digits);
 
@@ -107,9 +115,9 @@ function trackingEm(spacingPx: number | undefined, size: number) {
   return spacingPx / size;
 }
 
-function measureText(font: Font | null, value: string, size: number) {
-  if (font) return font.getAdvanceWidth(value, size);
-  return value.length * size * 0.55;
+function measureText(font: Font | null, value: string, size: number, spacingPx = 0) {
+  if (font) return font.getAdvanceWidth(value, size, { letterSpacing: trackingEm(spacingPx, size) });
+  return value.length * size * 0.55 + Math.max(0, value.length - 1) * spacingPx;
 }
 
 /** Word-wrap a sentence so path text stays inside the remark card. */
@@ -284,11 +292,114 @@ const diamond = (x: number, y: number, r: number) =>
   `<path d="M${x} ${y - r} L${x + r} ${y} L${x} ${y + r} L${x - r} ${y} Z" fill="url(#gold)"/>`;
 
 function sectionTitle(y: number, label: string) {
-  return [
+  const size = 22;
+  const spacing = 3;
+  // Leave room for the diamond + a short rule; never let the rule cut the title glyphs.
+  const title = fitToWidth(paintFont, label, size, W - 300, spacing);
+  const titleW = measureText(paintFont, title, size, spacing);
+  const lineStart = 100 + titleW + 36;
+  const parts = [
     diamond(78, y - 8, 9),
-    text(100, y, label, 23, { color: NAVY, weight: 800, spacing: 4 }),
-    `<line x1="${120 + label.length * 20}" y1="${y - 8}" x2="${W - 64}" y2="${y - 8}" stroke="${GOLD}" stroke-opacity="0.55" stroke-width="2"/>`,
-  ].join("");
+    text(100, y, title, size, { color: NAVY, weight: 800, spacing }),
+  ];
+  if (lineStart < W - 110) {
+    parts.push(
+      `<line x1="${lineStart}" y1="${y - 8}" x2="${W - 64}" y2="${y - 8}" stroke="${GOLD}" stroke-opacity="0.55" stroke-width="2"/>`,
+    );
+  }
+  return parts.join("");
+}
+
+function chartAxisLabel(label: string) {
+  const key = label.trim().toUpperCase();
+  const known: Record<string, string> = {
+    MATHEMATICS: "MATHS",
+    MATHS: "MATHS",
+    MATH: "MATH",
+    SCIENCE: "SCI",
+    ENGLISH: "ENG",
+    SOCIAL: "SOC",
+    "SOCIAL STUDIES": "SST",
+    TELUGU: "TEL",
+    HINDI: "HIN",
+    PHYSICS: "PHY",
+    CHEMISTRY: "CHE",
+    BIOLOGY: "BIO",
+  };
+  return known[key] ?? (key.length <= 6 ? key : `${key.slice(0, 5)}`);
+}
+
+/** Simple bar chart for subject / test percentages. */
+function percentBarChart(
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  points: Array<{ label: string; value: number | null; color: string }>,
+) {
+  const parts: string[] = [
+    `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="20" fill="#ffffff" stroke="#ece4c9" stroke-width="1.5"/>`,
+  ];
+  if (!points.length) {
+    parts.push(text(x + w / 2, y + h / 2, "No scores yet", 18, { color: MUTED, anchor: "middle" }));
+    return parts.join("");
+  }
+  const padL = 54;
+  const padR = 28;
+  const padT = 28;
+  const padB = 56;
+  const chartX = x + padL;
+  const chartY = y + padT;
+  const chartW = w - padL - padR;
+  const chartH = Math.max(40, h - padT - padB);
+  parts.push(`<line x1="${chartX}" y1="${chartY}" x2="${chartX}" y2="${chartY + chartH}" stroke="#d9d2b8" stroke-width="1.5"/>`);
+  parts.push(`<line x1="${chartX}" y1="${chartY + chartH}" x2="${chartX + chartW}" y2="${chartY + chartH}" stroke="#d9d2b8" stroke-width="1.5"/>`);
+  for (const pct of [25, 50, 75, 100]) {
+    const gy = chartY + chartH - (pct / 100) * chartH;
+    parts.push(`<line x1="${chartX}" y1="${gy}" x2="${chartX + chartW}" y2="${gy}" stroke="#efe9d6" stroke-width="1"/>`);
+    parts.push(text(chartX - 10, gy + 5, String(pct), 12, { color: MUTED, anchor: "end" }));
+  }
+  const gap = Math.max(8, Math.min(18, chartW / (points.length * 3)));
+  const barW = Math.max(14, Math.min(56, (chartW - gap * (points.length + 1)) / points.length));
+  const span = points.length * barW + (points.length - 1) * gap;
+  const startX = chartX + Math.max(gap, (chartW - span) / 2);
+  points.forEach((point, index) => {
+    const value = Math.max(0, Math.min(100, point.value ?? 0));
+    const barH = point.value == null ? 0 : (value / 100) * chartH;
+    const bx = startX + index * (barW + gap);
+    const by = chartY + chartH - barH;
+    parts.push(`<rect x="${bx}" y="${chartY}" width="${barW}" height="${chartH}" rx="8" fill="#f6f1e2"/>`);
+    if (barH > 0) {
+      parts.push(`<rect x="${bx}" y="${by}" width="${barW}" height="${barH}" rx="8" fill="${point.color}"/>`);
+      if (barH > 22) {
+        parts.push(
+          text(bx + barW / 2, by + 18, `${Math.round(value)}%`, 13, {
+            color: "#ffffff",
+            weight: 800,
+            anchor: "middle",
+          }),
+        );
+      } else {
+        parts.push(
+          text(bx + barW / 2, by - 8, point.value == null ? "-" : `${Math.round(value)}%`, 13, {
+            color: INK,
+            weight: 700,
+            anchor: "middle",
+          }),
+        );
+      }
+    } else {
+      parts.push(text(bx + barW / 2, chartY + chartH - 10, "-", 14, { color: MUTED, anchor: "middle" }));
+    }
+    parts.push(
+      text(bx + barW / 2, chartY + chartH + 28, fitToWidth(paintFont, point.label, 13, barW + gap), 13, {
+        color: MUTED,
+        weight: 700,
+        anchor: "middle",
+      }),
+    );
+  });
+  return parts.join("");
 }
 
 function statCard(x: number, y: number, w: number, h: number, body: string) {
@@ -651,25 +762,43 @@ function cardHeader(schoolName: string, programName: string, schoolBadge: boolea
 
 function titleBand(label: string) {
   const bandY = 214;
+  const maxTitleW = W - 280;
+  let size = 52;
+  let spacing = 10;
+  let display = label;
+  while (size > 28 && measureText(paintFont, display, size, spacing) > maxTitleW) {
+    if (spacing > 2) spacing -= 2;
+    else size -= 2;
+  }
+  if (measureText(paintFont, display, size, spacing) > maxTitleW) {
+    while (display.length > 3 && measureText(paintFont, `${display}...`, size, spacing) > maxTitleW) {
+      display = display.slice(0, -1);
+    }
+    display = `${display.trimEnd()}...`;
+  }
+  const titleW = measureText(paintFont, display, size, spacing);
+  const diamondX = W / 2 - titleW / 2 - 28;
+  const showDiamonds = diamondX >= 72;
   return [
     `<rect x="40" y="${bandY}" width="${W - 80}" height="136" fill="url(#band)"/>`,
     `<rect x="40" y="${bandY}" width="${W - 80}" height="136" fill="url(#lines)"/>`,
     `<line x1="40" y1="${bandY + 8}" x2="${W - 40}" y2="${bandY + 8}" stroke="url(#gold)" stroke-width="2"/>`,
     `<line x1="40" y1="${bandY + 128}" x2="${W - 40}" y2="${bandY + 128}" stroke="url(#gold)" stroke-width="2"/>`,
-    diamond(300, bandY + 64, 8),
-    diamond(W - 300, bandY + 64, 8),
-    text(W / 2, bandY + 89, label, 52, { color: "url(#goldText)", weight: 700, anchor: "middle", spacing: 10 }),
+    showDiamonds ? diamond(diamondX, bandY + 64, 8) : "",
+    showDiamonds ? diamond(W - diamondX, bandY + 64, 8) : "",
+    text(W / 2, bandY + 89, display, size, { color: "url(#goldText)", weight: 700, anchor: "middle", spacing }),
   ].join("");
 }
 
 function studentHeroBlock(student: { name: string; rollNo: string; classLabel: string }) {
   const heroY = 386;
-  const heroH = 200;
+  const heroH = 220;
+  const name = fitToWidth(paintFont, student.name.toUpperCase(), 44, W - 220);
   const parts: string[] = [
     `<rect x="64" y="${heroY}" width="${W - 128}" height="${heroH}" rx="26" fill="#ffffff" stroke="#e8dcb4" stroke-width="2"/>`,
-    text(100, heroY + 46, "STUDENT", 17, { color: GOLD_DARK, weight: 800, spacing: 5 }),
-    text(100, heroY + 100, fit(student.name.toUpperCase(), 26), 46, { color: NAVY, weight: 700 }),
-    `<rect x="100" y="${heroY + 116}" width="110" height="4" rx="2" fill="url(#gold)"/>`,
+    text(100, heroY + 42, "STUDENT", 17, { color: GOLD_DARK, weight: 800, spacing: 5 }),
+    text(100, heroY + 96, name, 44, { color: NAVY, weight: 700 }),
+    `<rect x="100" y="${heroY + 112}" width="110" height="4" rx="2" fill="url(#gold)"/>`,
   ];
   (
     [
@@ -678,25 +807,33 @@ function studentHeroBlock(student: { name: string; rollNo: string; classLabel: s
     ] as Array<[string, string]>
   ).forEach(([label, value], index) => {
     const x = 100 + index * 280;
-    parts.push(`<rect x="${x}" y="${heroY + 136}" width="260" height="48" rx="14" fill="#f8f4e8" stroke="#ece2c2" stroke-width="1.5"/>`);
-    parts.push(text(x + 18, heroY + 156, label, 14, { color: MUTED, weight: 700, spacing: 2.5 }));
-    parts.push(text(x + 18, heroY + 176, value, 22, { color: INK, weight: 800 }));
+    parts.push(`<rect x="${x}" y="${heroY + 140}" width="260" height="56" rx="14" fill="#f8f4e8" stroke="#ece2c2" stroke-width="1.5"/>`);
+    parts.push(text(x + 18, heroY + 162, label, 14, { color: MUTED, weight: 700, spacing: 2.5 }));
+    parts.push(text(x + 18, heroY + 186, value, 22, { color: INK, weight: 800 }));
   });
   return parts.join("");
 }
 
 function fourStats(
   stats: Array<{ label: string; value: string; hint?: string }>,
-  y = 620,
+  y = 640,
 ) {
   const gap = 22;
   const statW = (W - 128 - gap * 3) / 4;
   const statH = 170;
   const label = (x: number, value: string) =>
-    text(x + statW / 2, y + 40, value, 16, { color: "#f1d980", weight: 800, anchor: "middle", spacing: 2.5 });
+    text(x + statW / 2, y + 38, value, 15, { color: "#f1d980", weight: 800, anchor: "middle", spacing: 2.5 });
+  const valueSize = (value: string) => {
+    if (value.length <= 4) return 40;
+    if (value.length <= 6) return 30;
+    if (value.length <= 9) return 22;
+    return 18;
+  };
   return stats
     .map((stat, index) => {
       const x = 64 + index * (statW + gap);
+      const size = valueSize(stat.value);
+      const value = fitToWidth(paintFont, stat.value, size, statW - 28);
       return statCard(
         x,
         y,
@@ -704,8 +841,8 @@ function fourStats(
         statH,
         [
           label(x, stat.label),
-          text(x + statW / 2, y + 108, stat.value, 42, { color: "#ffffff", weight: 800, anchor: "middle" }),
-          text(x + statW / 2, y + 144, stat.hint ?? "", 18, { color: "#c3c8f2", anchor: "middle" }),
+          text(x + statW / 2, y + 100, value, size, { color: "#ffffff", weight: 800, anchor: "middle" }),
+          text(x + statW / 2, y + 148, stat.hint ?? "", 16, { color: "#c3c8f2", anchor: "middle" }),
         ].join(""),
       );
     })
@@ -721,7 +858,8 @@ function cardFooter(label: string, remarkCopy: string, contentEnd: number) {
   const remarkBoxH = 52 + remarkLines.length * (remarkSize + 10);
   const footY = H - 108;
   const signY = footY - 78;
-  const remarkY = Math.min(Math.max(contentEnd + 24, 1180), signY - remarkBoxH - 36);
+  // Prefer sitting under the last content row; never climb into the table.
+  const remarkY = Math.min(contentEnd + 20, signY - remarkBoxH - 28);
   parts.push(
     `<rect x="64" y="${remarkY}" width="${W - 128}" height="${remarkBoxH}" rx="22" fill="#fbf6e6" stroke="${GOLD}" stroke-opacity="0.5" stroke-width="1.5"/>`,
   );
@@ -783,21 +921,28 @@ function buildYearReportSvg(data: YearReportCardData, schoolBadge: boolean, titl
     );
 
     const subjects = [...new Set(data.tests.flatMap((test) => test.subjects.map((subject) => subject.label)))];
-    const tableY = 830;
+    const tableY = 850;
     parts.push(sectionTitle(tableY, "ALL TESTS THIS YEAR"));
     const headY = tableY + 40;
-    const testCol = 150;
+    const testCol = 140;
     const trailing = 70;
-    const subjectW = subjects.length ? Math.max(70, (W - 128 - testCol - trailing * 2) / subjects.length) : 90;
+    const subjectW = subjects.length ? Math.max(56, (W - 128 - testCol - trailing * 2) / subjects.length) : 90;
+    const cellFont = subjectW < 70 ? 12 : 16;
     parts.push(text(90, headY, "TEST", 14, { color: MUTED, weight: 800, spacing: 2 }));
     subjects.forEach((label, index) => {
       parts.push(
-        text(90 + testCol + index * subjectW + subjectW / 2, headY, fit(label, 8), 13, {
-          color: MUTED,
-          weight: 800,
-          anchor: "middle",
-          spacing: 1,
-        }),
+        text(
+          90 + testCol + index * subjectW + subjectW / 2,
+          headY,
+          fitToWidth(paintFont, label, 12, subjectW - 8),
+          12,
+          {
+            color: MUTED,
+            weight: 800,
+            anchor: "middle",
+            spacing: 1,
+          },
+        ),
       );
     });
     parts.push(text(W - 64 - trailing * 1.5, headY, "TOTAL", 13, { color: MUTED, weight: 800, anchor: "middle" }));
@@ -805,7 +950,7 @@ function buildYearReportSvg(data: YearReportCardData, schoolBadge: boolean, titl
 
     const rowCount = Math.max(1, data.tests.length);
     const rowGap = rowCount > 8 ? 4 : 8;
-    const rowH = Math.min(56, Math.floor(520 / rowCount) - rowGap);
+    const rowH = Math.min(56, Math.floor(480 / rowCount) - rowGap);
     const rowsTop = headY + 16;
     data.tests.forEach((test, index) => {
       const y = rowsTop + index * (rowH + rowGap);
@@ -815,19 +960,21 @@ function buildYearReportSvg(data: YearReportCardData, schoolBadge: boolean, titl
       subjects.forEach((label, sIndex) => {
         const subject = test.subjects.find((entry) => entry.label === label);
         const cx = 90 + testCol + sIndex * subjectW + subjectW / 2;
-        const color = SUBJECT_COLORS[sIndex % SUBJECT_COLORS.length]!;
         if (subject?.marks != null) {
+          const mark =
+            subjectW < 64 || !subject.max
+              ? num(subject.marks)
+              : `${num(subject.marks)}/${num(subject.max)}`;
           parts.push(
-            text(cx, mid + 6, `${num(subject.marks)}${subject.max ? `/${num(subject.max)}` : ""}`, 16, {
+            text(cx, mid + 6, mark, cellFont, {
               color: INK,
               weight: 700,
               anchor: "middle",
             }),
           );
         } else {
-          parts.push(text(cx, mid + 6, "-", 16, { color: MUTED, anchor: "middle" }));
+          parts.push(text(cx, mid + 6, "-", cellFont, { color: MUTED, anchor: "middle" }));
         }
-        void color;
       });
       parts.push(
         text(W - 64 - trailing * 1.5, mid + 6, test.total == null ? "-" : num(test.total), 18, {
@@ -859,25 +1006,25 @@ function buildSubjectReportSvg(data: SubjectReportCardData, schoolBadge: boolean
     const parts: string[] = [cardDefs(), cardFrame()];
     parts.push(cardHeader(data.schoolName, data.programName, schoolBadge, titleFont));
     const focus = data.focusSubject?.trim().toUpperCase();
-    parts.push(
-      titleBand(
-        focus
-          ? fit(`${focus} REPORT`, 22)
-          : "SUBJECT REPORT CARD",
-      ),
-    );
+    parts.push(titleBand(focus ? `${focus} REPORT` : "SUBJECT REPORT CARD"));
     parts.push(studentHeroBlock(data.student));
 
-    const avgs = data.subjects.map((subject) => subject.average);
-    const best = (() => {
-      const filled = avgs.filter((value): value is number => value != null);
+    const focusScores = focus ? data.subjects[0]?.scores ?? [] : [];
+    const focusPercents = focusScores
+      .map((score) => score.percentage)
+      .filter((value): value is number => value != null);
+    const subjectAvgs = data.subjects.map((subject) => subject.average);
+    const bestTest = focusPercents.length ? Math.max(...focusPercents) : null;
+    const lowTest = focusPercents.length ? Math.min(...focusPercents) : null;
+    const bestSubjectAvg = (() => {
+      const filled = subjectAvgs.filter((value): value is number => value != null);
       return filled.length ? Math.max(...filled) : null;
     })();
     parts.push(
       fourStats(
         focus
           ? [
-              { label: "SUBJECT", value: fit(focus, 10), hint: "selected" },
+              { label: "SUBJECT", value: focus, hint: "selected" },
               { label: "TESTS", value: String(data.tests.length), hint: "compared" },
               {
                 label: "AVERAGE",
@@ -885,15 +1032,19 @@ function buildSubjectReportSvg(data: SubjectReportCardData, schoolBadge: boolean
                 hint: "this subject",
               },
               {
-                label: "BEST",
-                value: best == null ? "-" : `${Math.round(best)}%`,
-                hint: "best test",
+                label: "BEST TEST",
+                value: bestTest == null ? "-" : `${Math.round(bestTest)}%`,
+                hint: lowTest == null ? "highest" : `low ${Math.round(lowTest)}%`,
               },
             ]
           : [
               { label: "SUBJECTS", value: String(data.subjects.length), hint: "tracked" },
               { label: "TESTS", value: String(data.tests.length), hint: "compared" },
-              { label: "BEST AVG", value: best == null ? "-" : `${Math.round(best)}%`, hint: "top subject" },
+              {
+                label: "BEST AVG",
+                value: bestSubjectAvg == null ? "-" : `${Math.round(bestSubjectAvg)}%`,
+                hint: "top subject",
+              },
               {
                 label: "OVERALL",
                 value: data.overallAverage == null ? "-" : `${Math.round(data.overallAverage)}%`,
@@ -903,60 +1054,163 @@ function buildSubjectReportSvg(data: SubjectReportCardData, schoolBadge: boolean
       ),
     );
 
-    const tableY = 830;
-    parts.push(sectionTitle(tableY, focus ? `${focus} ACROSS ALL TESTS` : "SUBJECTS ACROSS ALL TESTS"));
-    const headY = tableY + 40;
-    const labelW = 170;
-    const avgW = 90;
-    const testW = data.tests.length ? Math.max(70, (W - 128 - labelW - avgW) / data.tests.length) : 90;
-    parts.push(text(90, headY, "SUBJECT", 14, { color: MUTED, weight: 800, spacing: 2 }));
-    data.tests.forEach((test, index) => {
+    // Leave room for remark + signatures + footer band so they never cover rows.
+    const contentFloor = H - 360;
+    const sectionY = 850;
+    let tableY = sectionY;
+    if (!focus) {
+      parts.push(sectionTitle(sectionY, "SUBJECT AVERAGES"));
+      const chartTop = sectionY + 24;
+      const tableRows = Math.max(1, data.subjects.length);
+      const tableBlockMin = 36 + 18 + tableRows * 36;
+      const chartH = Math.max(160, Math.min(200, contentFloor - chartTop - 56 - tableBlockMin));
       parts.push(
-        text(90 + labelW + index * testW + testW / 2, headY, `T${test.testNumber}`, 14, {
-          color: MUTED,
-          weight: 800,
-          anchor: "middle",
-        }),
+        percentBarChart(
+          64,
+          chartTop,
+          W - 128,
+          chartH,
+          data.subjects.map((subject, index) => ({
+            label: chartAxisLabel(subject.label),
+            value: subject.average,
+            color: SUBJECT_COLORS[index % SUBJECT_COLORS.length]!,
+          })),
+        ),
       );
-    });
-    parts.push(text(W - 64 - avgW / 2, headY, "AVG", 14, { color: MUTED, weight: 800, anchor: "middle" }));
+      tableY = chartTop + chartH + 28;
+    }
 
-    const rowCount = Math.max(1, data.subjects.length);
-    const rowGap = rowCount > 7 ? 5 : 10;
-    const rowH = Math.min(64, Math.floor(520 / rowCount) - rowGap);
-    const rowsTop = headY + 16;
-    data.subjects.forEach((subject, index) => {
-      const y = rowsTop + index * (rowH + rowGap);
-      const mid = y + rowH / 2;
-      const color = SUBJECT_COLORS[index % SUBJECT_COLORS.length]!;
-      parts.push(`<rect x="64" y="${y}" width="${W - 128}" height="${rowH}" rx="14" fill="#ffffff" stroke="#ece4c9" stroke-width="1.5"/>`);
-      parts.push(`<circle cx="98" cy="${mid}" r="16" fill="${color}"/>`);
-      parts.push(text(98, mid + 6, subject.label.slice(0, 1), 16, { color: "#ffffff", weight: 800, anchor: "middle" }));
-      parts.push(text(124, mid + 7, fit(subject.label, 14), 20, { color: INK, weight: 800 }));
-      subject.scores.forEach((score, sIndex) => {
-        const cx = 90 + labelW + sIndex * testW + testW / 2;
-        if (score.marks != null) {
+    parts.push(sectionTitle(tableY, focus ? "TEST-WISE PERFORMANCE" : "SUBJECTS ACROSS ALL TESTS"));
+    const headY = tableY + 32;
+    const rowsBudget = Math.max(120, contentFloor - (headY + 18));
+    let contentEnd = headY;
+
+    if (focus) {
+      const cols = { test: 110, marks: 340, max: 520, pct: 700, bar: 820, barW: 280 };
+      parts.push(text(90, headY, "TEST", 14, { color: MUTED, weight: 800, spacing: 2 }));
+      parts.push(text(cols.marks, headY, "MARKS", 14, { color: MUTED, weight: 800, anchor: "middle", spacing: 2 }));
+      parts.push(text(cols.max, headY, "OUT OF", 14, { color: MUTED, weight: 800, anchor: "middle", spacing: 2 }));
+      parts.push(text(cols.pct, headY, "PERCENTAGE", 14, { color: MUTED, weight: 800, anchor: "middle", spacing: 2 }));
+      parts.push(text(cols.bar, headY, "SCORE", 14, { color: MUTED, weight: 800, spacing: 2 }));
+      const rowCount = Math.max(1, data.tests.length);
+      const rowGap = rowCount > 8 ? 3 : 6;
+      const rowH = Math.max(28, Math.min(46, Math.floor(rowsBudget / rowCount) - rowGap));
+      const rowsTop = headY + 16;
+      data.tests.forEach((test, index) => {
+        const score = focusScores[index];
+        const y = rowsTop + index * (rowH + rowGap);
+        const mid = y + rowH / 2;
+        const pct = score?.percentage ?? null;
+        const font = Math.min(17, Math.round(rowH * 0.45));
+        parts.push(`<rect x="64" y="${y}" width="${W - 128}" height="${rowH}" rx="12" fill="#ffffff" stroke="#ece4c9" stroke-width="1.5"/>`);
+        parts.push(text(90, mid + font * 0.35, `Test ${test.testNumber}`, font, { color: NAVY, weight: 800 }));
+        parts.push(
+          text(cols.marks, mid + font * 0.35, score?.marks == null ? "-" : num(score.marks), font, {
+            color: INK,
+            weight: 700,
+            anchor: "middle",
+          }),
+        );
+        parts.push(
+          text(cols.max, mid + font * 0.35, score?.max == null ? "-" : num(score.max), font, {
+            color: MUTED,
+            weight: 700,
+            anchor: "middle",
+          }),
+        );
+        parts.push(
+          text(cols.pct, mid + font * 0.35, pct == null ? "-" : `${Math.round(pct)}%`, font, {
+            color: pct != null && pct >= 75 ? "#16794a" : GOLD_DARK,
+            weight: 800,
+            anchor: "middle",
+          }),
+        );
+        const share = pct == null ? 0 : Math.max(0, Math.min(1, pct / 100));
+        const barH = Math.max(10, Math.min(14, rowH - 16));
+        parts.push(`<rect x="${cols.bar}" y="${mid - barH / 2}" width="${cols.barW}" height="${barH}" rx="7" fill="#efeadb"/>`);
+        if (share > 0) {
           parts.push(
-            text(cx, mid + 6, `${num(score.marks)}${score.max ? `/${num(score.max)}` : ""}`, 16, {
-              color: INK,
+            `<rect x="${cols.bar}" y="${mid - barH / 2}" width="${Math.max(8, cols.barW * share)}" height="${barH}" rx="7" fill="${SUBJECT_COLORS[0]}"/>`,
+          );
+        }
+      });
+      contentEnd = rowsTop + data.tests.length * (rowH + rowGap);
+    } else {
+      const avgW = 90;
+      const minTestW = data.tests.length > 9 ? 50 : data.tests.length > 6 ? 60 : 74;
+      const labelW = Math.min(
+        data.tests.length > 9 ? 200 : 250,
+        Math.max(140, W - 128 - avgW - data.tests.length * minTestW),
+      );
+      const testW = data.tests.length ? (W - 128 - labelW - avgW) / data.tests.length : 90;
+      const showMax = data.tests.length <= 8 && testW >= 70;
+      const headFont = testW < 64 ? 11 : 14;
+      const markFont = testW < 56 ? 11 : testW < 72 ? 13 : 16;
+      const nameFont = data.tests.length > 9 ? 15 : data.subjects.length > 7 ? 16 : 18;
+      const nameMaxW = labelW - 44;
+      parts.push(text(90, headY, "SUBJECT", 14, { color: MUTED, weight: 800, spacing: 2 }));
+      data.tests.forEach((test, index) => {
+        parts.push(
+          text(90 + labelW + index * testW + testW / 2, headY, `T${test.testNumber}`, headFont, {
+            color: MUTED,
+            weight: 800,
+            anchor: "middle",
+          }),
+        );
+      });
+      parts.push(text(W - 64 - avgW / 2, headY, "AVG", 14, { color: MUTED, weight: 800, anchor: "middle" }));
+      const rowCount = Math.max(1, data.subjects.length);
+      const rowGap = rowCount > 7 ? 3 : 6;
+      const rowH = Math.max(28, Math.min(46, Math.floor(rowsBudget / rowCount) - rowGap));
+      const rowsTop = headY + 16;
+      data.subjects.forEach((subject, index) => {
+        const y = rowsTop + index * (rowH + rowGap);
+        const mid = y + rowH / 2;
+        const color = SUBJECT_COLORS[index % SUBJECT_COLORS.length]!;
+        const iconR = Math.min(14, Math.max(9, rowH / 2 - 6));
+        parts.push(`<rect x="64" y="${y}" width="${W - 128}" height="${rowH}" rx="12" fill="#ffffff" stroke="#ece4c9" stroke-width="1.5"/>`);
+        parts.push(`<circle cx="98" cy="${mid}" r="${iconR}" fill="${color}"/>`);
+        parts.push(
+          text(98, mid + iconR * 0.36, subject.label.slice(0, 1), Math.round(iconR), {
+            color: "#ffffff",
+            weight: 800,
+            anchor: "middle",
+          }),
+        );
+        parts.push(
+          text(124, mid + nameFont * 0.35, fitToWidth(paintFont, subject.label, nameFont, nameMaxW), nameFont, {
+            color: INK,
+            weight: 800,
+          }),
+        );
+        subject.scores.forEach((score, sIndex) => {
+          const cx = 90 + labelW + sIndex * testW + testW / 2;
+          const mark =
+            score.marks == null
+              ? "-"
+              : showMax && score.max
+                ? `${num(score.marks)}/${num(score.max)}`
+                : num(score.marks);
+          parts.push(
+            text(cx, mid + markFont * 0.35, mark, markFont, {
+              color: score.marks == null ? MUTED : INK,
               weight: 700,
               anchor: "middle",
             }),
           );
-        } else {
-          parts.push(text(cx, mid + 6, "-", 16, { color: MUTED, anchor: "middle" }));
-        }
+        });
+        const avgLabel = subject.average == null ? "-" : `${Math.round(subject.average)}%`;
+        parts.push(
+          text(W - 64 - avgW / 2, mid + 7, avgLabel, Math.min(18, markFont + 3), {
+            color: subject.average != null && subject.average >= 75 ? "#16794a" : GOLD_DARK,
+            weight: 800,
+            anchor: "middle",
+          }),
+        );
       });
-      const avgLabel = subject.average == null ? "-" : `${Math.round(subject.average)}%`;
-      parts.push(
-        text(W - 64 - avgW / 2, mid + 7, avgLabel, 20, {
-          color: subject.average != null && subject.average >= 75 ? "#16794a" : GOLD_DARK,
-          weight: 800,
-          anchor: "middle",
-        }),
-      );
-    });
-    const contentEnd = rowsTop + data.subjects.length * (rowH + rowGap);
+      contentEnd = rowsTop + data.subjects.length * (rowH + rowGap);
+    }
+
     parts.push(
       cardFooter("COMPUTER-GENERATED SUBJECT REPORT CARD", remark(data.overallAverage), contentEnd),
     );
