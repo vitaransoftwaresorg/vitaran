@@ -29,37 +29,6 @@ export function getSchoolSectionStrength() {
   return schoolApi<SectionStrength>(`${SCHOOL_BASE}/strength`);
 }
 
-export function createSchoolSection(input: SectionInput) {
-  return schoolApi<CreateClassOrgResult>(SCHOOL_BASE, { method: "POST", body: input });
-}
-
-export function updateSchoolSection(id: string, input: Partial<SectionInput>) {
-  return schoolApi<SchoolSection>(`${SCHOOL_BASE}/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    body: input,
-  });
-}
-
-export function deleteSchoolSection(id: string) {
-  return schoolApi<void>(`${SCHOOL_BASE}/${encodeURIComponent(id)}`, { method: "DELETE" });
-}
-
-export function updateSchoolWholeClass(
-  id: string,
-  input: { programId?: string; studentCount?: number },
-) {
-  return schoolApi<WholeClass>(`${SCHOOL_BASE}/classes/${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    body: input,
-  });
-}
-
-export function deleteSchoolWholeClass(id: string) {
-  return schoolApi<void>(`${SCHOOL_BASE}/classes/${encodeURIComponent(id)}`, {
-    method: "DELETE",
-  });
-}
-
 export function listAdminSchoolSections(schoolId: string) {
   return adminApi<ClassOrganization>(adminBase(schoolId));
 }

@@ -56,6 +56,62 @@ export function uniqueSubjectsFromOfferings(offerings: SchoolProgramOffering[]):
   return [...subjects];
 }
 
+/** Replace subject access tokens for one program + class level. */
+export function replaceClassSubjectOfferings(
+  previous: string[],
+  programId: string,
+  classLevel: number,
+  subjects: Subject[],
+): string[] {
+  const kept = previous.filter((token) => {
+    const parsed = parseOfferingToken(token);
+    return !(
+      parsed &&
+      parsed.programId === programId &&
+      parsed.classLevel === classLevel
+    );
+  });
+  return [
+    ...kept,
+    ...subjects.map((subject) => encodeOffering(programId, classLevel, subject)),
+  ];
+}
+
+/**
+ * When custom classes are checked/unchecked, keep offering tokens in sync:
+ * new classes get all default subjects; removed classes drop their tokens.
+ */
+export function syncCustomSubjectOfferings(
+  previous: string[],
+  classes: string[],
+  programId: string,
+): string[] {
+  const levels = new Set(
+    classes.map(Number).filter((level) => Number.isInteger(level) && level >= 1 && level <= 12),
+  );
+  const kept = previous.filter((token) => {
+    const parsed = parseOfferingToken(token);
+    return (
+      parsed !== null &&
+      (parsed.programId === programId || parsed.programId === CUSTOM_DRAFT_PROGRAM_ID) &&
+      levels.has(parsed.classLevel)
+    );
+  });
+
+  for (const classLevel of levels) {
+    const hasSubjects = kept.some((token) => {
+      const parsed = parseOfferingToken(token);
+      return parsed?.classLevel === classLevel;
+    });
+    if (hasSubjects) continue;
+    for (const subject of subjectsForClassLevel(classLevel)) {
+      kept.push(encodeOffering(programId, classLevel, subject));
+    }
+  }
+
+  return kept;
+}
+
 /**
  * Live Programs & classes checks → offerings shape used by Classes & sections.
  * Keeps Add-class dropdowns in sync with the form before Save.
@@ -77,10 +133,16 @@ export function liveOfferingsFromForm(input: {
       .filter((level) => Number.isInteger(level) && level >= 1 && level <= 12)
       .sort((a, b) => a - b);
     if (levels.length === 0) return [];
+    const programId = saved?.programId ?? CUSTOM_DRAFT_PROGRAM_ID;
     const programName = input.customProgramName.trim() || saved?.programName || "Custom Program";
+    const subjectsByClass = new Map(
+      offeringsToPrograms(input.offerings)
+        .filter((row) => row.programId === programId || row.programId === CUSTOM_DRAFT_PROGRAM_ID)
+        .flatMap((row) => row.classes.map((cls) => [cls.classLevel, cls.subjects] as const)),
+    );
     return [
       {
-        programId: saved?.programId ?? CUSTOM_DRAFT_PROGRAM_ID,
+        programId,
         programCode: saved?.programCode ?? "CUSTOM",
         programName,
         type: "CUSTOMIZED" as const,
@@ -90,7 +152,9 @@ export function liveOfferingsFromForm(input: {
         catalogSubjects: saved?.catalogSubjects ?? [],
         classes: levels.map((classLevel) => ({
           classLevel,
-          subjects: subjectsForClassLevel(classLevel),
+          subjects: subjectsByClass.get(classLevel)?.length
+            ? subjectsByClass.get(classLevel)!
+            : subjectsForClassLevel(classLevel),
         })),
       },
     ];

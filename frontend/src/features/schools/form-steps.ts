@@ -31,11 +31,6 @@ export const SCHOOL_FORM_STEPS = [
     ],
   },
   {
-    id: "programs",
-    title: "Programs & classes",
-    fields: ["offerings", "customProgramName", "customClasses"],
-  },
-  {
     id: "contact",
     title: "Contact & address",
     fields: [
@@ -48,6 +43,17 @@ export const SCHOOL_FORM_STEPS = [
       "pincode",
       "notes",
     ],
+  },
+  {
+    id: "programs",
+    title: "Programs & classes",
+    fields: ["offerings", "customProgramName", "customClasses"],
+  },
+  {
+    id: "classes",
+    title: "Classes & sections",
+    // Sections are deferred until Save; offerings already set on Programs & classes.
+    fields: ["offerings"],
   },
 ] as const satisfies readonly SchoolFormStep[];
 

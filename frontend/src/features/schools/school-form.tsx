@@ -56,9 +56,16 @@ import {
 import {
   AdminSchoolClassesPanel,
   type DeferredClassChanges,
+  type DeferredClassCreate,
 } from "./admin-school-classes-panel";
 import { CustomSchoolProgramField } from "./custom-school-program-field";
-import { liveOfferingsFromForm, schoolProgramsToTokens } from "./offerings";
+import {
+  CUSTOM_DRAFT_PROGRAM_ID,
+  liveOfferingsFromForm,
+  replaceClassSubjectOfferings,
+  schoolProgramsToTokens,
+  syncCustomSubjectOfferings,
+} from "./offerings";
 import { ProgramOfferingsField } from "./program-offerings-field";
 import {
   LAST_STEP,
@@ -103,7 +110,7 @@ type SchoolClassesPanelData = {
 type SchoolFormProps = {
   school?: SchoolDetail;
   catalog: LearningProgram[];
-  /** Existing classes on edit; register starts empty and drafts until Save. */
+  /** Existing classes on edit; register keeps new classes until Submit. */
   classesPanel?: SchoolClassesPanelData;
 };
 
@@ -240,6 +247,8 @@ export function SchoolForm({ school, catalog, classesPanel }: SchoolFormProps) {
       action={formAction}
       pending={pending}
       initialValues={failed?.values ?? draft.values ?? toFormValues(school)}
+      initialClassCreates={keepDraft ? draft.pendingSectionCreates : []}
+      initialClassDeletes={keepDraft ? draft.pendingSectionDeletes : []}
       savedValues={school ? toFormValues(school) : undefined}
       serverErrors={failed?.fieldErrors ?? {}}
       errorMessage={failed?.fieldErrors ? failed.message : undefined}
@@ -262,13 +271,18 @@ type SchoolFormWizardProps = {
   action: (formData: FormData) => void;
   pending: boolean;
   initialValues: SchoolFormValues;
+  initialClassCreates?: DeferredClassCreate[];
+  initialClassDeletes?: string[];
   /** The school as stored; edits only offer Save once the form differs from it. */
   savedValues?: SchoolFormValues;
   serverErrors: SchoolFormErrors;
   errorMessage?: string;
   cancelHref: string;
   onCancel?: () => void;
-  onDraftChange?: (form: HTMLFormElement) => void;
+  onDraftChange?: (
+    form: HTMLFormElement,
+    classDrafts?: { creates: DeferredClassCreate[]; deleteSectionIds: string[] },
+  ) => void;
 };
 
 function SchoolFormWizard({
@@ -282,6 +296,8 @@ function SchoolFormWizard({
   action,
   pending,
   initialValues,
+  initialClassCreates = [],
+  initialClassDeletes = [],
   savedValues,
   serverErrors,
   errorMessage,
@@ -296,15 +312,25 @@ function SchoolFormWizard({
   // Inputs are uncontrolled, so their defaults must stay fixed after mount;
   // the parent re-reads the saved draft on every render.
   const [values] = useState(initialValues);
-  const [offerings, setOfferings] = useState(initialValues.offerings ?? []);
-  const [customClasses, setCustomClasses] = useState(initialValues.customClasses ?? []);
   const [schoolType, setSchoolType] = useState<SchoolType>(
     initialValues.type === "CUSTOMIZED" ? "CUSTOMIZED" : "REGULAR",
   );
-  const [classDrafts, setClassDrafts] = useState<DeferredClassChanges>({
-    creates: [],
-    deleteSectionIds: [],
+  const [customClasses, setCustomClasses] = useState(initialValues.customClasses ?? []);
+  const [offerings, setOfferings] = useState(() => {
+    const initial = initialValues.offerings ?? [];
+    if (initialValues.type !== "CUSTOMIZED") return initial;
+    const programId =
+      schoolPrograms.find((row) => row.type === "CUSTOMIZED")?.programId ??
+      schoolPrograms[0]?.programId ??
+      CUSTOM_DRAFT_PROGRAM_ID;
+    return syncCustomSubjectOfferings(initial, initialValues.customClasses ?? [], programId);
   });
+  const [classDrafts, setClassDrafts] = useState<DeferredClassChanges>({
+    creates: initialClassCreates,
+    deleteSectionIds: initialClassDeletes,
+  });
+  const classDraftsRef = useRef(classDrafts);
+  classDraftsRef.current = classDrafts;
   const classDraftsDirty =
     classDrafts.creates.length > 0 || classDrafts.deleteSectionIds.length > 0;
   const typeCatalog = catalog.filter((program) => (program.type ?? "REGULAR") === schoolType);
@@ -421,8 +447,22 @@ function SchoolFormWizard({
   };
 
   const saveDraft = () => {
-    if (onDraftChange && formRef.current) onDraftChange(formRef.current);
+    if (onDraftChange && formRef.current) {
+      onDraftChange(formRef.current, {
+        creates: classDraftsRef.current.creates,
+        deleteSectionIds: classDraftsRef.current.deleteSectionIds,
+      });
+    }
   };
+
+  // Keep added classes in session draft so refresh does not wipe them.
+  useEffect(() => {
+    if (!onDraftChange || !formRef.current) return;
+    onDraftChange(formRef.current, {
+      creates: classDrafts.creates,
+      deleteSectionIds: classDrafts.deleteSectionIds,
+    });
+  }, [classDrafts, onDraftChange]);
 
   const updateDirty = () => {
     if (!formRef.current) return;
@@ -735,13 +775,108 @@ function SchoolFormWizard({
             </div>
 
             <div {...panel(1)}>
+              <FormSection title="Contact person">
+                <div className="grid gap-4 md:grid-cols-3">
+                  <Field data-invalid={invalid("contactName")}>
+                    <FieldLabel htmlFor="contactName">Full name *</FieldLabel>
+                    <Input {...fieldProps("contactName")} {...capitalized} autoComplete="name" />
+                    {error("contactName")}
+                  </Field>
+                  <Field data-invalid={invalid("contactEmail")}>
+                    <FieldLabel htmlFor="contactEmail">Email *</FieldLabel>
+                    <HintedInput
+                      {...fieldProps("contactEmail")}
+                      {...emailInput}
+                      error={error("contactEmail")}
+                      onInput={(event) => checkEmailTaken("contactEmail", event.currentTarget.value)}
+                      autoComplete="email"
+                      placeholder="name@example.com"
+                    />
+                  </Field>
+                  <Field data-invalid={invalid("contactPhone")}>
+                    <FieldLabel htmlFor="contactPhone">Phone *</FieldLabel>
+                    <HintedInput
+                      {...fieldProps("contactPhone")}
+                      {...phoneInput}
+                      error={error("contactPhone")}
+                      autoComplete="tel"
+                    />
+                  </Field>
+                </div>
+              </FormSection>
+
+              <FormSection title="Address">
+                <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
+                  <Field data-invalid={invalid("addressLine")} className="md:col-span-3">
+                    <FieldLabel htmlFor="addressLine">Street address *</FieldLabel>
+                    <Input
+                      {...fieldProps("addressLine")}
+                      {...capitalized}
+                      autoComplete="street-address"
+                    />
+                    {error("addressLine")}
+                  </Field>
+                  <Field data-invalid={invalid("city")}>
+                    <FieldLabel htmlFor="city">City *</FieldLabel>
+                    <Input {...fieldProps("city")} {...capitalized} autoComplete="address-level2" />
+                    {error("city")}
+                  </Field>
+                  <Field data-invalid={invalid("state")}>
+                    <FieldLabel htmlFor="state">State *</FieldLabel>
+                    <Select
+                      name="state"
+                      items={stateItems}
+                      defaultValue={values.state || null}
+                      onValueChange={saveDraftSoon}
+                    >
+                      <SelectTrigger id="state" className="w-full" aria-invalid={invalid("state")}>
+                        <SelectValue placeholder="Select a state" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {stateItems.map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            {item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {error("state")}
+                  </Field>
+                  <Field data-invalid={invalid("pincode")}>
+                    <FieldLabel htmlFor="pincode">Pincode *</FieldLabel>
+                    <Input
+                      {...fieldProps("pincode")}
+                      inputMode="numeric"
+                      maxLength={6}
+                      autoComplete="postal-code"
+                    />
+                    {error("pincode")}
+                  </Field>
+                </div>
+              </FormSection>
+
+              <FormSection title="Internal notes">
+                <Field data-invalid={invalid("notes")}>
+                  <Textarea
+                    {...fieldProps("notes")}
+                    rows={3}
+                    aria-label="Internal notes"
+                    placeholder="Optional. Not visible to the school."
+                  />
+                  {error("notes")}
+                </Field>
+              </FormSection>
+            </div>
+
+            <div {...panel(2)}>
               <FormSection title="Programs & classes">
                 <p className="-mt-1 text-sm text-neutral-500">
                   {schoolType === "CUSTOMIZED"
                     ? "Enter the program name and select classes. Subjects follow the regular catalog (1–5 Science, 6–10 Physics / Chemistry / Biology)."
                     : "Select a program, then check the classes this school offers."}
                   <span className="mt-1 block text-neutral-400">
-                    Classes & sections below follow these checks. Nothing is saved until you
+                    Classes & sections in the next step follow these checks. Nothing is saved until
+                    you
                     {isEdit ? " click Save" : " register the school"}.
                   </span>
                 </p>
@@ -750,10 +885,21 @@ function SchoolFormWizard({
                     name={values.customProgramName ?? ""}
                     classes={customClasses}
                     onClassesChange={(next) => {
+                      const programId =
+                        liveSchoolPrograms[0]?.programId ?? CUSTOM_DRAFT_PROGRAM_ID;
+                      const nextOfferings = syncCustomSubjectOfferings(
+                        offerings,
+                        next,
+                        programId,
+                      );
                       setCustomClasses(next);
+                      setOfferings(nextOfferings);
                       const baseline = savedValues ?? values;
                       setFormDirty(
-                        !sameFormValues({ ...readValues(), customClasses: next }, baseline),
+                        !sameFormValues(
+                          { ...readValues(), customClasses: next, offerings: nextOfferings },
+                          baseline,
+                        ),
                       );
                       saveDraftSoon();
                     }}
@@ -777,7 +923,9 @@ function SchoolFormWizard({
                   />
                 )}
               </FormSection>
+            </div>
 
+            <div {...panel(3)}>
               <AdminSchoolClassesPanel
                 schoolId={schoolId}
                 schoolPrograms={liveSchoolPrograms}
@@ -791,8 +939,22 @@ function SchoolFormWizard({
                 }
                 teachersHref={classesPanel?.teachersHref ?? "/admin/teachers"}
                 strength={classesPanel?.strength}
-                persist="deferred"
+                persist={schoolId ? "immediate" : "deferred"}
+                initialCreates={initialClassCreates}
+                initialDeletes={initialClassDeletes}
                 onDeferredChange={setClassDrafts}
+                onSubjectAccessChange={(programId, classLevel, subjects) => {
+                  const next = replaceClassSubjectOfferings(
+                    offerings,
+                    programId,
+                    classLevel,
+                    subjects,
+                  );
+                  setOfferings(next);
+                  const baseline = savedValues ?? values;
+                  setFormDirty(!sameFormValues({ ...readValues(), offerings: next }, baseline));
+                  saveDraftSoon();
+                }}
               />
               <input
                 type="hidden"
@@ -806,75 +968,9 @@ function SchoolFormWizard({
               />
             </div>
 
-            <div {...panel(2)}>
-              <FormSection title="Contact person">
-                <div className="grid gap-4 md:grid-cols-3">
-            <Field data-invalid={invalid("contactName")}>
-              <FieldLabel htmlFor="contactName">Full name *</FieldLabel>
-                    <Input {...fieldProps("contactName")} {...capitalized} autoComplete="name" />
-              {error("contactName")}
-            </Field>
-            <Field data-invalid={invalid("contactEmail")}>
-              <FieldLabel htmlFor="contactEmail">Email *</FieldLabel>
-                    <HintedInput
-                      {...fieldProps("contactEmail")}
-                      {...emailInput}
-                      error={error("contactEmail")}
-                      onInput={(event) => checkEmailTaken("contactEmail", event.currentTarget.value)}
-                      autoComplete="email"
-                      placeholder="name@example.com"
-                    />
-            </Field>
-            <Field data-invalid={invalid("contactPhone")}>
-              <FieldLabel htmlFor="contactPhone">Phone *</FieldLabel>
-                    <HintedInput {...fieldProps("contactPhone")} {...phoneInput} error={error("contactPhone")} autoComplete="tel" />
-            </Field>
-                </div>
-              </FormSection>
-
-              <FormSection title="Address">
-                <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-6">
-            <Field data-invalid={invalid("addressLine")} className="md:col-span-3">
-              <FieldLabel htmlFor="addressLine">Street address *</FieldLabel>
-                    <Input {...fieldProps("addressLine")} {...capitalized} autoComplete="street-address" />
-              {error("addressLine")}
-            </Field>
-            <Field data-invalid={invalid("city")}>
-              <FieldLabel htmlFor="city">City *</FieldLabel>
-                    <Input {...fieldProps("city")} {...capitalized} autoComplete="address-level2" />
-              {error("city")}
-            </Field>
-            <Field data-invalid={invalid("state")}>
-              <FieldLabel htmlFor="state">State *</FieldLabel>
-                    <Select name="state" items={stateItems} defaultValue={values.state || null} onValueChange={saveDraftSoon}>
-                <SelectTrigger id="state" className="w-full" aria-invalid={invalid("state")}>
-                  <SelectValue placeholder="Select a state" />
-                </SelectTrigger>
-                <SelectContent>
-                  {stateItems.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {error("state")}
-            </Field>
-            <Field data-invalid={invalid("pincode")}>
-              <FieldLabel htmlFor="pincode">Pincode *</FieldLabel>
-              <Input {...fieldProps("pincode")} inputMode="numeric" maxLength={6} autoComplete="postal-code" />
-              {error("pincode")}
-            </Field>
-                </div>
-              </FormSection>
-
-              <FormSection title="Internal notes">
-          <Field data-invalid={invalid("notes")}>
-                  <Textarea {...fieldProps("notes")} rows={3} aria-label="Internal notes" placeholder="Optional. Not visible to the school." />
-            {error("notes")}
-          </Field>
-              </FormSection>
-            </div>
+            {offerings.map((token) => (
+              <input key={token} type="hidden" name="offerings" value={token} />
+            ))}
           </div>
 
           {isEdit ? (
@@ -925,7 +1021,7 @@ function SchoolFormWizard({
               {isLast && (
                 <Button type="submit" data-intent="submit" disabled={pending}>
             {pending ? <Loader2 className="animate-spin" /> : <Save />}
-                  Register school
+                  Submit
           </Button>
               )}
             </div>

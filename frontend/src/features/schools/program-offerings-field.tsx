@@ -171,9 +171,6 @@ export function ProgramOfferingsField({
         <p className="text-sm text-neutral-500">Check one or more programs to assign classes.</p>
       )}
 
-      {value.map((token) => (
-        <input key={token} type="hidden" name="offerings" value={token} />
-      ))}
       {error && <FieldError>{error}</FieldError>}
     </div>
   );

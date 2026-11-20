@@ -4,8 +4,10 @@ import { revalidatePath } from "next/cache";
 import { unstable_rethrow } from "next/navigation";
 import { ADMIN_BASE_PATH, SCHOOL_BASE_PATH } from "@/constants/auth";
 import { ApiError } from "@/services/api-client";
+import * as schoolService from "@/services/schools";
 import * as sectionService from "@/services/sections";
 import { listSchoolClassTeacherSlots } from "@/services/teachers";
+import type { SchoolInput, Subject } from "@/types/school";
 import type { SectionInput } from "@/types/section";
 import type { ClassTeacherSlot } from "@/types/teacher";
 
@@ -14,79 +16,6 @@ function revalidateSections(schoolId?: string) {
   revalidatePath(SCHOOL_BASE_PATH, "layout");
   if (schoolId) {
     revalidatePath(`${ADMIN_BASE_PATH}/schools/${schoolId}`, "layout");
-  }
-}
-
-export async function createSectionAction(input: SectionInput) {
-  try {
-    const result = await sectionService.createSchoolSection(input);
-    revalidateSections();
-    return { ok: true as const, result };
-  } catch (error) {
-    unstable_rethrow(error);
-    if (error instanceof ApiError) {
-      return { ok: false as const, message: error.message };
-    }
-    return { ok: false as const, message: "Could not create class/section." };
-  }
-}
-
-export async function updateSectionAction(id: string, input: Partial<SectionInput>) {
-  try {
-    const section = await sectionService.updateSchoolSection(id, input);
-    revalidateSections();
-    return { ok: true as const, section };
-  } catch (error) {
-    unstable_rethrow(error);
-    if (error instanceof ApiError) {
-      return { ok: false as const, message: error.message };
-    }
-    return { ok: false as const, message: "Could not update section." };
-  }
-}
-
-export async function deleteSectionAction(id: string) {
-  try {
-    await sectionService.deleteSchoolSection(id);
-    revalidateSections();
-    return { ok: true as const };
-  } catch (error) {
-    unstable_rethrow(error);
-    if (error instanceof ApiError) {
-      return { ok: false as const, message: error.message };
-    }
-    return { ok: false as const, message: "Could not delete section." };
-  }
-}
-
-export async function updateWholeClassAction(
-  id: string,
-  input: { programId?: string; studentCount?: number },
-) {
-  try {
-    const row = await sectionService.updateSchoolWholeClass(id, input);
-    revalidateSections();
-    return { ok: true as const, class: row };
-  } catch (error) {
-    unstable_rethrow(error);
-    if (error instanceof ApiError) {
-      return { ok: false as const, message: error.message };
-    }
-    return { ok: false as const, message: "Could not update class." };
-  }
-}
-
-export async function deleteWholeClassAction(id: string) {
-  try {
-    await sectionService.deleteSchoolWholeClass(id);
-    revalidateSections();
-    return { ok: true as const };
-  } catch (error) {
-    unstable_rethrow(error);
-    if (error instanceof ApiError) {
-      return { ok: false as const, message: error.message };
-    }
-    return { ok: false as const, message: "Could not delete class." };
   }
 }
 
@@ -122,6 +51,74 @@ export async function createAdminSectionAction(schoolId: string, input: SectionI
       return { ok: false as const, message: error.message };
     }
     return { ok: false as const, message: "Could not create class/section." };
+  }
+}
+
+/** Set subject access for one program + class on an existing school. */
+export async function updateAdminClassSubjectsAction(
+  schoolId: string,
+  input: { programId: string; classLevel: number; subjects: Subject[] },
+) {
+  try {
+    const school = await schoolService.getSchool(schoolId);
+    if (!school) return { ok: false as const, message: "School not found." };
+    if (input.subjects.length === 0) {
+      return { ok: false as const, message: "Select at least one subject." };
+    }
+
+    const subjects = [...new Set(input.subjects)];
+
+    if (school.type === "CUSTOMIZED") {
+      const custom =
+        school.schoolPrograms.find((row) => row.type === "CUSTOMIZED") ??
+        school.schoolPrograms[0];
+      if (!custom) return { ok: false as const, message: "No custom program on this school." };
+
+      const byClass = new Map(
+        custom.classes.map((row) => [row.classLevel, row.subjects] as const),
+      );
+      byClass.set(input.classLevel, subjects);
+      const classes = [...byClass.entries()]
+        .map(([classLevel, nextSubjects]) => ({ classLevel, subjects: nextSubjects }))
+        .sort((a, b) => a.classLevel - b.classLevel);
+
+      await schoolService.updateSchool(schoolId, {
+        customProgram: { name: custom.programName, classes },
+      } as SchoolInput);
+    } else {
+      const programs: SchoolInput["programs"] = school.schoolPrograms.map((program) => {
+        const byClass = new Map(
+          program.classes.map((row) => [row.classLevel, row.subjects] as const),
+        );
+        if (program.programId === input.programId) {
+          byClass.set(input.classLevel, subjects);
+        }
+        return {
+          programId: program.programId,
+          classes: [...byClass.entries()]
+            .map(([classLevel, nextSubjects]) => ({
+              classLevel,
+              subjects: nextSubjects,
+            }))
+            .sort((a, b) => a.classLevel - b.classLevel),
+        };
+      });
+
+      if (!programs.some((row) => row.programId === input.programId)) {
+        return { ok: false as const, message: "Program is not enrolled for this school." };
+      }
+
+      await schoolService.updateSchool(schoolId, { programs } as SchoolInput);
+    }
+
+    revalidateSections(schoolId);
+    return { ok: true as const };
+  } catch (error) {
+    unstable_rethrow(error);
+    if (error instanceof ApiError) {
+      return { ok: false as const, message: error.message };
+    }
+    return { ok: false as const, message: "Could not update subject access." };
   }
 }
 

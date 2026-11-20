@@ -4,6 +4,7 @@ import {
   SCHOOL_STATUSES,
   SCHOOL_TYPES,
   type SchoolInput,
+  type Subject,
 } from "@/types/school";
 import { SCHOOLS_PAGE_SIZE, subjectsForClassLevel } from "./constants";
 import { offeringsToPrograms, parseOfferingToken } from "./offerings";
@@ -107,20 +108,29 @@ const schoolFields = z.object({
 function withCustomProgramRules<T extends z.ZodType>(schema: T) {
   return schema.superRefine((value, ctx) => {
     const data = value as z.output<typeof schoolFields>;
-    if (data.type !== "CUSTOMIZED") return;
-
-    if (!data.customProgramName || data.customProgramName.trim().length < 2) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["customProgramName"],
-        message: "Enter the program name.",
-      });
+    if (data.type === "CUSTOMIZED") {
+      if (!data.customProgramName || data.customProgramName.trim().length < 2) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["customProgramName"],
+          message: "Enter the program name.",
+        });
+      }
+      if (!data.customClasses?.length) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["customClasses"],
+          message: "Select at least one class.",
+        });
+      }
+      return;
     }
-    if (!data.customClasses?.length) {
+
+    if (!data.offerings?.length) {
       ctx.addIssue({
         code: "custom",
-        path: ["customClasses"],
-        message: "Select at least one class.",
+        path: ["offerings"],
+        message: "Select at least one program and class.",
       });
     }
   });
@@ -148,11 +158,24 @@ export function toSchoolInput({
   ...input
 }: z.output<typeof schoolFields>): SchoolInput {
   if (input.type === "CUSTOMIZED") {
+    const subjectsByClass = new Map<number, Subject[]>();
+    for (const token of offerings) {
+      const parsed = parseOfferingToken(token);
+      if (!parsed) continue;
+      const list = subjectsByClass.get(parsed.classLevel) ?? [];
+      list.push(parsed.subject);
+      subjectsByClass.set(parsed.classLevel, list);
+    }
     const classes = [...new Set(customClasses)]
       .map(Number)
       .filter((level) => Number.isInteger(level) && level >= 1 && level <= 12)
       .sort((a, b) => a - b)
-      .map((classLevel) => ({ classLevel, subjects: subjectsForClassLevel(classLevel) }));
+      .map((classLevel) => ({
+        classLevel,
+        subjects: subjectsByClass.get(classLevel)?.length
+          ? subjectsByClass.get(classLevel)!
+          : subjectsForClassLevel(classLevel),
+      }));
     const payload = {
       ...input,
       programs: [] as SchoolInput["programs"],
@@ -214,7 +237,7 @@ export function sameFormValues(a: SchoolFormValues, b: SchoolFormValues): boolea
   );
 }
 
-/** New-school passwords are never echoed back or stored in drafts. */
+/** Strip password when echoing create errors (server responses); drafts may still keep it. */
 export function withoutPasswords({ password, ...values }: SchoolFormValues): SchoolFormValues {
   void password;
   return values;

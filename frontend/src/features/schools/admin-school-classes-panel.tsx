@@ -25,9 +25,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { subjectLabel, subjectsForClassLevel } from "@/features/schools/constants";
 import {
   createAdminSectionAction,
   deleteAdminSectionAction,
+  updateAdminClassSubjectsAction,
   updateAdminSectionAction,
   updateAdminWholeClassAction,
 } from "@/features/schools/section-actions";
@@ -35,6 +37,7 @@ import { capitalizeWords } from "@/features/schools/schema";
 import { STUDENTS_PATH } from "@/features/students/school-roster";
 import { formatNumber } from "@/utils/format";
 import type { SchoolProgramOffering } from "@/types/program";
+import type { Subject } from "@/types/school";
 import type { ClassOrganization, SectionInput } from "@/types/section";
 import type { ClassTeacherSlot } from "@/types/teacher";
 
@@ -49,15 +52,23 @@ type ClassRow = {
   id: string;
   classLevel: number;
   section: string;
+  programId: string;
   programName: string;
+  subjects: Subject[];
   seats: number;
   teacherId: string | null;
   teacherName: string | null;
   draft?: boolean;
 };
 
+export type DeferredClassCreate = SectionInput & {
+  draftId: string;
+  programName: string;
+  subjects: Subject[];
+};
+
 export type DeferredClassChanges = {
-  creates: SectionInput[];
+  creates: DeferredClassCreate[];
   deleteSectionIds: string[];
 };
 
@@ -72,7 +83,16 @@ type AdminSchoolClassesPanelProps = {
   strength?: { studentStrength: number | null; used: number };
   /** When deferred, Add/Delete stay local until school Save. Seat edits on saved rows save immediately. */
   persist?: "immediate" | "deferred";
+  /** Restored class drafts after refresh (registration form). */
+  initialCreates?: DeferredClassCreate[];
+  initialDeletes?: string[];
   onDeferredChange?: (changes: DeferredClassChanges) => void;
+  /** Called when Add class sets subject access for a program + class. */
+  onSubjectAccessChange?: (
+    programId: string,
+    classLevel: number,
+    subjects: Subject[],
+  ) => void;
 };
 
 export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
@@ -84,7 +104,10 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
   teachersHref,
   strength,
   persist = "immediate",
+  initialCreates = [],
+  initialDeletes = [],
   onDeferredChange,
+  onSubjectAccessChange,
 }: AdminSchoolClassesPanelProps) {
   const deferred = persist === "deferred";
   const router = useRouter();
@@ -94,19 +117,19 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
   const [name, setName] = useState("");
   const [programId, setProgramId] = useState("");
   const [studentCount, setStudentCount] = useState("30");
+  const [selectedSubjects, setSelectedSubjects] = useState<Subject[]>([]);
   const [errors, setErrors] = useState<
-    Partial<Record<"classLevel" | "programId" | "studentCount" | "name", string>>
+    Partial<Record<"classLevel" | "programId" | "studentCount" | "name" | "subjects", string>>
   >({});
   const [editing, setEditing] = useState<ClassRow | null>(null);
   const [editSeats, setEditSeats] = useState("");
   const [editName, setEditName] = useState("");
-  const [editErrors, setEditErrors] = useState<Partial<Record<"studentCount" | "name", string>>>(
-    {},
-  );
-  const [draftCreates, setDraftCreates] = useState<
-    Array<SectionInput & { draftId: string; programName: string }>
-  >([]);
-  const [draftDeletes, setDraftDeletes] = useState<string[]>([]);
+  const [editSubjects, setEditSubjects] = useState<Subject[]>([]);
+  const [editErrors, setEditErrors] = useState<
+    Partial<Record<"studentCount" | "name" | "subjects", string>>
+  >({});
+  const [draftCreates, setDraftCreates] = useState<DeferredClassCreate[]>(initialCreates);
+  const [draftDeletes, setDraftDeletes] = useState<string[]>(initialDeletes);
 
   const onDeferredChangeRef = useRef(onDeferredChange);
   onDeferredChangeRef.current = onDeferredChange;
@@ -114,12 +137,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
   useEffect(() => {
     if (!deferred) return;
     onDeferredChangeRef.current?.({
-      creates: draftCreates.map(({ classLevel, name, programId, studentCount }) => ({
-        classLevel,
-        name,
-        programId,
-        studentCount,
-      })),
+      creates: draftCreates,
       deleteSectionIds: draftDeletes,
     });
   }, [deferred, draftCreates, draftDeletes]);
@@ -134,6 +152,20 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     return map;
   }, [classTeacherSlots]);
 
+  function accessSubjects(programId: string, classLevel: number, fallback: Subject[] = []): Subject[] {
+    const fromOffering =
+      schoolPrograms
+        .find((row) => row.programId === programId)
+        ?.classes.find((row) => row.classLevel === classLevel)?.subjects ?? [];
+    return fromOffering.length > 0 ? fromOffering : fallback;
+  }
+
+  function catalogSubjectsFor(programId: string, classLevel: number): Subject[] {
+    const program = schoolPrograms.find((row) => row.programId === programId);
+    if (program?.catalogSubjects.length) return program.catalogSubjects;
+    return subjectsForClassLevel(classLevel) as Subject[];
+  }
+
   const [query, setQuery] = useState("");
 
   const classRows: ClassRow[] = useMemo(() => {
@@ -146,7 +178,9 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
           id: row.id,
           classLevel: row.classLevel,
           section: "A",
+          programId: row.programId,
           programName: row.programName,
+          subjects: accessSubjects(row.programId, row.classLevel),
           seats: row.studentCount,
           teacherId: ct?.teacherId ?? null,
           teacherName: ct?.teacherName ?? null,
@@ -160,7 +194,9 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
           id: section.id,
           classLevel: section.classLevel,
           section: section.name,
+          programId: section.programId,
           programName: section.programName,
+          subjects: accessSubjects(section.programId, section.classLevel),
           seats: section.studentCount,
           teacherId: section.classTeacher?.teacherId ?? null,
           teacherName: section.classTeacher?.name ?? null,
@@ -171,7 +207,9 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
         id: row.draftId,
         classLevel: row.classLevel,
         section: row.name?.trim() || "A",
+        programId: row.programId,
         programName: row.programName,
+        subjects: accessSubjects(row.programId, row.classLevel, row.subjects),
         seats: row.studentCount,
         teacherId: null,
         teacherName: null,
@@ -184,7 +222,9 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
         a.section.localeCompare(b.section) ||
         a.programName.localeCompare(b.programName),
     );
-  }, [organization, classCtByKey, draftCreates, draftDeletes]);
+    // accessSubjects closes over schoolPrograms
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [organization, classCtByKey, draftCreates, draftDeletes, schoolPrograms]);
 
   const filteredRows = useMemo(
     () =>
@@ -196,10 +236,17 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
           row.programName,
           row.seats,
           row.teacherName,
+          ...row.subjects.map((subject) => subjectLabel(subject)),
         ),
       ),
     [classRows, query],
   );
+
+  const editAvailableSubjects = useMemo(() => {
+    if (!editing) return [];
+    return catalogSubjectsFor(editing.programId, editing.classLevel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, schoolPrograms]);
 
   const classOptions = useMemo(() => {
     const levels = new Set<number>();
@@ -217,6 +264,20 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     );
   }, [schoolPrograms, classLevel]);
 
+  const selectedProgram = useMemo(
+    () => programsForClass.find((row) => row.programId === programId) ?? null,
+    [programsForClass, programId],
+  );
+
+  const availableSubjects = useMemo((): Subject[] => {
+    if (!selectedProgram || !classLevel) return [];
+    const level = Number(classLevel);
+    if (selectedProgram.catalogSubjects.length) return selectedProgram.catalogSubjects;
+    const fromClass = selectedProgram.classes.find((row) => row.classLevel === level)?.subjects;
+    if (fromClass?.length) return fromClass;
+    return subjectsForClassLevel(level) as Subject[];
+  }, [selectedProgram, classLevel]);
+
   // Only clear picks when Programs & classes checks remove that option — not on
   // every array identity change or when a Select popup closes with null.
   const classOptionsKey = classOptions.join(",");
@@ -225,6 +286,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     if (classLevel && !classOptions.includes(Number(classLevel))) {
       setClassLevel("");
       setProgramId("");
+      setSelectedSubjects([]);
       return;
     }
     if (
@@ -232,9 +294,16 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
       !programsForClass.some((row) => row.programId === programId)
     ) {
       setProgramId("");
+      setSelectedSubjects([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional stable keys
   }, [classLevel, classOptionsKey, programId, programsForClassKey]);
+
+  // Reset subject picks when program or class changes — leave unchecked until chosen.
+  useEffect(() => {
+    setSelectedSubjects([]);
+    setErrors((prev) => ({ ...prev, subjects: undefined }));
+  }, [programId, classLevel]);
 
   function classStudentsHref(level: number, section: string) {
     if (!schoolId) return teachersHref;
@@ -250,7 +319,16 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     setName("");
     setProgramId("");
     setStudentCount("30");
+    setSelectedSubjects([]);
     setErrors({});
+  }
+
+  function toggleSubject(subject: Subject, checked: boolean) {
+    setSelectedSubjects((prev) => {
+      if (checked) return prev.includes(subject) ? prev : [...prev, subject];
+      return prev.filter((value) => value !== subject);
+    });
+    setErrors((prev) => ({ ...prev, subjects: undefined }));
   }
 
   function create() {
@@ -272,6 +350,9 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
       const over = strengthError(count);
       if (over) nextErrors.studentCount = over;
     }
+    if (programId && selectedSubjects.length === 0) {
+      nextErrors.subjects = "Select at least one subject";
+    }
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors);
       return;
@@ -281,6 +362,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     const sectionName = name.trim() || "A";
     const programName =
       programsForClass.find((row) => row.programId === programId)?.programName ?? "";
+    const subjects = [...selectedSubjects];
 
     if (deferred) {
       const duplicate = classRows.some(
@@ -293,6 +375,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
         setErrors({ name: `Section ${sectionName} already listed for class ${level}` });
         return;
       }
+      onSubjectAccessChange?.(programId, level, subjects);
       setDraftCreates((prev) => [
         ...prev,
         {
@@ -302,9 +385,10 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
           programId,
           programName,
           studentCount: count,
+          subjects,
         },
       ]);
-      toast.success(`Class ${level}-${sectionName} added — save the school to keep it`);
+      toast.success(`Class ${level}-${sectionName} added`);
       setCreating(false);
       resetCreate();
       return;
@@ -313,6 +397,16 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     if (!schoolId) return;
 
     startTransition(async () => {
+      const subjectResult = await updateAdminClassSubjectsAction(schoolId, {
+        programId,
+        classLevel: level,
+        subjects,
+      });
+      if (!subjectResult.ok) {
+        setErrors({ subjects: subjectResult.message });
+        return;
+      }
+
       const result = await createAdminSectionAction(schoolId, {
         classLevel: level,
         name: sectionName,
@@ -340,7 +434,16 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     setEditing(row);
     setEditSeats(String(row.seats));
     setEditName(row.section);
+    setEditSubjects([...row.subjects]);
     setEditErrors({});
+  }
+
+  function toggleEditSubject(subject: Subject, checked: boolean) {
+    setEditSubjects((prev) => {
+      if (checked) return prev.includes(subject) ? prev : [...prev, subject];
+      return prev.filter((value) => value !== subject);
+    });
+    setEditErrors((prev) => ({ ...prev, subjects: undefined }));
   }
 
   function seatsRemaining(excludeCurrentSeats = 0) {
@@ -405,6 +508,9 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     if (editing.kind === "section" && !editName.trim()) {
       nextErrors.name = "Section name is required";
     }
+    if (editSubjects.length === 0) {
+      nextErrors.subjects = "Select at least one subject";
+    }
     if (Object.keys(nextErrors).length > 0) {
       setEditErrors(nextErrors);
       return;
@@ -412,8 +518,10 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     setEditErrors({});
 
     const sectionName = editName.trim().toUpperCase();
+    const subjects = [...editSubjects];
 
     if (deferred && (editing.draft || editing.id.startsWith("draft-"))) {
+      onSubjectAccessChange?.(editing.programId, editing.classLevel, subjects);
       setDraftCreates((prev) =>
         prev.map((item) =>
           item.draftId === editing.id
@@ -421,21 +529,35 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                 ...item,
                 studentCount: count,
                 name: editing.kind === "section" ? sectionName : item.name,
+                subjects,
               }
             : item,
         ),
       );
-      toast.success("Seats updated — save the school to keep this change");
+      toast.success("Class updated");
       setEditing(null);
       return;
     }
 
-    // Existing class/section: save seat counts immediately (within school strength).
     if (!schoolId) {
+      onSubjectAccessChange?.(editing.programId, editing.classLevel, subjects);
       toast.error("Save the school first, then edit this class’s seats");
       return;
     }
-    persistSeatEdit(editing, count, sectionName);
+
+    startTransition(async () => {
+      const subjectResult = await updateAdminClassSubjectsAction(schoolId, {
+        programId: editing.programId,
+        classLevel: editing.classLevel,
+        subjects,
+      });
+      if (!subjectResult.ok) {
+        setEditErrors({ subjects: subjectResult.message });
+        return;
+      }
+      onSubjectAccessChange?.(editing.programId, editing.classLevel, subjects);
+      persistSeatEdit(editing, count, sectionName);
+    });
   }
 
   function removeSection(row: ClassRow) {
@@ -448,7 +570,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
       } else {
         setDraftDeletes((prev) => (prev.includes(row.id) ? prev : [...prev, row.id]));
       }
-      toast.success("Section removed — save the school to keep this change");
+      toast.success("Section removed");
       return;
     }
 
@@ -517,13 +639,6 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
         </div>
       </div>
 
-      {deferred ? (
-        <p className="border-b border-brand-100 bg-neutral-50/80 px-4 py-2 text-xs text-neutral-500">
-          Seat counts save right away (within school strength). New classes are kept when you save the
-          school.
-        </p>
-      ) : null}
-
       <AlertDialog
         open={editing != null}
         onOpenChange={(open) => {
@@ -533,9 +648,9 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
           }
         }}
       >
-        <AlertDialogContent className="sm:max-w-md">
+        <AlertDialogContent className="sm:max-w-lg">
           <AlertDialogHeader>
-            <AlertDialogTitle>Edit seats</AlertDialogTitle>
+            <AlertDialogTitle>Edit class</AlertDialogTitle>
             <AlertDialogDescription>
               {editing
                 ? `Class ${editing.classLevel}-${editing.kind === "section" ? editName || editing.section : "A"} · ${capitalizeWords(editing.programName)}`
@@ -571,6 +686,39 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
               />
               {editErrors.studentCount ? <FieldError>{editErrors.studentCount}</FieldError> : null}
             </Field>
+            <Field data-invalid={editErrors.subjects ? true : undefined}>
+              <FieldLabel>Subject access</FieldLabel>
+              {editAvailableSubjects.length === 0 ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                  This program has no subjects configured.
+                </p>
+              ) : (
+                <ul className="grid gap-2 rounded-lg border border-neutral-200 bg-neutral-50/80 px-3 py-2.5 sm:grid-cols-2">
+                  {editAvailableSubjects.map((subject) => {
+                    const id = `edit-class-subject-${subject}`;
+                    return (
+                      <li key={subject}>
+                        <label htmlFor={id} className="flex cursor-pointer items-center gap-2.5">
+                          <input
+                            id={id}
+                            type="checkbox"
+                            className="size-3.5 rounded border-neutral-300 accent-brand-800"
+                            checked={editSubjects.includes(subject)}
+                            onChange={(event) =>
+                              toggleEditSubject(subject, event.target.checked)
+                            }
+                          />
+                          <span className="text-sm font-medium text-neutral-800">
+                            {subjectLabel(subject)}
+                          </span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {editErrors.subjects ? <FieldError>{editErrors.subjects}</FieldError> : null}
+            </Field>
           </div>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
@@ -591,13 +739,13 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
           }
         }}
       >
-        <AlertDialogContent className="sm:max-w-md">
+        <AlertDialogContent className="sm:max-w-lg">
           <AlertDialogHeader>
             <AlertDialogTitle>Add class</AlertDialogTitle>
             <AlertDialogDescription>
               {classOptions.length === 0
-                ? "Select programs and classes above first. Options follow those checks."
-                : "Pick class, program, and seats. Section defaults to A if left blank."}
+                ? "Select programs and classes first. Options follow those checks."
+                : "Pick class, program, and seats. After choosing a program, select subjects to grant access. Section defaults to A if left blank."}
             </AlertDialogDescription>
           </AlertDialogHeader>
 
@@ -677,6 +825,45 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
               {errors.programId ? <FieldError>{errors.programId}</FieldError> : null}
             </Field>
 
+            {programId ? (
+              <Field data-invalid={errors.subjects ? true : undefined}>
+                <FieldLabel>Subject access</FieldLabel>
+                {availableSubjects.length === 0 ? (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    This program has no subjects configured.
+                  </p>
+                ) : (
+                  <ul className="grid gap-2 rounded-lg border border-neutral-200 bg-neutral-50/80 px-3 py-2.5 sm:grid-cols-2">
+                    {availableSubjects.map((subject) => {
+                      const id = `add-class-subject-${subject}`;
+                      return (
+                        <li key={subject}>
+                          <label
+                            htmlFor={id}
+                            className="flex cursor-pointer items-center gap-2.5"
+                          >
+                            <input
+                              id={id}
+                              type="checkbox"
+                              className="size-3.5 rounded border-neutral-300 accent-brand-800"
+                              checked={selectedSubjects.includes(subject)}
+                              onChange={(event) =>
+                                toggleSubject(subject, event.target.checked)
+                              }
+                            />
+                            <span className="text-sm font-medium text-neutral-800">
+                              {subjectLabel(subject)}
+                            </span>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+                {errors.subjects ? <FieldError>{errors.subjects}</FieldError> : null}
+              </Field>
+            ) : null}
+
             <Field data-invalid={errors.studentCount ? true : undefined}>
               <FieldLabel>Seats</FieldLabel>
               <Input
@@ -719,12 +906,13 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
           {filteredRows.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-neutral-500">No matching classes.</p>
           ) : (
-          <table className="w-full min-w-[640px] text-left text-sm">
+          <table className="w-full min-w-[780px] text-left text-sm">
             <thead className="border-b border-brand-100 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">
               <tr>
                 <th className="px-4 py-2.5">Class</th>
                 <th className="px-4 py-2.5">Section</th>
                 <th className="px-4 py-2.5">Program</th>
+                <th className="px-4 py-2.5">Subjects</th>
                 <th className="px-4 py-2.5 text-right">Seats</th>
                 <th className="px-4 py-2.5">Students</th>
                 <th className="px-4 py-2.5">Class teacher</th>
@@ -744,20 +932,24 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                   >
                     <td className="px-4 py-3 font-semibold text-neutral-950">
                       Class {row.classLevel}
-                      {row.draft ? (
-                        <span className="ml-2 text-[10px] font-medium tracking-wide text-amber-700 uppercase">
-                          Unsaved
-                        </span>
-                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-neutral-700">{row.section}</td>
                     <td className="px-4 py-3 text-neutral-700">
                       {capitalizeWords(row.programName)}
                     </td>
+                    <td className="px-4 py-3 text-neutral-700">
+                      {row.subjects.length > 0 ? (
+                        <span className="break-words">
+                          {row.subjects.map((subject) => subjectLabel(subject)).join(", ")}
+                        </span>
+                      ) : (
+                        <span className="text-neutral-400">{EMPTY}</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right font-medium text-neutral-900 tabular-nums">
                       <button
                         type="button"
-                        title="Edit seats"
+                        title="Edit class"
                         className="rounded-md px-1.5 py-0.5 hover:bg-brand-50 hover:text-brand-900"
                         onClick={() => openEdit(row)}
                       >
@@ -794,7 +986,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                       <div className="inline-flex items-center justify-end gap-0.5">
                         <button
                           type="button"
-                          title="Edit seats"
+                          title="Edit class"
                           disabled={pending}
                           className="inline-flex size-8 items-center justify-center rounded-md text-neutral-500 hover:bg-brand-50 hover:text-brand-800 disabled:opacity-40"
                           onClick={() => openEdit(row)}
