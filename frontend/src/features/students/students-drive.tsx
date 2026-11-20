@@ -33,6 +33,42 @@ function classHref(schoolId: string, classLevel: number) {
   })}`;
 }
 
+/** Planned seats from class/section setup — not the same as roster enrollment. */
+function seatsForClass(
+  organization: ClassOrganization | null | undefined,
+  classLevel: number,
+  section?: string,
+) {
+  if (!organization) return 0;
+  if (section) {
+    return organization.sections
+      .filter(
+        (row) =>
+          row.classLevel === classLevel &&
+          displaySectionName(row.name).toUpperCase() === section.toUpperCase(),
+      )
+      .reduce((sum, row) => sum + row.studentCount, 0);
+  }
+  const sectionSeats = organization.sections
+    .filter((row) => row.classLevel === classLevel)
+    .reduce((sum, row) => sum + row.studentCount, 0);
+  const wholeSeats = organization.wholeClasses
+    .filter((row) => row.classLevel === classLevel)
+    .reduce((sum, row) => sum + row.studentCount, 0);
+  return sectionSeats + wholeSeats;
+}
+
+function emptyRosterMessage(section: string | undefined, seats: number) {
+  if (seats > 0) {
+    return section
+      ? `Class section has ${seats} seats, but no students added to the roster yet.`
+      : `Class has ${seats} seats, but no students added to the roster yet.`;
+  }
+  return section
+    ? "No students in this class section yet."
+    : "No students in this class yet.";
+}
+
 type ClassFolder = {
   key: string;
   classLevel: number;
@@ -129,15 +165,14 @@ export function StudentsDrive({
   if (schoolId && school && classLevel != null) {
     // Page already applies studentsForSchoolOfferings — one roster in, class slice out.
     const roster = studentsInClass(students, classLevel, section);
+    const seats = seatsForClass(organization, classLevel, section);
 
     return (
       <StudentsTable
         students={roster}
         mode="admin"
         subjects={subjectsForClassLevel(classLevel)}
-        emptyMessage={
-          section ? "No students in this class section yet." : "No students in this class yet."
-        }
+        emptyMessage={emptyRosterMessage(section, seats)}
       />
     );
   }

@@ -2,6 +2,7 @@
 
 import { DriveBrowser, type DriveCrumb, type DriveItem } from "@/features/documents/drive-browser";
 import { programLabel } from "@/features/schools/constants";
+import { displaySectionName } from "@/features/schools/section-label";
 import { subjectsForSchoolClass } from "@/features/students/report-subjects";
 import { studentsInClass } from "@/features/students/school-roster";
 import { StudentsTable } from "@/features/students/students-table";
@@ -31,6 +32,41 @@ type ClassFolder = {
 
 function classHref(classLevel: number) {
   return `${SCHOOL_STUDENTS_PATH}?${new URLSearchParams({ class: String(classLevel) })}`;
+}
+
+function seatsForClass(
+  organization: ClassOrganization | null | undefined,
+  classLevel: number,
+  section?: string,
+) {
+  if (!organization) return 0;
+  if (section) {
+    return organization.sections
+      .filter(
+        (row) =>
+          row.classLevel === classLevel &&
+          displaySectionName(row.name).toUpperCase() === section.toUpperCase(),
+      )
+      .reduce((sum, row) => sum + row.studentCount, 0);
+  }
+  const sectionSeats = organization.sections
+    .filter((row) => row.classLevel === classLevel)
+    .reduce((sum, row) => sum + row.studentCount, 0);
+  const wholeSeats = organization.wholeClasses
+    .filter((row) => row.classLevel === classLevel)
+    .reduce((sum, row) => sum + row.studentCount, 0);
+  return sectionSeats + wholeSeats;
+}
+
+function emptyRosterMessage(section: string | undefined, seats: number) {
+  if (seats > 0) {
+    return section
+      ? `Class section has ${seats} seats, but no students added to the roster yet.`
+      : `Class has ${seats} seats, but no students added to the roster yet.`;
+  }
+  return section
+    ? "No students in this class section yet."
+    : "No students in this class yet.";
 }
 
 function classFoldersForSchool(
@@ -101,17 +137,14 @@ export function SchoolStudentsDrive({
 }: SchoolStudentsDriveProps) {
   if (classLevel != null) {
     const roster = studentsInClass(students, classLevel, section);
+    const seats = seatsForClass(organization, classLevel, section);
     return (
       <StudentsTable
         students={roster}
         mode="school"
         baseHref={SCHOOL_STUDENTS_PATH}
         subjects={subjectsForSchoolClass(schoolPrograms, classLevel, roster[0]?.programId)}
-        emptyMessage={
-          section
-            ? "No students in this class section yet."
-            : "No students in this class yet."
-        }
+        emptyMessage={emptyRosterMessage(section, seats)}
       />
     );
   }

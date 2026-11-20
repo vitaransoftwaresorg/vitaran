@@ -1,4 +1,5 @@
 import { fileResponse } from "@/features/documents/file-response";
+import { emptyReportMessage } from "@/features/students/report-messages";
 import { fetchTeacherStudentsReportCards, type ReportCardKind } from "@/services/students";
 
 export async function GET(request: Request) {
@@ -12,6 +13,6 @@ export async function GET(request: Request) {
   return fileResponse(
     request,
     await fetchTeacherStudentsReportCards(ids, kind, subject, test),
-    "No report cards yet",
+    emptyReportMessage(kind, { subject, test }),
   );
 }

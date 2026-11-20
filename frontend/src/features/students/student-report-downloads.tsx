@@ -1,6 +1,8 @@
 "use client";
 
-import { ChevronDown, Download } from "lucide-react";
+import { useTransition } from "react";
+import { ChevronDown, Download, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,6 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import { downloadFileName } from "@/utils/download-file-name";
 import { REPORT_TEST_NUMBERS, type PerformancePortal, type ReportCardKind } from "./portal";
+import { downloadReportPdf, emptyReportMessage } from "./report-download";
 import { studentReportCardHref } from "./report-card-hrefs";
 
 const titleCase = (label: string) =>
@@ -22,7 +25,7 @@ const MENU_TRIGGER =
   "inline-flex h-8 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-semibold whitespace-nowrap transition-colors [&_svg]:size-3.5";
 
 const LINK_CLASS =
-  "inline-flex h-7 items-center gap-0.5 rounded-md px-1.5 text-[10px] font-semibold whitespace-nowrap text-violet-800 hover:bg-violet-50";
+  "inline-flex h-7 items-center gap-0.5 rounded-md px-1.5 text-[10px] font-semibold whitespace-nowrap text-violet-800 hover:bg-violet-50 disabled:opacity-60";
 
 function reportFileName(
   kind: ReportCardKind,
@@ -65,46 +68,62 @@ export function StudentReportDownloads({
   subjects?: string[];
   triggerClassName?: string;
 }) {
+  const [pending, startTransition] = useTransition();
   const meta = [schoolName, programName, classLevel != null ? `Class-${classLevel}` : null, studentName, rollNo];
   const uniqueSubjects = [...new Set(subjects.map((label) => label.trim().toUpperCase()).filter(Boolean))];
 
-  function link(kind: ReportCardKind, options?: { subject?: string; test?: number }) {
-    return {
-      href: studentReportCardHref(portal, studentId, kind, { download: true, ...options }),
-      download: reportFileName(kind, meta, options),
-    };
+  function download(kind: ReportCardKind, options?: { subject?: string; test?: number }) {
+    const href = studentReportCardHref(portal, studentId, kind, { download: true, ...options });
+    const fileName = reportFileName(kind, meta, options);
+    startTransition(async () => {
+      try {
+        await downloadReportPdf(href, fileName);
+      } catch {
+        toast.error(emptyReportMessage(kind, options));
+      }
+    });
   }
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
+        disabled={pending}
         className={cn(
           MENU_TRIGGER,
-          "border border-violet-200 bg-white text-violet-900 hover:bg-violet-50",
+          "border border-violet-200 bg-white text-violet-900 hover:bg-violet-50 disabled:opacity-60",
           triggerClassName,
         )}
       >
-        <Download />
+        {pending ? <Loader2 className="animate-spin" /> : <Download />}
         Reports
         <ChevronDown className="opacity-70" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-52">
         <DropdownMenuGroup>
           <DropdownMenuLabel>This student</DropdownMenuLabel>
-          <DropdownMenuItem render={<a {...link("year")} />} className="cursor-pointer">
+          <DropdownMenuItem
+            disabled={pending}
+            onClick={() => download("year")}
+            className="cursor-pointer"
+          >
             Year report
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
           <DropdownMenuLabel>Tests report</DropdownMenuLabel>
-          <DropdownMenuItem render={<a {...link("tests")} />} className="cursor-pointer">
+          <DropdownMenuItem
+            disabled={pending}
+            onClick={() => download("tests")}
+            className="cursor-pointer"
+          >
             All tests
           </DropdownMenuItem>
           {REPORT_TEST_NUMBERS.map((test) => (
             <DropdownMenuItem
               key={test}
-              render={<a {...link("tests", { test })} />}
+              disabled={pending}
+              onClick={() => download("tests", { test })}
               className="cursor-pointer"
             >
               Test {test}
@@ -114,13 +133,18 @@ export function StudentReportDownloads({
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
           <DropdownMenuLabel>Subjects report</DropdownMenuLabel>
-          <DropdownMenuItem render={<a {...link("subjects")} />} className="cursor-pointer">
+          <DropdownMenuItem
+            disabled={pending}
+            onClick={() => download("subjects")}
+            className="cursor-pointer"
+          >
             All subjects
           </DropdownMenuItem>
           {uniqueSubjects.map((subject) => (
             <DropdownMenuItem
               key={subject}
-              render={<a {...link("subjects", { subject })} />}
+              disabled={pending}
+              onClick={() => download("subjects", { subject })}
               className="cursor-pointer"
             >
               {titleCase(subject)}
@@ -152,24 +176,38 @@ export function StudentReportCardLinks({
   tests?: number[];
   className?: string;
 }) {
+  const [pending, startTransition] = useTransition();
   const meta = [schoolName, studentName, rollNo];
   const uniqueSubjects = [...new Set(subjects.map((label) => label.trim().toUpperCase()).filter(Boolean))];
   const uniqueTests = [...new Set(tests.filter((n) => Number.isInteger(n) && n >= 1 && n <= 18))].sort(
     (a, b) => a - b,
   );
 
+  function download(kind: ReportCardKind, options?: { subject?: string; test?: number }) {
+    const href = studentReportCardHref(portal, studentId, kind, { download: true, ...options });
+    const fileName = reportFileName(kind, meta, options);
+    startTransition(async () => {
+      try {
+        await downloadReportPdf(href, fileName);
+      } catch {
+        toast.error(emptyReportMessage(kind, options));
+      }
+    });
+  }
+
   return (
     <div className={cn("flex flex-wrap items-center gap-0.5", className)}>
-      <a
-        href={studentReportCardHref(portal, studentId, "year", { download: true })}
-        download={reportFileName("year", meta)}
+      <button
+        type="button"
         title="Year report"
+        disabled={pending}
+        onClick={() => download("year")}
         className={LINK_CLASS}
       >
         Year Report
-      </a>
+      </button>
       <DropdownMenu>
-        <DropdownMenuTrigger title="Tests report — All or one test" className={LINK_CLASS}>
+        <DropdownMenuTrigger title="Tests report — All or one test" disabled={pending} className={LINK_CLASS}>
           Tests Report
           <ChevronDown className="size-3 opacity-70" />
         </DropdownMenuTrigger>
@@ -177,12 +215,8 @@ export function StudentReportCardLinks({
           <DropdownMenuGroup>
             <DropdownMenuLabel>Tests report</DropdownMenuLabel>
             <DropdownMenuItem
-              render={
-                <a
-                  href={studentReportCardHref(portal, studentId, "tests", { download: true })}
-                  download={reportFileName("tests", meta)}
-                />
-              }
+              disabled={pending}
+              onClick={() => download("tests")}
               className="cursor-pointer"
             >
               All tests
@@ -190,15 +224,8 @@ export function StudentReportCardLinks({
             {uniqueTests.map((test) => (
               <DropdownMenuItem
                 key={test}
-                render={
-                  <a
-                    href={studentReportCardHref(portal, studentId, "tests", {
-                      download: true,
-                      test,
-                    })}
-                    download={reportFileName("tests", meta, { test })}
-                  />
-                }
+                disabled={pending}
+                onClick={() => download("tests", { test })}
                 className="cursor-pointer"
               >
                 Test {test}
@@ -208,7 +235,11 @@ export function StudentReportCardLinks({
         </DropdownMenuContent>
       </DropdownMenu>
       <DropdownMenu>
-        <DropdownMenuTrigger title="Subjects report — All or one subject" className={LINK_CLASS}>
+        <DropdownMenuTrigger
+          title="Subjects report — All or one subject"
+          disabled={pending}
+          className={LINK_CLASS}
+        >
           Subjects Report
           <ChevronDown className="size-3 opacity-70" />
         </DropdownMenuTrigger>
@@ -216,12 +247,8 @@ export function StudentReportCardLinks({
           <DropdownMenuGroup>
             <DropdownMenuLabel>Subjects report</DropdownMenuLabel>
             <DropdownMenuItem
-              render={
-                <a
-                  href={studentReportCardHref(portal, studentId, "subjects", { download: true })}
-                  download={reportFileName("subjects", meta)}
-                />
-              }
+              disabled={pending}
+              onClick={() => download("subjects")}
               className="cursor-pointer"
             >
               All subjects
@@ -229,15 +256,8 @@ export function StudentReportCardLinks({
             {uniqueSubjects.map((subject) => (
               <DropdownMenuItem
                 key={subject}
-                render={
-                  <a
-                    href={studentReportCardHref(portal, studentId, "subjects", {
-                      download: true,
-                      subject,
-                    })}
-                    download={reportFileName("subjects", meta, { subject })}
-                  />
-                }
+                disabled={pending}
+                onClick={() => download("subjects", { subject })}
                 className="cursor-pointer"
               >
                 {titleCase(subject)}

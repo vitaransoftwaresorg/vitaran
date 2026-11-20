@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useTransition } from "react";
 import { ChevronDown, Download, Loader2, Printer } from "lucide-react";
+import { toast } from "sonner";
 import { SharePdfButton } from "@/components/shared/share-pdf-button";
 import {
   DropdownMenu,
@@ -20,6 +21,7 @@ import {
   classReportCardsHref,
   studentPdfHref,
 } from "./report-card-hrefs";
+import { downloadReportPdf, emptyReportMessage } from "./report-download";
 import { StudentReportDownloads } from "./student-report-downloads";
 
 export {
@@ -157,20 +159,26 @@ export function ClassProfilesPdfActions({
   className?: string;
 }) {
   const [printing, setPrinting] = useState(false);
+  const [pending, startTransition] = useTransition();
   if (studentIds.length === 0) return null;
   const title = `${studentIds.length} student profile ${studentIds.length === 1 ? "card" : "cards"}`;
   const fileName = downloadFileName(["Student-Profiles", schoolName, scopeLabel ?? label], "pdf");
   const meta = [schoolName, scopeLabel];
-  const uniqueSubjects = [...new Set(subjects.map((label) => label.trim().toUpperCase()).filter(Boolean))];
+  const uniqueSubjects = [...new Set(subjects.map((row) => row.trim().toUpperCase()).filter(Boolean))];
   const uniqueTests = [...new Set(tests.filter((n) => Number.isInteger(n) && n >= 1 && n <= 18))].sort(
     (a, b) => a - b,
   );
 
-  function classLink(kind: ReportCardKind, options?: { subject?: string; test?: number }) {
-    return {
-      href: classReportCardsHref(portal, studentIds, kind, { download: true, ...options }),
-      download: reportFileName(kind, meta, options),
-    };
+  function download(kind: ReportCardKind, options?: { subject?: string; test?: number }) {
+    const href = classReportCardsHref(portal, studentIds, kind, { download: true, ...options });
+    const name = reportFileName(kind, meta, options);
+    startTransition(async () => {
+      try {
+        await downloadReportPdf(href, name);
+      } catch {
+        toast.error(emptyReportMessage(kind, options));
+      }
+    });
   }
 
   return (
@@ -178,7 +186,7 @@ export function ClassProfilesPdfActions({
       <button
         type="button"
         title={`Print ${title}`}
-        disabled={printing}
+        disabled={printing || pending}
         onClick={() => {
           setPrinting(true);
           printPdf(classProfilesPdfHref(portal, studentIds), () => setPrinting(false), fileName);
@@ -200,23 +208,26 @@ export function ClassProfilesPdfActions({
         <Download />
         Profiles
       </a>
-      <a
-        {...classLink("year")}
+      <button
+        type="button"
         title="Year report — one page per student"
+        disabled={pending}
+        onClick={() => download("year")}
         className={cn(
           MENU_TRIGGER,
-          "border border-violet-200 bg-white text-violet-900 hover:border-violet-700 hover:bg-violet-50",
+          "border border-violet-200 bg-white text-violet-900 hover:border-violet-700 hover:bg-violet-50 disabled:opacity-60",
         )}
       >
-        <Download />
+        {pending ? <Loader2 className="animate-spin" /> : <Download />}
         Year Report
-      </a>
+      </button>
       <DropdownMenu>
         <DropdownMenuTrigger
           title="Tests report — All or one test"
+          disabled={pending}
           className={cn(
             MENU_TRIGGER,
-            "border border-violet-200 bg-white text-violet-900 hover:border-violet-700 hover:bg-violet-50",
+            "border border-violet-200 bg-white text-violet-900 hover:border-violet-700 hover:bg-violet-50 disabled:opacity-60",
           )}
         >
           <Download />
@@ -226,13 +237,18 @@ export function ClassProfilesPdfActions({
         <DropdownMenuContent align="end" className="min-w-44 max-h-72 overflow-y-auto">
           <DropdownMenuGroup>
             <DropdownMenuLabel>Class tests report</DropdownMenuLabel>
-            <DropdownMenuItem render={<a {...classLink("tests")} />} className="cursor-pointer">
+            <DropdownMenuItem
+              disabled={pending}
+              onClick={() => download("tests")}
+              className="cursor-pointer"
+            >
               All tests
             </DropdownMenuItem>
             {uniqueTests.map((test) => (
               <DropdownMenuItem
                 key={test}
-                render={<a {...classLink("tests", { test })} />}
+                disabled={pending}
+                onClick={() => download("tests", { test })}
                 className="cursor-pointer"
               >
                 Test {test}
@@ -244,9 +260,10 @@ export function ClassProfilesPdfActions({
       <DropdownMenu>
         <DropdownMenuTrigger
           title="Subjects report — All or one subject"
+          disabled={pending}
           className={cn(
             MENU_TRIGGER,
-            "border border-violet-200 bg-white text-violet-900 hover:border-violet-700 hover:bg-violet-50",
+            "border border-violet-200 bg-white text-violet-900 hover:border-violet-700 hover:bg-violet-50 disabled:opacity-60",
           )}
         >
           <Download />
@@ -256,13 +273,18 @@ export function ClassProfilesPdfActions({
         <DropdownMenuContent align="end" className="min-w-48">
           <DropdownMenuGroup>
             <DropdownMenuLabel>Class subjects report</DropdownMenuLabel>
-            <DropdownMenuItem render={<a {...classLink("subjects")} />} className="cursor-pointer">
+            <DropdownMenuItem
+              disabled={pending}
+              onClick={() => download("subjects")}
+              className="cursor-pointer"
+            >
               All subjects
             </DropdownMenuItem>
             {uniqueSubjects.map((subject) => (
               <DropdownMenuItem
                 key={subject}
-                render={<a {...classLink("subjects", { subject })} />}
+                disabled={pending}
+                onClick={() => download("subjects", { subject })}
                 className="cursor-pointer"
               >
                 {titleCase(subject)}

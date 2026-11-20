@@ -574,7 +574,9 @@ export async function getStudentRankCardsPdf(
   if (wanted.length === 0) {
     throw new AppError(
       404,
-      testNumber != null ? `No report card for Test ${testNumber} yet` : "No test-wise report cards yet",
+      testNumber != null
+        ? `No tests report records for Test ${testNumber} yet`
+        : "No tests report records yet",
     );
   }
 
@@ -594,7 +596,9 @@ export async function getStudentRankCardsPdf(
   if (images.length === 0) {
     throw new AppError(
       404,
-      testNumber != null ? `No report card for Test ${testNumber} yet` : "No test-wise report cards yet",
+      testNumber != null
+        ? `No tests report records for Test ${testNumber} yet`
+        : "No tests report records yet",
     );
   }
 
@@ -628,7 +632,12 @@ export async function getStudentReportCardPdf(
 
   const student = toStudentAccountDto(await scopedStudent(id, scope));
   const results = await studentTestResults(student, { publishedOnly: scope.kind !== "admin" });
-  if (results.length === 0) throw new AppError(404, "No report card data yet");
+  if (results.length === 0) {
+    throw new AppError(
+      404,
+      kind === "year" ? "No year report records yet" : "No subjects report records yet",
+    );
+  }
 
   const logos = await studentReportLogos(student.schoolId);
   const classLabel = classWithSectionLabel(student.classLevel, student.sectionName);
@@ -660,7 +669,10 @@ export async function getStudentReportCardPdf(
       ...new Set(tests.flatMap((test) => test.subjects.map((row) => row.label))),
     ].filter((label) => !wanted || label.toUpperCase() === wanted);
     if (!labels.length) {
-      throw new AppError(404, wanted ? `No results for ${wanted}` : "No subject report data yet");
+      throw new AppError(
+        404,
+        wanted ? `No subjects report records for ${wanted} yet` : "No subjects report records yet",
+      );
     }
     const subjectRows = labels.map((label) => {
       const scores = tests.map((test) => {
@@ -747,7 +759,21 @@ export async function getStudentsReportCardsPdf(
       throw error;
     }
   }
-  if (parts.length === 0) throw new AppError(404, "No report cards yet for these students");
+  if (parts.length === 0) {
+    const wantedSubject = subject?.trim().toUpperCase() || null;
+    throw new AppError(
+      404,
+      kind === "year"
+        ? "No year report records yet"
+        : kind === "subjects"
+          ? wantedSubject
+            ? `No subjects report records for ${wantedSubject} yet`
+            : "No subjects report records yet"
+          : testNumber != null
+            ? `No tests report records for Test ${testNumber} yet`
+            : "No tests report records yet",
+    );
+  }
   if (classes.size === 1) scopeLabel = [...classes][0]!;
 
   const wanted = subject?.trim().toUpperCase() || null;

@@ -1,4 +1,5 @@
 import { fileResponse } from "@/features/documents/file-response";
+import { emptyReportMessage } from "@/features/students/report-messages";
 import { fetchSchoolStudentReportCard, type ReportCardKind } from "@/services/students";
 
 function paramsOf(request: Request): { kind: ReportCardKind; subject?: string; test?: number } {
@@ -19,6 +20,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   return fileResponse(
     request,
     await fetchSchoolStudentReportCard((await params).id, kind, subject, test),
-    "No report cards yet",
+    emptyReportMessage(kind, { subject, test }),
   );
 }
