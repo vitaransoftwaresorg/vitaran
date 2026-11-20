@@ -4,8 +4,11 @@ import { Plus } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/features/admin/page-header";
 import { verifySchoolSession } from "@/features/school-auth/session";
-import { displaySectionName } from "@/features/schools/section-label";
 import { SchoolStudentsDrive } from "@/features/students/school-students-drive";
+import {
+  filterStudentsByProgramCodes,
+  studentsInClass,
+} from "@/features/students/school-roster";
 import { subjectsForSchoolClass } from "@/features/students/report-subjects";
 import { ClassProfilesPdfActions } from "@/features/students/student-pdf-actions";
 import { cn } from "@/lib/utils";
@@ -32,16 +35,13 @@ export default async function SchoolStudentsPage({
   const section = first(query.section)?.trim().toUpperCase() || undefined;
 
   const school = await verifySchoolSession();
-  const allowedPrograms = new Set(school.programCodes);
 
   const [studentsPage, organization] = await Promise.all([
     listSchoolStudents({ pageSize: 500 }),
     listSchoolClassOrganization(),
   ]);
 
-  const students = studentsPage.items.filter(
-    (student) => allowedPrograms.size === 0 || allowedPrograms.has(student.programCode),
-  );
+  const students = filterStudentsByProgramCodes(studentsPage.items, school.programCodes);
 
   const inClass = classLevel != null;
   const title = inClass
@@ -54,13 +54,7 @@ export default async function SchoolStudentsPage({
       ? `${school.name} · students`
       : `${school.name} · all sections`
     : "Open a class to view students";
-  const roster = inClass
-    ? students.filter((student) => {
-        if (student.classLevel !== classLevel) return false;
-        if (!section) return true;
-        return displaySectionName(student.sectionName) === section;
-      })
-    : [];
+  const roster = inClass && classLevel != null ? studentsInClass(students, classLevel, section) : [];
   const rosterCount = inClass ? roster.length : students.length;
   const classSubjects =
     inClass && classLevel != null
@@ -99,7 +93,7 @@ export default async function SchoolStudentsPage({
               className={cn(buttonVariants({ size: "sm" }), "h-8 gap-1.5 rounded-lg")}
             >
               <Plus className="size-4" />
-              Add student
+              Add students
             </Link>
           </div>
         }

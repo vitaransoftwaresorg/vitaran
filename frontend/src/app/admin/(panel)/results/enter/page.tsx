@@ -71,12 +71,9 @@ export default async function AdminResultEnterPage({
       ? undefined
       : program);
 
-  const programId = effectiveProgram
-    ? programs.find((item) => item.code === effectiveProgram)?.id
-    : undefined;
+  // Same class roster as Students — not a separate results-only list / program filter.
   const studentPage = await listAdminSchoolStudents(schoolId, {
     classLevel,
-    programId,
     pageSize: 500,
     status: "ACTIVE",
   });

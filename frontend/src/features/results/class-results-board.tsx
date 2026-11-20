@@ -98,20 +98,16 @@ function buildRows(
       row && source >= 0 ? (row[source] ?? null) : null,
     );
 
+  // Student list is the school roster for this class — sheet/OMR marks fill matching rolls only.
   const roster = students.map((student) => {
     const cells = fromSaved(savedRows.get(foldRoll(student.rollNo)));
     roles.forEach((role, index) => {
       const value = identityCell(role, { ...student, classLevel });
       if (value !== undefined) cells[index] = value;
     });
-    savedRows.delete(foldRoll(student.rollNo));
     return { key: student.id, cells };
   });
-  const extra = [...savedRows.entries()].map(([roll, row]) => ({
-    key: `saved:${roll}`,
-    cells: fromSaved(row),
-  }));
-  return byRank(columns, [...roster, ...extra], classLevel);
+  return byRank(columns, roster, classLevel);
 }
 
 /** Highest total first (class rank order); students without marks go last. */

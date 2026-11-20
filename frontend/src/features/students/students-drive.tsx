@@ -5,7 +5,7 @@ import { useSetDrivePathCrumbs } from "@/components/layout/drive-path-context";
 import { DriveBrowser, type DriveCrumb, type DriveItem } from "@/features/documents/drive-browser";
 import { programLabel, subjectsForClassLevel, TYPE_LABELS } from "@/features/schools/constants";
 import { displaySectionName } from "@/features/schools/section-label";
-import { STUDENTS_PATH, studentsForSchoolOfferings } from "@/features/students/school-roster";
+import { STUDENTS_PATH, studentsInClass } from "@/features/students/school-roster";
 import { StudentsTable } from "@/features/students/students-table";
 import type { ClassOrganization } from "@/types/section";
 import type { SchoolOption } from "@/types/school";
@@ -98,20 +98,6 @@ function classFoldersForSchool(
     .sort((a, b) => a.classLevel - b.classLevel);
 }
 
-function studentsInClass(students: Student[], classLevel: number, section?: string) {
-  return students
-    .filter((student) => {
-      if (student.classLevel !== classLevel) return false;
-      if (!section) return true;
-      return displaySectionName(student.sectionName) === section;
-    })
-    .sort(
-      (a, b) =>
-        displaySectionName(a.sectionName).localeCompare(displaySectionName(b.sectionName)) ||
-        a.rollNo.localeCompare(b.rollNo),
-    );
-}
-
 export function StudentsDrive({
   schools,
   schoolId,
@@ -141,11 +127,8 @@ export function StudentsDrive({
   }, [school, schoolId, classLevel, section, setDrivePath]);
 
   if (schoolId && school && classLevel != null) {
-    const roster = studentsInClass(
-      studentsForSchoolOfferings(school, students),
-      classLevel,
-      section,
-    );
+    // Page already applies studentsForSchoolOfferings — one roster in, class slice out.
+    const roster = studentsInClass(students, classLevel, section);
 
     return (
       <StudentsTable
@@ -160,8 +143,7 @@ export function StudentsDrive({
   }
 
   if (schoolId && school) {
-    const roster = studentsForSchoolOfferings(school, students);
-    const folders = classFoldersForSchool(organization, roster);
+    const folders = classFoldersForSchool(organization, students);
     const breadcrumbs: DriveCrumb[] = [
       { label: "Students", href: STUDENTS_PATH },
       { label: school.name, href: schoolHref(school.id) },

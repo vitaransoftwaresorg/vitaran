@@ -46,12 +46,20 @@ export default async function SchoolStudentNewPage({
       ? organization.wholeClasses.find((row) => row.classLevel === classLevel)
       : undefined;
 
-  const defaults =
-    matchingSection
+  const wholeOnly =
+    classLevel != null && classSections.length === 0 && Boolean(classWhole);
+
+  const defaults = matchingSection
+    ? {
+        programId: matchingSection.programId,
+        classLevel: matchingSection.classLevel,
+        sectionId: matchingSection.id,
+      }
+    : wholeOnly && classWhole
       ? {
-          programId: matchingSection.programId,
-          classLevel: matchingSection.classLevel,
-          sectionId: matchingSection.id,
+          programId: classWhole.programId,
+          classLevel: classWhole.classLevel,
+          sectionId: null as string | null,
         }
       : classLevel != null
         ? {
@@ -59,6 +67,9 @@ export default async function SchoolStudentNewPage({
             classLevel,
           }
         : undefined;
+
+  // Same add page from Students or Classes — lock when opened for a specific class/section.
+  const lockPlacement = Boolean(matchingSection || wholeOnly);
 
   const returnTo =
     classLevel != null
@@ -75,7 +86,7 @@ export default async function SchoolStudentNewPage({
           classLevel != null
             ? sectionName
               ? `${school.name} · Class ${classLevel}-${sectionName}`
-              : `${school.name} · Class ${classLevel} · all sections`
+              : `${school.name} · Class ${classLevel}`
             : school.name
         }
       />
@@ -84,7 +95,7 @@ export default async function SchoolStudentNewPage({
           schoolPrograms={school.schoolPrograms}
           sections={organization.sections}
           defaults={defaults}
-          lockPlacement={Boolean(matchingSection)}
+          lockPlacement={lockPlacement}
           returnTo={returnTo}
         />
       </div>

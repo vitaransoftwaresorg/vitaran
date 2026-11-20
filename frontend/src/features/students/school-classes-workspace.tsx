@@ -1,19 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Loader2, Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { useRegisterInPageBack } from "@/components/layout/in-page-back";
 import { PageHeader } from "@/features/admin/page-header";
-import { BulkStudentForm } from "@/features/students/bulk-student-form";
 import { StudentDetailView } from "@/features/students/student-detail-view";
 import { StudentForm } from "@/features/students/student-form";
 import { ClassProfilesPdfActions } from "@/features/students/student-pdf-actions";
 import { StudentsTable } from "@/features/students/students-table";
-import { loadSchoolRosterAction, loadSchoolStudentAction } from "@/features/students/actions";
+import { loadSchoolStudentAction } from "@/features/students/actions";
 import { SchoolClassesBoard } from "@/features/teachers/school-classes-board";
 import { capitalizeWords } from "@/features/schools/schema";
+import { cn } from "@/lib/utils";
 import type { SchoolProgramOffering } from "@/types/program";
 import type { ClassTeacherSlot, Teacher } from "@/types/teacher";
 import type { Student, StudentDetail } from "@/types/student";
@@ -27,7 +28,13 @@ type View =
   | { name: "board" }
   | { name: "roster"; focus: RosterFocus }
   | { name: "student"; focus: RosterFocus; student: StudentDetail }
-  | { name: "form"; focus: RosterFocus; student?: StudentDetail | null };
+  | { name: "form"; focus: RosterFocus; student: StudentDetail };
+
+function addStudentsHref(focus: RosterFocus) {
+  const params = new URLSearchParams({ class: String(focus.row.classLevel) });
+  if (focus.kind === "section") params.set("section", focus.row.name);
+  return `/school/students/new?${params}`;
+}
 
 type SchoolClassesWorkspaceProps = {
   schoolPrograms: SchoolProgramOffering[];
@@ -59,6 +66,7 @@ export function SchoolClassesWorkspace({
     });
   }, [router]);
 
+  // Keep one school-wide roster; server refresh replaces it with the latest full list.
   useEffect(() => {
     setStudents(initialStudents);
   }, [initialStudents]);
@@ -98,14 +106,11 @@ export function SchoolClassesWorkspace({
 
   const openRoster = (focus: RosterFocus) => {
     setView({ name: "roster", focus });
-    startTransition(async () => {
-      const items = await loadSchoolRosterAction(
-        focus.kind === "section"
-          ? { sectionId: focus.row.id }
-          : { programId: focus.row.programId, classLevel: focus.row.classLevel, wholeClass: true },
-      );
-      setStudents(items);
-    });
+  };
+
+  const reloadRoster = (focus: RosterFocus) => {
+    setView({ name: "roster", focus });
+    refreshList();
   };
 
   const openStudent = (studentId: string, focus: RosterFocus) => {
@@ -118,7 +123,6 @@ export function SchoolClassesWorkspace({
 
   if (view.name === "form") {
     const focus = view.focus;
-    const title = view.student ? "Edit student" : "Add students";
     const defaults =
       focus.kind === "section"
         ? {
@@ -135,43 +139,25 @@ export function SchoolClassesWorkspace({
     return (
       <div className="space-y-3">
         <PageHeader
-          title={title}
+          title="Edit student"
           description={
             focus.kind === "section"
               ? `Class ${focus.row.classLevel}-${focus.row.name} · ${capitalizeWords(focus.row.programName)}`
               : `Class ${focus.row.classLevel} · ${capitalizeWords(focus.row.programName)}`
           }
         />
-        {view.student ? (
-          <div className="w-full max-w-lg rounded-2xl border border-brand-200 bg-white p-4 shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)] sm:p-5">
-            <StudentForm
-              schoolPrograms={schoolPrograms}
-              sections={sections}
-              student={view.student}
-              defaults={defaults}
-              lockPlacement
-              returnTo="/school/classes"
-              stayInPlace
-              onSuccess={() => {
-                openRoster(focus);
-                refreshList();
-              }}
-            />
-          </div>
-        ) : (
-          <BulkStudentForm
+        <div className="w-full max-w-lg rounded-2xl border border-brand-200 bg-white p-4 shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)] sm:p-5">
+          <StudentForm
             schoolPrograms={schoolPrograms}
             sections={sections}
+            student={view.student}
             defaults={defaults}
             lockPlacement
             returnTo="/school/classes"
             stayInPlace
-            onSuccess={() => {
-              openRoster(focus);
-              refreshList();
-            }}
+            onSuccess={() => reloadRoster(focus)}
           />
-        )}
+        </div>
       </div>
     );
   }
@@ -188,13 +174,8 @@ export function SchoolClassesWorkspace({
         <StudentDetailView
           student={view.student}
           performancePortal="school"
-          onEdit={() =>
-            setView({ name: "form", focus: view.focus, student: view.student })
-          }
-          onDeleted={() => {
-            refreshList();
-            setView({ name: "roster", focus: view.focus });
-          }}
+          onEdit={() => setView({ name: "form", focus: view.focus, student: view.student })}
+          onDeleted={() => reloadRoster(view.focus)}
         />
       </div>
     );
@@ -237,14 +218,13 @@ export function SchoolClassesWorkspace({
                   Full ({seats} seats). Edit the class to add more seats.
                 </p>
               ) : (
-                <Button
-                  type="button"
-                  className="gap-1.5"
-                  onClick={() => setView({ name: "form", focus, student: null })}
+                <Link
+                  href={addStudentsHref(focus)}
+                  className={cn(buttonVariants(), "gap-1.5")}
                 >
                   <Plus className="size-4" />
-                  Add student
-                </Button>
+                  Add students
+                </Link>
               )}
             </div>
           }
@@ -253,7 +233,7 @@ export function SchoolClassesWorkspace({
           students={rosterStudents}
           mode="school"
           subjects={classSubjects}
-          emptyMessage="No students yet. Click Add student above."
+          emptyMessage="No students yet. Click Add students above."
           onView={(id) => openStudent(id, focus)}
           onEdit={(id) => {
             startTransition(async () => {
@@ -262,7 +242,7 @@ export function SchoolClassesWorkspace({
               setView({ name: "form", focus, student: detail });
             });
           }}
-          onDeleted={() => refreshList()}
+          onDeleted={() => reloadRoster(focus)}
         />
       </div>
     );

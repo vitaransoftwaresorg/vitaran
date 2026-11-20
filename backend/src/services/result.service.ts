@@ -147,7 +147,22 @@ const requireClasses = (count: number) => {
 
 export async function listResultSets({ limit, testNumber, type, schoolId }: ListResultSetsQuery) {
   const where: Prisma.ResultSetWhereInput = { testNumber, schoolId, ...(type && { school: { type } }) };
-  return (await resultRepository.findResultSets(where, limit)).map(toResultSetDto);
+  const sets = (await resultRepository.findResultSets(where, limit)).map(toResultSetDto);
+  if (!schoolId) return sets;
+
+  // Folder student counts follow the school roster for each class, not leftover sheet rows.
+  const roster = await studentRepository.listSchoolRoster(schoolId);
+  const byClass = new Map<number, number>();
+  for (const student of roster) {
+    byClass.set(student.classLevel, (byClass.get(student.classLevel) ?? 0) + 1);
+  }
+  return sets.map((set) => ({
+    ...set,
+    classes: set.classes.map((sheet) => ({
+      ...sheet,
+      rowCount: byClass.get(sheet.classLevel) ?? 0,
+    })),
+  }));
 }
 
 export async function getResultStats() {
@@ -391,14 +406,25 @@ function assertWithinMax(columns: string[], rows: CellValue[][]) {
   });
 }
 
-/** Saves the admin class table; totals, percentage and ranks are recalculated here. */
+/** Saves the admin class table; student rows are the school roster for this class. */
 export async function saveManualResultSheet(input: ManualResultSheetInput) {
   const meta = await resolveMeta({ ...input, removeClasses: [] });
   const { resultSet, sheet } = await findClassSheet(meta, input.classLevel, input.resultSetId);
   const columns = forceSubjectPaperMaxes(input.columns);
   const filled = input.rows.filter((row) => row.some((cell) => cell !== null && cell !== ""));
   assertWithinMax(columns, filled);
-  const rows = recomputeSheet(columns, filled, input.classLevel);
+  const roster = await studentRepository.listSchoolRoster(meta.schoolId);
+  const rows = projectSheetOntoRoster(
+    columns,
+    filled,
+    roster.map((student) => ({
+      rollNo: student.rollNo,
+      name: student.name,
+      classLevel: student.classLevel,
+      sectionName: student.section?.name ?? null,
+    })),
+    input.classLevel,
+  );
   const caption = sheet?.caption.length ? sheet.caption : defaultCaption(input.classLevel, input.testNumber);
   return toResultSetDto(
     await writeClassSheet(meta, resultSet?.id ?? null, input.classLevel, caption, columns, rows),
@@ -428,6 +454,13 @@ export async function recordOmrResult(entry: OmrResultEntry) {
     testNumber: entry.testNumber,
     removeClasses: [],
   });
+
+  // Results list is roster-based — only write marks for students on the school roster.
+  const onRoster = await studentRepository.findActiveStudentInSchool(entry.schoolId, entry.rollNo);
+  if (!onRoster || onRoster.classLevel !== entry.classLevel) {
+    return null;
+  }
+
   const { resultSet, sheet } = await findClassSheet(meta, entry.classLevel);
   const savedColumns = (sheet?.columns as string[] | undefined) ?? [];
   const columns = savedColumns.length
@@ -440,7 +473,12 @@ export async function recordOmrResult(entry: OmrResultEntry) {
   const at = rollCol >= 0 ? rows.findIndex((row) => foldRoll(row[rollCol]) === foldRoll(entry.rollNo)) : -1;
   const row: CellValue[] = at >= 0 ? columns.map((_, index) => rows[at]![index] ?? null) : columns.map(() => null);
   roles.forEach((role, index) => {
-    const value = identityCell(role, entry);
+    const value = identityCell(role, {
+      rollNo: onRoster.rollNo,
+      name: onRoster.name,
+      classLevel: onRoster.classLevel,
+      sectionName: onRoster.section?.name ?? entry.sectionName,
+    });
     if (value !== undefined) row[index] = value;
   });
   let matchedSubjects = 0;
@@ -455,6 +493,19 @@ export async function recordOmrResult(entry: OmrResultEntry) {
   if (at >= 0) rows[at] = row;
   else rows.push(row);
 
+  const roster = await studentRepository.listSchoolRoster(entry.schoolId);
+  const projected = projectSheetOntoRoster(
+    columns,
+    rows,
+    roster.map((student) => ({
+      rollNo: student.rollNo,
+      name: student.name,
+      classLevel: student.classLevel,
+      sectionName: student.section?.name ?? null,
+    })),
+    entry.classLevel,
+  );
+
   const caption = sheet?.caption.length ? sheet.caption : defaultCaption(entry.classLevel, entry.testNumber);
   return writeClassSheet(
     { ...meta, testId: resultSet?.testId ?? meta.testId },
@@ -462,7 +513,7 @@ export async function recordOmrResult(entry: OmrResultEntry) {
     entry.classLevel,
     caption,
     columns,
-    recomputeSheet(columns, rows, entry.classLevel),
+    projected,
   );
 }
 
@@ -562,6 +613,44 @@ function byRank(columns: string[], rows: CellValue[][]) {
   );
 }
 
+/**
+ * Results student list = school roster for this class.
+ * Marks from the saved sheet (OMR/manual) are applied onto matching registration numbers only.
+ */
+function projectSheetOntoRoster(
+  columns: string[],
+  sheetRows: CellValue[][],
+  roster: Array<{
+    rollNo: string;
+    name: string;
+    classLevel: number;
+    sectionName: string | null;
+  }>,
+  classLevel: number,
+): CellValue[][] {
+  const roles = columns.map(columnRole);
+  const rollCol = roles.indexOf("roll");
+  const byRoll = new Map<string, CellValue[]>();
+  for (const row of sheetRows) {
+    const roll = rollCol >= 0 ? foldRoll(row[rollCol]) : "";
+    if (roll) byRoll.set(roll, row);
+  }
+
+  const rows = roster
+    .filter((student) => student.classLevel === classLevel)
+    .map((student) => {
+      const saved = byRoll.get(foldRoll(student.rollNo));
+      const row = columns.map((_, index) => (saved ? (saved[index] ?? null) : null));
+      roles.forEach((role, index) => {
+        const value = identityCell(role, student);
+        if (value !== undefined) row[index] = value;
+      });
+      return row;
+    });
+
+  return byRank(columns, recomputeSheet(columns, rows, classLevel));
+}
+
 async function paperRangesForTest(testId: string) {
   const key = await answerKeyRepository.findAnswerKeyByTestId(testId);
   return asSubjectRanges(key?.subjectRanges);
@@ -580,10 +669,33 @@ export async function getResultSheet(params: ResultSheetParams, actor?: ContentA
   const ranges = resultSet ? await paperRangesForTest(resultSet.testId) : [];
 
   const { rows, columns, updatedAt, caption, ...rest } = sheet;
-  const ranked = withRankColumns(columns as string[], rows.map(({ values }) => values as CellValue[]), params.classLevel);
+  const ranked = withRankColumns(
+    columns as string[],
+    rows.map(({ values }) => values as CellValue[]),
+    params.classLevel,
+  );
   let parsedColumns = ranked.columns;
-  let parsedRows = byRank(parsedColumns, ranked.rows);
+  let parsedRows = ranked.rows;
   const parsedCaption = caption;
+
+  const schoolId = resultSet?.school.id;
+  if (schoolId) {
+    const roster = await studentRepository.listSchoolRoster(schoolId);
+    parsedRows = projectSheetOntoRoster(
+      parsedColumns,
+      parsedRows,
+      roster.map((student) => ({
+        rollNo: student.rollNo,
+        name: student.name,
+        classLevel: student.classLevel,
+        sectionName: student.section?.name ?? null,
+      })),
+      params.classLevel,
+    );
+  } else {
+    parsedRows = byRank(parsedColumns, parsedRows);
+  }
+
   if (contentActor?.kind === "teacher") {
     const roster = await studentRepository.listSchoolRoster(contentActor.teacher.schoolId);
     const scoped = projectSheetForTeacher(parsedColumns, parsedRows, contentActor.teacher, roster);
@@ -606,6 +718,7 @@ export async function getResultSheet(params: ResultSheetParams, actor?: ContentA
     caption: paper.caption,
     columns: paper.columns,
     rows: paper.rows,
+    rowCount: paper.rows.length,
     updatedAt: updatedAt.toISOString(),
   };
 }

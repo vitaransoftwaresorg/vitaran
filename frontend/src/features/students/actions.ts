@@ -395,7 +395,7 @@ export async function loadSchoolRosterAction(params: {
   classLevel?: number;
   wholeClass?: boolean;
 }): Promise<Student[]> {
-  const list = await listSchoolStudents({ ...params, pageSize: 100 });
+  const list = await listSchoolStudents({ ...params, pageSize: 500 });
   return list.items;
 }
 

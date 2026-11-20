@@ -219,6 +219,13 @@ export function listRollsBySectionId(sectionId: string) {
   });
 }
 
+export function listRollsByClassLevel(schoolId: string, classLevel: number) {
+  return prisma.student.findMany({
+    where: { schoolId, classLevel },
+    select: { rollNo: true },
+  });
+}
+
 export function listWholeClassRolls(
   schoolId: string,
   programId: string,
@@ -233,6 +240,11 @@ export function listWholeClassRolls(
 /** Roster rows tied to a named section — removed when that section is deleted. */
 export function deleteStudentsBySectionId(sectionId: string) {
   return prisma.student.deleteMany({ where: { sectionId } });
+}
+
+/** Every roster row for a school class — removed when that class is fully deleted. */
+export function deleteStudentsByClassLevel(schoolId: string, classLevel: number) {
+  return prisma.student.deleteMany({ where: { schoolId, classLevel } });
 }
 
 /** Whole-class roster (no section) for one program/class — removed when that class is deleted. */

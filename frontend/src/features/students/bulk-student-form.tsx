@@ -403,6 +403,7 @@ export function BulkStudentForm({
               : undefined,
         })),
         returnTo,
+        // Always return so we can clear the draft; navigate/refresh on the client.
         stay: true,
       });
       setState(result);
@@ -410,7 +411,10 @@ export function BulkStudentForm({
       clearStudentDraft(draftKey);
       setDone(true);
       if (after) after();
-      else if (!stayInPlace) router.push(returnTo);
+      else if (!stayInPlace) {
+        router.push(returnTo);
+        router.refresh();
+      }
     });
   }
 

@@ -54,27 +54,31 @@ function classEntriesForSchool(
   programs: LearningProgram[],
   testNumber: number,
 ): ClassEntry[] {
-  const entries: ClassEntry[] = [];
-  const seen = new Set<string>();
+  // One folder per class level — not split by program.
+  const byClass = new Map<number, ClassEntry>();
 
-  const push = (classLevel: number, program: string | undefined, programTitle: string) => {
-    const key = `${program ?? ""}:${classLevel}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    entries.push({ classLevel, program, programTitle });
+  const prefer = (
+    classLevel: number,
+    program: string | undefined,
+    programTitle: string,
+    hasSheet: boolean,
+  ) => {
+    const existing = byClass.get(classLevel);
+    if (!existing) {
+      byClass.set(classLevel, { classLevel, program, programTitle });
+      return;
+    }
+    // Prefer the program that already has an uploaded sheet for this class.
+    if (hasSheet) {
+      byClass.set(classLevel, { classLevel, program, programTitle });
+    }
   };
 
-  const offerings = resultOfferingsForSchool(school, programs);
-  for (const offering of offerings) {
-    const title = programLabel(offering.code, offering.name);
-    for (const classLevel of offering.classLevels) {
-      push(classLevel, offering.code, title);
-    }
-  }
-
-  for (const set of resultSets.filter(
+  const schoolSets = resultSets.filter(
     (item) => item.school.id === school?.id && item.testNumber === testNumber,
-  )) {
+  );
+
+  for (const set of schoolSets) {
     // Customized schools must not surface result sets tied to a regular catalog program.
     if (school?.type === "CUSTOMIZED" && isRegularProgramCode(set.program ?? undefined, programs)) {
       continue;
@@ -84,11 +88,19 @@ function classEntriesForSchool(
       set.programName ?? programs.find((program) => program.code === set.program)?.name,
     );
     for (const sheet of set.classes) {
-      push(sheet.classLevel, set.program ?? undefined, title || "Program");
+      prefer(sheet.classLevel, set.program ?? undefined, title || "Program", true);
     }
   }
 
-  if (entries.length === 0 && school?.programs?.length) {
+  const offerings = resultOfferingsForSchool(school, programs);
+  for (const offering of offerings) {
+    const title = programLabel(offering.code, offering.name);
+    for (const classLevel of offering.classLevels) {
+      prefer(classLevel, offering.code, title, false);
+    }
+  }
+
+  if (byClass.size === 0 && school?.programs?.length) {
     const codes =
       school.type === "CUSTOMIZED"
         ? school.programs.filter((code) => !isRegularProgramCode(code, programs))
@@ -99,14 +111,12 @@ function classEntriesForSchool(
       const from = catalog?.classFrom ?? 1;
       const to = catalog?.classTo ?? 12;
       for (let classLevel = from; classLevel <= to; classLevel += 1) {
-        push(classLevel, code, title);
+        prefer(classLevel, code, title, false);
       }
     }
   }
 
-  return entries.sort(
-    (a, b) => a.classLevel - b.classLevel || a.programTitle.localeCompare(b.programTitle),
-  );
+  return [...byClass.values()].sort((a, b) => a.classLevel - b.classLevel);
 }
 
 export function ResultsDrive({
@@ -192,11 +202,11 @@ export function ResultsDrive({
 
         if (!sheet || !resultSet) {
           return {
-            id: `class:${entry.program ?? "none"}:${entry.classLevel}`,
+            id: `class:${entry.classLevel}`,
             name: `Class ${entry.classLevel}`,
             kind: "folder" as const,
             href: enterHref,
-            detail: entry.programTitle,
+            detail: "Empty",
           };
         }
 
@@ -208,11 +218,9 @@ export function ResultsDrive({
           kind: "file" as const,
           fileKind: "sheet" as const,
           href: enterHref,
-          detail: `${entry.programTitle} · ${
-            classPublished
-              ? `${formatNumber(sheet.rowCount)} students · Published`
-              : `${formatNumber(sheet.rowCount)} students · Hidden`
-          }`,
+          detail: classPublished
+            ? `${formatNumber(sheet.rowCount)} students · Published`
+            : `${formatNumber(sheet.rowCount)} students · Hidden`,
           modified: wasEdited({ createdAt: resultSet.createdAt, updatedAt: sheet.updatedAt })
             ? formatDateTime(sheet.updatedAt)
             : undefined,

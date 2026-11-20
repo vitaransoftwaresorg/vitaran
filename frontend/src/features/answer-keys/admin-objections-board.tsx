@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { Check, Loader2, X } from "lucide-react";
+import { ArrowRight, Check, ExternalLink, ImageIcon, Loader2, MessageSquareWarning, X } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -25,6 +25,7 @@ import {
   schoolProfileHref,
   teacherProfileHref,
 } from "@/components/shared/profile-link";
+import { formatDateTime } from "@/utils/format";
 import type { AnswerKeyObjection, AnswerKeyObjectionStatus } from "@/types/answer-key-objection";
 import { ANSWER_KEYS_PATH, objectionImageHref } from "./constants";
 import { resolveObjectionAction } from "./objection-actions";
@@ -57,28 +58,51 @@ export function AdminObjectionsBoard({ initialItems }: AdminObjectionsBoardProps
     setItems(initialItems);
   }
 
+  const counts = useMemo(
+    () => ({
+      OPEN: items.filter((row) => row.status === "OPEN").length,
+      RESOLVED: items.filter((row) => row.status === "RESOLVED").length,
+      REJECTED: items.filter((row) => row.status === "REJECTED").length,
+      ALL: items.length,
+    }),
+    [items],
+  );
+
   const visible = useMemo(() => {
     const statusFiltered =
       filter === "ALL" ? items : items.filter((row) => row.status === filter);
-    return statusFiltered.filter((row) =>
-      matchesSearch(
-        query,
-        row.school.name,
-        row.school.code,
-        row.answerKey.testNumber,
-        row.answerKey.testId,
-        row.answerKey.classLevel,
-        row.answerKey.programCode,
-        row.teacher?.name,
-        row.raisedBy,
-        row.questionNumber,
-        row.message,
-        row.status,
-        row.proposedAnswer,
-        row.currentAnswer,
-      ),
-    );
+    return statusFiltered
+      .filter((row) =>
+        matchesSearch(
+          query,
+          row.school.name,
+          row.school.code,
+          row.answerKey.testNumber,
+          row.answerKey.testId,
+          row.answerKey.classLevel,
+          row.answerKey.programCode,
+          row.teacher?.name,
+          row.raisedBy,
+          row.questionNumber,
+          row.message,
+          row.status,
+          row.proposedAnswer,
+          row.currentAnswer,
+        ),
+      )
+      .sort((a, b) => {
+        if (a.status === "OPEN" && b.status !== "OPEN") return -1;
+        if (b.status === "OPEN" && a.status !== "OPEN") return 1;
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      });
   }, [filter, items, query]);
+
+  function openReview(row: AnswerKeyObjection) {
+    setReviewing(row);
+    setDecision("RESOLVED");
+    setNote("");
+    setError(null);
+  }
 
   function submitReview() {
     if (!reviewing) return;
@@ -114,123 +138,70 @@ export function AdminObjectionsBoard({ initialItems }: AdminObjectionsBoardProps
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-2">
-          {FILTERS.map((item) => (
-            <button
-              key={item.value}
-              type="button"
-              onClick={() => setFilter(item.value)}
-              className={cn(
-                "rounded-lg border px-3 py-1.5 text-xs font-semibold",
-                filter === item.value
-                  ? "border-brand-700 bg-brand-800 text-white"
-                  : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50",
-              )}
-            >
-              {item.label}
-              {item.value !== "ALL" ? (
-                <span className="ml-1 opacity-70">
-                  ({items.filter((row) => row.status === item.value).length})
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div
+          className="inline-flex w-full gap-0.5 rounded-lg border border-neutral-200 bg-neutral-100/80 p-0.5 sm:w-auto"
+          role="tablist"
+          aria-label="Filter objections"
+        >
+          {FILTERS.map((item) => {
+            const active = filter === item.value;
+            const count = counts[item.value];
+            return (
+              <button
+                key={item.value}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setFilter(item.value)}
+                className={cn(
+                  "inline-flex flex-1 items-center justify-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors sm:flex-none",
+                  active
+                    ? "bg-white text-brand-900 shadow-sm"
+                    : "text-neutral-600 hover:text-neutral-900",
+                )}
+              >
+                {item.label}
+                <span
+                  className={cn(
+                    "min-w-5 rounded px-1 py-px text-[11px] font-semibold tabular-nums",
+                    active ? "bg-brand-50 text-brand-800" : "text-neutral-500",
+                    item.value === "OPEN" && count > 0 && "text-amber-800",
+                    item.value === "OPEN" && count > 0 && active && "bg-amber-50 text-amber-900",
+                  )}
+                >
+                  {count}
                 </span>
-              ) : null}
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
-        <TableSearch value={query} onChange={setQuery} placeholder="Search objections" />
+        <TableSearch value={query} onChange={setQuery} placeholder="Search school, test, Q…" />
       </div>
 
       {visible.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-neutral-200 bg-white px-4 py-10 text-center text-sm text-neutral-500">
-          {query.trim() ? "No matching objections." : "No objections in this view."}
-        </p>
+        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-neutral-200 bg-white px-6 py-20 text-center">
+          <span className="mb-3 flex size-11 items-center justify-center rounded-xl bg-brand-50 text-brand-800 ring-1 ring-brand-100">
+            <MessageSquareWarning className="size-5" />
+          </span>
+          <p className="text-sm font-semibold text-neutral-900">
+            {query.trim() ? "No matching objections" : emptyTitle(filter)}
+          </p>
+          <p className="mt-1 max-w-sm text-sm text-neutral-500">
+            {query.trim()
+              ? "Try another school, test number, or question."
+              : emptyHint(filter)}
+          </p>
+        </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-brand-200 bg-white shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)]">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-left text-sm">
-              <thead className="border-b border-brand-100 bg-brand-50/70 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">
-                <tr>
-                  <th className="px-4 py-2.5">School</th>
-                  <th className="px-4 py-2.5">Key</th>
-                  <th className="px-4 py-2.5">From</th>
-                  <th className="px-4 py-2.5">Objection</th>
-                  <th className="px-4 py-2.5">Status</th>
-                  <th className="px-4 py-2.5 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visible.map((row) => (
-                  <tr key={row.id} className="border-b border-neutral-100 last:border-0">
-                    <td className="px-4 py-3">
-                      <ProfileLink href={schoolProfileHref(row.school.id)}>
-                        {capitalizeWords(row.school.name)}
-                      </ProfileLink>
-                      <p className="text-xs text-neutral-500">{row.school.code}</p>
-                    </td>
-                    <td className="px-4 py-3 text-neutral-700">
-                      Test {row.answerKey.testNumber}
-                      {row.answerKey.testId ? ` · ${row.answerKey.testId}` : ""}
-                      <br />
-                      <span className="text-xs text-neutral-500">
-                        Class {row.answerKey.classLevel} · {row.answerKey.programCode}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-neutral-700">
-                      {row.raisedBy === "TEACHER" ? (
-                        <ProfileLink
-                          href={row.teacher ? teacherProfileHref("admin", row.teacher.id) : null}
-                        >
-                          {capitalizeWords(row.teacher?.name ?? "Teacher")}
-                        </ProfileLink>
-                      ) : (
-                        "School"
-                      )}
-                      {row.questionNumber != null ? (
-                        <p className="text-xs text-neutral-500">Q{row.questionNumber}</p>
-                      ) : null}
-                    </td>
-                    <td className="max-w-xs px-4 py-3 text-neutral-800">
-                      <AnswerChange row={row} className="mb-1" />
-                      <p className="line-clamp-3">{row.message}</p>
-                      {row.hasImage ? <ObjectionPhoto href={objectionImageHref("admin", row.id)} /> : null}
-                      {row.resolutionNote ? (
-                        <p className="mt-1 text-xs text-neutral-500">
-                          Note: {row.resolutionNote}
-                        </p>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusChip status={row.status} />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-1.5">
-                        <Link
-                          href={documentAnswersHref(ANSWER_KEYS_PATH, row.answerKeyId)}
-                          className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-                        >
-                          Open key
-                        </Link>
-                        {row.status === "OPEN" ? (
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={() => {
-                              setReviewing(row);
-                              setDecision("RESOLVED");
-                              setNote("");
-                              setError(null);
-                            }}
-                          >
-                            Review
-                          </Button>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+          <ul className="divide-y divide-neutral-100">
+            {visible.map((row) => (
+              <li key={row.id}>
+                <ObjectionRow row={row} onReview={() => openReview(row)} />
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -244,75 +215,96 @@ export function AdminObjectionsBoard({ initialItems }: AdminObjectionsBoardProps
           }
         }}
       >
-        <AlertDialogContent className="sm:max-w-md">
-          <AlertDialogHeader>
+        <AlertDialogContent className="gap-0 overflow-hidden p-0 sm:max-w-xl">
+          <AlertDialogHeader className="space-y-1 border-b border-neutral-100 px-5 py-4 text-left">
             <AlertDialogTitle>Review objection</AlertDialogTitle>
-            <AlertDialogDescription>
-              {reviewing
-                ? `${capitalizeWords(reviewing.school.name)} · Test ${reviewing.answerKey.testNumber}`
-                : null}
-              {reviewing?.questionNumber != null ? ` · Q${reviewing.questionNumber}` : null}
+            <AlertDialogDescription className="text-sm text-neutral-600">
+              {reviewing ? <KeyContext row={reviewing} /> : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
 
           {reviewing ? (
-            <div className="space-y-2 rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-800">
-              <AnswerChange row={reviewing} />
-              <p>{reviewing.message}</p>
-              {reviewing.hasImage ? (
-                <ObjectionPhoto href={objectionImageHref("admin", reviewing.id)} className="[&_img]:h-40" />
-              ) : null}
+            <div className="max-h-[min(70vh,32rem)] space-y-4 overflow-y-auto px-5 py-4">
+              <ClaimPanel row={reviewing} />
+
+              <div>
+                <p className="mb-1.5 text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+                  Reason
+                </p>
+                <p className="text-sm leading-relaxed whitespace-pre-wrap text-neutral-900">
+                  {reviewing.message}
+                </p>
+                {reviewing.hasImage ? (
+                  <ObjectionPhoto
+                    href={objectionImageHref("admin", reviewing.id)}
+                    className="mt-3 [&_img]:h-48 [&_img]:max-w-full"
+                  />
+                ) : null}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDecision("RESOLVED")}
+                  className={cn(
+                    "rounded-lg border px-3 py-3 text-left transition-colors",
+                    decision === "RESOLVED"
+                      ? "border-emerald-600 bg-emerald-50 text-emerald-950 ring-1 ring-emerald-600/15"
+                      : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50",
+                  )}
+                >
+                  <span className="flex items-center gap-1.5 text-sm font-semibold">
+                    <Check className="size-4" />
+                    Resolve
+                  </span>
+                  <span className="mt-1 block text-xs leading-snug opacity-80">
+                    {reviewing.proposedAnswer && reviewing.proposedAnswer !== "NONE"
+                      ? "Accept claim and update key"
+                      : "Accept claim"}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDecision("REJECTED")}
+                  className={cn(
+                    "rounded-lg border px-3 py-3 text-left transition-colors",
+                    decision === "REJECTED"
+                      ? "border-red-600 bg-red-50 text-red-950 ring-1 ring-red-600/15"
+                      : "border-neutral-200 bg-white text-neutral-700 hover:bg-neutral-50",
+                  )}
+                >
+                  <span className="flex items-center gap-1.5 text-sm font-semibold">
+                    <X className="size-4" />
+                    Reject
+                  </span>
+                  <span className="mt-1 block text-xs leading-snug opacity-80">
+                    Keep published key as is
+                  </span>
+                </button>
+              </div>
+
+              <Field data-invalid={error ? true : undefined}>
+                <FieldLabel htmlFor="resolution-note">Explanation *</FieldLabel>
+                <Textarea
+                  id="resolution-note"
+                  value={note}
+                  rows={3}
+                  placeholder={
+                    decision === "RESOLVED"
+                      ? "What was fixed or confirmed…"
+                      : "Why this objection is rejected…"
+                  }
+                  onChange={(e) => {
+                    setNote(e.currentTarget.value);
+                    setError(null);
+                  }}
+                />
+                {error ? <FieldError>{error}</FieldError> : null}
+              </Field>
             </div>
           ) : null}
 
-          <div className="grid gap-3 py-1">
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setDecision("RESOLVED")}
-                className={cn(
-                  "flex-1 rounded-lg border px-3 py-2 text-sm font-semibold",
-                  decision === "RESOLVED"
-                    ? "border-emerald-600 bg-emerald-50 text-emerald-900"
-                    : "border-neutral-200 text-neutral-700",
-                )}
-              >
-                Resolve
-              </button>
-              <button
-                type="button"
-                onClick={() => setDecision("REJECTED")}
-                className={cn(
-                  "flex-1 rounded-lg border px-3 py-2 text-sm font-semibold",
-                  decision === "REJECTED"
-                    ? "border-red-600 bg-red-50 text-red-900"
-                    : "border-neutral-200 text-neutral-700",
-                )}
-              >
-                Reject
-              </button>
-            </div>
-            <Field data-invalid={error ? true : undefined}>
-              <FieldLabel htmlFor="resolution-note">Explanation *</FieldLabel>
-              <Textarea
-                id="resolution-note"
-                value={note}
-                rows={3}
-                placeholder={
-                  decision === "RESOLVED"
-                    ? "What was fixed or confirmed…"
-                    : "Why this objection is rejected…"
-                }
-                onChange={(e) => {
-                  setNote(e.currentTarget.value);
-                  setError(null);
-                }}
-              />
-              {error ? <FieldError>{error}</FieldError> : null}
-            </Field>
-          </div>
-
-          <AlertDialogFooter>
+          <AlertDialogFooter className="border-t border-neutral-100 bg-neutral-50/70 px-5 py-3">
             <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
             <Button type="button" disabled={pending} onClick={submitReview} className="gap-1.5">
               {pending ? (
@@ -331,40 +323,252 @@ export function AdminObjectionsBoard({ initialItems }: AdminObjectionsBoardProps
   );
 }
 
+function ObjectionRow({
+  row,
+  onReview,
+}: {
+  row: AnswerKeyObjection;
+  onReview: () => void;
+}) {
+  const open = row.status === "OPEN";
+
+  return (
+    <article
+      className={cn(
+        "relative flex flex-col gap-3 px-4 py-3.5 transition-colors sm:flex-row sm:items-start sm:gap-4 sm:px-5 sm:py-4",
+        open ? "bg-amber-50/40 hover:bg-amber-50/70" : "hover:bg-neutral-50/80",
+      )}
+    >
+      {open ? (
+        <span
+          aria-hidden
+          className="absolute inset-y-0 left-0 w-0.5 bg-amber-500"
+        />
+      ) : null}
+
+      <div className="flex shrink-0 items-start gap-2.5 sm:w-[4.5rem] sm:flex-col sm:items-center sm:pt-0.5">
+        <StatusChip status={row.status} />
+        {row.questionNumber != null ? (
+          <span className="text-lg font-bold tracking-tight text-brand-900 tabular-nums sm:text-xl">
+            Q{row.questionNumber}
+          </span>
+        ) : (
+          <span className="text-xs font-medium text-neutral-400">General</span>
+        )}
+      </div>
+
+      <div className="min-w-0 flex-1 space-y-2">
+        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <ProfileLink
+            href={schoolProfileHref(row.school.id)}
+            className="truncate text-sm font-semibold text-neutral-950 hover:text-brand-900"
+          >
+            {capitalizeWords(row.school.name)}
+          </ProfileLink>
+          <span className="text-xs text-neutral-400">{row.school.code}</span>
+        </div>
+
+        <p className="text-xs text-neutral-500">
+          Test {row.answerKey.testNumber}
+          {row.answerKey.testId ? (
+            <span className="text-neutral-400"> · {row.answerKey.testId}</span>
+          ) : null}
+          {" · "}
+          Class {row.answerKey.classLevel}
+          {" · "}
+          {row.answerKey.programCode}
+          {" · "}
+          <RaisedBy row={row} />
+          {" · "}
+          {formatDateTime(row.createdAt)}
+        </p>
+
+        <AnswerChange row={row} />
+
+        <p className="line-clamp-2 text-sm leading-relaxed text-neutral-700">{row.message}</p>
+
+        {row.hasImage ? (
+          <span className="inline-flex items-center gap-1 text-xs font-medium text-neutral-500">
+            <ImageIcon className="size-3.5" />
+            Photo attached
+          </span>
+        ) : null}
+
+        {row.resolutionNote ? (
+          <p className="rounded-md border border-neutral-100 bg-neutral-50 px-2.5 py-1.5 text-xs text-neutral-600">
+            <span className="font-semibold text-neutral-800">Note · </span>
+            {row.resolutionNote}
+          </p>
+        ) : null}
+      </div>
+
+      <div className="flex shrink-0 flex-wrap gap-2 sm:flex-col sm:items-stretch">
+        {open ? (
+          <Button type="button" size="sm" onClick={onReview} className="gap-1.5">
+            Review
+            <ArrowRight className="size-3.5" />
+          </Button>
+        ) : null}
+        <Link
+          href={documentAnswersHref(ANSWER_KEYS_PATH, row.answerKeyId)}
+          className={cn(
+            buttonVariants({ variant: "outline", size: "sm" }),
+            "gap-1.5",
+          )}
+        >
+          <ExternalLink className="size-3.5" />
+          Open key
+        </Link>
+      </div>
+    </article>
+  );
+}
+
+function ClaimPanel({ row }: { row: AnswerKeyObjection }) {
+  return (
+    <div className="rounded-lg border border-neutral-200 bg-neutral-50/80 p-3.5">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {row.questionNumber != null ? (
+          <span className="rounded-md bg-brand-900 px-2 py-1 text-sm font-bold text-white tabular-nums">
+            Q{row.questionNumber}
+          </span>
+        ) : (
+          <span className="rounded-md bg-neutral-200 px-2 py-1 text-xs font-semibold text-neutral-700">
+            General
+          </span>
+        )}
+        <RaisedBy row={row} className="text-sm text-neutral-600" />
+      </div>
+      <AnswerChange row={row} large />
+    </div>
+  );
+}
+
+function KeyContext({ row }: { row: AnswerKeyObjection }) {
+  return (
+    <>
+      <ProfileLink
+        href={schoolProfileHref(row.school.id)}
+        className="font-medium text-neutral-800 hover:text-brand-900"
+      >
+        {capitalizeWords(row.school.name)}
+      </ProfileLink>
+      {" · "}
+      Test {row.answerKey.testNumber}
+      {" · "}
+      Class {row.answerKey.classLevel}
+      {" · "}
+      {row.answerKey.programCode}
+    </>
+  );
+}
+
+function RaisedBy({
+  row,
+  className,
+}: {
+  row: AnswerKeyObjection;
+  className?: string;
+}) {
+  if (row.raisedBy === "TEACHER") {
+    return (
+      <ProfileLink
+        href={row.teacher ? teacherProfileHref("admin", row.teacher.id) : null}
+        className={cn("font-medium text-neutral-700", className)}
+      >
+        {capitalizeWords(row.teacher?.name ?? "Teacher")}
+      </ProfileLink>
+    );
+  }
+  return <span className={cn("font-medium text-neutral-700", className)}>School account</span>;
+}
+
+function emptyTitle(filter: AnswerKeyObjectionStatus | "ALL") {
+  if (filter === "OPEN") return "No open objections";
+  if (filter === "RESOLVED") return "No resolved objections yet";
+  if (filter === "REJECTED") return "No rejected objections";
+  return "No objections yet";
+}
+
+function emptyHint(filter: AnswerKeyObjectionStatus | "ALL") {
+  if (filter === "OPEN") {
+    return "When schools or teachers raise a key objection, it shows up here for review.";
+  }
+  return "Switch filters to see other statuses.";
+}
+
 function StatusChip({ status }: { status: AnswerKeyObjectionStatus }) {
   const styles =
     status === "OPEN"
-      ? "bg-amber-50 text-amber-800 border-amber-200"
+      ? "bg-amber-100 text-amber-950"
       : status === "RESOLVED"
-        ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-        : "bg-red-50 text-red-800 border-red-200";
+        ? "bg-emerald-100 text-emerald-950"
+        : "bg-red-100 text-red-950";
   const label =
     status === "OPEN" ? "Open" : status === "RESOLVED" ? "Resolved" : "Rejected";
   return (
-    <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase", styles)}>
+    <span
+      className={cn(
+        "rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wide uppercase",
+        styles,
+      )}
+    >
       {label}
     </span>
   );
 }
 
-/** Current key answer next to the claimed one, e.g. "Key B → Claims C". */
-function AnswerChange({ row, className }: { row: AnswerKeyObjection; className?: string }) {
+function formatAnswer(value: string | null | undefined) {
+  if (!value) return "not set";
+  if (value === "NONE") return "no right answer";
+  if (value === "ADD") return "ADD marks";
+  return value;
+}
+
+/** Current key answer next to the claimed one. */
+function AnswerChange({
+  row,
+  className,
+  large,
+}: {
+  row: AnswerKeyObjection;
+  className?: string;
+  large?: boolean;
+}) {
   if (!row.proposedAnswer && !row.currentAnswer) return null;
   return (
-    <p className={cn("flex flex-wrap items-center gap-1.5 text-xs font-semibold", className)}>
+    <div
+      className={cn(
+        "flex flex-wrap items-center gap-2",
+        large ? "text-base" : "text-sm",
+        className,
+      )}
+    >
       {row.questionNumber != null ? (
-        <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-neutral-700">
-          Key {row.currentAnswer ?? "not set"}
+        <span
+          className={cn(
+            "inline-flex items-center rounded-md border border-neutral-200 bg-white font-semibold text-neutral-800",
+            large ? "px-2.5 py-1.5" : "px-2 py-1 text-xs",
+          )}
+        >
+          Key {formatAnswer(row.currentAnswer)}
         </span>
       ) : null}
       {row.proposedAnswer ? (
         <>
-          {row.questionNumber != null ? <span className="text-neutral-400">→</span> : null}
-          <span className="rounded bg-brand-50 px-1.5 py-0.5 text-brand-900">
-            Claims {row.proposedAnswer === "NONE" ? "no right answer" : row.proposedAnswer}
+          {row.questionNumber != null ? (
+            <ArrowRight className={cn("shrink-0 text-neutral-400", large ? "size-4" : "size-3.5")} />
+          ) : null}
+          <span
+            className={cn(
+              "inline-flex items-center rounded-md border border-brand-200 bg-brand-50 font-semibold text-brand-950",
+              large ? "px-2.5 py-1.5" : "px-2 py-1 text-xs",
+            )}
+          >
+            Claims {formatAnswer(row.proposedAnswer)}
           </span>
         </>
       ) : null}
-    </p>
+    </div>
   );
 }

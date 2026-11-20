@@ -7,7 +7,10 @@ import { subjectsForClassLevel } from "@/features/schools/constants";
 import { AdminStudentRollSearch } from "@/features/students/admin-student-roll-search";
 import { ClassProfilesPdfActions } from "@/features/students/student-pdf-actions";
 import { StudentsDrive } from "@/features/students/students-drive";
-import { studentsForSchoolOfferings } from "@/features/students/school-roster";
+import {
+  studentsForSchoolOfferings,
+  studentsInClass,
+} from "@/features/students/school-roster";
 import { cn } from "@/lib/utils";
 import { listAdminSchoolSections } from "@/services/sections";
 import { listSchoolOptions } from "@/services/schools";
@@ -61,13 +64,8 @@ export default async function AdminAllStudentsPage({
       ? undefined
       : "Open a class to view students"
     : "Open a school to view its classes";
-  const roster = inClass
-    ? students.filter((student) => {
-        if (student.classLevel !== classLevel) return false;
-        if (!section) return true;
-        return (student.sectionName?.trim().toUpperCase() || "A") === section;
-      })
-    : [];
+  const roster =
+    inClass && classLevel != null ? studentsInClass(students, classLevel, section) : [];
 
   return (
     <>
@@ -99,7 +97,7 @@ export default async function AdminAllStudentsPage({
                 className={cn(buttonVariants({ size: "sm" }), "h-8 gap-1.5 rounded-lg")}
               >
                 <Plus className="size-4" />
-                Add student
+                Add students
               </Link>
             </div>
           ) : null

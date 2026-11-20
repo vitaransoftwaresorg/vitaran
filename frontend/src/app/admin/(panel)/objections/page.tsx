@@ -14,7 +14,11 @@ export default async function AdminKeyObjectionsPage() {
       <PageHeader
         title="Key objections"
         count={openCount}
-        description="Review objections raised by schools and teachers on published answer keys."
+        description={
+          openCount > 0
+            ? `${openCount} waiting for review from schools and teachers.`
+            : "Claims on published answer keys from schools and teachers."
+        }
       />
       <AdminObjectionsBoard initialItems={items} />
     </>

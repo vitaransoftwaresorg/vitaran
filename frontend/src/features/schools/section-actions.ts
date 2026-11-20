@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { unstable_rethrow } from "next/navigation";
 import { ADMIN_BASE_PATH, SCHOOL_BASE_PATH } from "@/constants/auth";
 import { ApiError } from "@/services/api-client";
+import * as programService from "@/services/programs";
 import * as schoolService from "@/services/schools";
 import * as sectionService from "@/services/sections";
 import { listSchoolClassTeacherSlots } from "@/services/teachers";
@@ -72,7 +73,23 @@ export async function updateAdminClassSubjectsAction(
       return { ok: false as const, message: "Select at least one subject." };
     }
 
-    const subjects = [...new Set(input.subjects)];
+    const catalog =
+      school.schoolPrograms.find((row) => row.programId === input.programId)?.catalogSubjects ??
+      (await programService.getProgram(input.programId))?.subjects ??
+      [];
+    const allowed = new Set(catalog);
+    const subjects = [...new Set(input.subjects)].filter(
+      (subject) => allowed.size === 0 || allowed.has(subject),
+    );
+    if (subjects.length === 0) {
+      return {
+        ok: false as const,
+        message:
+          allowed.size > 0
+            ? "Pick subjects that belong to this program."
+            : "Select at least one subject.",
+      };
+    }
     const fromProgramId =
       input.fromProgramId && input.fromProgramId !== input.programId
         ? input.fromProgramId
@@ -96,6 +113,7 @@ export async function updateAdminClassSubjectsAction(
         customProgram: { name: custom.programName, classes },
       } as SchoolInput);
     } else {
+      // Admin Add class can grant a catalog program that is not enrolled yet.
       const programs: SchoolInput["programs"] = school.schoolPrograms
         .map((program) => {
           const byClass = new Map(
@@ -120,7 +138,10 @@ export async function updateAdminClassSubjectsAction(
         .filter((row) => row.classes.length > 0);
 
       if (!programs.some((row) => row.programId === input.programId)) {
-        return { ok: false as const, message: "Program is not enrolled for this school." };
+        programs.push({
+          programId: input.programId,
+          classes: [{ classLevel: input.classLevel, subjects }],
+        });
       }
 
       await schoolService.updateSchool(schoolId, { programs } as SchoolInput);

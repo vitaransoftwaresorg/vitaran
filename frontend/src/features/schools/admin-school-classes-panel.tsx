@@ -26,7 +26,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  SUBJECT_LABELS,
   subjectLabel,
   subjectsForClassLevel,
 } from "@/features/schools/constants";
@@ -88,6 +87,8 @@ type AdminSchoolClassesPanelProps = {
   heading?: string;
   /** Nest under an existing form section (no outer card / title). */
   embedded?: boolean;
+  /** View-only (school profile) — edits happen on the school edit page. */
+  readOnly?: boolean;
   /** Cap class/section seats by school total strength. */
   strength?: { studentStrength: number | null; used: number };
   /** When deferred, Add/Delete stay local until school Save. Seat edits on saved rows save immediately. */
@@ -113,6 +114,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
   teachersHref,
   heading = "Programs & classes",
   embedded = false,
+  readOnly = false,
   strength,
   persist = "immediate",
   initialCreates = [],
@@ -121,6 +123,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
   onSubjectAccessChange,
 }: AdminSchoolClassesPanelProps) {
   const deferred = persist === "deferred";
+  const canEdit = !readOnly;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [creating, setCreating] = useState(false);
@@ -172,16 +175,13 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     return fromOffering.length > 0 ? fromOffering : fallback;
   }
 
-  /** Full subject checklist: catalog + class defaults + known subjects. */
+  /** Subject access checklist — only subjects on this program’s catalog. */
   function allSubjectsFor(programId: string, classLevel: number): Subject[] {
     const program = schoolPrograms.find((row) => row.programId === programId);
-    return [
-      ...new Set([
-        ...(program?.catalogSubjects ?? []),
-        ...(subjectsForClassLevel(classLevel) as Subject[]),
-        ...(Object.keys(SUBJECT_LABELS) as Subject[]),
-      ]),
-    ];
+    const catalog = (program?.catalogSubjects ?? []) as Subject[];
+    if (catalog.length > 0) return [...new Set(catalog)];
+    // Custom / incomplete catalog: fall back to class-band defaults only.
+    return [...new Set(subjectsForClassLevel(classLevel) as Subject[])];
   }
 
   const [query, setQuery] = useState("");
@@ -379,8 +379,9 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
       const over = strengthError(count);
       if (over) nextErrors.studentCount = over;
     }
-    if (programId && selectedSubjects.length === 0) {
-      nextErrors.subjects = "Select at least one subject";
+    const subjects = selectedSubjects.filter((subject) => availableSubjects.includes(subject));
+    if (programId && subjects.length === 0) {
+      nextErrors.subjects = "Select at least one subject from this program";
     }
     if (Object.keys(nextErrors).length > 0) {
       setErrors(nextErrors);
@@ -391,7 +392,6 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     const sectionName = name.trim() || "A";
     const programName =
       programsForClass.find((row) => row.programId === programId)?.programName ?? "";
-    const subjects = [...selectedSubjects];
 
     if (deferred) {
       const duplicate = classRows.some(
@@ -555,8 +555,9 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     if (editing.kind === "section" && !editName.trim()) {
       nextErrors.name = "Section name is required";
     }
-    if (editSubjects.length === 0) {
-      nextErrors.subjects = "Select at least one subject";
+    const subjects = editSubjects.filter((subject) => editAvailableSubjects.includes(subject));
+    if (subjects.length === 0) {
+      nextErrors.subjects = "Select at least one subject from this program";
     }
     if (Object.keys(nextErrors).length > 0) {
       setEditErrors(nextErrors);
@@ -565,7 +566,6 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     setEditErrors({});
 
     const sectionName = editName.trim().toUpperCase();
-    const subjects = [...editSubjects];
     const nextProgramId = editProgramId;
     const nextProgramName =
       programsForEdit.find((row) => row.programId === nextProgramId)?.programName ??
@@ -672,7 +672,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     setCreating(true);
   };
 
-  const addClassButton = (
+  const addClassButton = canEdit ? (
     <Button
       type="button"
       size="sm"
@@ -683,7 +683,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
       <Plus className="size-3.5" />
       Add class
     </Button>
-  );
+  ) : null;
 
   const toolbar = (
     <div
@@ -705,7 +705,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
         {!embedded ? (
           <span className="font-medium text-neutral-600 tabular-nums">{seatsUsedLabel}</span>
         ) : null}
-        {studentsSchoolHref ? (
+        {!readOnly && studentsSchoolHref ? (
           <Link
             href={studentsSchoolHref}
             className="font-semibold text-brand-900 transition-colors hover:text-brand-700"
@@ -1057,7 +1057,9 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
             embedded && "rounded-xl border border-dashed border-neutral-200",
           )}
         >
-          No classes set up yet. Use Add class to create one.
+          {readOnly
+            ? "No classes set up yet. Edit the school to add classes."
+            : "No classes set up yet. Use Add class to create one."}
         </p>
       ) : (
         <div
@@ -1088,7 +1090,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                 <th className="px-4 py-2.5">Students</th>
                 <th className="px-4 py-2.5">Class teacher</th>
                 <th className="px-4 py-2.5">Teachers</th>
-                <th className="px-4 py-2.5 text-right"> </th>
+                {canEdit ? <th className="px-4 py-2.5 text-right"> </th> : null}
               </tr>
             </thead>
             <tbody>
@@ -1118,14 +1120,18 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                       )}
                     </td>
                     <td className="px-4 py-3 text-right font-medium text-neutral-900 tabular-nums">
-                      <button
-                        type="button"
-                        title="Edit class"
-                        className="rounded-md px-1.5 py-0.5 hover:bg-brand-50 hover:text-brand-900"
-                        onClick={() => openEdit(row)}
-                      >
-                        {formatNumber(row.seats)}
-                      </button>
+                      {canEdit ? (
+                        <button
+                          type="button"
+                          title="Edit class"
+                          className="rounded-md px-1.5 py-0.5 hover:bg-brand-50 hover:text-brand-900"
+                          onClick={() => openEdit(row)}
+                        >
+                          {formatNumber(row.seats)}
+                        </button>
+                      ) : (
+                        formatNumber(row.seats)
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {studentsLink ? (
@@ -1153,39 +1159,43 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                         Teachers
                       </Link>
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="inline-flex items-center justify-end gap-0.5">
-                        <button
-                          type="button"
-                          title="Edit class"
-                          disabled={pending}
-                          className="inline-flex size-8 items-center justify-center rounded-md text-neutral-500 hover:bg-brand-50 hover:text-brand-800 disabled:opacity-40"
-                          onClick={() => openEdit(row)}
-                        >
-                          <Pencil className="size-3.5" />
-                        </button>
-                        {row.kind === "section" ? (
+                    {canEdit ? (
+                      <td className="px-4 py-3 text-right">
+                        <div className="inline-flex items-center justify-end gap-0.5">
                           <button
                             type="button"
-                            title="Delete section"
+                            title="Edit class"
                             disabled={pending}
-                            className="inline-flex size-8 items-center justify-center rounded-md text-neutral-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-40"
-                            onClick={() => removeSection(row)}
+                            className="inline-flex size-8 items-center justify-center rounded-md text-neutral-500 hover:bg-brand-50 hover:text-brand-800 disabled:opacity-40"
+                            onClick={() => openEdit(row)}
                           >
-                            <Trash2 className="size-3.5" />
+                            <Pencil className="size-3.5" />
                           </button>
-                        ) : null}
-                      </div>
-                    </td>
+                          {row.kind === "section" ? (
+                            <button
+                              type="button"
+                              title="Delete section"
+                              disabled={pending}
+                              className="inline-flex size-8 items-center justify-center rounded-md text-neutral-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-40"
+                              onClick={() => removeSection(row)}
+                            >
+                              <Trash2 className="size-3.5" />
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    ) : null}
                   </tr>
                 );
               })}
             </tbody>
           </table>
           )}
-          <div className="flex justify-end border-t border-brand-100 px-3 py-2.5 sm:px-4">
-            {addClassButton}
-          </div>
+          {canEdit ? (
+            <div className="flex justify-end border-t border-brand-100 px-3 py-2.5 sm:px-4">
+              {addClassButton}
+            </div>
+          ) : null}
         </div>
       )}
     </section>

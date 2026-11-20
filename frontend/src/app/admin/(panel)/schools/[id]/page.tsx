@@ -172,6 +172,7 @@ export default async function SchoolDetailsPage({ params }: PageProps<"/admin/sc
         classTeacherSlots={classTeacherSlots}
         seatsUsedLabel={seatsUsedLabel}
         teachersHref={teachersHref}
+        readOnly
         strength={{
           studentStrength: strength.studentStrength,
           used: strength.used,

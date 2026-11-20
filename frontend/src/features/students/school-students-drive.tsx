@@ -2,8 +2,8 @@
 
 import { DriveBrowser, type DriveCrumb, type DriveItem } from "@/features/documents/drive-browser";
 import { programLabel } from "@/features/schools/constants";
-import { displaySectionName } from "@/features/schools/section-label";
 import { subjectsForSchoolClass } from "@/features/students/report-subjects";
+import { studentsInClass } from "@/features/students/school-roster";
 import { StudentsTable } from "@/features/students/students-table";
 import type { ClassOrganization } from "@/types/section";
 import type { SchoolProgramOffering } from "@/types/program";
@@ -75,6 +75,7 @@ function classFoldersForSchool(
     addProgram(folder, section.programName);
   }
 
+  // Counts come from the same school roster the table uses.
   const orgClassLevels = new Set(folders.keys());
   for (const student of students) {
     if (!orgClassLevels.has(student.classLevel)) continue;
@@ -89,20 +90,6 @@ function classFoldersForSchool(
       sections: [...folder.sections].sort((a, b) => a.localeCompare(b)),
     }))
     .sort((a, b) => a.classLevel - b.classLevel);
-}
-
-function studentsInClass(students: Student[], classLevel: number, section?: string) {
-  return students
-    .filter((student) => {
-      if (student.classLevel !== classLevel) return false;
-      if (!section) return true;
-      return displaySectionName(student.sectionName) === section;
-    })
-    .sort(
-      (a, b) =>
-        displaySectionName(a.sectionName).localeCompare(displaySectionName(b.sectionName)) ||
-        a.rollNo.localeCompare(b.rollNo),
-    );
 }
 
 export function SchoolStudentsDrive({

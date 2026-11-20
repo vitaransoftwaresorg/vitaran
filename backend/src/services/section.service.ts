@@ -429,32 +429,50 @@ export async function updateSchoolClass(
   return toWholeClassDto(row);
 }
 
+async function purgeClassRosterAndResults(
+  schoolId: string,
+  classLevel: number,
+  programCode?: string | null,
+) {
+  const rolls = (await studentRepository.listRollsByClassLevel(schoolId, classLevel)).map(
+    (row) => row.rollNo,
+  );
+  if (rolls.length > 0) {
+    await resultService.purgeRollsFromResults(schoolId, rolls);
+    await scanRepository.deleteOmScansByRolls(schoolId, rolls);
+  }
+  await studentRepository.deleteStudentsByClassLevel(schoolId, classLevel);
+  await resultService.purgeClassFromResults(schoolId, classLevel, programCode ?? undefined);
+  await scanRepository.deleteOmScansByClass(schoolId, classLevel);
+}
+
 export async function deleteSection(schoolId: string, id: string) {
   const existing = await sectionRepository.findSectionById(id);
   if (!existing || existing.schoolId !== schoolId) {
     throw new AppError(404, "Section not found");
   }
-  const rolls = (await studentRepository.listRollsBySectionId(id)).map((row) => row.rollNo);
-  if (rolls.length > 0) {
-    await resultService.purgeRollsFromResults(schoolId, rolls);
-    await scanRepository.deleteOmScansByRolls(schoolId, rolls);
-  }
-  await studentRepository.deleteStudentsBySectionId(id);
-  await sectionRepository.deleteSection(id);
 
-  // Last section for this class → drop the class sheet / OMRs so ranks lists stay in sync.
   const siblingsLeft = (await sectionRepository.listSectionsBySchool(schoolId)).some(
-    (row) => row.classLevel === existing.classLevel,
+    (row) => row.classLevel === existing.classLevel && row.id !== id,
   );
   const wholeLeft = await schoolClassRepository.findSchoolClassByLevel(
     schoolId,
     existing.classLevel,
   );
+
   if (!siblingsLeft && !wholeLeft) {
-    await resultService.purgeClassFromResults(schoolId, existing.classLevel, existing.program.code);
-    await scanRepository.deleteOmScansByClass(schoolId, existing.classLevel);
+    // Last org unit for this class → permanently remove every student in that class.
+    await purgeClassRosterAndResults(schoolId, existing.classLevel, existing.program.code);
+  } else {
+    const rolls = (await studentRepository.listRollsBySectionId(id)).map((row) => row.rollNo);
+    if (rolls.length > 0) {
+      await resultService.purgeRollsFromResults(schoolId, rolls);
+      await scanRepository.deleteOmScansByRolls(schoolId, rolls);
+    }
+    await studentRepository.deleteStudentsBySectionId(id);
   }
 
+  await sectionRepository.deleteSection(id);
   notifyContentChanged({ kind: KIND, schoolId });
   notifyContentChanged({ kind: "students", schoolId });
 }
@@ -464,20 +482,27 @@ export async function deleteSchoolClass(schoolId: string, id: string) {
   if (!existing || existing.schoolId !== schoolId) {
     throw new AppError(404, "Class not found");
   }
-  const rolls = (
-    await studentRepository.listWholeClassRolls(schoolId, existing.programId, existing.classLevel)
-  ).map((row) => row.rollNo);
-  if (rolls.length > 0) {
-    await resultService.purgeRollsFromResults(schoolId, rolls);
-    await scanRepository.deleteOmScansByRolls(schoolId, rolls);
-  }
-  await resultService.purgeClassFromResults(schoolId, existing.classLevel, existing.program.code);
-  await scanRepository.deleteOmScansByClass(schoolId, existing.classLevel);
-  await studentRepository.deleteWholeClassStudents(
-    schoolId,
-    existing.programId,
-    existing.classLevel,
+
+  const sectionsLeft = (await sectionRepository.listSectionsBySchool(schoolId)).some(
+    (row) => row.classLevel === existing.classLevel,
   );
+  if (!sectionsLeft) {
+    await purgeClassRosterAndResults(schoolId, existing.classLevel, existing.program.code);
+  } else {
+    const rolls = (
+      await studentRepository.listWholeClassRolls(schoolId, existing.programId, existing.classLevel)
+    ).map((row) => row.rollNo);
+    if (rolls.length > 0) {
+      await resultService.purgeRollsFromResults(schoolId, rolls);
+      await scanRepository.deleteOmScansByRolls(schoolId, rolls);
+    }
+    await studentRepository.deleteWholeClassStudents(
+      schoolId,
+      existing.programId,
+      existing.classLevel,
+    );
+  }
+
   await releaseClassLevelTeacher(schoolId, existing.programId, existing.classLevel);
   await schoolClassRepository.deleteSchoolClass(id);
   notifyContentChanged({ kind: KIND, schoolId });
