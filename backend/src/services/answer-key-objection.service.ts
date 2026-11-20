@@ -14,7 +14,7 @@ import { AppError } from "../utils/app-error.js";
 import { asAnswers, asSubjectRanges, parseKeyAnswer } from "../utils/answer-key-parse.js";
 import { notifyContentChanged } from "../utils/content-events.js";
 import { subjectLabelFromCode } from "../utils/subject.js";
-import { answerKeyAccessFilter, type ContentActor } from "./content-access.js";
+import { buildAnswerKeyAccessFilter, type ContentActor } from "./content-access.js";
 import * as answerKeyRepository from "../repositories/answer-key.repository.js";
 import type { ObjectionRecord } from "../repositories/answer-key-objection.repository.js";
 import {
@@ -169,7 +169,7 @@ function toObjectionDto(row: ObjectionRecord) {
 async function assertAnswerKeyVisible(answerKeyId: string, actor: ContentActor) {
   const row = await answerKeyRepository.findVisibleAnswerKey(
     answerKeyId,
-    answerKeyAccessFilter(actor),
+    await buildAnswerKeyAccessFilter(actor),
   );
   if (!row) throw new AppError(404, "Answer key not found");
   return row;

@@ -1,9 +1,17 @@
 "use server";
 
 import { verifySchoolSession } from "@/features/school-auth/session";
+import {
+  contentSlotsFromSchool,
+  programCodesFromSlots,
+} from "@/features/schools/content-slots";
 import { verifyTeacherSession } from "@/features/teacher-auth/session";
 import type { Subject } from "@/types/school";
 import type { TeacherAssignment } from "@/types/teacher";
+import {
+  listSchoolClassOrganization,
+  listTeacherClassOrganization,
+} from "@/services/sections";
 import { portalProgramIds, regularCatalogIds } from "./portal-programs";
 
 export type PortalResourcesPayload = {
@@ -20,25 +28,26 @@ function namesFrom(
   return Object.fromEntries(rows.map((row) => [row.programCode, row.programName]));
 }
 
-/** School offerings flattened to class+subject pairs (same shape teachers use). */
+/** School offerings ∩ created classes/sections, flattened for resources. */
 export async function loadSchoolPortalResourcesAction(): Promise<PortalResourcesPayload> {
   const school = await verifySchoolSession();
-  const assignments: TeacherAssignment[] = school.schoolPrograms.flatMap((program) =>
-    program.classes.flatMap((row) =>
-      row.subjects.map((subject) => ({
-        programId: program.programId,
-        programCode: program.programCode,
-        programName: program.programName,
-        classLevel: row.classLevel,
-        subject,
-      })),
-    ),
+  const organization = await listSchoolClassOrganization();
+  const slots = contentSlotsFromSchool(school.schoolPrograms, organization);
+  const assignments: TeacherAssignment[] = slots.flatMap((slot) =>
+    slot.subjects.map((subject) => ({
+      programId: slot.programId,
+      programCode: slot.programCode,
+      programName: slot.programName,
+      classLevel: slot.classLevel,
+      subject,
+    })),
   );
+  const programCodes = programCodesFromSlots(slots);
 
   return {
-    programIds: portalProgramIds(school.programCodes),
-    catalogIds: regularCatalogIds(school.programCodes),
-    programNames: namesFrom(school.schoolPrograms),
+    programIds: portalProgramIds(programCodes),
+    catalogIds: regularCatalogIds(programCodes),
+    programNames: namesFrom(slots),
     subjectIds: [...new Set(assignments.map((row) => row.subject))],
     assignments,
   };
@@ -46,16 +55,30 @@ export async function loadSchoolPortalResourcesAction(): Promise<PortalResources
 
 export async function loadTeacherPortalResourcesAction(): Promise<PortalResourcesPayload> {
   const teacher = await verifyTeacherSession();
-  const assignmentCodes = [...new Set(teacher.assignments.map((row) => row.programCode))];
-  const schoolCodes = teacher.school.programCodes;
+  const organization = await listTeacherClassOrganization();
+  const schoolSlots = contentSlotsFromSchool(teacher.school.schoolPrograms, organization);
+  const teacherKeys = new Set(
+    teacher.assignments.map((row) => `${row.programCode}:${row.classLevel}`),
+  );
+  const slots = schoolSlots.filter((slot) =>
+    teacherKeys.has(`${slot.programCode}:${slot.classLevel}`),
+  );
+  const assignments = teacher.assignments.filter((row) =>
+    slots.some(
+      (slot) =>
+        slot.programCode === row.programCode && slot.classLevel === row.classLevel,
+    ),
+  );
+  const programCodes = programCodesFromSlots(slots);
+
   return {
-    programIds: portalProgramIds(assignmentCodes.length > 0 ? assignmentCodes : schoolCodes),
-    catalogIds: regularCatalogIds(schoolCodes.length > 0 ? schoolCodes : assignmentCodes),
+    programIds: portalProgramIds(programCodes),
+    catalogIds: regularCatalogIds(programCodes),
     programNames: namesFrom([
-      ...teacher.school.schoolPrograms,
-      ...teacher.assignments,
+      ...slots,
+      ...assignments,
     ]),
-    subjectIds: [...new Set(teacher.assignments.map((row) => row.subject))],
-    assignments: teacher.assignments,
+    subjectIds: [...new Set(assignments.map((row) => row.subject))],
+    assignments,
   };
 }

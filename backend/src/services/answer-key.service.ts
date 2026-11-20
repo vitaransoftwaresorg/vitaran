@@ -26,7 +26,7 @@ import { notifyContentChanged } from "../utils/content-events.js";
 import { downloadFileName } from "../utils/download-file-name.js";
 import { enteredTestId } from "../utils/test-id.js";
 import { renderAnswerKeyPdf } from "./answer-key.pdf.js";
-import { answerKeyAccessFilter, type ContentActor } from "./content-access.js";
+import { buildAnswerKeyAccessFilter, type ContentActor } from "./content-access.js";
 import { getObject } from "./object-storage.js";
 import { loadVitaranLogo } from "./rank-card.render.js";
 import { toSchoolRef, type SchoolAccountDto } from "./school.service.js";
@@ -400,13 +400,13 @@ export async function updateAnswerKey(id: string, { schoolId, program, ...meta }
 
 export async function listVisibleAnswerKeys(actor: ContentActor) {
   return answerKeyDtos(
-    await answerKeyRepository.findAnswerKeys(answerKeyAccessFilter(actor)),
+    await answerKeyRepository.findAnswerKeys(await buildAnswerKeyAccessFilter(actor)),
     true,
   );
 }
 
 export async function countVisibleAnswerKeys(actor: ContentActor) {
-  return answerKeyRepository.countAnswerKeys(answerKeyAccessFilter(actor));
+  return answerKeyRepository.countAnswerKeys(await buildAnswerKeyAccessFilter(actor));
 }
 
 /** @deprecated Prefer listVisibleAnswerKeys with a ContentActor. */
@@ -492,7 +492,10 @@ export async function saveAnswerKeyAnswers(id: string, input: SaveAnswerKeyAnswe
 
 /** Branded, printable answer key with Vitaran and the viewer's school logo. */
 export async function getAnswerKeyPdf(id: string, actor: ContentActor) {
-  const row = await answerKeyRepository.findVisibleAnswerKey(id, answerKeyAccessFilter(actor));
+  const row = await answerKeyRepository.findVisibleAnswerKey(
+    id,
+    await buildAnswerKeyAccessFilter(actor),
+  );
   if (!row) throw new AppError(404, "Answer key not found");
   const answers = asAnswers(row.answers);
   if (Object.keys(answers).length === 0) throw new AppError(404, "No answers published for this test yet");
@@ -531,7 +534,10 @@ export async function getAnswerKeyPdf(id: string, actor: ContentActor) {
 }
 
 export async function getVisibleAnswerKey(id: string, actor: ContentActor) {
-  const row = await answerKeyRepository.findVisibleAnswerKey(id, answerKeyAccessFilter(actor));
+  const row = await answerKeyRepository.findVisibleAnswerKey(
+    id,
+    await buildAnswerKeyAccessFilter(actor),
+  );
   if (!row) throw new AppError(404, "Answer key not found");
   return answerKeyDto(row);
 }

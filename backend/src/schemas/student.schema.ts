@@ -22,8 +22,14 @@ const optionalParentName = z
   .pipe(z.union([z.literal(""), titleText(2, 120)]))
   .transform((value) => (value === "" ? null : value));
 
+/** Empty string allowed; otherwise title-cased (min 2 chars). */
+const optionalStudentName = z
+  .union([z.string(), z.null()])
+  .transform((value) => (value == null ? "" : value.trim()))
+  .pipe(z.union([z.literal(""), titleText(2, 120)]));
+
 const studentRowSchema = z.object({
-  name: titleText(2, 120),
+  name: optionalStudentName,
   rollNo: z.string().trim().regex(/^\d{7}$/, "Registration number must be 7 digits"),
   email: email.optional().nullable(),
   parentName: optionalParentName,
@@ -49,7 +55,7 @@ export const createStudentsBulkSchema = z.object({
 
 export const updateStudentSchema = z
   .object({
-    name: titleText(2, 120),
+    name: optionalStudentName,
     rollNo: z.string().trim().regex(/^\d{7}$/, "Registration number must be 7 digits"),
     email: email.nullable(),
     parentName: optionalParentName,

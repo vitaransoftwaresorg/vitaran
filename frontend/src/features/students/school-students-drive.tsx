@@ -61,6 +61,7 @@ function classFoldersForSchool(
     if (!folder.programs.includes(programName)) folder.programs.push(programName);
   };
 
+  // Folders follow Classes & sections only — not orphan student rows.
   for (const row of organization?.wholeClasses ?? []) {
     const folder = ensure(row.classLevel);
     folder.seats += row.studentCount;
@@ -74,11 +75,12 @@ function classFoldersForSchool(
     addProgram(folder, section.programName);
   }
 
+  const orgClassLevels = new Set(folders.keys());
   for (const student of students) {
-    const folder = ensure(student.classLevel);
+    if (!orgClassLevels.has(student.classLevel)) continue;
+    const folder = folders.get(student.classLevel);
+    if (!folder) continue;
     folder.studentCount += 1;
-    addSection(folder, displaySectionName(student.sectionName));
-    addProgram(folder, student.programName);
   }
 
   return [...folders.values()]

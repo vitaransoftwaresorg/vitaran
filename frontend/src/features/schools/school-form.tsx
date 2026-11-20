@@ -58,15 +58,16 @@ import {
   type DeferredClassChanges,
   type DeferredClassCreate,
 } from "./admin-school-classes-panel";
-import { CustomSchoolProgramField } from "./custom-school-program-field";
 import {
   CUSTOM_DRAFT_PROGRAM_ID,
+  catalogProgramsForForm,
+  customizedProgramForForm,
   liveOfferingsFromForm,
+  parseOfferingToken,
   replaceClassSubjectOfferings,
   schoolProgramsToTokens,
   syncCustomSubjectOfferings,
 } from "./offerings";
-import { ProgramOfferingsField } from "./program-offerings-field";
 import {
   LAST_STEP,
   SCHOOL_FORM_STEPS,
@@ -346,6 +347,24 @@ function SchoolFormWizard({
       }),
     [schoolType, offerings, customClasses, values.customProgramName, typeCatalog, schoolPrograms],
   );
+  /** Catalog (or custom 1–12) for Add class — not limited to already-granted offerings. */
+  const panelSchoolPrograms = useMemo(() => {
+    if (schoolType === "CUSTOMIZED") {
+      return customizedProgramForForm({
+        offerings,
+        customProgramName: values.customProgramName ?? "",
+        savedPrograms: schoolPrograms,
+      });
+    }
+    return catalogProgramsForForm(typeCatalog, liveSchoolPrograms);
+  }, [
+    schoolType,
+    offerings,
+    values.customProgramName,
+    schoolPrograms,
+    typeCatalog,
+    liveSchoolPrograms,
+  ]);
   const [step, setStep] = useState(() =>
     resolveInitialStep(searchParams.get(STEP_SEARCH_PARAM), values, serverErrors, mode),
   );
@@ -871,91 +890,92 @@ function SchoolFormWizard({
             <div {...panel(2)}>
               <FormSection title="Programs & classes">
                 <p className="-mt-1 text-sm text-neutral-500">
-                  {schoolType === "CUSTOMIZED"
-                    ? "Enter the program name and select classes. Subjects follow the regular catalog (1–5 Science, 6–10 Physics / Chemistry / Biology)."
-                    : "Select a program, then check the classes this school offers."}
-                  <span className="mt-1 block text-neutral-400">
-                    Classes & sections in the next step follow these checks. Nothing is saved until
-                    you
-                    {isEdit ? " click Save" : " register the school"}.
-                  </span>
+                  Add classes and sections, choose the program, and set subject access.
                 </p>
                 {schoolType === "CUSTOMIZED" ? (
-                  <CustomSchoolProgramField
-                    name={values.customProgramName ?? ""}
-                    classes={customClasses}
-                    onClassesChange={(next) => {
-                      const programId =
-                        liveSchoolPrograms[0]?.programId ?? CUSTOM_DRAFT_PROGRAM_ID;
-                      const nextOfferings = syncCustomSubjectOfferings(
-                        offerings,
-                        next,
-                        programId,
-                      );
-                      setCustomClasses(next);
-                      setOfferings(nextOfferings);
-                      const baseline = savedValues ?? values;
-                      setFormDirty(
-                        !sameFormValues(
-                          { ...readValues(), customClasses: next, offerings: nextOfferings },
-                          baseline,
-                        ),
-                      );
-                      saveDraftSoon();
-                    }}
-                    errors={{
-                      customProgramName: errors.customProgramName?.[0],
-                      customClasses: errors.customClasses?.[0],
-                    }}
-                  />
-                ) : (
-                  <ProgramOfferingsField
-                    key={schoolType}
-                    catalog={typeCatalog}
-                    value={offerings}
-                    onChange={(next) => {
-                      setOfferings(next);
-                      const baseline = savedValues ?? values;
-                      setFormDirty(!sameFormValues({ ...readValues(), offerings: next }, baseline));
-                      saveDraftSoon();
-                    }}
-                    error={errors.offerings?.[0]}
-                  />
-                )}
-              </FormSection>
-            </div>
+                  <Field data-invalid={invalid("customProgramName")}>
+                    <FieldLabel htmlFor="customProgramName">Program name *</FieldLabel>
+                    <Input
+                      id="customProgramName"
+                      name="customProgramName"
+                      defaultValue={values.customProgramName}
+                      {...capitalized}
+                      placeholder="e.g. School Integrated Program"
+                      aria-invalid={invalid("customProgramName")}
+                    />
+                    {error("customProgramName")}
+                  </Field>
+                ) : null}
+                {errors.customClasses?.[0] ? (
+                  <FieldError>{errors.customClasses[0]}</FieldError>
+                ) : null}
+                {errors.offerings?.[0] ? <FieldError>{errors.offerings[0]}</FieldError> : null}
 
-            <div {...panel(3)}>
-              <AdminSchoolClassesPanel
-                schoolId={schoolId}
-                schoolPrograms={liveSchoolPrograms}
-                organization={classesPanel?.organization ?? emptyOrganization}
-                classTeacherSlots={classesPanel?.classTeacherSlots ?? []}
-                seatsUsedLabel={
-                  classesPanel?.seatsUsedLabel ??
-                  (classDrafts.creates.length
-                    ? `${classDrafts.creates.length} class${classDrafts.creates.length === 1 ? "" : "es"} ready to save`
-                    : "No seats assigned yet")
-                }
-                teachersHref={classesPanel?.teachersHref ?? "/admin/teachers"}
-                strength={classesPanel?.strength}
-                persist={schoolId ? "immediate" : "deferred"}
-                initialCreates={initialClassCreates}
-                initialDeletes={initialClassDeletes}
-                onDeferredChange={setClassDrafts}
-                onSubjectAccessChange={(programId, classLevel, subjects) => {
-                  const next = replaceClassSubjectOfferings(
-                    offerings,
-                    programId,
-                    classLevel,
-                    subjects,
-                  );
-                  setOfferings(next);
-                  const baseline = savedValues ?? values;
-                  setFormDirty(!sameFormValues({ ...readValues(), offerings: next }, baseline));
-                  saveDraftSoon();
-                }}
-              />
+                <AdminSchoolClassesPanel
+                  schoolId={schoolId}
+                  schoolPrograms={panelSchoolPrograms}
+                  organization={classesPanel?.organization ?? emptyOrganization}
+                  classTeacherSlots={classesPanel?.classTeacherSlots ?? []}
+                  seatsUsedLabel={
+                    classesPanel?.seatsUsedLabel ??
+                    (classDrafts.creates.length
+                      ? `${classDrafts.creates.length} class${classDrafts.creates.length === 1 ? "" : "es"} ready to save`
+                      : "No seats assigned yet")
+                  }
+                  teachersHref={classesPanel?.teachersHref ?? "/admin/teachers"}
+                  embedded
+                  strength={classesPanel?.strength}
+                  persist={schoolId ? "immediate" : "deferred"}
+                  initialCreates={initialClassCreates}
+                  initialDeletes={initialClassDeletes}
+                  onDeferredChange={setClassDrafts}
+                  onSubjectAccessChange={(programId, classLevel, subjects) => {
+                    const next = replaceClassSubjectOfferings(
+                      offerings,
+                      programId,
+                      classLevel,
+                      subjects,
+                    );
+                    setOfferings(next);
+                    if (schoolType === "CUSTOMIZED") {
+                      const levels = new Set(
+                        [
+                          ...customClasses,
+                          String(classLevel),
+                          ...next
+                            .map((token) => parseOfferingToken(token)?.classLevel)
+                            .filter((level): level is number => level != null)
+                            .map(String),
+                        ].filter(Boolean),
+                      );
+                      setCustomClasses([...levels].sort((a, b) => Number(a) - Number(b)));
+                    }
+                    const baseline = savedValues ?? values;
+                    setFormDirty(
+                      !sameFormValues(
+                        {
+                          ...readValues(),
+                          offerings: next,
+                          customClasses:
+                            schoolType === "CUSTOMIZED"
+                              ? [
+                                  ...new Set([
+                                    ...customClasses,
+                                    String(classLevel),
+                                  ]),
+                                ]
+                              : customClasses,
+                        },
+                        baseline,
+                      ),
+                    );
+                    saveDraftSoon();
+                  }}
+                />
+              </FormSection>
+              {customClasses.map((level) => (
+                <input key={level} type="hidden" name="customClasses" value={level} />
+              ))}
               <input
                 type="hidden"
                 name="pendingSectionCreates"

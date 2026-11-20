@@ -112,6 +112,75 @@ export function syncCustomSubjectOfferings(
   return kept;
 }
 
+/** Catalog programs expanded so Add class can pick any enrolled catalog class. */
+export function catalogProgramsForForm(
+  catalog: LearningProgram[],
+  live: SchoolProgramOffering[] = [],
+): SchoolProgramOffering[] {
+  const year = new Date().getFullYear();
+  const liveById = new Map(live.map((row) => [row.programId, row]));
+  return catalog.map((program) => {
+    const liveProgram = liveById.get(program.id);
+    const levels = Array.from(
+      { length: Math.max(0, program.classTo - program.classFrom + 1) },
+      (_, index) => program.classFrom + index,
+    );
+    return {
+      programId: program.id,
+      programCode: program.code,
+      programName: program.name,
+      type: (program.type ?? "REGULAR") as SchoolType,
+      year: program.year ?? year,
+      classFrom: program.classFrom,
+      classTo: program.classTo,
+      catalogSubjects: program.subjects,
+      classes: levels.map((classLevel) => ({
+        classLevel,
+        subjects:
+          liveProgram?.classes.find((row) => row.classLevel === classLevel)?.subjects ?? [],
+      })),
+    };
+  });
+}
+
+/** Single customized program with classes 1–12 for the registration Add-class UI. */
+export function customizedProgramForForm(input: {
+  offerings: string[];
+  customProgramName: string;
+  savedPrograms: SchoolProgramOffering[];
+}): SchoolProgramOffering[] {
+  const year = new Date().getFullYear();
+  const saved =
+    input.savedPrograms.find((row) => row.type === "CUSTOMIZED") ?? input.savedPrograms[0];
+  const programId = saved?.programId ?? CUSTOM_DRAFT_PROGRAM_ID;
+  const programName =
+    input.customProgramName.trim() || saved?.programName || "Custom Program";
+  const subjectsByClass = new Map(
+    offeringsToPrograms(input.offerings)
+      .filter(
+        (row) => row.programId === programId || row.programId === CUSTOM_DRAFT_PROGRAM_ID,
+      )
+      .flatMap((row) => row.classes.map((cls) => [cls.classLevel, cls.subjects] as const)),
+  );
+  const levels = Array.from({ length: 12 }, (_, index) => index + 1);
+  return [
+    {
+      programId,
+      programCode: saved?.programCode ?? "CUSTOM",
+      programName,
+      type: "CUSTOMIZED" as const,
+      year: saved?.year ?? year,
+      classFrom: 1,
+      classTo: 12,
+      catalogSubjects: saved?.catalogSubjects ?? [],
+      classes: levels.map((classLevel) => ({
+        classLevel,
+        subjects: subjectsByClass.get(classLevel) ?? [],
+      })),
+    },
+  ];
+}
+
 /**
  * Live Programs & classes checks → offerings shape used by Classes & sections.
  * Keeps Add-class dropdowns in sync with the form before Save.

@@ -624,7 +624,7 @@ export function BulkStudentForm({
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-brand-950">Import from Excel</p>
           <p className="text-xs text-neutral-500">
-            Reg No *, {perRowSection ? "Section *, " : ""}Student name * · Parent optional · up to{" "}
+            Reg No *, {perRowSection ? "Section *, " : ""}Student name optional · Parent optional · up to{" "}
             {MAX_IMPORT_ROWS} · mix sections in one file
           </p>
         </div>
@@ -677,7 +677,7 @@ export function BulkStudentForm({
                 <th className="w-10 px-3 py-2.5">#</th>
                 <th className="px-3 py-2.5">Reg No *</th>
                 {perRowSection ? <th className="px-3 py-2.5">Section *</th> : null}
-                <th className="px-3 py-2.5">Student name *</th>
+                <th className="px-3 py-2.5">Student name (optional)</th>
                 <th className="px-3 py-2.5">Parent name (optional)</th>
                 <th className="px-3 py-2.5">Parent mobile (optional)</th>
                 <th className="w-12 px-2 py-2.5" />
@@ -739,6 +739,7 @@ export function BulkStudentForm({
                       <Input
                         value={row.name}
                         className="h-9"
+                        placeholder="optional"
                         aria-invalid={errors.name ? true : undefined}
                         autoCapitalize="words"
                         onChange={(e) => updateRow(row.key, { name: capitalizeInput(e.currentTarget) })}

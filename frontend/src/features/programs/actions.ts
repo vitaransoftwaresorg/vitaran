@@ -22,7 +22,8 @@ const programSchema = z
       .string()
       .trim()
       .toUpperCase()
-      .regex(/^[A-Z][A-Z0-9_]{1,63}$/, "Use letters, numbers and underscores (e.g. INTEGRATED)."),
+      .min(1, "Enter a code.")
+      .max(64, "Keep the code under 64 characters."),
   })
   .refine((value) => value.classFrom <= value.classTo, {
     message: "Class from must be ≤ class to.",
@@ -120,11 +121,9 @@ export async function updateProgramAction(
   return save(formData, (input) => programService.updateProgram(id, input));
 }
 
-const PROGRAM_CODE = /^[A-Z][A-Z0-9_]{1,63}$/;
-
 export async function isProgramCodeTakenAction(code: string, excludeId?: string): Promise<boolean> {
   const normalized = code.trim().toUpperCase();
-  if (!PROGRAM_CODE.test(normalized)) return false;
+  if (!normalized || normalized.length > 64) return false;
   try {
     const { taken } = await programService.getProgramCodeAvailability(normalized, excludeId);
     return taken;

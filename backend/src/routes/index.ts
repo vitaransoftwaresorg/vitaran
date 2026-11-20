@@ -23,7 +23,11 @@ import {
 } from "./result.routes.js";
 import { programCatalogRouter, programRouter } from "./program.routes.js";
 import { schoolRouter } from "./school.routes.js";
-import { adminSchoolSectionRouter, schoolSectionRouter } from "./section.routes.js";
+import {
+  adminSchoolSectionRouter,
+  schoolSectionRouter,
+  teacherSectionRouter,
+} from "./section.routes.js";
 import {
   adminSchoolStudentRouter,
   adminStudentRouter,
@@ -56,6 +60,7 @@ apiRouter.use("/results", resultRouter);
 apiRouter.use("/public/results", publicResultRouter);
 apiRouter.use("/school/teachers", blockIfMaintenance, schoolTeacherRouter);
 apiRouter.use("/school/sections", blockIfMaintenance, schoolSectionRouter);
+apiRouter.use("/teacher/sections", blockIfMaintenance, teacherSectionRouter);
 apiRouter.use("/school/students", blockIfMaintenance, schoolStudentRouter);
 apiRouter.use("/school/answer-keys", blockIfMaintenance, schoolAnswerKeyRouter);
 apiRouter.use("/school/results", blockIfMaintenance, schoolResultRouter);

@@ -40,8 +40,13 @@ export type BulkStudentFormState = {
   count?: number;
 };
 
+const optionalStudentName = z.union([
+  z.literal(""),
+  z.string().trim().min(2, "Enter at least 2 characters").max(120),
+]);
+
 const studentSchema = z.object({
-  name: z.string().trim().min(2, "Enter the student name"),
+  name: optionalStudentName,
   rollNo: z.string().trim().regex(/^\d{7}$/, "Enter the 7-digit registration number"),
   email: z.union([z.literal(""), z.string().trim().email("Enter a valid email")]),
   parentName: z.union([
@@ -64,7 +69,7 @@ const studentSchema = z.object({
 });
 
 const bulkRowSchema = z.object({
-  name: z.string().trim().min(2, "Enter the student name"),
+  name: optionalStudentName,
   rollNo: z.string().trim().regex(/^\d{7}$/, "Enter the 7-digit registration number"),
   email: z.union([z.literal(""), z.string().trim().email("Enter a valid email")]),
   parentName: z.union([

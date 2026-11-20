@@ -5,6 +5,7 @@ import type {
   UpdateSectionInput,
 } from "../schemas/section.schema.js";
 import type { SchoolAccountDto } from "../services/school.service.js";
+import type { TeacherAccountDto } from "../services/teacher.service.js";
 import * as sectionService from "../services/section.service.js";
 import { sendSuccess } from "../utils/api-response.js";
 
@@ -19,6 +20,11 @@ export const listSchoolSections: RequestHandler = async (_req, res) => {
 export const listSchoolClassOrganization: RequestHandler = async (_req, res) => {
   const school = res.locals.school as SchoolAccountDto;
   sendSuccess(res, await sectionService.listClassOrganization(school.id));
+};
+
+export const listTeacherClassOrganization: RequestHandler = async (_req, res) => {
+  const teacher = res.locals.teacher as TeacherAccountDto;
+  sendSuccess(res, await sectionService.listClassOrganization(teacher.schoolId));
 };
 
 export const getSchoolSectionStrength: RequestHandler = async (_req, res) => {

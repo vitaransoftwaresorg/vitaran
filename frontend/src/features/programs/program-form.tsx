@@ -18,15 +18,17 @@ import {
 } from "@/components/ui/select";
 import { SUBJECT_LABELS, subjectLabel, TYPE_LABELS } from "@/features/schools/constants";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
-import { SCHOOL_TYPES, toSubjectCode } from "@/types/school";
+import { SCHOOL_TYPES } from "@/types/school";
 import type { LearningProgram } from "@/types/program";
 import { isProgramCodeTakenAction, type ProgramFormState, type ProgramFormValues } from "./actions";
 
 const TYPE_OPTIONS = SCHOOL_TYPES.map((value) => ({ value, label: TYPE_LABELS[value] }));
 const CATALOG_SUBJECTS = Object.keys(SUBJECT_LABELS);
 const CLASS_OPTIONS = Array.from({ length: 12 }, (_, index) => String(index + 1));
-const YEAR_OPTIONS = Array.from({ length: 8 }, (_, index) => String(new Date().getFullYear() - 1 + index));
-const PROGRAM_CODE = /^[A-Z][A-Z0-9_]{1,63}$/;
+const CURRENT_YEAR = new Date().getFullYear();
+const YEAR_OPTIONS = Array.from({ length: CURRENT_YEAR - 2020 + 3 }, (_, index) =>
+  String(2020 + index),
+);
 const CODE_CHECK_DELAY_MS = 400;
 
 type ProgramFormProps = {
@@ -46,10 +48,6 @@ function toValues(program?: LearningProgram): ProgramFormValues {
   };
 }
 
-function toProgramCode(value: string) {
-  return toSubjectCode(value);
-}
-
 export function ProgramForm({ program, action }: ProgramFormProps) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState(action, undefined);
@@ -58,17 +56,22 @@ export function ProgramForm({ program, action }: ProgramFormProps) {
   const [type, setType] = useState(values.type);
   const [classFrom, setClassFrom] = useState(values.classFrom);
   const [classTo, setClassTo] = useState(values.classTo);
+  const [name, setName] = useState(values.name);
   const [code, setCode] = useState(values.code);
   const [codeTaken, setCodeTaken] = useState(false);
   const [codeChecking, setCodeChecking] = useState(false);
   const [dirty, setDirty] = useState(false);
   const codeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const latestCode = useRef(values.code);
+  const latestCode = useRef(values.code.trim());
   const errors = state?.status === "error" ? state.fieldErrors : undefined;
   const isEdit = !!program;
   const cancelHref = "/admin/programs";
-  const normalizedCode = toProgramCode(code);
-  const codeValid = PROGRAM_CODE.test(normalizedCode);
+  const trimmedCode = code.trim();
+  const codeReady = trimmedCode.length > 0 && trimmedCode.length <= 64;
+  const yearOptions = useMemo(() => {
+    if (!values.year || YEAR_OPTIONS.includes(values.year)) return YEAR_OPTIONS;
+    return [...YEAR_OPTIONS, values.year].sort((a, b) => Number(a) - Number(b));
+  }, [values.year]);
   const subjectOptions = useMemo(
     () => [...new Set([...CATALOG_SUBJECTS, ...values.subjects, ...subjects])],
     [subjects, values.subjects],
@@ -82,20 +85,22 @@ export function ProgramForm({ program, action }: ProgramFormProps) {
     });
   };
 
-  const checkCode = (value: string) => {
-    if (codeTimer.current) clearTimeout(codeTimer.current);
-    const next = toProgramCode(value);
-    latestCode.current = next;
+  const onCodeChange = (value: string) => {
+    if (isEdit) setDirty(true);
+    const next = value.toUpperCase().slice(0, 64);
     setCode(next);
+    if (codeTimer.current) clearTimeout(codeTimer.current);
+    const trimmed = next.trim();
+    latestCode.current = trimmed;
     setCodeTaken(false);
-    if (!PROGRAM_CODE.test(next)) {
+    if (!trimmed) {
       setCodeChecking(false);
       return;
     }
     setCodeChecking(true);
     codeTimer.current = setTimeout(async () => {
-      const taken = await isProgramCodeTakenAction(next, program?.id);
-      if (latestCode.current !== next) return;
+      const taken = await isProgramCodeTakenAction(trimmed, program?.id);
+      if (latestCode.current !== trimmed) return;
       setCodeChecking(false);
       setCodeTaken(taken);
     }, CODE_CHECK_DELAY_MS);
@@ -119,24 +124,26 @@ export function ProgramForm({ program, action }: ProgramFormProps) {
     }
   }, [state, isEdit, router, markClean]);
 
-  const codeHint = !isEdit
-    ? !normalizedCode
-      ? null
-      : !codeValid
-        ? "Use letters, numbers and underscores (e.g. INTEGRATED)."
-        : codeChecking
-          ? "Checking…"
-          : codeTaken
-            ? "This code is already used."
-            : "This code is available."
-    : null;
+  const codeUnchanged = isEdit && trimmedCode === program.code;
+  const codeHint = !trimmedCode
+    ? null
+    : codeChecking
+      ? "Checking…"
+      : codeTaken
+        ? "This code is already used."
+        : codeUnchanged
+          ? null
+          : "This code is available.";
 
   const canSubmit =
+    name.trim().length >= 2 &&
     Boolean(type) &&
     Boolean(classFrom) &&
     Boolean(classTo) &&
     subjects.length > 0 &&
-    (isEdit || (codeValid && !codeTaken && !codeChecking));
+    codeReady &&
+    !codeTaken &&
+    !codeChecking;
 
   return (
     <>
@@ -153,7 +160,18 @@ export function ProgramForm({ program, action }: ProgramFormProps) {
       <div className="grid gap-4 md:grid-cols-2">
         <Field data-invalid={errors?.name ? true : undefined} className="md:col-span-2">
           <FieldLabel htmlFor="name">Program name *</FieldLabel>
-          <Input id="name" name="name" defaultValue={values.name} required />
+          <Input
+            id="name"
+            name="name"
+            value={name}
+            required
+            maxLength={120}
+            placeholder="e.g. School Integrated Program (2026)"
+            onChange={(event) => {
+              if (isEdit) setDirty(true);
+              setName(event.currentTarget.value);
+            }}
+          />
           {errors?.name && <FieldError>{errors.name[0]}</FieldError>}
         </Field>
 
@@ -184,12 +202,16 @@ export function ProgramForm({ program, action }: ProgramFormProps) {
 
         <Field data-invalid={errors?.year ? true : undefined}>
           <FieldLabel htmlFor="year">Year *</FieldLabel>
-          <Select name="year" items={YEAR_OPTIONS.map((value) => ({ value, label: value }))} defaultValue={values.year}>
+          <Select
+            name="year"
+            items={yearOptions.map((value) => ({ value, label: value }))}
+            defaultValue={values.year}
+          >
             <SelectTrigger id="year" className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {YEAR_OPTIONS.map((year) => (
+              {yearOptions.map((year) => (
                 <SelectItem key={year} value={year}>
                   {year}
                 </SelectItem>
@@ -199,25 +221,24 @@ export function ProgramForm({ program, action }: ProgramFormProps) {
           {errors?.year && <FieldError>{errors.year[0]}</FieldError>}
         </Field>
 
-        <Field data-invalid={Boolean(errors?.code) || (!isEdit && codeTaken) || undefined}>
+        <Field data-invalid={Boolean(errors?.code) || codeTaken || undefined}>
           <FieldLabel htmlFor="code">Code *</FieldLabel>
-          {isEdit ? (
-            <Input id="code" name="code" defaultValue={values.code} readOnly className="bg-neutral-50" />
-          ) : (
-            <Input
-              id="code"
-              name="code"
-              value={code}
-              required
-              autoCapitalize="characters"
-              placeholder="e.g. INTEGRATED"
-              onChange={(event) => checkCode(event.currentTarget.value)}
-            />
-          )}
+          <Input
+            id="code"
+            name="code"
+            value={code}
+            required
+            maxLength={64}
+            spellCheck={false}
+            autoCapitalize="characters"
+            className="uppercase"
+            placeholder="e.g. INTEGRATED"
+            onChange={(event) => onCodeChange(event.currentTarget.value)}
+          />
           {codeHint ? (
             <p
               className={
-                !codeValid || codeTaken
+                codeTaken
                   ? "text-xs font-medium text-red-600"
                   : codeChecking
                     ? "text-xs font-medium text-neutral-500"

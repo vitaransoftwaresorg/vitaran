@@ -229,7 +229,7 @@ export function StudentForm({
 
   function validateBeforeSubmit(): boolean {
     const next: typeof clientErrors = {};
-    if (name.trim().length < 2) next.name = "Enter the student name";
+    if (name.trim() && name.trim().length < 2) next.name = "Enter at least 2 characters";
     if (!/^\d{7}$/.test(rollNo.trim())) next.rollNo = "Enter the 7-digit registration number";
     if (parentName.trim() && parentName.trim().length < 2) {
       next.parentName = "Enter a parent / guardian name (at least 2 characters)";
@@ -285,13 +285,14 @@ export function StudentForm({
 
       <FieldGroup className="grid gap-3 sm:grid-cols-2">
         <Field data-invalid={errors.name ? true : undefined}>
-          <FieldLabel htmlFor="name">Student name *</FieldLabel>
+          <FieldLabel htmlFor="name">Student name (optional)</FieldLabel>
           <Input
             id="name"
             name="name"
             autoCapitalize="words"
             value={name}
             className="h-9"
+            placeholder="optional"
             onChange={(e) => {
               setName(capitalizeInput(e.currentTarget));
               setClientErrors((prev) => ({ ...prev, name: undefined }));

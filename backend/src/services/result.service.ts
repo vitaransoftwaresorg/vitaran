@@ -39,10 +39,13 @@ import {
   projectSheetForTeacher,
 } from "../utils/result-sheet-scope.js";
 import {
+  resolveContentSlots,
   resultSetAccessFilter,
+  resultSetVisibleToSchool,
   resultSetVisibleToTeacher,
   resultSheetClassFilter,
   type ContentActor,
+  type ProgramClassSlot,
 } from "./content-access.js";
 import { downloadFileName } from "../utils/download-file-name.js";
 import { getObject, putObject } from "./object-storage.js";
@@ -158,12 +161,23 @@ export async function getResultStats() {
 /** Schools/teachers see all classes in their scope (unpublished sheets are labeled in the UI). */
 function withActorSheetFilter<
   T extends { classes: { classLevel: number; published?: boolean }[] },
->(dto: T, actor?: ContentActor): T {
+>(dto: T, actor?: ContentActor, contentSlots?: ProgramClassSlot[]): T {
   if (!actor) return dto;
-  const allowed = resultSheetClassFilter(actor);
+  const allowed = resultSheetClassFilter(actor, contentSlots);
   return {
     ...dto,
-    classes: dto.classes.filter((sheet) => !allowed || allowed.includes(sheet.classLevel)),
+    classes: dto.classes.filter((sheet) => {
+      if (allowed && !allowed.includes(sheet.classLevel)) return false;
+      if (actor.kind === "school" && contentSlots) {
+        const programCode = dto && "programCode" in dto ? (dto as { programCode?: string | null }).programCode : null;
+        if (programCode) {
+          return contentSlots.some(
+            (slot) => slot.programCode === programCode && slot.classLevel === sheet.classLevel,
+          );
+        }
+      }
+      return true;
+    }),
   };
 }
 
@@ -175,6 +189,7 @@ function toContentActor(actor?: ContentActor | SchoolAccountDto): ContentActor |
 
 export async function getResultSet(id: string, actor?: ContentActor | SchoolAccountDto) {
   const contentActor = toContentActor(actor);
+  const contentSlots = contentActor ? await resolveContentSlots(contentActor) : undefined;
   const resultSet = await resultRepository.findResultSet({
     id,
     ...(contentActor && resultSetAccessFilter(contentActor)),
@@ -183,8 +198,15 @@ export async function getResultSet(id: string, actor?: ContentActor | SchoolAcco
   if (contentActor?.kind === "teacher" && !resultSetVisibleToTeacher(contentActor.teacher, resultSet)) {
     throw new AppError(404, "Result not found");
   }
-  const dto = withActorSheetFilter(toResultSetDto(resultSet), contentActor);
-  if (contentActor?.kind === "teacher" && dto.classes.length === 0) {
+  if (
+    contentActor?.kind === "school" &&
+    contentSlots &&
+    !resultSetVisibleToSchool(resultSet, contentSlots, contentActor.school)
+  ) {
+    throw new AppError(404, "Result not found");
+  }
+  const dto = withActorSheetFilter(toResultSetDto(resultSet), contentActor, contentSlots);
+  if (contentActor && dto.classes.length === 0) {
     throw new AppError(404, "Result not found");
   }
   return dto;
@@ -548,20 +570,23 @@ export async function getResultSheetFile(
 }
 
 export async function listVisibleResultSets(actor: ContentActor) {
+  const contentSlots = await resolveContentSlots(actor);
   const sets = await resultRepository.findResultSets(resultSetAccessFilter(actor));
   const visible = sets.filter((set) =>
-    actor.kind === "school" ? true : resultSetVisibleToTeacher(actor.teacher, set),
+    actor.kind === "school"
+      ? resultSetVisibleToSchool(set, contentSlots, actor.school)
+      : resultSetVisibleToTeacher(actor.teacher, set),
   );
   if (actor.kind !== "teacher") {
     return visible
-      .map((set) => withActorSheetFilter(toResultSetDto(set), actor))
+      .map((set) => withActorSheetFilter(toResultSetDto(set), actor, contentSlots))
       .filter((set) => set.classes.length > 0);
   }
 
   const roster = await studentRepository.listSchoolRoster(actor.teacher.schoolId);
   const dtos = [];
   for (const set of visible) {
-    const dto = withActorSheetFilter(toResultSetDto(set), actor);
+    const dto = withActorSheetFilter(toResultSetDto(set), actor, contentSlots);
     const classes = [];
     for (const item of dto.classes) {
       const sheet = await resultRepository.findResultSheet({

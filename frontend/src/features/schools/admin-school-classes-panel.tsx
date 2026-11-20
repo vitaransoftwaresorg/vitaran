@@ -25,7 +25,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { subjectLabel, subjectsForClassLevel } from "@/features/schools/constants";
+import {
+  SUBJECT_LABELS,
+  subjectLabel,
+  subjectsForClassLevel,
+} from "@/features/schools/constants";
 import {
   createAdminSectionAction,
   deleteAdminSectionAction,
@@ -35,6 +39,7 @@ import {
 } from "@/features/schools/section-actions";
 import { capitalizeWords } from "@/features/schools/schema";
 import { STUDENTS_PATH } from "@/features/students/school-roster";
+import { cn } from "@/lib/utils";
 import { formatNumber } from "@/utils/format";
 import type { SchoolProgramOffering } from "@/types/program";
 import type { Subject } from "@/types/school";
@@ -79,6 +84,10 @@ type AdminSchoolClassesPanelProps = {
   classTeacherSlots: ClassTeacherSlot[];
   seatsUsedLabel: string;
   teachersHref: string;
+  /** Panel heading — default Programs & classes. */
+  heading?: string;
+  /** Nest under an existing form section (no outer card / title). */
+  embedded?: boolean;
   /** Cap class/section seats by school total strength. */
   strength?: { studentStrength: number | null; used: number };
   /** When deferred, Add/Delete stay local until school Save. Seat edits on saved rows save immediately. */
@@ -102,6 +111,8 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
   classTeacherSlots,
   seatsUsedLabel,
   teachersHref,
+  heading = "Programs & classes",
+  embedded = false,
   strength,
   persist = "immediate",
   initialCreates = [],
@@ -124,9 +135,10 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
   const [editing, setEditing] = useState<ClassRow | null>(null);
   const [editSeats, setEditSeats] = useState("");
   const [editName, setEditName] = useState("");
+  const [editProgramId, setEditProgramId] = useState("");
   const [editSubjects, setEditSubjects] = useState<Subject[]>([]);
   const [editErrors, setEditErrors] = useState<
-    Partial<Record<"studentCount" | "name" | "subjects", string>>
+    Partial<Record<"studentCount" | "name" | "subjects" | "programId", string>>
   >({});
   const [draftCreates, setDraftCreates] = useState<DeferredClassCreate[]>(initialCreates);
   const [draftDeletes, setDraftDeletes] = useState<string[]>(initialDeletes);
@@ -160,10 +172,16 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     return fromOffering.length > 0 ? fromOffering : fallback;
   }
 
-  function catalogSubjectsFor(programId: string, classLevel: number): Subject[] {
+  /** Full subject checklist: catalog + class defaults + known subjects. */
+  function allSubjectsFor(programId: string, classLevel: number): Subject[] {
     const program = schoolPrograms.find((row) => row.programId === programId);
-    if (program?.catalogSubjects.length) return program.catalogSubjects;
-    return subjectsForClassLevel(classLevel) as Subject[];
+    return [
+      ...new Set([
+        ...(program?.catalogSubjects ?? []),
+        ...(subjectsForClassLevel(classLevel) as Subject[]),
+        ...(Object.keys(SUBJECT_LABELS) as Subject[]),
+      ]),
+    ];
   }
 
   const [query, setQuery] = useState("");
@@ -242,11 +260,30 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     [classRows, query],
   );
 
-  const editAvailableSubjects = useMemo(() => {
+  const programsForEdit = useMemo(() => {
     if (!editing) return [];
-    return catalogSubjectsFor(editing.programId, editing.classLevel);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return schoolPrograms.filter(
+      (row) =>
+        row.programId === editing.programId ||
+        row.classes.some((cls) => cls.classLevel === editing.classLevel) ||
+        (editing.classLevel >= row.classFrom && editing.classLevel <= row.classTo),
+    );
   }, [editing, schoolPrograms]);
+
+  const editAvailableSubjects = useMemo(() => {
+    if (!editing || !editProgramId) return [];
+    return allSubjectsFor(editProgramId, editing.classLevel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, editProgramId, schoolPrograms]);
+
+  const editProgramSelectItems = useMemo(
+    () =>
+      programsForEdit.map((row) => ({
+        value: row.programId,
+        label: capitalizeWords(row.programName),
+      })),
+    [programsForEdit],
+  );
 
   const classOptions = useMemo(() => {
     const levels = new Set<number>();
@@ -264,19 +301,11 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     );
   }, [schoolPrograms, classLevel]);
 
-  const selectedProgram = useMemo(
-    () => programsForClass.find((row) => row.programId === programId) ?? null,
-    [programsForClass, programId],
-  );
-
   const availableSubjects = useMemo((): Subject[] => {
-    if (!selectedProgram || !classLevel) return [];
-    const level = Number(classLevel);
-    if (selectedProgram.catalogSubjects.length) return selectedProgram.catalogSubjects;
-    const fromClass = selectedProgram.classes.find((row) => row.classLevel === level)?.subjects;
-    if (fromClass?.length) return fromClass;
-    return subjectsForClassLevel(level) as Subject[];
-  }, [selectedProgram, classLevel]);
+    if (!programId || !classLevel) return [];
+    return allSubjectsFor(programId, Number(classLevel));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [programId, classLevel, schoolPrograms]);
 
   // Only clear picks when Programs & classes checks remove that option — not on
   // every array identity change or when a Select popup closes with null.
@@ -434,6 +463,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     setEditing(row);
     setEditSeats(String(row.seats));
     setEditName(row.section);
+    setEditProgramId(row.programId);
     setEditSubjects([...row.subjects]);
     setEditErrors({});
   }
@@ -444,6 +474,15 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
       return prev.filter((value) => value !== subject);
     });
     setEditErrors((prev) => ({ ...prev, subjects: undefined }));
+  }
+
+  function selectAllEditSubjects() {
+    setEditSubjects([...editAvailableSubjects]);
+    setEditErrors((prev) => ({ ...prev, subjects: undefined }));
+  }
+
+  function clearEditSubjects() {
+    setEditSubjects([]);
   }
 
   function seatsRemaining(excludeCurrentSeats = 0) {
@@ -466,12 +505,18 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     return undefined;
   }
 
-  function persistSeatEdit(editingRow: ClassRow, count: number, sectionName: string) {
+  function persistClassEdit(
+    editingRow: ClassRow,
+    count: number,
+    sectionName: string,
+    nextProgramId: string,
+  ) {
     if (!schoolId) return;
     startTransition(async () => {
       if (editingRow.kind === "section") {
         const result = await updateAdminSectionAction(schoolId, editingRow.id, {
           name: sectionName,
+          programId: nextProgramId,
           studentCount: count,
         });
         if (!result.ok) {
@@ -481,13 +526,14 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
         toast.success(`Section ${editingRow.classLevel}-${sectionName} updated`);
       } else {
         const result = await updateAdminWholeClassAction(schoolId, editingRow.id, {
+          programId: nextProgramId,
           studentCount: count,
         });
         if (!result.ok) {
           setEditErrors({ studentCount: result.message });
           return;
         }
-        toast.success(`Class ${editingRow.classLevel}-A seats updated`);
+        toast.success(`Class ${editingRow.classLevel}-A updated`);
       }
       setEditing(null);
       router.refresh();
@@ -498,6 +544,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     if (!editing) return;
     const count = Number(editSeats);
     const nextErrors: typeof editErrors = {};
+    if (!editProgramId) nextErrors.programId = "Select a program";
     if (!editSeats.trim()) nextErrors.studentCount = "Enter seats";
     else if (!Number.isInteger(count) || count < 1) {
       nextErrors.studentCount = "Enter a valid seat count (1 or more)";
@@ -519,9 +566,13 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
 
     const sectionName = editName.trim().toUpperCase();
     const subjects = [...editSubjects];
+    const nextProgramId = editProgramId;
+    const nextProgramName =
+      programsForEdit.find((row) => row.programId === nextProgramId)?.programName ??
+      editing.programName;
 
     if (deferred && (editing.draft || editing.id.startsWith("draft-"))) {
-      onSubjectAccessChange?.(editing.programId, editing.classLevel, subjects);
+      onSubjectAccessChange?.(nextProgramId, editing.classLevel, subjects);
       setDraftCreates((prev) =>
         prev.map((item) =>
           item.draftId === editing.id
@@ -529,6 +580,8 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                 ...item,
                 studentCount: count,
                 name: editing.kind === "section" ? sectionName : item.name,
+                programId: nextProgramId,
+                programName: nextProgramName,
                 subjects,
               }
             : item,
@@ -540,23 +593,24 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     }
 
     if (!schoolId) {
-      onSubjectAccessChange?.(editing.programId, editing.classLevel, subjects);
-      toast.error("Save the school first, then edit this class’s seats");
+      onSubjectAccessChange?.(nextProgramId, editing.classLevel, subjects);
+      toast.error("Save the school first, then edit this class");
       return;
     }
 
     startTransition(async () => {
       const subjectResult = await updateAdminClassSubjectsAction(schoolId, {
-        programId: editing.programId,
+        programId: nextProgramId,
         classLevel: editing.classLevel,
         subjects,
+        fromProgramId: editing.programId,
       });
       if (!subjectResult.ok) {
         setEditErrors({ subjects: subjectResult.message });
         return;
       }
-      onSubjectAccessChange?.(editing.programId, editing.classLevel, subjects);
-      persistSeatEdit(editing, count, sectionName);
+      onSubjectAccessChange?.(nextProgramId, editing.classLevel, subjects);
+      persistClassEdit(editing, count, sectionName, nextProgramId);
     });
   }
 
@@ -607,37 +661,66 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     [programsForClass],
   );
 
-  return (
-    <section className="rounded-xl border border-brand-200 bg-white shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)]">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-brand-100 bg-brand-50/60 px-4 py-2.5">
+  const openAddClass = () => {
+    resetCreate();
+    setCreating(true);
+  };
+
+  const addClassButton = (
+    <Button
+      type="button"
+      size="sm"
+      className="h-8 gap-1.5"
+      disabled={pending || creating || classOptions.length === 0}
+      onClick={openAddClass}
+    >
+      <Plus className="size-3.5" />
+      Add class
+    </Button>
+  );
+
+  const toolbar = (
+    <div
+      className={cn(
+        "flex flex-wrap items-center justify-between gap-3",
+        embedded
+          ? "pt-1"
+          : "border-b border-brand-100 bg-brand-50/60 px-4 py-2.5",
+      )}
+    >
+      {embedded ? (
+        <p className="text-xs font-medium text-neutral-500 tabular-nums">{seatsUsedLabel}</p>
+      ) : (
         <h2 className="flex items-center gap-2.5 text-sm font-semibold text-brand-950">
-          Classes & sections
+          {heading}
         </h2>
-        <div className="flex flex-wrap items-center gap-3 text-xs">
+      )}
+      <div className="flex flex-wrap items-center gap-3 text-xs">
+        {!embedded ? (
           <span className="font-medium text-neutral-600 tabular-nums">{seatsUsedLabel}</span>
-          {studentsSchoolHref ? (
-            <Link
-              href={studentsSchoolHref}
-              className="font-semibold text-brand-900 transition-colors hover:text-brand-700"
-            >
-              View students
-            </Link>
-          ) : null}
-          <Button
-            type="button"
-            size="sm"
-            className="h-8 gap-1.5"
-            disabled={pending || creating || classOptions.length === 0}
-            onClick={() => {
-              resetCreate();
-              setCreating(true);
-            }}
+        ) : null}
+        {studentsSchoolHref ? (
+          <Link
+            href={studentsSchoolHref}
+            className="font-semibold text-brand-900 transition-colors hover:text-brand-700"
           >
-            <Plus className="size-3.5" />
-            Add class
-          </Button>
-        </div>
+            View students
+          </Link>
+        ) : null}
+        {addClassButton}
       </div>
+    </div>
+  );
+
+  return (
+    <section
+      className={
+        embedded
+          ? "space-y-3"
+          : "rounded-xl border border-brand-200 bg-white shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)]"
+      }
+    >
+      {toolbar}
 
       <AlertDialog
         open={editing != null}
@@ -673,6 +756,35 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                 {editErrors.name ? <FieldError>{editErrors.name}</FieldError> : null}
               </Field>
             ) : null}
+            <Field data-invalid={editErrors.programId ? true : undefined}>
+              <FieldLabel>Program *</FieldLabel>
+              <Select
+                value={editProgramId || null}
+                items={editProgramSelectItems}
+                onValueChange={(value) => {
+                  if (value == null) return;
+                  setEditProgramId(value);
+                  const nextSubjects = allSubjectsFor(value, editing?.classLevel ?? 0);
+                  setEditSubjects((prev) => {
+                    const kept = prev.filter((subject) => nextSubjects.includes(subject));
+                    return kept.length > 0 ? kept : nextSubjects;
+                  });
+                  setEditErrors((prev) => ({ ...prev, programId: undefined }));
+                }}
+              >
+                <SelectTrigger className="h-9 w-full">
+                  <SelectValue placeholder="Select program" />
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  {programsForEdit.map((row) => (
+                    <SelectItem key={row.programId} value={row.programId}>
+                      {capitalizeWords(row.programName)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {editErrors.programId ? <FieldError>{editErrors.programId}</FieldError> : null}
+            </Field>
             <Field data-invalid={editErrors.studentCount ? true : undefined}>
               <FieldLabel>Seats *</FieldLabel>
               <Input
@@ -687,7 +799,27 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
               {editErrors.studentCount ? <FieldError>{editErrors.studentCount}</FieldError> : null}
             </Field>
             <Field data-invalid={editErrors.subjects ? true : undefined}>
-              <FieldLabel>Subject access</FieldLabel>
+              <div className="flex items-center justify-between gap-2">
+                <FieldLabel>Subject access</FieldLabel>
+                {editAvailableSubjects.length > 0 ? (
+                  <div className="flex gap-2 text-xs font-medium">
+                    <button
+                      type="button"
+                      className="text-brand-800 hover:underline"
+                      onClick={selectAllEditSubjects}
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      className="text-neutral-500 hover:underline"
+                      onClick={clearEditSubjects}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                ) : null}
+              </div>
               {editAvailableSubjects.length === 0 ? (
                 <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                   This program has no subjects configured.
@@ -827,7 +959,30 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
 
             {programId ? (
               <Field data-invalid={errors.subjects ? true : undefined}>
-                <FieldLabel>Subject access</FieldLabel>
+                <div className="flex items-center justify-between gap-2">
+                  <FieldLabel>Subject access</FieldLabel>
+                  {availableSubjects.length > 0 ? (
+                    <div className="flex gap-2 text-xs font-medium">
+                      <button
+                        type="button"
+                        className="text-brand-800 hover:underline"
+                        onClick={() => {
+                          setSelectedSubjects([...availableSubjects]);
+                          setErrors((prev) => ({ ...prev, subjects: undefined }));
+                        }}
+                      >
+                        Select all
+                      </button>
+                      <button
+                        type="button"
+                        className="text-neutral-500 hover:underline"
+                        onClick={() => setSelectedSubjects([])}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
                 {availableSubjects.length === 0 ? (
                   <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                     This program has no subjects configured.
@@ -890,11 +1045,21 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
       </AlertDialog>
 
       {classRows.length === 0 ? (
-        <p className="px-4 py-8 text-center text-sm text-neutral-500">
+        <p
+          className={cn(
+            "px-4 py-8 text-center text-sm text-neutral-500",
+            embedded && "rounded-xl border border-dashed border-neutral-200",
+          )}
+        >
           No classes set up yet. Use Add class to create one.
         </p>
       ) : (
-        <div className="overflow-x-auto">
+        <div
+          className={cn(
+            "overflow-x-auto",
+            embedded && "rounded-xl border border-brand-200 bg-white",
+          )}
+        >
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-100 px-3 py-2.5 sm:px-4">
             <p className="text-xs font-medium text-neutral-500 tabular-nums">
               {filteredRows.length === classRows.length
@@ -930,7 +1095,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                     key={row.key}
                     className="border-b border-neutral-100 last:border-0 hover:bg-brand-50/40"
                   >
-                    <td className="px-4 py-3 font-semibold text-neutral-950">
+                    <td className="px-4 py-3 whitespace-nowrap font-semibold text-neutral-950">
                       Class {row.classLevel}
                     </td>
                     <td className="px-4 py-3 text-neutral-700">{row.section}</td>
@@ -1012,6 +1177,9 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
             </tbody>
           </table>
           )}
+          <div className="flex justify-end border-t border-brand-100 px-3 py-2.5 sm:px-4">
+            {addClassButton}
+          </div>
         </div>
       )}
     </section>

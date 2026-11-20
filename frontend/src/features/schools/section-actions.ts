@@ -57,7 +57,13 @@ export async function createAdminSectionAction(schoolId: string, input: SectionI
 /** Set subject access for one program + class on an existing school. */
 export async function updateAdminClassSubjectsAction(
   schoolId: string,
-  input: { programId: string; classLevel: number; subjects: Subject[] },
+  input: {
+    programId: string;
+    classLevel: number;
+    subjects: Subject[];
+    /** When moving a class to another program, drop this class from the old program. */
+    fromProgramId?: string;
+  },
 ) {
   try {
     const school = await schoolService.getSchool(schoolId);
@@ -67,6 +73,10 @@ export async function updateAdminClassSubjectsAction(
     }
 
     const subjects = [...new Set(input.subjects)];
+    const fromProgramId =
+      input.fromProgramId && input.fromProgramId !== input.programId
+        ? input.fromProgramId
+        : undefined;
 
     if (school.type === "CUSTOMIZED") {
       const custom =
@@ -86,23 +96,28 @@ export async function updateAdminClassSubjectsAction(
         customProgram: { name: custom.programName, classes },
       } as SchoolInput);
     } else {
-      const programs: SchoolInput["programs"] = school.schoolPrograms.map((program) => {
-        const byClass = new Map(
-          program.classes.map((row) => [row.classLevel, row.subjects] as const),
-        );
-        if (program.programId === input.programId) {
-          byClass.set(input.classLevel, subjects);
-        }
-        return {
-          programId: program.programId,
-          classes: [...byClass.entries()]
-            .map(([classLevel, nextSubjects]) => ({
-              classLevel,
-              subjects: nextSubjects,
-            }))
-            .sort((a, b) => a.classLevel - b.classLevel),
-        };
-      });
+      const programs: SchoolInput["programs"] = school.schoolPrograms
+        .map((program) => {
+          const byClass = new Map(
+            program.classes.map((row) => [row.classLevel, row.subjects] as const),
+          );
+          if (fromProgramId && program.programId === fromProgramId) {
+            byClass.delete(input.classLevel);
+          }
+          if (program.programId === input.programId) {
+            byClass.set(input.classLevel, subjects);
+          }
+          return {
+            programId: program.programId,
+            classes: [...byClass.entries()]
+              .map(([classLevel, nextSubjects]) => ({
+                classLevel,
+                subjects: nextSubjects,
+              }))
+              .sort((a, b) => a.classLevel - b.classLevel),
+          };
+        })
+        .filter((row) => row.classes.length > 0);
 
       if (!programs.some((row) => row.programId === input.programId)) {
         return { ok: false as const, message: "Program is not enrolled for this school." };

@@ -14,11 +14,7 @@ const programFields = z.object({
     .array(subjectCodeSchema)
     .min(1, "Select at least one subject")
     .transform((subjects) => [...new Set(subjects)]),
-  code: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .regex(/^[A-Z][A-Z0-9_]{1,63}$/, "Code must be letters, numbers and underscores"),
+  code: z.string().trim().toUpperCase().min(1, "Enter a code").max(64),
 });
 
 const classRangeOk = <T extends { classFrom?: number; classTo?: number }>(value: T) => {
@@ -46,11 +42,7 @@ export const programIdParamsSchema = z.object({
 });
 
 export const programCodeAvailabilityQuerySchema = z.object({
-  code: z
-    .string()
-    .trim()
-    .toUpperCase()
-    .regex(/^[A-Z][A-Z0-9_]{1,63}$/, "Code must be letters, numbers and underscores"),
+  code: z.string().trim().toUpperCase().min(1).max(64),
   excludeId: z.uuid().optional(),
 });
 

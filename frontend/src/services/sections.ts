@@ -1,6 +1,7 @@
 import "server-only";
 import { adminApi } from "@/services/admin-api";
 import { schoolApi } from "@/services/school-api";
+import { teacherApi } from "@/services/teacher-api";
 import type {
   ClassOrganization,
   CreateClassOrgResult,
@@ -11,6 +12,7 @@ import type {
 } from "@/types/section";
 
 const SCHOOL_BASE = "/school/sections";
+const TEACHER_BASE = "/teacher/sections";
 
 function adminBase(schoolId: string) {
   return `/schools/${encodeURIComponent(schoolId)}/sections`;
@@ -23,6 +25,10 @@ export function listSchoolSections() {
 
 export function listSchoolClassOrganization() {
   return schoolApi<ClassOrganization>(`${SCHOOL_BASE}/organization`);
+}
+
+export function listTeacherClassOrganization() {
+  return teacherApi<ClassOrganization>(`${TEACHER_BASE}/organization`);
 }
 
 export function getSchoolSectionStrength() {

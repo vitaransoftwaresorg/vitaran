@@ -8,10 +8,11 @@ import {
   listAdminSchoolSections,
   listSchoolClassOrganization,
   listSchoolSections,
+  listTeacherClassOrganization,
   updateAdminSchoolSection,
   updateAdminSchoolWholeClass,
 } from "../controllers/section.controller.js";
-import { requireAdmin, requireSchool } from "../middleware/authenticate.js";
+import { requireAdmin, requireSchool, requireTeacher } from "../middleware/authenticate.js";
 import { validate } from "../middleware/validate.js";
 import {
   createSectionSchema,
@@ -32,6 +33,11 @@ schoolSectionRouter.use(requireSchool);
 schoolSectionRouter.get("/", listSchoolSections);
 schoolSectionRouter.get("/organization", listSchoolClassOrganization);
 schoolSectionRouter.get("/strength", getSchoolSectionStrength);
+
+/** Teacher portal: /teacher/sections — view organization for access scoping. */
+export const teacherSectionRouter = Router();
+teacherSectionRouter.use(requireTeacher);
+teacherSectionRouter.get("/organization", listTeacherClassOrganization);
 
 /** Admin: /schools/:schoolId/sections */
 export const adminSchoolSectionRouter = Router({ mergeParams: true });

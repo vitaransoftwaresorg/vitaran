@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
-import { BookOpen, Clock, MapPin, School } from "lucide-react";
+import { Clock, MapPin, School } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   BOARD_LABELS,
   STATUS_LABELS,
-  subjectLabel,
   TYPE_LABELS,
 } from "@/features/schools/constants";
 import { CredentialMailBar } from "@/features/auth/credential-mail-bar";
@@ -19,7 +18,6 @@ import {
 import { getSchool } from "@/services/schools";
 import { listAdminClassTeacherSlots } from "@/services/teachers";
 import { formatDateTime, formatNumber } from "@/utils/format";
-import type { SchoolProgramOffering } from "@/types/program";
 
 export const metadata: Metadata = { title: "School Details" };
 
@@ -54,26 +52,6 @@ function Chip({ label, value }: { label: string; value: ReactNode }) {
       <p className="text-[9px] font-semibold tracking-wider text-white/50 uppercase">{label}</p>
       <p className="flex items-center justify-center gap-1.5 text-sm font-bold text-white">{value}</p>
     </div>
-  );
-}
-
-/** Class rows for a program — offerings first, else classFrom–classTo with catalog subjects. */
-function programClassRows(program: SchoolProgramOffering) {
-  const rows = [...program.classes]
-    .map((row) => ({
-      classLevel: row.classLevel,
-      subjects: row.subjects.map(String),
-    }))
-    .sort((a, b) => a.classLevel - b.classLevel);
-  if (rows.length > 0) return rows;
-  if (!program.classFrom || !program.classTo) return [];
-  const fallback = program.catalogSubjects.map(String);
-  return Array.from(
-    { length: program.classTo - program.classFrom + 1 },
-    (_, index) => ({
-      classLevel: program.classFrom + index,
-      subjects: fallback,
-    }),
   );
 }
 
@@ -186,60 +164,6 @@ export default async function SchoolDetailsPage({ params }: PageProps<"/admin/sc
           </Panel>
         </div>
       </div>
-
-      <section className="overflow-hidden rounded-xl border border-brand-200 bg-white shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)]">
-        <h2 className="flex items-center gap-2.5 border-b border-brand-100 bg-brand-50/60 px-4 py-2 text-sm font-semibold text-brand-950">
-          <span className="flex size-6 items-center justify-center rounded-md border border-brand-200 bg-white text-brand-700 [&_svg]:size-3.5">
-            <BookOpen />
-          </span>
-          Programs & classes
-        </h2>
-        {school.schoolPrograms.length === 0 ? (
-          <p className="px-4 py-6 text-sm text-neutral-500">No programs assigned yet.</p>
-        ) : (
-          <div className="divide-y divide-brand-100">
-            {school.schoolPrograms.map((program) => {
-              const classRows = programClassRows(program);
-              return (
-                <div key={program.programId} className="px-4 py-3">
-                  <p className="text-sm font-semibold text-neutral-950">{program.programName}</p>
-                  {classRows.length === 0 ? (
-                    <p className="mt-1.5 text-sm text-neutral-500">No classes enabled.</p>
-                  ) : (
-                    <div className="mt-2 overflow-hidden rounded-lg border border-brand-100">
-                      <table className="w-full text-left text-sm">
-                        <thead className="border-b border-brand-100 bg-brand-50/50 text-[10px] font-semibold tracking-wider text-neutral-500 uppercase">
-                          <tr>
-                            <th className="w-28 px-3 py-2">Class</th>
-                            <th className="px-3 py-2">Subjects</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {classRows.map((row) => (
-                            <tr
-                              key={`${program.programId}-${row.classLevel}`}
-                              className="border-b border-neutral-100 last:border-0"
-                            >
-                              <td className="px-3 py-2 font-medium whitespace-nowrap text-neutral-950">
-                                Class {row.classLevel}
-                              </td>
-                              <td className="px-3 py-2 break-words text-neutral-800">
-                                {row.subjects.length > 0
-                                  ? row.subjects.map((subject) => subjectLabel(subject)).join(", ")
-                                  : EMPTY}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </section>
 
       <AdminSchoolClassesPanel
         schoolId={school.id}
