@@ -99,18 +99,18 @@ export async function updateAdminClassSubjectsAction(
       const custom =
         school.schoolPrograms.find((row) => row.type === "CUSTOMIZED") ??
         school.schoolPrograms[0];
-      if (!custom) return { ok: false as const, message: "No custom program on this school." };
-
       const byClass = new Map(
-        custom.classes.map((row) => [row.classLevel, row.subjects] as const),
+        (custom?.classes ?? []).map((row) => [row.classLevel, row.subjects] as const),
       );
       byClass.set(input.classLevel, subjects);
       const classes = [...byClass.entries()]
         .map(([classLevel, nextSubjects]) => ({ classLevel, subjects: nextSubjects }))
         .sort((a, b) => a.classLevel - b.classLevel);
+      // Program name = school name; creates the catalog program if missing so Programs lists it.
+      const programName = (school.name || custom?.programName || "Custom Program").trim();
 
       await schoolService.updateSchool(schoolId, {
-        customProgram: { name: custom.programName, classes },
+        customProgram: { name: programName, classes },
       } as SchoolInput);
     } else {
       // Admin Add class can grant a catalog program that is not enrolled yet.

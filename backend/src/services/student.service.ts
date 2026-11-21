@@ -439,7 +439,40 @@ export async function deleteStudent(id: string, schoolId?: string) {
   // Roster is parent — removing a student clears Results / OMR / ranks for that roll.
   await removeRollsFromSchoolData(existing.schoolId, [existing.rollNo]);
   await studentRepository.deleteStudent(id);
+  notifyContentChanged({ kind: KIND, schoolId: existing.schoolId });
   return { ok: true as const };
+}
+
+/**
+ * Delete every student in a section — keeps the class and section setup.
+ * Also clears Results / OMR / ranks for those rolls.
+ */
+export async function deleteStudentsInSection(schoolId: string, sectionId: string) {
+  const section = await sectionRepository.findSectionById(sectionId);
+  if (!section || section.schoolId !== schoolId) {
+    throw new AppError(404, "Section not found");
+  }
+  const rolls = (await studentRepository.listRollsBySectionId(sectionId)).map((row) => row.rollNo);
+  if (rolls.length > 0) await removeRollsFromSchoolData(schoolId, rolls);
+  const result = await studentRepository.deleteStudentsBySectionId(sectionId);
+  notifyContentChanged({ kind: KIND, schoolId });
+  return { ok: true as const, deleted: result.count };
+}
+
+/**
+ * Delete every student in a class level — keeps class/section setup.
+ */
+export async function deleteStudentsInClass(schoolId: string, classLevel: number) {
+  if (!Number.isInteger(classLevel) || classLevel < 1 || classLevel > 12) {
+    throw new AppError(400, "Invalid class");
+  }
+  const rolls = (await studentRepository.listRollsByClassLevel(schoolId, classLevel)).map(
+    (row) => row.rollNo,
+  );
+  if (rolls.length > 0) await removeRollsFromSchoolData(schoolId, rolls);
+  const result = await studentRepository.deleteStudentsByClassLevel(schoolId, classLevel);
+  notifyContentChanged({ kind: KIND, schoolId });
+  return { ok: true as const, deleted: result.count };
 }
 
 /** Students visible to a teacher: class-teacher slots + assigned program/class levels. */

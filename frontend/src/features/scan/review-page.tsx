@@ -11,6 +11,7 @@ import { subjectLabel } from "@/features/schools/constants";
 import { cn } from "@/lib/utils";
 import { commitScanAction } from "./actions";
 import { fetchOriginalSheetDirect, fetchPreviewSheetDirect } from "./client-upload";
+import { keyHasMcq, ReadVsKeyTable } from "./read-vs-key-table";
 import { getOmrUploadAuthAction } from "./upload-auth";
 import {
   clearScanBatch,
@@ -124,8 +125,8 @@ export function ScanReviewPage({ portal }: { portal: ScanPortal }) {
     );
   }
 
-  // Partial credit only exists for multi-correct MCQ keys (e.g. B/C).
-  const showPartial = keyHasMultiCorrect(scan.keyAnswers);
+  // Partial credit only for MCQ-typed ranges on the answer key.
+  const showPartial = keyHasMcq(scan.keyTypeRanges);
 
   return (
     <div className="space-y-4">
@@ -196,7 +197,12 @@ export function ScanReviewPage({ portal }: { portal: ScanPortal }) {
                 </li>
               ))}
             </ul>
-            <AnswerGrid answers={scan.answers ?? {}} keyAnswers={scan.keyAnswers} ranges={scan.subjectScores} />
+            <ReadVsKeyTable
+              answers={scan.answers ?? {}}
+              keyAnswers={scan.keyAnswers}
+              keyTypeRanges={scan.keyTypeRanges}
+              ranges={scan.subjectScores}
+            />
             <FlagGroups flags={scan.flags} />
             <div className="flex flex-wrap gap-2 pt-1">
               <Button type="button" onClick={saveOne} disabled={saving}>
@@ -374,113 +380,3 @@ function Stat({ label, value }: { label: string; value: number }) {
   );
 }
 
-type AnswerTone = "correct" | "wrong" | "partial" | "blank" | "plain";
-
-function keyHasMultiCorrect(keyAnswers?: Record<string, string>) {
-  if (!keyAnswers) return false;
-  return Object.values(keyAnswers).some((answer) => {
-    if (!answer || answer === "ADD") return false;
-    const options = answer.split("/").filter((part) => part === "A" || part === "B" || part === "C" || part === "D");
-    return options.length > 1;
-  });
-}
-
-function answerTone(marked: Array<"A" | "B" | "C" | "D">, expected?: string): AnswerTone {
-  if (!expected) return marked.length === 0 ? "blank" : "plain";
-  if (marked.length === 0) return "blank";
-  if (expected === "ADD") return "correct";
-  const wanted = expected.split("/").filter((part) => part === "A" || part === "B" || part === "C" || part === "D");
-  if (wanted.length === 0) return "plain";
-  // MCQ-style: any option not in the key zeros the question; else partial per hit.
-  const hasExtra = marked.some((option) => !wanted.includes(option));
-  if (hasExtra) return "wrong";
-  const hit = wanted.filter((option) => marked.includes(option)).length;
-  if (hit === wanted.length) return "correct";
-  if (hit > 0 && wanted.length > 1) return "partial";
-  return "wrong";
-}
-
-function AnswerGrid({
-  answers,
-  keyAnswers,
-  ranges,
-}: {
-  answers: Record<string, Array<"A" | "B" | "C" | "D">>;
-  keyAnswers?: Record<string, string>;
-  ranges: Array<{ from: number; to: number }>;
-}) {
-  const showPartial = keyHasMultiCorrect(keyAnswers);
-  const onPaper = (question: number) =>
-    ranges.length === 0 || ranges.some((range) => question >= range.from && question <= range.to);
-  /** Same 9-column integrated table as portal answer keys (column-major). */
-  const columns = 9;
-  const questions = Array.from({ length: 100 }, (_, index) => index + 1).filter(onPaper);
-  const rows = Math.max(1, Math.ceil(Math.max(questions.length, 1) / columns));
-  const cellAt = (row: number, col: number) => {
-    const index = col * rows + row;
-    if (index >= questions.length) return null;
-    return questions[index]!;
-  };
-  return (
-    <div className="overflow-hidden rounded-xl border border-brand-200 bg-white">
-      <header className="border-b border-brand-100 bg-brand-50/60 px-3 py-2.5">
-        <p className="text-sm font-bold text-brand-950">Read vs answer key</p>
-        <p className="text-xs text-neutral-500">
-          {showPartial
-            ? "Green = correct, yellow = partial, red = wrong, amber = blank. Partial only if every mark is a key option; any extra option = 0."
-            : "Green = correct, red = wrong, amber = blank."}
-        </p>
-      </header>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[36rem] border-collapse text-sm">
-          <tbody>
-            {Array.from({ length: rows }, (_, row) => (
-              <tr key={row}>
-                {Array.from({ length: columns }, (_, col) => {
-                  const question = cellAt(row, col);
-                  if (question == null) {
-                    return (
-                      <td key={col} className="border border-neutral-300 px-2 py-1.5" />
-                    );
-                  }
-                  const marked = answers[String(question)] ?? [];
-                  const expected = keyAnswers?.[String(question)];
-                  const tone = answerTone(marked, expected);
-                  const toneClass =
-                    tone === "correct"
-                      ? "text-emerald-800"
-                      : tone === "partial"
-                        ? "text-yellow-700"
-                        : tone === "wrong"
-                          ? "text-red-800"
-                          : tone === "blank"
-                            ? "text-amber-800"
-                            : "text-neutral-900";
-                  return (
-                    <td
-                      key={col}
-                      className={cn(
-                        "border border-neutral-300 px-2 py-1.5 text-center align-middle tabular-nums",
-                        toneClass,
-                      )}
-                    >
-                      <span className="inline-flex items-baseline justify-center gap-1.5">
-                        <span className="text-xs font-semibold opacity-70">{question}</span>
-                        <span className="text-sm font-bold">
-                          {tone === "blank" ? "—" : marked.join("")}
-                        </span>
-                        {(tone === "wrong" || tone === "partial") && expected ? (
-                          <span className="text-[10px] font-semibold text-neutral-400">{expected}</span>
-                        ) : null}
-                      </span>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}

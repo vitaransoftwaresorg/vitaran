@@ -107,6 +107,45 @@ export function resolveSchoolImportRows(
   });
 }
 
+/** Re-place and re-check rows after the user edits the import preview (still not saved). */
+export function refreshImportRows(
+  organization: ClassOrganization,
+  rows: ResolvedImportRow[],
+): ResolvedImportRow[] {
+  const next = rows.map((row, index) => {
+    const student = {
+      ...row.student,
+      name: row.student.name.trim(),
+      parentName: row.student.parentName.trim(),
+      rollNo: row.student.rollNo.replace(/\D/g, "").slice(0, 7),
+      section: row.student.section.trim().toUpperCase(),
+    };
+    const { placement, error: placeError } = resolveImportPlacement(
+      organization,
+      student.classLevel,
+      student.section,
+    );
+    let error = placeError;
+    if (!error && !/^\d{7}$/.test(student.rollNo)) {
+      error = "Reg No must be 7 digits";
+    }
+    return { index, student, placement, error };
+  });
+
+  const seen = new Map<string, number>();
+  for (const row of next) {
+    const key = row.student.rollNo;
+    if (!key || row.error) continue;
+    const earlier = seen.get(key);
+    if (earlier != null) {
+      row.error = `Duplicate Reg No (also on row ${earlier + 1})`;
+    } else {
+      seen.set(key, row.index);
+    }
+  }
+  return next;
+}
+
 /** Group resolved rows by program + class + section for bulk create. */
 export function groupImportRows(rows: ResolvedImportRow[]): ImportClassGroup[] {
   const groups = new Map<string, ImportClassGroup>();
@@ -139,10 +178,10 @@ export function groupImportRows(rows: ResolvedImportRow[]): ImportClassGroup[] {
 
 export function toBulkRows(rows: ResolvedImportRow[]): BulkStudentRowInput[] {
   return rows.map((row) => ({
-    name: row.student.name,
+    name: row.student.name.trim(),
     rollNo: row.student.rollNo,
-    parentName: row.student.parentName || null,
-    parentPhone: row.student.parentPhone || null,
+    parentName: row.student.parentName.trim() || null,
+    parentPhone: row.student.parentPhone.trim() || null,
     email: null,
     sectionId: row.placement?.sectionId ?? null,
   }));

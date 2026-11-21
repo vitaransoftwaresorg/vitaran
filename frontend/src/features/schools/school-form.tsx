@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useTransition,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -37,6 +38,7 @@ import {
   SCHOOL_TYPES,
   type SchoolDetail,
   type SchoolType,
+  type Subject,
 } from "@/types/school";
 import type { LearningProgram } from "@/types/program";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
@@ -46,6 +48,7 @@ import {
   isEmailTakenAction,
   isSchoolCodeTakenAction,
   updateSchoolAction,
+  updateSchoolTypeAction,
 } from "./actions";
 import {
   BOARD_LABELS,
@@ -64,8 +67,11 @@ import {
   customizedProgramForForm,
   liveOfferingsFromForm,
   parseOfferingToken,
+  pickRegularProgramForClass,
+  remapOfferingsToProgram,
   replaceClassSubjectOfferings,
   schoolProgramsToTokens,
+  seedRegularOfferingTokens,
   syncCustomSubjectOfferings,
 } from "./offerings";
 import {
@@ -308,6 +314,8 @@ function SchoolFormWizard({
 }: SchoolFormWizardProps) {
   const isEdit = mode === "edit";
   useSmoothWheelScroll(isEdit);
+  const router = useRouter();
+  const [typePending, startTypeTransition] = useTransition();
   const searchParams = useSearchParams();
   const formRef = useRef<HTMLFormElement>(null);
   // Inputs are uncontrolled, so their defaults must stay fixed after mount;
@@ -316,6 +324,9 @@ function SchoolFormWizard({
   const [schoolType, setSchoolType] = useState<SchoolType>(
     initialValues.type === "CUSTOMIZED" ? "CUSTOMIZED" : "REGULAR",
   );
+  /** Customized program label always follows the school name. */
+  const [schoolName, setSchoolName] = useState(() => (initialValues.name ?? "").trim());
+  const customProgramName = schoolName || (values.customProgramName ?? "").trim();
   const [customClasses, setCustomClasses] = useState(initialValues.customClasses ?? []);
   const [offerings, setOfferings] = useState(() => {
     const initial = initialValues.offerings ?? [];
@@ -341,18 +352,20 @@ function SchoolFormWizard({
         schoolType,
         offerings,
         customClasses,
-        customProgramName: values.customProgramName ?? "",
+        customProgramName,
+        schoolName,
         catalog: typeCatalog,
         savedPrograms: schoolPrograms,
       }),
-    [schoolType, offerings, customClasses, values.customProgramName, typeCatalog, schoolPrograms],
+    [schoolType, offerings, customClasses, customProgramName, schoolName, typeCatalog, schoolPrograms],
   );
   /** Catalog (or custom 1–12) for Add class — not limited to already-granted offerings. */
   const panelSchoolPrograms = useMemo(() => {
     if (schoolType === "CUSTOMIZED") {
       return customizedProgramForForm({
         offerings,
-        customProgramName: values.customProgramName ?? "",
+        customProgramName,
+        schoolName,
         savedPrograms: schoolPrograms,
       });
     }
@@ -360,7 +373,8 @@ function SchoolFormWizard({
   }, [
     schoolType,
     offerings,
-    values.customProgramName,
+    customProgramName,
+    schoolName,
     schoolPrograms,
     typeCatalog,
     liveSchoolPrograms,
@@ -384,6 +398,107 @@ function SchoolFormWizard({
     () => ({ wholeClasses: [], sections: [] }),
     [],
   );
+  /**
+   * Remap class rows onto the live program list so dropdowns never show a stale
+   * custom program UUID after Customized ↔ Regular flips.
+   */
+  const panelOrganization = useMemo(() => {
+    const org = classesPanel?.organization ?? emptyOrganization;
+    if (schoolType === "CUSTOMIZED") {
+      const custom = panelSchoolPrograms[0];
+      if (!custom) return org;
+      return {
+        wholeClasses: org.wholeClasses.map((row) => ({
+          ...row,
+          programId: custom.programId,
+          programCode: custom.programCode,
+          programName: custom.programName,
+        })),
+        sections: org.sections.map((row) => ({
+          ...row,
+          programId: custom.programId,
+          programCode: custom.programCode,
+          programName: custom.programName,
+        })),
+      };
+    }
+
+    const byId = new Map(panelSchoolPrograms.map((row) => [row.programId, row]));
+    function remapRow<T extends {
+      programId: string;
+      programCode: string;
+      programName: string;
+      classLevel: number;
+    }>(row: T): T {
+      const exact = byId.get(row.programId);
+      if (exact) {
+        return {
+          ...row,
+          programCode: exact.programCode,
+          programName: exact.programName || row.programName,
+        };
+      }
+      const covering = panelSchoolPrograms
+        .filter(
+          (program) =>
+            program.classes.some((cls) => cls.classLevel === row.classLevel) ||
+            (row.classLevel >= program.classFrom && row.classLevel <= program.classTo),
+        )
+        .sort(
+          (a, b) =>
+            a.classTo - a.classFrom - (b.classTo - b.classFrom) ||
+            a.programName.localeCompare(b.programName),
+        );
+      const pick = covering[0];
+      if (!pick) return row;
+      return {
+        ...row,
+        programId: pick.programId,
+        programCode: pick.programCode,
+        programName: pick.programName,
+      };
+    }
+    return {
+      wholeClasses: org.wholeClasses.map(remapRow),
+      sections: org.sections.map(remapRow),
+    };
+  }, [schoolType, classesPanel?.organization, emptyOrganization, panelSchoolPrograms]);
+
+  // If type is already Customized but class picks are empty, seed from existing roster rows.
+  useEffect(() => {
+    if (schoolType !== "CUSTOMIZED") return;
+    if (customClasses.length > 0) return;
+    const org = classesPanel?.organization ?? emptyOrganization;
+    const levels = [
+      ...new Set([
+        ...org.wholeClasses.map((row) => row.classLevel),
+        ...org.sections.map((row) => row.classLevel),
+        ...classDraftsRef.current.creates.map((row) => row.classLevel),
+      ]),
+    ]
+      .filter((level) => Number.isInteger(level) && level >= 1 && level <= 12)
+      .sort((a, b) => a - b);
+    if (levels.length === 0) return;
+    const levelStrings = levels.map(String);
+    const programId =
+      schoolPrograms.find((row) => row.type === "CUSTOMIZED")?.programId ??
+      panelSchoolPrograms[0]?.programId ??
+      CUSTOM_DRAFT_PROGRAM_ID;
+    const sourceTokens =
+      offerings.length > 0
+        ? offerings
+        : schoolProgramsToTokens(schoolPrograms);
+    setCustomClasses(levelStrings);
+    setOfferings(
+      syncCustomSubjectOfferings(
+        remapOfferingsToProgram(sourceTokens, programId),
+        levelStrings,
+        programId,
+      ),
+    );
+    // Run once when Customized + empty class picks; avoid looping on offerings.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schoolType]);
 
   useEffect(() => {
     const timers = emailCheckTimers.current;
@@ -392,15 +507,6 @@ function SchoolFormWizard({
       clearTimeout(codeCheckTimer.current);
     };
   }, []);
-
-  useEffect(() => {
-    if (schoolType !== "CUSTOMIZED") return;
-    const programName = formRef.current?.elements.namedItem("customProgramName") as HTMLInputElement | null;
-    const schoolName = formRef.current?.elements.namedItem("name") as HTMLInputElement | null;
-    if (programName && !programName.value.trim() && schoolName?.value.trim()) {
-      programName.value = capitalizeWords(schoolName.value.trim());
-    }
-  }, [schoolType]);
 
   const errors: SchoolFormErrors = { ...serverErrors, ...clientErrors };
   const isLast = step === LAST_STEP;
@@ -664,9 +770,25 @@ function SchoolFormWizard({
 
                 <Field data-invalid={invalid("name")} className="md:col-span-2 lg:col-span-4">
                   <FieldLabel htmlFor="name" className="capitalize">School name *</FieldLabel>
-                  <Input {...fieldProps("name")} {...capitalized} autoComplete="organization" placeholder="e.g. Delhi Public School, Banjara Hills" />
+                  <Input
+                    {...fieldProps("name")}
+                    autoCapitalize="words"
+                    autoComplete="organization"
+                    placeholder="e.g. Delhi Public School, Banjara Hills"
+                    onInput={(event) => {
+                      const input = event.currentTarget;
+                      const next = capitalizeWords(input.value);
+                      if (next !== input.value) {
+                        const { selectionStart, selectionEnd } = input;
+                        input.value = next;
+                        input.setSelectionRange(selectionStart, selectionEnd);
+                      }
+                      setSchoolName(input.value.trim());
+                      saveDraftSoon();
+                    }}
+                  />
               {error("name")}
-            </Field>
+                </Field>
 
             <SchoolLogoField
               schoolId={schoolId}
@@ -707,16 +829,132 @@ function SchoolFormWizard({
                   <Select
                     name="type"
                     items={typeItems}
-                    defaultValue={values.type ?? "REGULAR"}
+                    value={schoolType}
+                    disabled={typePending || pending}
                     onValueChange={(next) => {
+                      if (next == null) return;
                       const type = next as SchoolType;
-                      setSchoolType(type);
-                      setOfferings([]);
-                      saveDraftSoon();
+                      const previousType = schoolType;
+                      if (type === previousType) return;
+
+                      const applyLocalType = (nextType: SchoolType) => {
+                        setSchoolType(nextType);
+                        if (nextType === "CUSTOMIZED") {
+                          const nameInput = formRef.current?.elements.namedItem(
+                            "name",
+                          ) as HTMLInputElement | null;
+                          const nextName = (nameInput?.value ?? values.name ?? "").trim();
+                          if (nextName) setSchoolName(nextName);
+                          const org = classesPanel?.organization ?? emptyOrganization;
+                          const levels = [
+                            ...new Set([
+                              ...org.wholeClasses.map((row) => row.classLevel),
+                              ...org.sections.map((row) => row.classLevel),
+                              ...classDraftsRef.current.creates.map((row) => row.classLevel),
+                            ]),
+                          ]
+                            .filter((level) => Number.isInteger(level) && level >= 1 && level <= 12)
+                            .sort((a, b) => a - b);
+                          const levelStrings = levels.map(String);
+                          const programId =
+                            schoolPrograms.find((row) => row.type === "CUSTOMIZED")?.programId ??
+                            CUSTOM_DRAFT_PROGRAM_ID;
+                          const sourceTokens =
+                            offerings.length > 0
+                              ? offerings
+                              : schoolProgramsToTokens(
+                                  schoolPrograms.filter(
+                                    (row) => (row.type ?? "REGULAR") === "REGULAR",
+                                  ),
+                                );
+                          setCustomClasses(levelStrings);
+                          setOfferings(
+                            syncCustomSubjectOfferings(
+                              remapOfferingsToProgram(sourceTokens, programId),
+                              levelStrings,
+                              programId,
+                            ),
+                          );
+                          setClassDrafts((prev) => ({
+                            ...prev,
+                            creates: prev.creates.map((row) => ({
+                              ...row,
+                              programId,
+                              programName: nextName || schoolName || row.programName,
+                            })),
+                          }));
+                        } else {
+                          // Customized → Regular: seed Regular catalog offerings from current classes.
+                          const org = classesPanel?.organization ?? emptyOrganization;
+                          const subjectsByClass = new Map<number, Subject[]>();
+                          for (const token of offerings) {
+                            const parsed = parseOfferingToken(token);
+                            if (!parsed) continue;
+                            const list = subjectsByClass.get(parsed.classLevel) ?? [];
+                            if (!list.includes(parsed.subject)) list.push(parsed.subject);
+                            subjectsByClass.set(parsed.classLevel, list);
+                          }
+                          const levels = [
+                            ...new Set([
+                              ...org.wholeClasses.map((row) => row.classLevel),
+                              ...org.sections.map((row) => row.classLevel),
+                              ...customClasses.map(Number),
+                              ...classDraftsRef.current.creates.map((row) => row.classLevel),
+                              ...[...subjectsByClass.keys()],
+                            ]),
+                          ]
+                            .filter((level) => Number.isInteger(level) && level >= 1 && level <= 12)
+                            .sort((a, b) => a - b);
+                          const regularCatalog = catalog.filter(
+                            (program) => (program.type ?? "REGULAR") === "REGULAR",
+                          );
+                          const nextOfferings = seedRegularOfferingTokens(
+                            regularCatalog,
+                            levels,
+                            subjectsByClass,
+                          );
+                          setOfferings(nextOfferings);
+                          setCustomClasses([]);
+                          setClassDrafts((prev) => ({
+                            ...prev,
+                            creates: prev.creates.map((row) => {
+                              const pick = pickRegularProgramForClass(regularCatalog, row.classLevel);
+                              if (!pick) return row;
+                              return {
+                                ...row,
+                                programId: pick.id,
+                                programName: pick.name,
+                              };
+                            }),
+                          }));
+                        }
+                        saveDraftSoon();
+                      };
+
+                      applyLocalType(type);
+
+                      // Edit page: persist type immediately so classes remap without Save.
+                      if (isEdit && schoolId) {
+                        startTypeTransition(async () => {
+                          const result = await updateSchoolTypeAction(schoolId, type);
+                          if (!result.ok) {
+                            applyLocalType(previousType);
+                            toast.error(result.message);
+                            return;
+                          }
+                          toast.success(
+                            type === "CUSTOMIZED"
+                              ? "School type set to Customized"
+                              : "School type set to Regular",
+                          );
+                          router.refresh();
+                        });
+                      }
                     }}
                   >
                     <SelectTrigger id="type" className="w-full" aria-invalid={invalid("type")}>
                       <SelectValue />
+                      {typePending ? <Loader2 className="ml-auto size-4 animate-spin" /> : null}
                     </SelectTrigger>
                     <SelectContent>
                       {typeItems.map((item) => (
@@ -893,18 +1131,18 @@ function SchoolFormWizard({
                   Add classes and sections, choose the program, and set subject access.
                 </p>
                 {schoolType === "CUSTOMIZED" ? (
-                  <Field data-invalid={invalid("customProgramName")}>
-                    <FieldLabel htmlFor="customProgramName">Program name *</FieldLabel>
-                    <Input
-                      id="customProgramName"
-                      name="customProgramName"
-                      defaultValue={values.customProgramName}
-                      {...capitalized}
-                      placeholder="e.g. School Integrated Program"
-                      aria-invalid={invalid("customProgramName")}
-                    />
-                    {error("customProgramName")}
-                  </Field>
+                  <div className="rounded-xl border border-brand-100 bg-brand-50/50 px-3 py-2.5 text-sm">
+                    <p className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+                      Program name
+                    </p>
+                    <p className="mt-0.5 font-semibold text-brand-950">
+                      {customProgramName || "Enter the school name above"}
+                    </p>
+                    <p className="mt-1 text-xs text-neutral-500">
+                      Customized schools use the school name as the program in Add class and Programs.
+                    </p>
+                    <input type="hidden" name="customProgramName" value={customProgramName} />
+                  </div>
                 ) : null}
                 {errors.customClasses?.[0] ? (
                   <FieldError>{errors.customClasses[0]}</FieldError>
@@ -914,7 +1152,7 @@ function SchoolFormWizard({
                 <AdminSchoolClassesPanel
                   schoolId={schoolId}
                   schoolPrograms={panelSchoolPrograms}
-                  organization={classesPanel?.organization ?? emptyOrganization}
+                  organization={panelOrganization}
                   classTeacherSlots={classesPanel?.classTeacherSlots ?? []}
                   seatsUsedLabel={
                     classesPanel?.seatsUsedLabel ??

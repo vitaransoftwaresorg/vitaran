@@ -57,7 +57,7 @@ export default async function TeacherPanelLayout({
           </SidebarProvider>
         </DrivePathProvider>
       </InPageBackProvider>
-      <LiveRefresh />
+      <LiveRefresh path="/teacher/live" />
       <Toaster theme="light" position="top-right" richColors closeButton />
     </TooltipProvider>
   );

@@ -177,6 +177,10 @@ function omrRouter(contextOf: (res: Response) => scanService.ScanContext) {
     const file = await scanService.getScanImage(contextOf(res), id, kindSchema.parse(req.query.kind));
     sendFile(res, file, "image/jpeg");
   });
+  router.get("/:id", async (req, res) => {
+    const id = z.uuid().parse(req.params.id);
+    sendSuccess(res, await scanService.getScan(contextOf(res), id));
+  });
   return router;
 }
 

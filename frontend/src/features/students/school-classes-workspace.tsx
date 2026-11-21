@@ -9,9 +9,11 @@ import { useRegisterInPageBack } from "@/components/layout/in-page-back";
 import { PageHeader } from "@/features/admin/page-header";
 import { StudentDetailView } from "@/features/students/student-detail-view";
 import { StudentForm } from "@/features/students/student-form";
+import { DeleteRosterStudentsButton } from "@/features/students/delete-roster-students-button";
 import { ClassProfilesPdfActions } from "@/features/students/student-pdf-actions";
 import { StudentsTable } from "@/features/students/students-table";
 import { loadSchoolStudentAction } from "@/features/students/actions";
+import { displaySectionName } from "@/features/schools/section-label";
 import { SchoolClassesBoard } from "@/features/teachers/school-classes-board";
 import { capitalizeWords } from "@/features/schools/schema";
 import { cn } from "@/lib/utils";
@@ -212,6 +214,15 @@ export function SchoolClassesWorkspace({
                 scopeLabel={title}
                 schoolName={rosterStudents[0]?.schoolName}
                 subjects={classSubjects}
+              />
+              <DeleteRosterStudentsButton
+                mode="school"
+                classLevel={focus.row.classLevel}
+                sectionId={focus.kind === "section" ? focus.row.id : null}
+                sectionLabel={
+                  focus.kind === "section" ? displaySectionName(focus.row.name) : undefined
+                }
+                studentCount={rosterStudents.length}
               />
               {full ? (
                 <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">

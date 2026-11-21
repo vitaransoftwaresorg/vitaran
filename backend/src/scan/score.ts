@@ -57,8 +57,8 @@ export type QuestionScoreOptions = {
 
 /**
  * Score one question.
- * Normal: any marked option that is in the key → full correctMarks.
- * MCQ: equal share of correctMarks per key option marked; any extra (wrong) option → 0.
+ * Normal (key A/B/C): any one correct option marked → full marks.
+ * MCQ (key A/B/C): equal share per key option (A+B → 2/3); any wrong option (A+B+D) → 0.
  */
 export function questionScore(
   marked: AnswerOption | AnswerOption[] | string | undefined,

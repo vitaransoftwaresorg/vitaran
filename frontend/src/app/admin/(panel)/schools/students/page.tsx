@@ -5,6 +5,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/features/admin/page-header";
 import { subjectsForClassLevel } from "@/features/schools/constants";
 import { AdminStudentRollSearch } from "@/features/students/admin-student-roll-search";
+import { DeleteRosterStudentsButton } from "@/features/students/delete-roster-students-button";
 import { ClassProfilesPdfActions } from "@/features/students/student-pdf-actions";
 import { StudentsDrive } from "@/features/students/students-drive";
 import { sectionIdsForClass, studentsInClass } from "@/features/students/school-roster";
@@ -91,6 +92,16 @@ export default async function AdminAllStudentsPage({
                   scopeLabel={classScopeLabel}
                   schoolName={school.name}
                   subjects={subjectsForClassLevel(classLevel)}
+                />
+              ) : null}
+              {section || !(organization?.sections ?? []).some((row) => row.classLevel === classLevel) ? (
+                <DeleteRosterStudentsButton
+                  mode="admin"
+                  schoolId={school.id}
+                  classLevel={classLevel}
+                  sectionId={sectionIds?.length === 1 ? sectionIds[0] : null}
+                  sectionLabel={section}
+                  studentCount={roster.length}
                 />
               ) : null}
               <Link

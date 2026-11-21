@@ -335,7 +335,7 @@ function columnsFor(data: ClassResultPdfData, tableW: number, withSection: boole
       cell: (row) => fmt(row.total),
       bold: true,
     },
-    { head: ["PERCENTAGE"], width: 62, align: "center", cell: (row) => (row.percentage == null ? "-" : fmt(row.percentage)), bold: true },
+    { head: ["PERCENTAGE"], width: 62, align: "center", cell: (row) => (row.percentage == null ? "-" : `${fmt(row.percentage)}%`), bold: true },
     ...(withSection
       ? [{ head: ["SEC", "RANK"], width: 36, align: "center", cell: (row) => (row.sectionRank == null ? "-" : String(row.sectionRank)) } as Column]
       : []),

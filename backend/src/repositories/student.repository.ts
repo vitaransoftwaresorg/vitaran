@@ -237,7 +237,15 @@ export function listWholeClassRolls(
   });
 }
 
-/** Roster rows tied to a named section — removed when that section is deleted. */
+/** Detach roster rows from a section — students stay on the class (sectionId null). */
+export function clearSectionId(sectionId: string) {
+  return prisma.student.updateMany({
+    where: { sectionId },
+    data: { sectionId: null },
+  });
+}
+
+/** Roster rows tied to a named section — hard delete when a class is fully purged. */
 export function deleteStudentsBySectionId(sectionId: string) {
   return prisma.student.deleteMany({ where: { sectionId } });
 }

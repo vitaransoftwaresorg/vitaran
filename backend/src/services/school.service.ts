@@ -509,6 +509,11 @@ export async function updateSchool(
   }
 
   notifyContentChanged({ kind: KIND, schoolId: id });
+  // Catalog / class remap — school + teacher dashboards subscribe to these kinds.
+  if (programs || customProgram) {
+    notifyContentChanged({ kind: "programs", schoolId: id });
+    notifyContentChanged({ kind: "sections", schoolId: id });
+  }
   return dto;
 }
 

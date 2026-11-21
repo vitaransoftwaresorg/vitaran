@@ -6,6 +6,7 @@ import {
   checkTestId,
   commitScan,
   commitScans,
+  getOmScan,
   previewScan,
   type CommitManyResult,
   type ScanPortal,
@@ -84,5 +85,20 @@ export async function commitScanAction(
     return { ok: true, scan: result.scan };
   } catch (error) {
     return { ok: false, message: error instanceof ApiError ? error.message : "Could not save this scan" };
+  }
+}
+
+/** Results / student profile OMR dialog — load answers + key (not used on review). */
+export async function getOmScanAction(
+  portal: ScanPortal,
+  id: string,
+): Promise<{ ok: true; scan: OmScan } | { ok: false; message: string }> {
+  try {
+    return { ok: true, scan: await getOmScan(portal, id) };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof ApiError ? error.message : "Could not load this OMR",
+    };
   }
 }

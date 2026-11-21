@@ -38,6 +38,28 @@ function classHref(schoolId: string, classLevel: number) {
   })}`;
 }
 
+function sectionHref(schoolId: string, classLevel: number, section: string) {
+  return `${STUDENTS_PATH}?${new URLSearchParams({
+    school: schoolId,
+    class: String(classLevel),
+    section: displaySectionName(section),
+  })}`;
+}
+
+function sectionsForClass(
+  organization: ClassOrganization | null | undefined,
+  classLevel: number,
+) {
+  const rows = (organization?.sections ?? []).filter((row) => row.classLevel === classLevel);
+  const labels = [
+    ...new Set(rows.map((row) => displaySectionName(row.name)).filter(Boolean)),
+  ].sort((a, b) => a.localeCompare(b));
+  return labels.map((label) => {
+    const match = rows.find((row) => displaySectionName(row.name) === label);
+    return { label, sectionId: match?.id ?? null, seats: match?.studentCount ?? 0 };
+  });
+}
+
 function emptyRosterMessage(section: string | undefined, seats: number, classCount = 0) {
   if (section && classCount > 0) {
     return `No students in section ${section}. ${classCount} student${classCount === 1 ? " is" : "s are"} in this class under another section — open the class (without a section filter) to see them.`;
@@ -150,6 +172,42 @@ export function StudentsDrive({
       setDrivePath([]);
     }
   }, [school, schoolId, classLevel, section, setDrivePath]);
+
+  if (schoolId && school && classLevel != null && !section) {
+    const sectionFolders = sectionsForClass(organization, classLevel);
+    if (sectionFolders.length > 0) {
+      const breadcrumbs: DriveCrumb[] = [
+        { label: "Students", href: STUDENTS_PATH },
+        { label: school.name, href: schoolHref(school.id) },
+        { label: `Class ${classLevel}`, href: classHref(school.id, classLevel) },
+      ];
+      const items: DriveItem[] = sectionFolders.map((folder) => {
+        const roster = studentsInClass(students, classLevel, folder.label, {
+          sectionIds: folder.sectionId ? [folder.sectionId] : undefined,
+        });
+        const seatsDetail = folder.seats > 0 ? `${folder.seats} seats` : null;
+        const rosterDetail =
+          roster.length > 0
+            ? `${roster.length} student${roster.length === 1 ? "" : "s"}`
+            : null;
+        return {
+          id: folder.sectionId ?? `${classLevel}-${folder.label}`,
+          name: `Section ${folder.label}`,
+          kind: "folder" as const,
+          href: sectionHref(school.id, classLevel, folder.label),
+          detail: [rosterDetail, seatsDetail].filter(Boolean).join(" · ") || "Empty",
+        };
+      });
+      return (
+        <DriveBrowser
+          breadcrumbs={breadcrumbs}
+          items={items}
+          emptyText="No sections set up for this class"
+          searchPlaceholder="Search sections"
+        />
+      );
+    }
+  }
 
   if (schoolId && school && classLevel != null) {
     const sectionIds = sectionIdsForClass(organization, classLevel, section);

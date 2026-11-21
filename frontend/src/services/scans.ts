@@ -106,6 +106,12 @@ export async function listClassScans(portal: ScanPortal, filter: ClassScanFilter
   }
 }
 
+/** Saved OMR detail (answers + key) for results / student viewers. */
+export function getOmScan(portal: ScanPortal, id: string) {
+  const route = client(portal);
+  return route.api<OmScan>(`${route.list}/${encodeURIComponent(id)}`);
+}
+
 export function fetchScanImage(portal: ScanPortal, id: string, kind: string) {
   const route = client(portal);
   return route.fetch(`${route.list}/${encodeURIComponent(id)}/image?kind=${encodeURIComponent(kind)}`);

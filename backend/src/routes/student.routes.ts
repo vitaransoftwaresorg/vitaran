@@ -6,8 +6,12 @@ import {
   createAdminSchoolStudentsBulk,
   createStudent,
   createStudentsBulk,
+  deleteAdminClassStudents,
   deleteAdminSchoolStudent,
+  deleteAdminSectionStudents,
   deleteAdminStudent,
+  deleteClassStudents,
+  deleteSectionStudents,
   deleteStudent,
   getAdminSchoolStudent,
   getAdminStudent,
@@ -84,6 +88,16 @@ schoolStudentRouter.patch(
   validate(setStudentStatusSchema),
   setStudentStatus,
 );
+schoolStudentRouter.delete(
+  "/sections/:sectionId",
+  validate(z.object({ sectionId: z.uuid() }), "params"),
+  deleteSectionStudents,
+);
+schoolStudentRouter.delete(
+  "/classes/:classLevel",
+  validate(z.object({ classLevel: z.coerce.number().int().min(1).max(12) }), "params"),
+  deleteClassStudents,
+);
 schoolStudentRouter.delete("/:id", validateStudentId, deleteStudent);
 
 /** Admin: students under a school. */
@@ -111,6 +125,22 @@ adminSchoolStudentRouter.post(
   validate(schoolIdParams, "params"),
   validate(createStudentsBulkSchema),
   createAdminSchoolStudentsBulk,
+);
+adminSchoolStudentRouter.delete(
+  "/sections/:sectionId",
+  validate(z.object({ schoolId: z.uuid(), sectionId: z.uuid() }), "params"),
+  deleteAdminSectionStudents,
+);
+adminSchoolStudentRouter.delete(
+  "/classes/:classLevel",
+  validate(
+    z.object({
+      schoolId: z.uuid(),
+      classLevel: z.coerce.number().int().min(1).max(12),
+    }),
+    "params",
+  ),
+  deleteAdminClassStudents,
 );
 adminSchoolStudentRouter.get(
   "/:id",

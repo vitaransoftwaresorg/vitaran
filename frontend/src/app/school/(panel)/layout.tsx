@@ -56,7 +56,7 @@ export default async function SchoolPanelLayout({
           </SidebarProvider>
         </DrivePathProvider>
       </InPageBackProvider>
-      <LiveRefresh />
+      <LiveRefresh path="/school/live" />
       <Toaster theme="light" position="top-right" richColors closeButton />
     </TooltipProvider>
   );

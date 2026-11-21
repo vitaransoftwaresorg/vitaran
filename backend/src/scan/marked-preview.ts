@@ -4,8 +4,10 @@ import opentype, { type Font } from "opentype.js";
 import sharp from "sharp";
 import {
   asAnswers,
-  keyHasMultiCorrect,
+  asKeyTypeRanges,
+  keyHasMcqType,
   keyOptions,
+  keyTypeForQuestion,
   markedList,
   type AnswerOption,
 } from "../utils/answer-key-parse.js";
@@ -48,15 +50,18 @@ export async function markedSheetPreview(
   answers: Record<string, AnswerOption[]>,
   keyAnswers: unknown,
   subjects: TableRow[] = [],
+  keyTypeRangesInput: unknown = [],
 ): Promise<Buffer> {
   const key = asAnswers(keyAnswers);
+  const keyTypeRanges = asKeyTypeRanges(keyTypeRangesInput);
   const r = bubbles.radius * 1.15;
   const stroke = Math.max(2, bubbles.radius * 0.28);
   const shapes: string[] = [];
   for (const point of bubbles.points) {
     const question = String(point.question);
     const expected = key[question];
-    const result = questionResult(answers[question], expected);
+    const mode = keyTypeForQuestion(keyTypeRanges, point.question);
+    const result = questionResult(answers[question], expected, mode);
     const filled = markedList(answers[question]).includes(point.option);
     const circle = `cx="${point.x}" cy="${point.y}" r="${r}"`;
     if (filled && (result === "correct" || result === "wrong" || result === "partial")) {
@@ -75,7 +80,7 @@ export async function markedSheetPreview(
     .png()
     .toBuffer();
   const table = subjects.length
-    ? await scoreTablePng(subjects, bubbles.width, keyHasMultiCorrect(key))
+    ? await scoreTablePng(subjects, bubbles.width, keyHasMcqType(keyTypeRanges))
     : null;
   const withTable = table
     ? await sharp(marked)
@@ -146,7 +151,7 @@ async function scoreTablePng(subjects: TableRow[], width: number, showPartial: b
             String(subjects.reduce((sum, row) => sum + row.blank, 0)),
           ]),
       marksCell({
-        total: subjects.reduce((sum, row) => sum + row.total, 0),
+        total: Number(subjects.reduce((sum, row) => sum + row.total, 0).toFixed(3)),
         maxTotal: subjects.reduce((sum, row) => sum + (row.maxTotal ?? 0), 0) || undefined,
       }),
     ],

@@ -12,9 +12,13 @@ export type ScanSubjectScore = {
 };
 
 /** Drop float residue from partial-credit marks (286.66700000000003 → 286.667). */
+export function roundMarks(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Number(value.toFixed(3));
+}
+
 export function formatMarks(value: number) {
-  if (!Number.isFinite(value)) return "0";
-  return String(Number(value.toFixed(3)));
+  return String(roundMarks(value));
 }
 
 /** Answer key(s) behind an entered test ID. */
@@ -62,6 +66,14 @@ export type OmScan = {
   sheetImage?: string;
   answers: Record<string, Array<"A" | "B" | "C" | "D">>;
   keyAnswers?: Record<string, string>;
+  /** Normal vs MCQ ranges from the answer key (partial credit only for MCQ). */
+  keyTypeRanges?: Array<{
+    from: number;
+    to: number;
+    type: "normal" | "mcq";
+    correctMarks: number;
+    wrongMarks: number;
+  }>;
   createdAt: string;
 };
 

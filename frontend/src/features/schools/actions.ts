@@ -5,12 +5,14 @@ import { unstable_rethrow } from "next/navigation";
 import { z } from "zod";
 import { ADMIN_BASE_PATH, SCHOOL_BASE_PATH, TEACHER_BASE_PATH } from "@/constants/auth";
 import { ApiError } from "@/services/api-client";
+import * as programService from "@/services/programs";
 import * as schoolService from "@/services/schools";
-import type { SchoolInput } from "@/types/school";
+import * as sectionService from "@/services/sections";
+import type { SchoolInput, SchoolType, Subject } from "@/types/school";
 import type { SchoolProgramOffering } from "@/types/program";
 import type { SectionInput } from "@/types/section";
-import * as sectionService from "@/services/sections";
-import { CUSTOM_DRAFT_PROGRAM_ID } from "./offerings";
+import { subjectsForClassLevel } from "./constants";
+import { CUSTOM_DRAFT_PROGRAM_ID, seedRegularProgramsInput } from "./offerings";
 import {
   getSchoolFormSchema,
   readFormValues,
@@ -164,6 +166,143 @@ export async function updateSchoolAction(
   return saveSchool(formData, "edit", (input) =>
     schoolService.updateSchool(schoolId, input),
   );
+}
+
+/** Persist type immediately on the edit page (no full form Save). */
+export async function updateSchoolTypeAction(
+  schoolId: string,
+  type: SchoolType,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  try {
+    const school = await schoolService.getSchool(schoolId);
+    if (!school) return { ok: false, message: "School not found." };
+    if ((school.type ?? "REGULAR") === type) return { ok: true };
+
+    if (type === "CUSTOMIZED") {
+      let organization: Awaited<ReturnType<typeof sectionService.listAdminSchoolSections>> | null =
+        null;
+      try {
+        organization = await sectionService.listAdminSchoolSections(schoolId);
+      } catch {
+        organization = null;
+      }
+
+      const subjectsByClass = new Map<number, Subject[]>();
+      for (const program of school.schoolPrograms) {
+        for (const row of program.classes) {
+          if (!subjectsByClass.has(row.classLevel) && row.subjects.length > 0) {
+            subjectsByClass.set(row.classLevel, [...row.subjects]);
+          }
+        }
+      }
+
+      const levels = [
+        ...new Set([
+          ...school.schoolPrograms.flatMap((program) =>
+            program.classes.map((row) => row.classLevel),
+          ),
+          ...(organization?.wholeClasses ?? []).map((row) => row.classLevel),
+          ...(organization?.sections ?? []).map((row) => row.classLevel),
+        ]),
+      ]
+        .filter((level) => Number.isInteger(level) && level >= 1 && level <= 12)
+        .sort((a, b) => a - b);
+
+      if (levels.length === 0) {
+        return {
+          ok: false,
+          message: "Add at least one class before switching to Customized.",
+        };
+      }
+
+      const programName = school.name.trim();
+      if (programName.length < 2) {
+        return { ok: false, message: "Enter a school name before switching to Customized." };
+      }
+
+      await schoolService.updateSchool(schoolId, {
+        type: "CUSTOMIZED",
+        customProgram: {
+          name: programName,
+          classes: levels.map((classLevel) => ({
+            classLevel,
+            subjects: subjectsByClass.get(classLevel)?.length
+              ? subjectsByClass.get(classLevel)!
+              : (subjectsForClassLevel(classLevel) as Subject[]),
+          })),
+        },
+      } as SchoolInput);
+    } else {
+      // Customized schools only have a custom program — map each class onto Regular catalog programs.
+      let existingRegular = school.schoolPrograms
+        .filter((program) => (program.type ?? "REGULAR") === "REGULAR")
+        .map((program) => ({
+          programId: program.programId,
+          classes: program.classes
+            .filter((row) => row.subjects.length > 0)
+            .map((row) => ({ classLevel: row.classLevel, subjects: row.subjects as Subject[] })),
+        }))
+        .filter((row) => row.classes.length > 0);
+
+      if (existingRegular.length === 0) {
+        let organization: Awaited<ReturnType<typeof sectionService.listAdminSchoolSections>> | null =
+          null;
+        try {
+          organization = await sectionService.listAdminSchoolSections(schoolId);
+        } catch {
+          organization = null;
+        }
+
+        const subjectsByClass = new Map<number, Subject[]>();
+        for (const program of school.schoolPrograms) {
+          for (const row of program.classes) {
+            if (!subjectsByClass.has(row.classLevel) && row.subjects.length > 0) {
+              subjectsByClass.set(row.classLevel, [...(row.subjects as Subject[])]);
+            }
+          }
+        }
+
+        const levels = [
+          ...new Set([
+            ...school.schoolPrograms.flatMap((program) =>
+              program.classes.map((row) => row.classLevel),
+            ),
+            ...(organization?.wholeClasses ?? []).map((row) => row.classLevel),
+            ...(organization?.sections ?? []).map((row) => row.classLevel),
+          ]),
+        ]
+          .filter((level) => Number.isInteger(level) && level >= 1 && level <= 12)
+          .sort((a, b) => a - b);
+
+        const catalog = await programService.listAdminPrograms();
+        existingRegular = seedRegularProgramsInput(catalog, levels, subjectsByClass);
+        if (existingRegular.length === 0) {
+          return {
+            ok: false,
+            message:
+              levels.length === 0
+                ? "Add at least one class before switching to Regular."
+                : "No Regular catalog program covers this school's classes.",
+          };
+        }
+      }
+
+      await schoolService.updateSchool(schoolId, {
+        type: "REGULAR",
+        programs: existingRegular,
+      } as SchoolInput);
+    }
+
+    revalidateSchoolPortalViews();
+    revalidatePath(`${ADMIN_BASE_PATH}/schools/${schoolId}`, "layout");
+    return { ok: true };
+  } catch (error) {
+    unstable_rethrow(error);
+    if (error instanceof ApiError) {
+      return { ok: false, message: error.message };
+    }
+    return { ok: false, message: "Could not update school type." };
+  }
 }
 
 /** Classes & sections drafts from the school form — applied only on Save. */

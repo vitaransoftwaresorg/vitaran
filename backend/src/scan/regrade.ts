@@ -48,7 +48,17 @@ export async function evaluatedImage(sheet: Buffer, bubbles: BubbleMap, answers:
   const lists = Object.fromEntries(
     Object.entries(answers).map(([question, value]) => [question, Array.isArray(value) ? value : [value]]),
   );
-  return { score, image: await markedSheetPreview(sheet, bubbles, lists, key.answers, score.subjectScores) };
+  return {
+    score,
+    image: await markedSheetPreview(
+      sheet,
+      bubbles,
+      lists,
+      key.answers,
+      score.subjectScores,
+      key.keyTypeRanges,
+    ),
+  };
 }
 
 const running = new Set<string>();

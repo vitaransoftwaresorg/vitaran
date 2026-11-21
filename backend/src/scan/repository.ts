@@ -24,7 +24,15 @@ const scanSelect = {
   createdAt: true,
   updatedAt: true,
   school: { select: { id: true, name: true, code: true, type: true } },
-  answerKey: { select: { testNumber: true, classLevel: true, programCode: true } },
+  answerKey: {
+    select: {
+      testNumber: true,
+      classLevel: true,
+      programCode: true,
+      answers: true,
+      keyTypeRanges: true,
+    },
+  },
 } satisfies Prisma.OmScanSelect;
 
 export type OmScanRow = Prisma.OmScanGetPayload<{ select: typeof scanSelect }>;

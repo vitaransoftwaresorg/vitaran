@@ -7,6 +7,8 @@ import { ApiError } from "@/services/api-client";
 import {
   createAdminSchoolStudent,
   createAdminSchoolStudentsBulk,
+  deleteAdminClassStudents,
+  deleteAdminSectionStudents,
   deleteAdminStudent,
   findStudentIdByRoll,
   getAdminStudent,
@@ -24,44 +26,57 @@ import type {
   StudentFormState,
 } from "@/features/students/actions";
 
-const optionalStudentName = z.union([
-  z.literal(""),
-  z.string().trim().min(2, "Enter at least 2 characters").max(120),
-]);
+/** Blank / null / whitespace → ""; otherwise min 2 chars. */
+const optionalStudentName = z.preprocess(
+  (value) => (value == null ? "" : String(value).trim()),
+  z.union([
+    z.literal(""),
+    z.string().min(2, "Enter at least 2 characters").max(120),
+  ]),
+);
+
+const optionalParentName = z.preprocess(
+  (value) => (value == null ? "" : String(value).trim()),
+  z.union([
+    z.literal(""),
+    z.string().min(2, "Enter a parent / guardian name (at least 2 characters)"),
+  ]),
+);
+
+const optionalParentPhone = z.preprocess(
+  (value) => String(value ?? "").replace(/\D/g, "").slice(0, 10),
+  z.union([
+    z.literal(""),
+    z.string().regex(/^\d{10}$/, "Enter a 10-digit mobile number"),
+  ]),
+);
+
+const optionalSectionId = z.preprocess(
+  (value) => (value == null ? "" : value),
+  z.union([z.literal(""), z.string().uuid("Pick a valid section")]),
+);
 
 const studentSchema = z.object({
   name: optionalStudentName,
   rollNo: z.string().trim().regex(/^\d{7}$/, "Enter the 7-digit registration number"),
   email: z.union([z.literal(""), z.string().trim().email("Enter a valid email")]),
-  parentName: z.union([
-    z.literal(""),
-    z.string().trim().min(2, "Enter a parent / guardian name (at least 2 characters)"),
-  ]),
-  parentPhone: z.union([
-    z.literal(""),
-    z.string().trim().regex(/^\d{10}$/, "Enter a 10-digit mobile number"),
-  ]),
+  parentName: optionalParentName,
+  parentPhone: optionalParentPhone,
   programId: z.string().min(1, "Pick a program").uuid("Pick a program"),
   classLevel: z.preprocess(
     (value) => (value === "" || value == null ? undefined : value),
     z.coerce.number({ error: "Pick a class" }).int().min(1, "Pick a class").max(12),
   ),
-  sectionId: z.union([z.literal(""), z.string().uuid("Pick a valid section")]),
+  sectionId: optionalSectionId,
 });
 
 const bulkRowSchema = z.object({
   name: optionalStudentName,
   rollNo: z.string().trim().regex(/^\d{7}$/, "Enter the 7-digit registration number"),
   email: z.union([z.literal(""), z.string().trim().email("Enter a valid email")]),
-  parentName: z.union([
-    z.literal(""),
-    z.string().trim().min(2, "Enter a parent / guardian name (at least 2 characters)"),
-  ]),
-  parentPhone: z.union([
-    z.literal(""),
-    z.string().trim().regex(/^\d{10}$/, "Enter a 10-digit mobile number"),
-  ]),
-  sectionId: z.union([z.literal(""), z.string().uuid("Pick a valid section")]).optional(),
+  parentName: optionalParentName,
+  parentPhone: optionalParentPhone,
+  sectionId: optionalSectionId.optional(),
 });
 
 function formValues(formData: FormData): Partial<CreateStudentInput> {
@@ -192,16 +207,19 @@ export async function importAdminStudentsAllAction(
 
       for (const row of group.students) {
         const blank =
-          !row.name.trim() &&
-          !row.rollNo.trim() &&
+          !(row.name ?? "").trim() &&
+          !(row.rollNo ?? "").trim() &&
           !(row.parentName ?? "").trim() &&
           !(row.parentPhone ?? "").trim();
         if (blank) continue;
 
         const parsed = bulkRowSchema.safeParse({
-          ...row,
+          name: row.name ?? "",
+          rollNo: row.rollNo ?? "",
           email: "",
-          parentPhone: String(row.parentPhone ?? "").replace(/\D/g, "").slice(0, 10),
+          parentName: row.parentName ?? "",
+          parentPhone: row.parentPhone ?? "",
+          sectionId: row.sectionId ?? "",
         });
         if (!parsed.success) {
           const flat = z.flattenError(parsed.error).fieldErrors;
@@ -212,7 +230,7 @@ export async function importAdminStudentsAllAction(
         }
         sourceByPayload.push(row.sourceIndex);
         validRows.push({
-          name: parsed.data.name,
+          name: String(parsed.data.name ?? ""),
           rollNo: parsed.data.rollNo,
           email: null,
           parentName: parsed.data.parentName || null,
@@ -313,16 +331,19 @@ export async function createAdminStudentsBulkAction(
 
   input.students.forEach((row, index) => {
     const blank =
-      !row.name.trim() &&
-      !row.rollNo.trim() &&
+      !(row.name ?? "").trim() &&
+      !(row.rollNo ?? "").trim() &&
       !(row.parentName ?? "").trim() &&
       !(row.parentPhone ?? "").trim();
     if (blank) return;
 
     const parsed = bulkRowSchema.safeParse({
-      ...row,
+      name: row.name ?? "",
+      rollNo: row.rollNo ?? "",
       email: "",
-      parentPhone: String(row.parentPhone ?? "").replace(/\D/g, "").slice(0, 10),
+      parentName: row.parentName ?? "",
+      parentPhone: row.parentPhone ?? "",
+      sectionId: row.sectionId ?? "",
     });
     if (!parsed.success) {
       const flat = z.flattenError(parsed.error).fieldErrors;
@@ -333,7 +354,7 @@ export async function createAdminStudentsBulkAction(
     }
     uiIndexByPayload.push(index);
     validRows.push({
-      name: parsed.data.name,
+      name: String(parsed.data.name ?? ""),
       rollNo: parsed.data.rollNo,
       email: null,
       parentName: parsed.data.parentName || null,
@@ -462,6 +483,34 @@ export async function deleteAdminStudentInPlaceAction(id: string) {
   await deleteAdminStudent(id);
   revalidateAdminStudentPaths(student?.schoolId);
   return { ok: true as const };
+}
+
+export async function deleteAdminSectionStudentsAction(schoolId: string, sectionId: string) {
+  try {
+    const result = await deleteAdminSectionStudents(schoolId, sectionId);
+    revalidateAdminStudentPaths(schoolId);
+    return { ok: true as const, deleted: result.deleted };
+  } catch (error) {
+    unstable_rethrow(error);
+    if (error instanceof ApiError) {
+      return { ok: false as const, message: error.message };
+    }
+    return { ok: false as const, message: "Could not delete section students." };
+  }
+}
+
+export async function deleteAdminClassStudentsAction(schoolId: string, classLevel: number) {
+  try {
+    const result = await deleteAdminClassStudents(schoolId, classLevel);
+    revalidateAdminStudentPaths(schoolId);
+    return { ok: true as const, deleted: result.deleted };
+  } catch (error) {
+    unstable_rethrow(error);
+    if (error instanceof ApiError) {
+      return { ok: false as const, message: error.message };
+    }
+    return { ok: false as const, message: "Could not delete class students." };
+  }
 }
 
 /** Open a student profile from the admin Students page search. */

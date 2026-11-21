@@ -56,6 +56,21 @@ export function uniqueSubjectsFromOfferings(offerings: SchoolProgramOffering[]):
   return [...subjects];
 }
 
+/** Rewrite offering tokens onto one program (e.g. Regular → Customized). */
+export function remapOfferingsToProgram(tokens: string[], programId: string): string[] {
+  const byClass = new Map<number, Set<Subject>>();
+  for (const token of tokens) {
+    const parsed = parseOfferingToken(token);
+    if (!parsed) continue;
+    const subjects = byClass.get(parsed.classLevel) ?? new Set<Subject>();
+    subjects.add(parsed.subject);
+    byClass.set(parsed.classLevel, subjects);
+  }
+  return [...byClass.entries()].flatMap(([classLevel, subjects]) =>
+    [...subjects].map((subject) => encodeOffering(programId, classLevel, subject)),
+  );
+}
+
 /** Replace subject access tokens for one program + class level. */
 export function replaceClassSubjectOfferings(
   previous: string[],
@@ -147,6 +162,8 @@ export function catalogProgramsForForm(
 export function customizedProgramForForm(input: {
   offerings: string[];
   customProgramName: string;
+  /** Prefer school name so Add class shows the same label as Programs. */
+  schoolName?: string;
   savedPrograms: SchoolProgramOffering[];
 }): SchoolProgramOffering[] {
   const year = new Date().getFullYear();
@@ -154,7 +171,10 @@ export function customizedProgramForForm(input: {
     input.savedPrograms.find((row) => row.type === "CUSTOMIZED") ?? input.savedPrograms[0];
   const programId = saved?.programId ?? CUSTOM_DRAFT_PROGRAM_ID;
   const programName =
-    input.customProgramName.trim() || saved?.programName || "Custom Program";
+    input.schoolName?.trim() ||
+    input.customProgramName.trim() ||
+    saved?.programName ||
+    "Custom Program";
   const subjectsByClass = new Map(
     offeringsToPrograms(input.offerings)
       .filter(
@@ -181,6 +201,56 @@ export function customizedProgramForForm(input: {
   ];
 }
 
+/** Prefer the narrowest Regular catalog program that covers this class. */
+export function pickRegularProgramForClass<
+  T extends { id: string; classFrom: number; classTo: number; name: string; subjects: string[] },
+>(catalog: T[], classLevel: number): T | null {
+  const covering = catalog
+    .filter((program) => classLevel >= program.classFrom && classLevel <= program.classTo)
+    .sort(
+      (a, b) =>
+        a.classTo - a.classFrom - (b.classTo - b.classFrom) || a.name.localeCompare(b.name),
+    );
+  return covering[0] ?? null;
+}
+
+/**
+ * Customized → Regular: map each class onto one Regular catalog program and
+ * emit offering tokens (so Add class / edit dropdowns show real program names).
+ */
+export function seedRegularOfferingTokens(
+  catalog: LearningProgram[],
+  levels: number[],
+  subjectsByClass?: Map<number, Subject[]>,
+): string[] {
+  const regular = catalog.filter((program) => (program.type ?? "REGULAR") === "REGULAR");
+  const tokens: string[] = [];
+  for (const classLevel of [...new Set(levels)]
+    .filter((level) => Number.isInteger(level) && level >= 1 && level <= 12)
+    .sort((a, b) => a - b)) {
+    const pick = pickRegularProgramForClass(regular, classLevel);
+    if (!pick) continue;
+    const allowed = new Set(pick.subjects);
+    const previous = (subjectsByClass?.get(classLevel) ?? []).filter((subject) =>
+      allowed.has(subject),
+    );
+    const defaults = subjectsForClassLevel(classLevel).filter((subject) => allowed.has(subject));
+    const subjects = (previous.length > 0 ? previous : defaults.length > 0 ? defaults : pick.subjects) as Subject[];
+    for (const subject of subjects) {
+      tokens.push(encodeOffering(pick.id, classLevel, subject));
+    }
+  }
+  return tokens;
+}
+
+export function seedRegularProgramsInput(
+  catalog: LearningProgram[],
+  levels: number[],
+  subjectsByClass?: Map<number, Subject[]>,
+): SchoolProgramInput[] {
+  return offeringsToPrograms(seedRegularOfferingTokens(catalog, levels, subjectsByClass));
+}
+
 /**
  * Live Programs & classes checks → offerings shape used by Classes & sections.
  * Keeps Add-class dropdowns in sync with the form before Save.
@@ -190,6 +260,7 @@ export function liveOfferingsFromForm(input: {
   offerings: string[];
   customClasses: string[];
   customProgramName: string;
+  schoolName?: string;
   catalog: LearningProgram[];
   savedPrograms: SchoolProgramOffering[];
 }): SchoolProgramOffering[] {
@@ -203,7 +274,11 @@ export function liveOfferingsFromForm(input: {
       .sort((a, b) => a - b);
     if (levels.length === 0) return [];
     const programId = saved?.programId ?? CUSTOM_DRAFT_PROGRAM_ID;
-    const programName = input.customProgramName.trim() || saved?.programName || "Custom Program";
+    const programName =
+      input.schoolName?.trim() ||
+      input.customProgramName.trim() ||
+      saved?.programName ||
+      "Custom Program";
     const subjectsByClass = new Map(
       offeringsToPrograms(input.offerings)
         .filter((row) => row.programId === programId || row.programId === CUSTOM_DRAFT_PROGRAM_ID)

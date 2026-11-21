@@ -460,9 +460,10 @@ export async function deleteSection(schoolId: string, id: string) {
   );
 
   if (!siblingsLeft && !wholeLeft) {
-    // Last org unit for this class → permanently remove every student in that class.
+    // Last org unit for this class → remove every student in that class.
     await purgeClassRosterAndResults(schoolId, existing.classLevel, existing.program.code);
   } else {
+    // Deleting a section removes only that section's students (class stays).
     const rolls = (await studentRepository.listRollsBySectionId(id)).map((row) => row.rollNo);
     if (rolls.length > 0) await removeRollsFromSchoolData(schoolId, rolls);
     await studentRepository.deleteStudentsBySectionId(id);

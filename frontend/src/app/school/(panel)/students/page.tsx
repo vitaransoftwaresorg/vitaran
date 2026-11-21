@@ -4,6 +4,7 @@ import { FileSpreadsheet, Plus } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/features/admin/page-header";
 import { verifySchoolSession } from "@/features/school-auth/session";
+import { DeleteRosterStudentsButton } from "@/features/students/delete-roster-students-button";
 import { SchoolStudentsDrive } from "@/features/students/school-students-drive";
 import { sectionIdsForClass, studentsInClass } from "@/features/students/school-roster";
 import { subjectsForSchoolClass } from "@/features/students/report-subjects";
@@ -53,10 +54,16 @@ export default async function SchoolStudentsPage({
       ? `Class ${classLevel}-${section}`
       : `Class ${classLevel}`
     : "Students";
+  const hasSections =
+    inClass &&
+    classLevel != null &&
+    (organization.sections ?? []).some((row) => row.classLevel === classLevel);
   const description = inClass
     ? section
-      ? `${school.name} · students`
-      : `${school.name} · all sections`
+      ? `${school.name} · section students`
+      : hasSections
+        ? `${school.name} · open a section`
+        : `${school.name} · students`
     : "Open a class to view students";
   const roster =
     inClass && classLevel != null
@@ -80,7 +87,7 @@ export default async function SchoolStudentsPage({
         description={description}
         count={headerCount}
         actions={
-          inClass ? (
+          inClass && classLevel != null ? (
             <div className="flex flex-wrap items-center gap-2">
               <ClassProfilesPdfActions
                 portal="school"
@@ -89,6 +96,15 @@ export default async function SchoolStudentsPage({
                 schoolName={school.name}
                 subjects={classSubjects}
               />
+              {section || !(organization.sections ?? []).some((row) => row.classLevel === classLevel) ? (
+                <DeleteRosterStudentsButton
+                  mode="school"
+                  classLevel={classLevel}
+                  sectionId={sectionIds?.length === 1 ? sectionIds[0] : null}
+                  sectionLabel={section}
+                  studentCount={roster.length}
+                />
+              ) : null}
               <Link
                 href={
                   section

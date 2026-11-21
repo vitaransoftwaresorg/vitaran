@@ -328,9 +328,14 @@ export function asAnswers(value: unknown): Record<string, KeyAnswer> {
   return answers;
 }
 
-/** True when any question is multi-correct MCQ (e.g. B/C) — partial credit only applies then. */
+/** True when any answer lists multiple options (e.g. B/C) — does not imply MCQ scoring. */
 export function keyHasMultiCorrect(answers: Record<string, KeyAnswer> | unknown) {
   return Object.values(asAnswers(answers)).some(isMultiKey);
+}
+
+/** Partial-credit UI/scoring only when the key has at least one MCQ-typed range. */
+export function keyHasMcqType(ranges: unknown) {
+  return asKeyTypeRanges(ranges).some((range) => range.type === "mcq");
 }
 
 export function asMarkedAnswers(value: unknown): Record<string, AnswerOption> {

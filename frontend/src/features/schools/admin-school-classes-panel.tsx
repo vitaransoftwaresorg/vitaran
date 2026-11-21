@@ -167,17 +167,32 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     return map;
   }, [classTeacherSlots]);
 
+  /** When type flips to Customized, map leftover Regular roster rows onto the school program. */
+  function resolveProgram(programId: string, classLevel: number) {
+    const exact = schoolPrograms.find((row) => row.programId === programId);
+    if (exact) return exact;
+    const covering = schoolPrograms.filter(
+      (row) =>
+        row.classes.some((cls) => cls.classLevel === classLevel) ||
+        (classLevel >= row.classFrom && classLevel <= row.classTo),
+    );
+    if (covering.length === 1) return covering[0];
+    if (schoolPrograms.length === 1) return schoolPrograms[0];
+    return undefined;
+  }
+
   function accessSubjects(programId: string, classLevel: number, fallback: Subject[] = []): Subject[] {
+    const program = resolveProgram(programId, classLevel);
     const fromOffering =
-      schoolPrograms
-        .find((row) => row.programId === programId)
-        ?.classes.find((row) => row.classLevel === classLevel)?.subjects ?? [];
+      program?.classes.find((row) => row.classLevel === classLevel)?.subjects ?? [];
     return fromOffering.length > 0 ? fromOffering : fallback;
   }
 
   /** Subject access checklist — only subjects on this program’s catalog. */
   function allSubjectsFor(programId: string, classLevel: number): Subject[] {
-    const program = schoolPrograms.find((row) => row.programId === programId);
+    const program =
+      resolveProgram(programId, classLevel) ??
+      schoolPrograms.find((row) => row.programId === programId);
     const catalog = (program?.catalogSubjects ?? []) as Subject[];
     if (catalog.length > 0) return [...new Set(catalog)];
     // Custom / incomplete catalog: fall back to class-band defaults only.
@@ -198,16 +213,20 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
       ...organization.wholeClasses
         .filter((row) => !levelsWithSections.has(row.classLevel))
         .map((row) => {
-          const ct = classCtByKey.get(`${row.programId}:${row.classLevel}`);
+          const program = resolveProgram(row.programId, row.classLevel);
+          const programId = program?.programId ?? row.programId;
+          const ct =
+            classCtByKey.get(`${programId}:${row.classLevel}`) ??
+            classCtByKey.get(`${row.programId}:${row.classLevel}`);
           return {
             key: `w-${row.id}`,
             kind: "whole" as const,
             id: row.id,
             classLevel: row.classLevel,
             section: "A",
-            programId: row.programId,
-            programName: row.programName,
-            subjects: accessSubjects(row.programId, row.classLevel),
+            programId,
+            programName: program?.programName ?? row.programName,
+            subjects: accessSubjects(programId, row.classLevel),
             seats: row.studentCount,
             teacherId: ct?.teacherId ?? null,
             teacherName: ct?.teacherName ?? null,
@@ -215,33 +234,41 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
         }),
       ...organization.sections
         .filter((section) => !draftDeletes.includes(section.id))
-        .map((section) => ({
-          key: `s-${section.id}`,
+        .map((section) => {
+          const program = resolveProgram(section.programId, section.classLevel);
+          const programId = program?.programId ?? section.programId;
+          return {
+            key: `s-${section.id}`,
+            kind: "section" as const,
+            id: section.id,
+            classLevel: section.classLevel,
+            section: section.name,
+            programId,
+            programName: program?.programName ?? section.programName,
+            subjects: accessSubjects(programId, section.classLevel),
+            seats: section.studentCount,
+            teacherId: section.classTeacher?.teacherId ?? null,
+            teacherName: section.classTeacher?.name ?? null,
+          };
+        }),
+      ...draftCreates.map((row) => {
+        const program = resolveProgram(row.programId, row.classLevel);
+        const programId = program?.programId ?? row.programId;
+        return {
+          key: row.draftId,
           kind: "section" as const,
-          id: section.id,
-          classLevel: section.classLevel,
-          section: section.name,
-          programId: section.programId,
-          programName: section.programName,
-          subjects: accessSubjects(section.programId, section.classLevel),
-          seats: section.studentCount,
-          teacherId: section.classTeacher?.teacherId ?? null,
-          teacherName: section.classTeacher?.name ?? null,
-        })),
-      ...draftCreates.map((row) => ({
-        key: row.draftId,
-        kind: "section" as const,
-        id: row.draftId,
-        classLevel: row.classLevel,
-        section: row.name?.trim() || "A",
-        programId: row.programId,
-        programName: row.programName,
-        subjects: accessSubjects(row.programId, row.classLevel, row.subjects),
-        seats: row.studentCount,
-        teacherId: null,
-        teacherName: null,
-        draft: true,
-      })),
+          id: row.draftId,
+          classLevel: row.classLevel,
+          section: row.name?.trim() || "A",
+          programId,
+          programName: program?.programName ?? row.programName,
+          subjects: accessSubjects(programId, row.classLevel, row.subjects),
+          seats: row.studentCount,
+          teacherId: null,
+          teacherName: null,
+          draft: true,
+        };
+      }),
     ];
     return rows.sort(
       (a, b) =>
@@ -289,10 +316,17 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     () =>
       programsForEdit.map((row) => ({
         value: row.programId,
-        label: capitalizeWords(row.programName),
+        label: capitalizeWords(row.programName || row.programCode) || "Program",
       })),
     [programsForEdit],
   );
+
+  // After Customized → Regular, drop stale custom program ids so Select never shows a UUID.
+  useEffect(() => {
+    if (!editing || !editProgramId) return;
+    if (programsForEdit.some((row) => row.programId === editProgramId)) return;
+    setEditProgramId(programsForEdit[0]?.programId ?? "");
+  }, [editing, editProgramId, programsForEdit]);
 
   const classOptions = useMemo(() => {
     const levels = new Set<number>();
@@ -331,8 +365,17 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
       programId &&
       !programsForClass.some((row) => row.programId === programId)
     ) {
-      setProgramId("");
+      // Sole program (customized school) — keep Add class usable after type flip.
+      if (programsForClass.length === 1) {
+        setProgramId(programsForClass[0]!.programId);
+      } else {
+        setProgramId("");
+      }
       setSelectedSubjects([]);
+      return;
+    }
+    if (!programId && programsForClass.length === 1) {
+      setProgramId(programsForClass[0]!.programId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional stable keys
   }, [classLevel, classOptionsKey, programId, programsForClassKey]);
@@ -474,10 +517,19 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
   }
 
   function openEdit(row: ClassRow) {
+    const programs = schoolPrograms.filter(
+      (program) =>
+        program.programId === row.programId ||
+        program.classes.some((cls) => cls.classLevel === row.classLevel) ||
+        (row.classLevel >= program.classFrom && row.classLevel <= program.classTo),
+    );
+    const programId = programs.some((program) => program.programId === row.programId)
+      ? row.programId
+      : (programs[0]?.programId ?? "");
     setEditing(row);
     setEditSeats(String(row.seats));
     setEditName(row.section);
-    setEditProgramId(row.programId);
+    setEditProgramId(programId);
     setEditSubjects([...row.subjects]);
     setEditErrors({});
   }
@@ -632,7 +684,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     if (row.kind !== "section") return;
     if (
       !window.confirm(
-        `Delete section ${row.classLevel}-${row.section}? Students in this section will also be removed from the roster, results, and ranks.`,
+        `Delete section ${row.classLevel}-${row.section}? Students in this section will also be removed from the roster, results, and ranks. The class stays.`,
       )
     ) {
       return;
@@ -676,7 +728,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     () =>
       programsForClass.map((row) => ({
         value: row.programId,
-        label: capitalizeWords(row.programName),
+        label: capitalizeWords(row.programName || row.programCode) || "Program",
       })),
     [programsForClass],
   );
@@ -798,7 +850,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                 <SelectContent alignItemWithTrigger={false}>
                   {programsForEdit.map((row) => (
                     <SelectItem key={row.programId} value={row.programId}>
-                      {capitalizeWords(row.programName)}
+                      {capitalizeWords(row.programName || row.programCode) || "Program"}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -969,7 +1021,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                 <SelectContent alignItemWithTrigger={false}>
                   {programsForClass.map((row) => (
                     <SelectItem key={row.programId} value={row.programId}>
-                      {capitalizeWords(row.programName)}
+                      {capitalizeWords(row.programName || row.programCode) || "Program"}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1122,7 +1174,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                     </td>
                     <td className="px-4 py-3 text-neutral-700">{row.section}</td>
                     <td className="px-4 py-3 text-neutral-700">
-                      {capitalizeWords(row.programName)}
+                      {capitalizeWords(row.programName) || "—"}
                     </td>
                     <td className="px-4 py-3 text-neutral-700">
                       {row.subjects.length > 0 ? (

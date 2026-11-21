@@ -92,6 +92,22 @@ export function deleteSchoolStudent(id: string) {
   });
 }
 
+/** Delete all students in a section — class/section setup stays. */
+export function deleteSchoolSectionStudents(sectionId: string) {
+  return schoolApi<{ ok: true; deleted: number }>(
+    `/school/students/sections/${encodeURIComponent(sectionId)}`,
+    { method: "DELETE" },
+  );
+}
+
+/** Delete all students in a class — class/section setup stays. */
+export function deleteSchoolClassStudents(classLevel: number) {
+  return schoolApi<{ ok: true; deleted: number }>(
+    `/school/students/classes/${encodeURIComponent(String(classLevel))}`,
+    { method: "DELETE" },
+  );
+}
+
 export function listAdminSchoolStudents(schoolId: string, params?: ListParams) {
   return adminApi<StudentListResult>(
     `/schools/${encodeURIComponent(schoolId)}/students${queryString(params)}`,
@@ -147,6 +163,20 @@ export function updateAdminSchoolStudent(
 export function deleteAdminSchoolStudent(schoolId: string, id: string) {
   return adminApi<{ ok: true }>(
     `/schools/${encodeURIComponent(schoolId)}/students/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
+}
+
+export function deleteAdminSectionStudents(schoolId: string, sectionId: string) {
+  return adminApi<{ ok: true; deleted: number }>(
+    `/schools/${encodeURIComponent(schoolId)}/students/sections/${encodeURIComponent(sectionId)}`,
+    { method: "DELETE" },
+  );
+}
+
+export function deleteAdminClassStudents(schoolId: string, classLevel: number) {
+  return adminApi<{ ok: true; deleted: number }>(
+    `/schools/${encodeURIComponent(schoolId)}/students/classes/${encodeURIComponent(String(classLevel))}`,
     { method: "DELETE" },
   );
 }

@@ -1,8 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Dialog } from "@base-ui/react/dialog";
-import { ChevronDown, Download, Eye, FileDown, X } from "lucide-react";
+import {
+  ChevronDown,
+  Download,
+  Eye,
+  FileDown,
+  Loader2,
+  Minus,
+  Plus,
+  RotateCcw,
+  X,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -10,8 +20,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { getOmScanAction } from "@/features/scan/actions";
+import { keyHasMcq, ReadVsKeyTable } from "@/features/scan/read-vs-key-table";
 import { cn } from "@/lib/utils";
-import type { ClassScan } from "@/types/scan";
+import type { ScanPortal } from "@/services/scans";
+import type { ClassScan, OmScan } from "@/types/scan";
+import { formatMarks } from "@/types/scan";
 import { RESULTS_PATH } from "./constants";
 
 /* eslint-disable @next/next/no-img-element -- authenticated proxy route, not a static asset */
@@ -20,11 +34,76 @@ type OmrKind = "preview" | "raw";
 
 const KIND_LABEL: Record<OmrKind, string> = { preview: "Evaluated", raw: "Original" };
 
+const DEFAULT_ZOOM = 1; // 100%
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 4;
+const ZOOM_STEP = 0.25;
+
+function clampZoom(value: number) {
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(value / ZOOM_STEP) * ZOOM_STEP));
+}
+
+function omrSubjectLabel(scan: ClassScan) {
+  const name = scan.studentName?.trim();
+  return name ? `${name} · ${scan.rollNo}` : scan.rollNo;
+}
+
+/** Scale the whole Read vs key block to fit — measure at 100% first so nothing is clipped. */
+function FitFixed({ children }: { children: ReactNode }) {
+  const outerRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+
+  useLayoutEffect(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+
+    const update = () => {
+      // Measure at full size, then scale down so the table is never clipped.
+      const previous = inner.style.transform;
+      inner.style.transform = "none";
+      const width = outer.clientWidth;
+      const height = outer.clientHeight;
+      const naturalWidth = Math.max(inner.scrollWidth, inner.offsetWidth);
+      const naturalHeight = Math.max(inner.scrollHeight, inner.offsetHeight);
+      inner.style.transform = previous;
+      if (!width || !height || !naturalWidth || !naturalHeight) return;
+      const next = Math.min(1, width / naturalWidth, height / naturalHeight);
+      setScale(Number.isFinite(next) && next > 0 ? next : 1);
+    };
+
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(outer);
+    observer.observe(inner);
+    return () => observer.disconnect();
+  }, [children]);
+
+  return (
+    <div ref={outerRef} className="relative h-full min-h-0 w-full overflow-hidden">
+      <div
+        ref={innerRef}
+        className="absolute top-0 left-0 w-full origin-top-left"
+        style={{ transform: `scale(${scale})` }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function portalFromBasePath(basePath: string): ScanPortal {
+  if (basePath.startsWith("/school")) return "school";
+  if (basePath.startsWith("/teacher")) return "teacher";
+  return "admin";
+}
+
 export function omrImageHref(scanId: string, kind: OmrKind, download = false, basePath = RESULTS_PATH) {
   return `${basePath}/omr/${encodeURIComponent(scanId)}?kind=${kind}${download ? "&download=1" : ""}`;
 }
 
-/** View / download buttons for one student's saved OMR. */
+/** View / download buttons for one student's saved OMR (results, student profile — not review). */
 export function OmrCell({
   scan,
   basePath = RESULTS_PATH,
@@ -37,10 +116,52 @@ export function OmrCell({
   viewOnly?: boolean;
 }) {
   const [kind, setKind] = useState<OmrKind>("preview");
+  const [open, setOpen] = useState(false);
+  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  const [detail, setDetail] = useState<OmScan | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || !scan) return;
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    void getOmScanAction(portalFromBasePath(basePath), scan.id).then((result) => {
+      if (cancelled) return;
+      setLoading(false);
+      if (!result.ok) {
+        setDetail(null);
+        setError(result.message);
+        return;
+      }
+      setDetail(result.scan);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, scan, basePath]);
+
   if (!scan) return <span className="text-neutral-300">—</span>;
+
+  const showPartial = keyHasMcq(detail?.keyTypeRanges);
+
   return (
     <div className="flex items-center justify-center gap-1">
-      <Dialog.Root onOpenChange={(open) => open && setKind("preview")}>
+      <Dialog.Root
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (next) {
+            setKind("preview");
+            setZoom(DEFAULT_ZOOM);
+          } else {
+            setDetail(null);
+            setError(null);
+            setZoom(DEFAULT_ZOOM);
+          }
+        }}
+      >
         <Dialog.Trigger
           title="View OMR"
           className={
@@ -54,10 +175,15 @@ export function OmrCell({
         </Dialog.Trigger>
         <Dialog.Portal>
           <Dialog.Backdrop className="fixed inset-0 z-[60] bg-black/70 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />
-          <Dialog.Popup className="fixed top-1/2 left-1/2 z-[60] flex h-[92vh] w-[94vw] max-w-5xl -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl bg-white shadow-2xl outline-none duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
-            <header className="flex flex-wrap items-center gap-2 border-b border-neutral-200 px-4 py-2.5">
+          <Dialog.Popup className="fixed inset-2 z-[60] flex h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-none flex-col rounded-xl bg-white shadow-2xl outline-none duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0 sm:inset-3 sm:h-[calc(100dvh-1.5rem)] sm:w-[calc(100vw-1.5rem)]">
+            <header className="flex shrink-0 flex-wrap items-center gap-2 border-b border-neutral-200 px-4 py-2.5">
               <Dialog.Title className="min-w-0 flex-1 truncate text-sm font-semibold text-neutral-900">
-                {scan.studentName} · {scan.rollNo}
+                {omrSubjectLabel(scan)}
+                {detail ? (
+                  <span className="ml-2 font-normal text-neutral-500 tabular-nums">
+                    {formatMarks(detail.total)}/{formatMarks(detail.maxTotal)}
+                  </span>
+                ) : null}
               </Dialog.Title>
               <div className="flex rounded-lg border border-neutral-200 p-0.5">
                 {(["preview", "raw"] as const).map((option) => (
@@ -88,13 +214,120 @@ export function OmrCell({
                 <X className="size-4" />
               </Dialog.Close>
             </header>
-            <div className="min-h-0 flex-1 p-3">
-              <img
-                key={kind}
-                src={omrImageHref(scan.id, kind, false, basePath)}
-                alt={`${KIND_LABEL[kind]} OMR of ${scan.studentName}`}
-                className="size-full object-contain"
-              />
+            <div className="grid min-h-0 flex-1 gap-3 overflow-hidden p-3 lg:grid-cols-2">
+              {/* OMR sheet — zoom/scroll only here; Read vs key stays fixed on the right. */}
+              <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50">
+                <div className="flex shrink-0 items-center justify-between gap-2 border-b border-neutral-200 bg-white px-2 py-1.5">
+                  <p className="px-1 text-xs font-semibold text-neutral-600">{KIND_LABEL[kind]} OMR</p>
+                  <div className="flex items-center rounded-lg border border-neutral-200">
+                    <button
+                      type="button"
+                      title="Zoom out"
+                      aria-label="Zoom out"
+                      disabled={zoom <= ZOOM_MIN}
+                      onClick={() => setZoom((value) => clampZoom(value - ZOOM_STEP))}
+                      className="inline-flex size-8 items-center justify-center text-neutral-700 hover:bg-neutral-50 disabled:opacity-40"
+                    >
+                      <Minus className="size-3.5" />
+                    </button>
+                    <span className="min-w-12 px-1 text-center text-xs font-semibold tabular-nums text-neutral-700">
+                      {Math.round(zoom * 100)}%
+                    </span>
+                    <button
+                      type="button"
+                      title="Zoom in"
+                      aria-label="Zoom in"
+                      disabled={zoom >= ZOOM_MAX}
+                      onClick={() => setZoom((value) => clampZoom(value + ZOOM_STEP))}
+                      className="inline-flex size-8 items-center justify-center text-neutral-700 hover:bg-neutral-50 disabled:opacity-40"
+                    >
+                      <Plus className="size-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      title="Reset to 100%"
+                      aria-label="Reset to 100%"
+                      disabled={zoom === DEFAULT_ZOOM}
+                      onClick={() => setZoom(DEFAULT_ZOOM)}
+                      className="inline-flex size-8 items-center justify-center border-l border-neutral-200 text-neutral-700 hover:bg-neutral-50 disabled:opacity-40"
+                    >
+                      <RotateCcw className="size-3.5" />
+                    </button>
+                  </div>
+                </div>
+                <div
+                  className="min-h-0 flex-1 overflow-auto p-2"
+                  onWheel={(event) => {
+                    if (!(event.ctrlKey || event.metaKey)) return;
+                    event.preventDefault();
+                    const direction = event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP;
+                    setZoom((value) => clampZoom(value + direction));
+                  }}
+                >
+                  <div
+                    className="mx-auto origin-top transition-[width] duration-150"
+                    style={{ width: `${zoom * 100}%` }}
+                  >
+                    <img
+                      key={kind}
+                      src={omrImageHref(scan.id, kind, false, basePath)}
+                      alt={`${KIND_LABEL[kind]} OMR · ${omrSubjectLabel(scan)}`}
+                      className="mx-auto block h-auto w-full object-contain"
+                      draggable={false}
+                    />
+                  </div>
+                </div>
+              </div>
+              <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white">
+                {loading ? (
+                  <div className="flex flex-1 items-center justify-center text-neutral-500">
+                    <Loader2 className="size-5 animate-spin" />
+                  </div>
+                ) : error ? (
+                  <p className="m-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    {error}
+                  </p>
+                ) : detail ? (
+                  <>
+                    <dl
+                      className={cn(
+                        "grid shrink-0 gap-2 border-b border-neutral-100 p-3 text-center text-sm",
+                        showPartial ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3",
+                      )}
+                    >
+                      <div className="rounded-xl bg-neutral-50 px-2 py-2">
+                        <dt className="text-xs text-neutral-500">Correct</dt>
+                        <dd className="text-lg font-bold tabular-nums">{detail.correct}</dd>
+                      </div>
+                      {showPartial ? (
+                        <div className="rounded-xl bg-neutral-50 px-2 py-2">
+                          <dt className="text-xs text-neutral-500">Partial</dt>
+                          <dd className="text-lg font-bold tabular-nums">{detail.partial ?? 0}</dd>
+                        </div>
+                      ) : null}
+                      <div className="rounded-xl bg-neutral-50 px-2 py-2">
+                        <dt className="text-xs text-neutral-500">Wrong</dt>
+                        <dd className="text-lg font-bold tabular-nums">{detail.wrong}</dd>
+                      </div>
+                      <div className="rounded-xl bg-neutral-50 px-2 py-2">
+                        <dt className="text-xs text-neutral-500">Blank</dt>
+                        <dd className="text-lg font-bold tabular-nums">{detail.blank}</dd>
+                      </div>
+                    </dl>
+                    <div className="min-h-0 flex-1 overflow-hidden p-2 sm:p-3">
+                      <FitFixed>
+                        <ReadVsKeyTable
+                          answers={detail.answers ?? {}}
+                          keyAnswers={detail.keyAnswers}
+                          keyTypeRanges={detail.keyTypeRanges}
+                          ranges={detail.subjectScores}
+                          className="[&_[data-table-scroll]]:overflow-visible"
+                        />
+                      </FitFixed>
+                    </div>
+                  </>
+                ) : null}
+              </aside>
             </div>
           </Dialog.Popup>
         </Dialog.Portal>

@@ -103,12 +103,13 @@ export async function schoolTestResultsIndex(
           const max = maxFromLabel(columns[index]!);
           return {
             label: subjectLabel(columns[index]!),
-            marks,
+            marks: marks == null ? null : Number(marks.toFixed(3)),
             max,
             percentage: percentOf(marks, max),
           };
         });
-        const total = numberCell(row[at("total")]);
+        const rawTotal = numberCell(row[at("total")]);
+        const total = rawTotal == null ? null : Number(rawTotal.toFixed(3));
         if (total == null && subjects.every((subject) => subject.marks == null)) continue;
 
         const totalCol = at("total");

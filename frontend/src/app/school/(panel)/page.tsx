@@ -31,8 +31,7 @@ export default async function SchoolDashboardPage() {
     getSchoolStudentCounts(),
   ]);
   const programNames = Object.fromEntries(stats.programLabels.map((row) => [row.code, row.name]));
-  const ownProgramCodes = new Set(portalProgramIds(stats.programLabels.map((row) => row.code)));
-  const ownPrograms = stats.programLabels.filter((program) => ownProgramCodes.has(program.code));
+  const ownPrograms = stats.programLabels;
   const resources = countResources(
     stats.programLabels.map((row) => row.code),
     stats.subjectIds,

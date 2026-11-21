@@ -109,11 +109,12 @@ function withCustomProgramRules<T extends z.ZodType>(schema: T) {
   return schema.superRefine((value, ctx) => {
     const data = value as z.output<typeof schoolFields>;
     if (data.type === "CUSTOMIZED") {
-      if (!data.customProgramName || data.customProgramName.trim().length < 2) {
+      const programName = (data.customProgramName || data.name || "").trim();
+      if (programName.length < 2) {
         ctx.addIssue({
           code: "custom",
-          path: ["customProgramName"],
-          message: "Enter the program name.",
+          path: ["name"],
+          message: "Enter the school name (used as the program name).",
         });
       }
       if (!data.customClasses?.length) {
@@ -176,10 +177,11 @@ export function toSchoolInput({
           ? subjectsByClass.get(classLevel)!
           : subjectsForClassLevel(classLevel),
       }));
+    const programName = (customProgramName || input.name || "").trim();
     const payload = {
       ...input,
       programs: [] as SchoolInput["programs"],
-      customProgram: { name: customProgramName.trim(), classes },
+      customProgram: { name: programName, classes },
     };
     return password ? { ...payload, password } : payload;
   }

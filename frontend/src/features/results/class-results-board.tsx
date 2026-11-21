@@ -29,7 +29,7 @@ import { ProfileLink, studentProfileHref } from "@/components/shared/profile-lin
 import { cn } from "@/lib/utils";
 import type { LearningProgram } from "@/types/program";
 import type { ResultCell, ResultSet, ResultSheet } from "@/types/result";
-import type { ClassScan } from "@/types/scan";
+import { formatMarks, type ClassScan } from "@/types/scan";
 import type { Student } from "@/types/student";
 import { saveManualResultAction } from "./actions";
 import { ClassOmrDownload, OmrCell } from "./omr-files";
@@ -51,6 +51,7 @@ type BoardRow = { key: string; cells: ResultCell[] };
 
 function cellText(value: ResultCell | undefined) {
   if (value === null || value === undefined) return "";
+  if (typeof value === "number") return formatMarks(value);
   return String(value);
 }
 

@@ -14,7 +14,7 @@ import { notifyContentChanged } from "../utils/content-events.js";
 import { downloadFileName } from "../utils/download-file-name.js";
 import type { SchoolAccountDto } from "../services/school.service.js";
 import type { TeacherAccountDto } from "../services/teacher.service.js";
-import { asAnswers } from "../utils/answer-key-parse.js";
+import { asAnswers, asKeyTypeRanges } from "../utils/answer-key-parse.js";
 import { logger } from "../utils/logger.js";
 import { displaySectionName } from "../utils/section-label.js";
 import { omrPdfPageCount, openOmrPdf } from "./pdf-pages.js";
@@ -169,6 +169,14 @@ export type ScanDto = {
   sheetImage?: string;
   answers: Record<string, Array<"A" | "B" | "C" | "D">>;
   keyAnswers?: Record<string, string>;
+  /** Per-range Normal vs MCQ scoring — drives partial-credit display. */
+  keyTypeRanges?: Array<{
+    from: number;
+    to: number;
+    type: "normal" | "mcq";
+    correctMarks: number;
+    wrongMarks: number;
+  }>;
   createdAt: string;
 };
 
@@ -200,10 +208,23 @@ type Pending = {
 
 const pending = new Map<string, Pending>();
 
-async function previewImage(image: Buffer, read: SheetRead, keyAnswers: unknown, score: SheetScore) {
+async function previewImage(
+  image: Buffer,
+  read: SheetRead,
+  keyAnswers: unknown,
+  score: SheetScore,
+  keyTypeRanges: unknown = [],
+) {
   if (read.bubbles?.points.length) {
     try {
-      return await markedSheetPreview(read.jpeg, read.bubbles, read.answers, keyAnswers, score.subjectScores);
+      return await markedSheetPreview(
+        read.jpeg,
+        read.bubbles,
+        read.answers,
+        keyAnswers,
+        score.subjectScores,
+        keyTypeRanges,
+      );
     } catch {
       // Fall back to the plain photo below.
     }
@@ -405,6 +426,8 @@ function toDto(row: scanRepository.OmScanRow, previewId?: string): ScanDto {
     confidence: row.confidence,
     fileName: row.fileName,
     answers: asMarked((row.answers as Pending["answers"]) ?? {}),
+    keyAnswers: asAnswers(row.answerKey.answers),
+    keyTypeRanges: asKeyTypeRanges(row.answerKey.keyTypeRanges),
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -449,6 +472,7 @@ function unsavedDto(previewId: string, row: Pending, _embedImage = true): ScanDt
     sheetImage: undefined,
     answers: asMarked(row.answers),
     keyAnswers: asAnswers(row.key.answers),
+    keyTypeRanges: asKeyTypeRanges(row.key.keyTypeRanges),
     createdAt: new Date().toISOString(),
   };
 }
@@ -765,7 +789,7 @@ export async function previewScan(
     key.keyTypeRanges,
   );
   const previewId = crypto.randomUUID();
-  let preview = await previewImage(image, read, key.answers, score);
+  let preview = await previewImage(image, read, key.answers, score, key.keyTypeRanges);
   // PDF batch pages already are flat JPEGs — reuse the same buffer instead of a second full copy.
   const raw = identity.flat ? read.jpeg : await rawJpeg(image);
   if (identity.lean) {
@@ -1037,6 +1061,15 @@ export async function getScanImage(context: ScanContext, id: string, kind: ScanI
       "jpg",
     ),
   };
+}
+
+/** Full saved scan (answers + key) for results / student OMR viewer — not the review page. */
+export async function getScan(context: ScanContext, id: string) {
+  const own = contextSchool(context);
+  const rows = await scanRepository.findOmScans({ id, ...(own ? { schoolId: own.id } : {}) });
+  const row = rows[0];
+  if (!row) throw new AppError(404, "OMR not found");
+  return toDto(row);
 }
 
 /** Every saved OMR of one class in rank order, one sheet per PDF page. */

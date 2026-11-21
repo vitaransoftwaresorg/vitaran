@@ -1,5 +1,6 @@
 import { displaySectionName } from "@/features/schools/section-label";
 import type { ResultCell } from "@/types/result";
+import { roundMarks } from "@/types/scan";
 
 /** Mirrors backend `utils/result-columns.ts` so the class table can show totals and ranks live. */
 export type ColumnRole =
@@ -99,7 +100,7 @@ export function computeRows(columns: string[], rows: ResultCell[][], classLevel:
     if (totalCol < 0) return row;
     const marks = subjectCols.map((index) => numberCell(row[index]));
     if (marks.some((mark) => mark != null)) {
-      row[totalCol] = marks.reduce<number>((sum, mark) => sum + (mark ?? 0), 0);
+      row[totalCol] = roundMarks(marks.reduce<number>((sum, mark) => sum + (mark ?? 0), 0));
     }
     const total = numberCell(row[totalCol]);
     if (percentCol >= 0) {

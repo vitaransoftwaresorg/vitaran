@@ -653,6 +653,23 @@ export function BulkStudentForm({
           <Plus className="size-4" />
           Add 10 rows
         </Button>
+        {filledCount > 0 ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-1.5 text-red-700 hover:bg-red-50 hover:text-red-800"
+            disabled={pending}
+            onClick={() => {
+              const defaultSection = fixedSection || sectionId !== NONE ? sectionId : NONE;
+              setRows([emptyRow({ sectionId: defaultSection })]);
+              setImportNote(null);
+              setState({});
+            }}
+          >
+            <Trash2 className="size-4" />
+            Clear all rows
+          </Button>
+        ) : null}
         <Button
           type="button"
           disabled={pending || filledCount === 0}
@@ -663,7 +680,7 @@ export function BulkStudentForm({
           {filledCount > 1 ? `Save ${filledCount} students` : "Save student"}
         </Button>
         <p className="text-xs text-neutral-500">
-          Blank rows are skipped.
+          Excel fills a draft only — blank rows are skipped on Save.
         </p>
       </div>
     </div>

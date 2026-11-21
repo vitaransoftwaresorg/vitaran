@@ -159,6 +159,41 @@ export const deleteAdminSchoolStudent: RequestHandler<{ schoolId: string; id: st
   sendSuccess(res, await studentService.deleteStudent(req.params.id, req.params.schoolId));
 };
 
+/** Delete all students in a section — keeps class + section setup. */
+export const deleteSectionStudents: RequestHandler<{ sectionId: string }> = async (req, res) => {
+  const school = res.locals.school as SchoolAccountDto;
+  sendSuccess(res, await studentService.deleteStudentsInSection(school.id, req.params.sectionId));
+};
+
+export const deleteAdminSectionStudents: RequestHandler<{
+  schoolId: string;
+  sectionId: string;
+}> = async (req, res) => {
+  sendSuccess(
+    res,
+    await studentService.deleteStudentsInSection(req.params.schoolId, req.params.sectionId),
+  );
+};
+
+/** Delete all students in a class — keeps class + section setup. */
+export const deleteClassStudents: RequestHandler<{ classLevel: string }> = async (req, res) => {
+  const school = res.locals.school as SchoolAccountDto;
+  sendSuccess(
+    res,
+    await studentService.deleteStudentsInClass(school.id, Number(req.params.classLevel)),
+  );
+};
+
+export const deleteAdminClassStudents: RequestHandler<{
+  schoolId: string;
+  classLevel: string;
+}> = async (req, res) => {
+  sendSuccess(
+    res,
+    await studentService.deleteStudentsInClass(req.params.schoolId, Number(req.params.classLevel)),
+  );
+};
+
 export const getAdminStudentPerformance: RequestHandler<{ id: string }> = async (req, res) => {
   sendSuccess(res, await studentService.getStudentPerformance(req.params.id, { kind: "admin" }));
 };

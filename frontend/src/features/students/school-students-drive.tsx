@@ -38,6 +38,28 @@ function classHref(classLevel: number) {
   return `${SCHOOL_STUDENTS_PATH}?${new URLSearchParams({ class: String(classLevel) })}`;
 }
 
+function sectionHref(classLevel: number, section: string) {
+  return `${SCHOOL_STUDENTS_PATH}?${new URLSearchParams({
+    class: String(classLevel),
+    section: displaySectionName(section),
+  })}`;
+}
+
+/** Named sections for a class from school setup (for section-wise roster / delete). */
+function sectionsForClass(
+  organization: ClassOrganization | null | undefined,
+  classLevel: number,
+) {
+  const rows = (organization?.sections ?? []).filter((row) => row.classLevel === classLevel);
+  const labels = [
+    ...new Set(rows.map((row) => displaySectionName(row.name)).filter(Boolean)),
+  ].sort((a, b) => a.localeCompare(b));
+  return labels.map((label) => {
+    const match = rows.find((row) => displaySectionName(row.name) === label);
+    return { label, sectionId: match?.id ?? null, seats: match?.studentCount ?? 0 };
+  });
+}
+
 function emptyRosterMessage(section: string | undefined, seats: number, classCount = 0) {
   if (section && classCount > 0) {
     return `No students in section ${section}. ${classCount} student${classCount === 1 ? " is" : "s are"} in this class under another section — open the class (without a section filter) to see them.`;
@@ -123,6 +145,42 @@ export function SchoolStudentsDrive({
   students = [],
   schoolPrograms,
 }: SchoolStudentsDriveProps) {
+  // Class open, no section yet, and class has sections → pick a section (delete students section-wise).
+  if (classLevel != null && !section) {
+    const sectionFolders = sectionsForClass(organization, classLevel);
+    if (sectionFolders.length > 0) {
+      const breadcrumbs: DriveCrumb[] = [
+        { label: "Students", href: SCHOOL_STUDENTS_PATH },
+        { label: `Class ${classLevel}`, href: classHref(classLevel) },
+      ];
+      const items: DriveItem[] = sectionFolders.map((folder) => {
+        const roster = studentsInClass(students, classLevel, folder.label, {
+          sectionIds: folder.sectionId ? [folder.sectionId] : undefined,
+        });
+        const seatsDetail = folder.seats > 0 ? `${folder.seats} seats` : null;
+        const rosterDetail =
+          roster.length > 0
+            ? `${roster.length} student${roster.length === 1 ? "" : "s"}`
+            : null;
+        return {
+          id: folder.sectionId ?? `${classLevel}-${folder.label}`,
+          name: `Section ${folder.label}`,
+          kind: "folder" as const,
+          href: sectionHref(classLevel, folder.label),
+          detail: [rosterDetail, seatsDetail].filter(Boolean).join(" · ") || "Empty",
+        };
+      });
+      return (
+        <DriveBrowser
+          breadcrumbs={breadcrumbs}
+          items={items}
+          emptyText="No sections set up for this class"
+          searchPlaceholder="Search sections"
+        />
+      );
+    }
+  }
+
   if (classLevel != null) {
     const sectionIds = sectionIdsForClass(organization, classLevel, section);
     const roster = studentsInClass(students, classLevel, section, { sectionIds });

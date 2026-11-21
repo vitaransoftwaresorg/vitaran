@@ -9,9 +9,12 @@ import {
   FileSpreadsheet,
   Loader2,
   Save,
+  Trash2,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { FieldError } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import {
   importSchoolStudentsAllAction,
   type SchoolImportFormState,
@@ -19,6 +22,7 @@ import {
 } from "@/features/students/actions";
 import {
   groupImportRows,
+  refreshImportRows,
   resolveSchoolImportRows,
   type ResolvedImportRow,
 } from "@/features/students/import-placement";
@@ -27,7 +31,7 @@ import {
   MAX_SCHOOL_IMPORT_ROWS,
   readStudentsExcel,
 } from "@/features/students/student-excel";
-import { capitalizeWords as titleCase } from "@/lib/name-case";
+import { capitalizeInput, capitalizeWords as titleCase } from "@/lib/name-case";
 import { cn } from "@/lib/utils";
 import type { ClassOrganization } from "@/types/section";
 
@@ -78,6 +82,31 @@ export function ImportAllStudentsForm({
   const readyCount = rows.length - errorCount;
   const canSubmit = rows.length > 0 && errorCount === 0 && !pending;
 
+  function applyRows(next: ResolvedImportRow[]) {
+    setRows(refreshImportRows(organization, next));
+    setState((prev) => ({ ...prev, importRowErrors: undefined, message: undefined, success: undefined }));
+  }
+
+  function updateStudent(
+    index: number,
+    patch: Partial<ResolvedImportRow["student"]>,
+  ) {
+    applyRows(
+      rows.map((row) =>
+        row.index === index ? { ...row, student: { ...row.student, ...patch } } : row,
+      ),
+    );
+  }
+
+  function removeRow(index: number) {
+    applyRows(rows.filter((row) => row.index !== index));
+  }
+
+  function clearGroup(indexes: number[]) {
+    const drop = new Set(indexes);
+    applyRows(rows.filter((row) => !drop.has(row.index)));
+  }
+
   async function downloadTemplate() {
     setTemplateBusy(true);
     try {
@@ -122,31 +151,8 @@ export function ImportAllStudentsForm({
         section: student.section.trim().toUpperCase(),
       }));
 
-      const resolved = resolveSchoolImportRows(organization, normalized);
-
-      // Flag duplicate reg nos inside the file.
-      const seen = new Map<string, number>();
-      for (const row of resolved) {
-        const key = row.student.rollNo;
-        if (!key) continue;
-        const earlier = seen.get(key);
-        if (earlier != null) {
-          row.error = `Duplicate Reg No (also on row ${earlier + 1})`;
-        } else {
-          seen.set(key, row.index);
-        }
-      }
-
-      // Require Reg No on every row.
-      for (const row of resolved) {
-        if (row.error) continue;
-        if (!/^\d{7}$/.test(row.student.rollNo)) {
-          row.error = "Reg No must be 7 digits";
-        }
-      }
-
       setFileName(file.name);
-      setRows(resolved);
+      setRows(refreshImportRows(organization, resolveSchoolImportRows(organization, normalized)));
       setState({});
     } catch (error) {
       setRows([]);
@@ -167,10 +173,10 @@ export function ImportAllStudentsForm({
       sectionId: group.sectionId,
       students: group.rows.map((row) => ({
         sourceIndex: row.index,
-        name: row.student.name,
+        name: row.student.name.trim(),
         rollNo: row.student.rollNo,
-        parentName: row.student.parentName || null,
-        parentPhone: row.student.parentPhone || null,
+        parentName: row.student.parentName.trim() || null,
+        parentPhone: row.student.parentPhone.trim() || null,
         email: null,
         sectionId: group.sectionId,
       })),
@@ -199,7 +205,8 @@ export function ImportAllStudentsForm({
             <div className="min-w-0">
               <p className="text-sm font-semibold text-neutral-950">Import all students</p>
               <p className="mt-0.5 text-sm text-neutral-600">
-                One Excel for the whole school. After submit, students are split into their classes.
+                Choose Excel to load a draft. Reg No is required; student name and parent fields are
+                optional. Edit rows below, then click Save — nothing is stored until then.
               </p>
             </div>
           </div>
@@ -221,7 +228,7 @@ export function ImportAllStudentsForm({
               onClick={() => fileRef.current?.click()}
             >
               {importing ? <Loader2 className="size-4 animate-spin" /> : <FileSpreadsheet className="size-4" />}
-              Choose Excel
+              {importing ? "Reading…" : "Choose Excel"}
             </Button>
             <input
               ref={fileRef}
@@ -250,7 +257,7 @@ export function ImportAllStudentsForm({
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm font-semibold text-neutral-950">
-                Preview · {rows.length} student{rows.length === 1 ? "" : "s"}
+                Draft · {rows.length} student{rows.length === 1 ? "" : "s"}
                 {fileName ? ` from ${fileName}` : ""}
               </p>
               <p className="text-sm text-neutral-600">
@@ -258,12 +265,29 @@ export function ImportAllStudentsForm({
                 {errorCount > 0
                   ? ` · ${errorCount} row${errorCount === 1 ? "" : "s"} need fixing`
                   : ` · ${readyCount} ready to save`}
+                {" · edit below before saving"}
               </p>
             </div>
-            <Button type="button" size="sm" disabled={!canSubmit} onClick={submit}>
-              {pending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-              Submit import
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending || rows.length === 0}
+                onClick={() => {
+                  setRows([]);
+                  setFileName(null);
+                  setState({});
+                }}
+              >
+                <Trash2 className="size-4" />
+                Clear draft
+              </Button>
+              <Button type="button" size="sm" disabled={!canSubmit} onClick={submit}>
+                {pending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                {readyCount > 1 ? `Save ${readyCount} students` : "Save students"}
+              </Button>
+            </div>
           </div>
 
           <div className="space-y-3">
@@ -272,7 +296,7 @@ export function ImportAllStudentsForm({
                 key={group.key}
                 className="overflow-hidden rounded-xl border border-brand-200 bg-white"
               >
-                <div className="flex items-center justify-between gap-2 border-b border-brand-100 bg-brand-50/60 px-4 py-2">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-100 bg-brand-50/60 px-4 py-2">
                   <p className="text-sm font-semibold text-brand-950">
                     Class {group.classLevel}
                     {group.sectionId ? `-${group.sectionLabel}` : ""}
@@ -281,17 +305,31 @@ export function ImportAllStudentsForm({
                       {group.rows.length === 1 ? "" : "s"}
                     </span>
                   </p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 text-red-700 hover:bg-red-50 hover:text-red-800"
+                    disabled={pending}
+                    onClick={() => clearGroup(group.rows.map((row) => row.index))}
+                  >
+                    <Trash2 className="size-3.5" />
+                    Remove section rows
+                  </Button>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-left text-sm">
                     <thead className="bg-neutral-50 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">
                       <tr>
                         <th className="px-3 py-2">#</th>
-                        <th className="px-3 py-2">Reg No</th>
-                        <th className="px-3 py-2">Student</th>
-                        <th className="px-3 py-2">Parent</th>
-                        <th className="px-3 py-2">Mobile</th>
+                        <th className="px-3 py-2">Class</th>
+                        <th className="px-3 py-2">Section</th>
+                        <th className="px-3 py-2">Reg No *</th>
+                        <th className="px-3 py-2">Student (optional)</th>
+                        <th className="px-3 py-2">Parent (optional)</th>
+                        <th className="px-3 py-2">Mobile (optional)</th>
                         <th className="px-3 py-2">Status</th>
+                        <th className="w-12 px-2 py-2" />
                       </tr>
                     </thead>
                     <tbody>
@@ -305,21 +343,109 @@ export function ImportAllStudentsForm({
                               error && "bg-red-50/70",
                             )}
                           >
-                            <td className="px-3 py-2 text-neutral-500">{row.index + 1}</td>
-                            <td className="px-3 py-2 font-medium tabular-nums">
-                              {row.student.rollNo || "—"}
+                            <td className="px-3 py-2 align-top text-neutral-500">
+                              {row.index + 1}
                             </td>
-                            <td className="px-3 py-2">{row.student.name || "—"}</td>
-                            <td className="px-3 py-2">{row.student.parentName || "—"}</td>
-                            <td className="px-3 py-2 tabular-nums">
-                              {row.student.parentPhone || "—"}
+                            <td className="px-2 py-1.5 align-top">
+                              <Input
+                                value={row.student.classLevel ?? ""}
+                                inputMode="numeric"
+                                maxLength={2}
+                                className="h-9 w-14"
+                                onChange={(e) => {
+                                  const digits = e.currentTarget.value.replace(/\D/g, "").slice(0, 2);
+                                  const level = digits ? Number(digits) : null;
+                                  updateStudent(row.index, {
+                                    classLevel:
+                                      level != null && level >= 1 && level <= 12 ? level : null,
+                                  });
+                                }}
+                              />
                             </td>
-                            <td className="px-3 py-2">
+                            <td className="px-2 py-1.5 align-top">
+                              <Input
+                                value={row.student.section}
+                                className="h-9 w-16 uppercase"
+                                maxLength={8}
+                                onChange={(e) =>
+                                  updateStudent(row.index, {
+                                    section: e.currentTarget.value.toUpperCase(),
+                                  })
+                                }
+                              />
+                            </td>
+                            <td className="px-2 py-1.5 align-top">
+                              <Input
+                                value={row.student.rollNo}
+                                inputMode="numeric"
+                                maxLength={7}
+                                className="h-9 w-24"
+                                onChange={(e) =>
+                                  updateStudent(row.index, {
+                                    rollNo: e.currentTarget.value.replace(/\D/g, "").slice(0, 7),
+                                  })
+                                }
+                              />
+                            </td>
+                            <td className="px-2 py-1.5 align-top">
+                              <Input
+                                value={row.student.name}
+                                className="h-9 min-w-36"
+                                placeholder="optional"
+                                autoCapitalize="words"
+                                onChange={(e) =>
+                                  updateStudent(row.index, {
+                                    name: capitalizeInput(e.currentTarget),
+                                  })
+                                }
+                              />
+                            </td>
+                            <td className="px-2 py-1.5 align-top">
+                              <Input
+                                value={row.student.parentName}
+                                className="h-9 min-w-36"
+                                placeholder="optional"
+                                autoCapitalize="words"
+                                onChange={(e) =>
+                                  updateStudent(row.index, {
+                                    parentName: capitalizeInput(e.currentTarget),
+                                  })
+                                }
+                              />
+                            </td>
+                            <td className="px-2 py-1.5 align-top">
+                              <Input
+                                value={row.student.parentPhone}
+                                inputMode="numeric"
+                                maxLength={10}
+                                className="h-9 w-28"
+                                placeholder="optional"
+                                onChange={(e) =>
+                                  updateStudent(row.index, {
+                                    parentPhone: e.currentTarget.value.replace(/\D/g, "").slice(0, 10),
+                                  })
+                                }
+                              />
+                            </td>
+                            <td className="px-3 py-2 align-top">
                               {error ? (
-                                <span className="text-red-700">{error}</span>
+                                <span className="text-xs text-red-700">
+                                  {error}
+                                  <FieldError className="sr-only">{error}</FieldError>
+                                </span>
                               ) : (
-                                <span className="text-emerald-700">Ready</span>
+                                <span className="text-xs text-emerald-700">Ready</span>
                               )}
+                            </td>
+                            <td className="px-2 py-1.5 align-top">
+                              <button
+                                type="button"
+                                className="flex size-8 items-center justify-center rounded-md text-neutral-400 hover:bg-red-50 hover:text-red-700"
+                                onClick={() => removeRow(row.index)}
+                                aria-label={`Remove row ${row.index + 1}`}
+                              >
+                                <Trash2 className="size-3.5" />
+                              </button>
                             </td>
                           </tr>
                         );
@@ -331,10 +457,26 @@ export function ImportAllStudentsForm({
             ))}
 
             {/* Rows that could not be placed in any class still need to be visible. */}
-            {rows.some((row) => !row.placement) ? (
+            {rows.some((row) => !row.placement || row.error) ? (
               <div className="overflow-hidden rounded-xl border border-red-200 bg-white">
-                <div className="border-b border-red-100 bg-red-50/70 px-4 py-2">
-                  <p className="text-sm font-semibold text-red-900">Needs a valid class</p>
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-red-100 bg-red-50/70 px-4 py-2">
+                  <p className="text-sm font-semibold text-red-900">Needs a valid class / section</p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 text-red-700 hover:bg-red-100"
+                    onClick={() =>
+                      clearGroup(
+                        rows
+                          .filter((row) => !row.placement || Boolean(row.error))
+                          .map((row) => row.index),
+                      )
+                    }
+                  >
+                    <Trash2 className="size-3.5" />
+                    Remove these rows
+                  </Button>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-left text-sm">
@@ -343,29 +485,96 @@ export function ImportAllStudentsForm({
                         <th className="px-3 py-2">#</th>
                         <th className="px-3 py-2">Class</th>
                         <th className="px-3 py-2">Section</th>
-                        <th className="px-3 py-2">Reg No</th>
-                        <th className="px-3 py-2">Student</th>
+                        <th className="px-3 py-2">Reg No *</th>
+                        <th className="px-3 py-2">Student (optional)</th>
                         <th className="px-3 py-2">Status</th>
+                        <th className="w-12 px-2 py-2" />
                       </tr>
                     </thead>
                     <tbody>
                       {rows
-                        .filter((row) => !row.placement)
+                        .filter(
+                          (row) =>
+                            !row.placement ||
+                            Boolean(row.error) ||
+                            Boolean(fieldError(row, state.importRowErrors)),
+                        )
+                        .filter(
+                          (row) => !groups.some((group) => group.rows.some((r) => r.index === row.index)),
+                        )
                         .map((row) => {
                           const error = fieldError(row, state.importRowErrors);
                           return (
                             <tr key={row.index} className="border-t border-neutral-100 bg-red-50/70">
-                              <td className="px-3 py-2 text-neutral-500">{row.index + 1}</td>
-                              <td className="px-3 py-2">
-                                {row.student.classLevel ?? "—"}
+                              <td className="px-3 py-2 align-top text-neutral-500">
+                                {row.index + 1}
                               </td>
-                              <td className="px-3 py-2">{row.student.section || "—"}</td>
-                              <td className="px-3 py-2 font-medium tabular-nums">
-                                {row.student.rollNo || "—"}
+                              <td className="px-2 py-1.5 align-top">
+                                <Input
+                                  value={row.student.classLevel ?? ""}
+                                  inputMode="numeric"
+                                  maxLength={2}
+                                  className="h-9 w-14"
+                                  onChange={(e) => {
+                                    const digits = e.currentTarget.value.replace(/\D/g, "").slice(0, 2);
+                                    const level = digits ? Number(digits) : null;
+                                    updateStudent(row.index, {
+                                      classLevel:
+                                        level != null && level >= 1 && level <= 12 ? level : null,
+                                    });
+                                  }}
+                                />
                               </td>
-                              <td className="px-3 py-2">{row.student.name || "—"}</td>
-                              <td className="px-3 py-2 text-red-700">
+                              <td className="px-2 py-1.5 align-top">
+                                <Input
+                                  value={row.student.section}
+                                  className="h-9 w-16 uppercase"
+                                  maxLength={8}
+                                  onChange={(e) =>
+                                    updateStudent(row.index, {
+                                      section: e.currentTarget.value.toUpperCase(),
+                                    })
+                                  }
+                                />
+                              </td>
+                              <td className="px-2 py-1.5 align-top">
+                                <Input
+                                  value={row.student.rollNo}
+                                  inputMode="numeric"
+                                  maxLength={7}
+                                  className="h-9 w-24"
+                                  onChange={(e) =>
+                                    updateStudent(row.index, {
+                                      rollNo: e.currentTarget.value.replace(/\D/g, "").slice(0, 7),
+                                    })
+                                  }
+                                />
+                              </td>
+                              <td className="px-2 py-1.5 align-top">
+                                <Input
+                                  value={row.student.name}
+                                  className="h-9 min-w-36"
+                                  placeholder="optional"
+                                  autoCapitalize="words"
+                                  onChange={(e) =>
+                                    updateStudent(row.index, {
+                                      name: capitalizeInput(e.currentTarget),
+                                    })
+                                  }
+                                />
+                              </td>
+                              <td className="px-3 py-2 align-top text-red-700">
                                 {error ?? "Could not place"}
+                              </td>
+                              <td className="px-2 py-1.5 align-top">
+                                <button
+                                  type="button"
+                                  className="flex size-8 items-center justify-center rounded-md text-neutral-400 hover:bg-red-50 hover:text-red-700"
+                                  onClick={() => removeRow(row.index)}
+                                  aria-label={`Remove row ${row.index + 1}`}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </button>
                               </td>
                             </tr>
                           );

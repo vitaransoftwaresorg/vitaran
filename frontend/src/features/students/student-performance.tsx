@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import { cn } from "@/lib/utils";
 import type { StudentTestResult } from "@/types/student";
+import { formatMarks } from "@/types/scan";
 import {
   RESULTS_PATH,
   SCHOOL_RESULTS_PATH,
@@ -325,8 +326,12 @@ export function StudentPerformance({
                           <span className="text-neutral-300">—</span>
                         ) : (
                           <>
-                            <span className="font-semibold text-neutral-950">{subject.marks}</span>
-                            {subject.max ? <span className="text-neutral-400">/{subject.max}</span> : null}
+                            <span className="font-semibold text-neutral-950">
+                              {formatMarks(subject.marks)}
+                            </span>
+                            {subject.max ? (
+                              <span className="text-neutral-400">/{formatMarks(subject.max)}</span>
+                            ) : null}
                             <span className={cn("block text-[11px] font-semibold", tone(subject.percentage))}>
                               {pct(subject.percentage)}
                             </span>
@@ -336,8 +341,12 @@ export function StudentPerformance({
                     );
                   })}
                   <td className="px-3 py-3 text-right tabular-nums">
-                    <span className="font-bold text-neutral-950">{test.total ?? "—"}</span>
-                    {test.totalMax ? <span className="text-neutral-400">/{test.totalMax}</span> : null}
+                    <span className="font-bold text-neutral-950">
+                      {test.total == null ? "—" : formatMarks(test.total)}
+                    </span>
+                    {test.totalMax ? (
+                      <span className="text-neutral-400">/{formatMarks(test.totalMax)}</span>
+                    ) : null}
                     <span className={cn("block text-[11px] font-bold", tone(test.percentage))}>
                       {pct(test.percentage)}
                     </span>

@@ -2,6 +2,12 @@ import type { CellValue } from "./excel.js";
 import { displaySectionName } from "./section-label.js";
 import { titleCase } from "./title-case.js";
 
+/** Drop float residue (e.g. 326.4450000000006 → 326.445). */
+function roundMarks(value: number) {
+  if (!Number.isFinite(value)) return 0;
+  return Number(value.toFixed(3));
+}
+
 export type ColumnRole =
   | "roll"
   | "name"
@@ -136,9 +142,11 @@ export function recomputeSheet(columns: string[], rows: CellValue[][], classLeve
     if (totalCol < 0) return row;
     const marks = subjectCols.map((index) => numberCell(row[index]));
     if (marks.some((mark) => mark != null)) {
-      row[totalCol] = marks.reduce<number>((sum, mark) => sum + (mark ?? 0), 0);
+      row[totalCol] = roundMarks(marks.reduce<number>((sum, mark) => sum + (mark ?? 0), 0));
     } else {
-      row[totalCol] = numberCell(row[totalCol]) ?? (row[totalCol] === "" ? null : row[totalCol]!);
+      const total = numberCell(row[totalCol]);
+      row[totalCol] =
+        total != null ? roundMarks(total) : row[totalCol] === "" ? null : row[totalCol]!;
     }
     const total = numberCell(row[totalCol]);
     if (percentCol >= 0) {
