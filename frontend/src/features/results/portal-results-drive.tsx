@@ -14,27 +14,48 @@ type PortalResultsDriveProps = {
   schoolCode?: string;
 };
 
-const testName = (set: ResultSet, sameNumber: boolean) =>
-  sameNumber ? `Test ${set.testNumber} · ${set.testId}` : `Test ${set.testNumber}`;
+/** Prefer a published sheet, then the newest set. */
+function pickSetForClass(sets: ResultSet[], classLevel: number): ResultSet | undefined {
+  const withClass = sets.filter((set) => set.classes.some((row) => row.classLevel === classLevel));
+  if (withClass.length === 0) return undefined;
+  return [...withClass].sort((a, b) => {
+    const aLive = a.published && a.classes.some((row) => row.classLevel === classLevel && row.published) ? 1 : 0;
+    const bLive = b.published && b.classes.some((row) => row.classLevel === classLevel && row.published) ? 1 : 0;
+    if (bLive !== aLive) return bLive - aLive;
+    return b.updatedAt.localeCompare(a.updatedAt);
+  })[0];
+}
 
-/** School / teacher results and ranks: test → class (no program folder). */
+/** School / teacher results: select a test, then open a class. No program step. */
 export function PortalResultsDrive({ resultSets, basePath, schoolCode }: PortalResultsDriveProps) {
   const params = useSearchParams();
-  const tests = [...resultSets].sort(
-    (a, b) => b.testNumber - a.testNumber || b.updatedAt.localeCompare(a.updatedAt),
-  );
-  const openSet = tests.find((set) => set.id === params.get("test"));
   const school = schoolCode?.trim() || params.get("school")?.trim() || "";
 
-  const href = (next: { test?: string } = {}) => {
+  const testNumbers = [
+    ...new Set(resultSets.map((set) => set.testNumber).filter((n) => Number.isInteger(n) && n > 0)),
+  ].sort((a, b) => b - a);
+
+  const testParam = params.get("test");
+  const testAsNumber = Number(testParam);
+  // Prefer test number (?test=3). Fall back to a result-set id from older links.
+  const openTestNumber =
+    Number.isInteger(testAsNumber) && testAsNumber > 0 && testNumbers.includes(testAsNumber)
+      ? testAsNumber
+      : resultSets.find((set) => set.id === testParam)?.testNumber;
+
+  const openSets =
+    openTestNumber != null
+      ? resultSets
+          .filter((set) => set.testNumber === openTestNumber)
+          .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+      : [];
+
+  const href = (next: { test?: number } = {}) => {
     const query = new URLSearchParams();
     if (school) query.set("school", school);
-    if (next.test) query.set("test", next.test);
+    if (next.test != null) query.set("test", String(next.test));
     return query.size ? `${basePath}?${query}` : basePath;
   };
-
-  const repeated = (set: ResultSet) =>
-    tests.filter((other) => other.testNumber === set.testNumber).length > 1;
 
   const sheetItem = (set: ResultSet, classLevel: number, name: string): DriveItem => {
     const sheet = set.classes.find((row) => row.classLevel === classLevel)!;
@@ -45,7 +66,6 @@ export function PortalResultsDrive({ resultSets, basePath, schoolCode }: PortalR
       name,
       kind: "file",
       fileKind: "sheet",
-      // Unpublished sheets are listed but not openable — click shows an alert.
       href: live ? view : undefined,
       blockedMessage: live
         ? undefined
@@ -72,40 +92,58 @@ export function PortalResultsDrive({ resultSets, basePath, schoolCode }: PortalR
   };
 
   const breadcrumbs: DriveCrumb[] = [{ label: "Results and Ranks", href: basePath }];
-  if (openSet) {
+  if (openTestNumber != null) {
     breadcrumbs.push({
-      label: testName(openSet, repeated(openSet)),
-      href: href({ test: openSet.id }),
+      label: `Test ${openTestNumber}`,
+      href: href({ test: openTestNumber }),
     });
   }
 
   let items: DriveItem[];
   let emptyText = "Test results for your school will appear here when they are available.";
 
-  if (!openSet) {
-    items = tests.map((set) => {
-      const students = set.classes.reduce((sum, row) => sum + row.rowCount, 0);
-      const anyLive = set.published && set.classes.some((row) => row.published);
+  if (openTestNumber == null) {
+    // Step 1 — pick a test
+    items = testNumbers.map((testNumber) => {
+      const sets = resultSets.filter((set) => set.testNumber === testNumber);
+      const classes = new Set(sets.flatMap((set) => set.classes.map((row) => row.classLevel)));
+      const students = sets.reduce(
+        (sum, set) => sum + set.classes.reduce((inner, row) => inner + row.rowCount, 0),
+        0,
+      );
+      const anyLive = sets.some((set) => set.published && set.classes.some((row) => row.published));
+      const testId = sets.map((set) => set.testId).find((id) => id?.trim()) ?? "";
       return {
-        id: `test:${set.id}`,
-        name: testName(set, repeated(set)),
+        id: `test:${testNumber}`,
+        name: `Test ${testNumber}`,
         kind: "folder" as const,
-        href: href({ test: set.id }),
-        testId: set.testId,
+        href: href({ test: testNumber }),
+        testId,
         detail: anyLive
-          ? `${set.classes.length} ${set.classes.length === 1 ? "class" : "classes"} · ${formatNumber(students)} students`
-          : `${set.classes.length} ${set.classes.length === 1 ? "class" : "classes"} · Not Published`,
-        modified: anyLive ? formatDateTime(set.updatedAt) : `Not Published · ${formatDateTime(set.updatedAt)}`,
+          ? `${classes.size} ${classes.size === 1 ? "class" : "classes"} · ${formatNumber(students)} students`
+          : `${classes.size} ${classes.size === 1 ? "class" : "classes"} · Not Published`,
+        modified: anyLive
+          ? formatDateTime(sets[0]!.updatedAt)
+          : `Not Published · ${formatDateTime(sets[0]!.updatedAt)}`,
       };
     });
   } else {
-    items = [...openSet.classes]
-      .sort((a, b) => a.classLevel - b.classLevel)
-      .map((row) => sheetItem(openSet, row.classLevel, row.label || `Class ${row.classLevel}`));
+    // Step 2 — open a class for that test
+    const classLevels = [
+      ...new Set(openSets.flatMap((set) => set.classes.map((row) => row.classLevel))),
+    ].sort((a, b) => a - b);
+
+    items = classLevels.flatMap((classLevel) => {
+      const set = pickSetForClass(openSets, classLevel);
+      if (!set) return [];
+      const sheet = set.classes.find((row) => row.classLevel === classLevel);
+      if (!sheet) return [];
+      return [sheetItem(set, classLevel, sheet.label || `Class ${classLevel}`)];
+    });
     emptyText = "No classes in this test yet.";
   }
 
-  const searchItems = tests.flatMap((set) =>
+  const searchItems = resultSets.flatMap((set) =>
     set.classes.map((row) =>
       sheetItem(set, row.classLevel, `Test ${set.testNumber} · ${row.label || `Class ${row.classLevel}`}`),
     ),
@@ -117,7 +155,7 @@ export function PortalResultsDrive({ resultSets, basePath, schoolCode }: PortalR
       items={items}
       searchItems={searchItems}
       emptyText={emptyText}
-      searchPlaceholder="Search test ID or class"
+      searchPlaceholder="Search test or class"
     />
   );
 }
