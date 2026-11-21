@@ -34,10 +34,13 @@ export const resultSetHref = (
   id: string,
   classLevel?: number,
   schoolCode?: string,
+  /** Drive folder to return to (e.g. `/school/results?test=3`). */
+  from?: string,
 ) => {
   const query = new URLSearchParams();
   if (classLevel != null) query.set("class", String(classLevel));
   if (schoolCode?.trim()) query.set("school", schoolCode.trim());
+  if (from?.trim()) query.set("from", from.trim());
   const suffix = query.size ? `?${query}` : "";
   return `${basePath}/${id}${suffix}`;
 };

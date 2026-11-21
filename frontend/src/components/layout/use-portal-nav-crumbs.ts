@@ -8,6 +8,7 @@ import {
   isAnswerKeyEditorPath,
   readAnswerKeysReturnHref,
 } from "@/features/answer-keys/drive-path";
+import { readResultsReturnHref } from "@/features/results/portal-drive-path";
 
 /** false during SSR + hydration; true after mount so sessionStorage reads can't mismatch HTML. */
 function useHasClientStore() {
@@ -79,6 +80,7 @@ export function usePortalNavCrumbs(routeCrumbs: PortalNavCrumb[]): PortalNavCrum
   const schoolName = useAdminNavLabel("school", schoolId);
   const hasClientStore = useHasClientStore();
   const answerKeysReturnHref = hasClientStore ? readAnswerKeysReturnHref() : null;
+  const resultsReturnHref = hasClientStore ? readResultsReturnHref() : null;
 
   return useMemo(() => {
     const folders = driveCrumbs.filter((crumb) => !isSectionRootLabel(crumb.label));
@@ -114,13 +116,28 @@ export function usePortalNavCrumbs(routeCrumbs: PortalNavCrumb[]): PortalNavCrum
       return dedupeCrumbs([...section, ...(school || test ? scoped : [])]);
     }
 
-    // Result detail: drop the UUID "Details"/"Result" route leaf — drive already has School → Test.
+    // Result detail: Results → Test → Class (Test links back to the class list).
     if (/\/results\/[^/]+$/.test(pathname)) {
       const section = sectionThrough(routeCrumbs, (href) => /\/results$/.test(href));
       const rest = routeCrumbs
         .slice(section.length)
         .filter((crumb) => crumb.label !== "Details" && crumb.label !== "Result");
-      return dedupeCrumbs([...section, ...folders, ...rest]);
+      const trail =
+        folders.length > 0
+          ? folders
+          : resultsReturnHref
+            ? [
+                {
+                  label: (() => {
+                    const test = new URLSearchParams(resultsReturnHref.split("?")[1] ?? "").get("test");
+                    return test ? `Test ${test}` : "Test";
+                  })(),
+                  href: resultsReturnHref,
+                },
+                ...rest,
+              ]
+            : rest;
+      return dedupeCrumbs([...section, ...trail]);
     }
 
     // Students drive: "Schools" = this page’s school list (/admin/schools/students), not /admin/schools.
@@ -183,5 +200,6 @@ export function usePortalNavCrumbs(routeCrumbs: PortalNavCrumb[]): PortalNavCrum
     schoolId,
     schoolName,
     answerKeysReturnHref,
+    resultsReturnHref,
   ]);
 }

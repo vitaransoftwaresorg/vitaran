@@ -85,11 +85,18 @@ export function getTeacherBreadcrumbs(pathname: string): TeacherBreadcrumb[] {
 }
 
 /** Only the dashboard is a root — resources and other sections get Back → Dashboard. */
-export function getTeacherParentHref(pathname: string): string | null {
+export function getTeacherParentHref(pathname: string, search = ""): string | null {
   const dashboard = "/teacher";
   if (pathname === dashboard) return null;
   if (allItems.some((item) => item.href === pathname)) return dashboard;
   // `/answer-keys/:id` redirects to `/answers`, so Back must skip that stub.
   if (/\/answer-keys\/[^/]+\/answers$/.test(pathname)) return pathname.replace(/\/[^/]+\/answers$/, "");
+  // Class result sheet → that test’s class list (not the tests root).
+  if (/\/results\/[^/]+$/.test(pathname)) {
+    const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+    const from = params.get("from");
+    if (from?.startsWith("/teacher/results")) return from;
+    return "/teacher/results";
+  }
   return getTeacherBreadcrumbs(pathname).at(-2)?.href ?? dashboard;
 }

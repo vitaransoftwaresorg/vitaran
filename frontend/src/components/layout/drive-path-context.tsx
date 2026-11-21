@@ -15,6 +15,10 @@ import {
   readAnswerKeysFolderCrumbs,
   writeAnswerKeysFolderTrail,
 } from "@/features/answer-keys/drive-path";
+import {
+  isResultDetailPath,
+  readResultsFolderCrumbs,
+} from "@/features/results/portal-drive-path";
 
 export type DrivePathCrumb = { label: string; href: string };
 
@@ -56,6 +60,12 @@ export function DrivePathProvider({ children }: { children: ReactNode }) {
     if (isAnswerKeyEditorPath(pathname)) {
       // Keep folder trail when opening Enter answers / Edit — don't wipe to "Answers".
       setCrumbsState(readAnswerKeysFolderCrumbs());
+      return;
+    }
+    if (isResultDetailPath(pathname)) {
+      // Keep Test folder when opening a class sheet — Back returns to the class list.
+      const stored = readResultsFolderCrumbs();
+      if (stored.length > 0) setCrumbsState(stored);
       return;
     }
     // Paths that push their own trail (SchoolNavTrail / ProgramNavTrail / drives).

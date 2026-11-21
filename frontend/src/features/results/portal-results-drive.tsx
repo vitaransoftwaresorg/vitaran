@@ -1,11 +1,13 @@
 "use client";
 
+import { useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { wasEdited } from "@/features/documents/constants";
 import { DriveBrowser, type DriveCrumb, type DriveItem } from "@/features/documents/drive-browser";
 import type { ResultSet } from "@/types/result";
 import { formatDateTime, formatNumber } from "@/utils/format";
 import { resultSetHref, resultSheetDownloadHref, studentCount } from "./constants";
+import { resultsTestFolderHref, writeResultsFolderTrail } from "./portal-drive-path";
 
 type PortalResultsDriveProps = {
   resultSets: ResultSet[];
@@ -51,6 +53,7 @@ export function PortalResultsDrive({ resultSets, basePath, schoolCode }: PortalR
       : [];
 
   const href = (next: { test?: number } = {}) => {
+    if (next.test != null && !school) return resultsTestFolderHref(basePath, next.test);
     const query = new URLSearchParams();
     if (school) query.set("school", school);
     if (next.test != null) query.set("test", String(next.test));
@@ -59,7 +62,8 @@ export function PortalResultsDrive({ resultSets, basePath, schoolCode }: PortalR
 
   const sheetItem = (set: ResultSet, classLevel: number, name: string): DriveItem => {
     const sheet = set.classes.find((row) => row.classLevel === classLevel)!;
-    const view = resultSetHref(basePath, set.id, classLevel, school || undefined);
+    const testFolder = resultsTestFolderHref(basePath, set.testNumber);
+    const view = resultSetHref(basePath, set.id, classLevel, school || undefined, testFolder);
     const live = sheet.published && set.published;
     return {
       id: `${set.id}:${classLevel}`,
@@ -98,6 +102,18 @@ export function PortalResultsDrive({ resultSets, basePath, schoolCode }: PortalR
       href: href({ test: openTestNumber }),
     });
   }
+
+  // Remember Test folder so opening a class sheet can Back to the class list.
+  const folderTrail = breadcrumbs.slice(1);
+  const folderTrailKey = folderTrail.map((crumb) => `${crumb.href}\0${crumb.label}`).join("\n");
+  useEffect(() => {
+    writeResultsFolderTrail(
+      openTestNumber != null ? href({ test: openTestNumber }) : basePath,
+      folderTrail,
+    );
+    // folderTrailKey tracks content; href() is stable for the open test.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [basePath, openTestNumber, folderTrailKey]);
 
   let items: DriveItem[];
   let emptyText = "Test results for your school will appear here when they are available.";

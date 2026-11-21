@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useSetDrivePathCrumbs } from "@/components/layout/drive-path-context";
 import { useRegisterInPageBack } from "@/components/layout/in-page-back";
 import { ResultSetView } from "@/features/results/result-set-view";
 import {
@@ -13,6 +15,12 @@ import { StudentDetailView } from "@/features/students/student-detail-view";
 import type { ResultSet, ResultSheet } from "@/types/result";
 import type { ClassScan } from "@/types/scan";
 import type { Student, StudentDetail } from "@/types/student";
+import { resultSetHref } from "./constants";
+import {
+  readResultsReturnHref,
+  resultsTestFolderHref,
+  writeResultsFolderTrail,
+} from "./portal-drive-path";
 
 type PortalResultSetViewProps = {
   resultSet: ResultSet;
@@ -44,8 +52,11 @@ export function PortalResultSetView({
   showDownload = true,
   portal,
 }: PortalResultSetViewProps) {
+  const router = useRouter();
   const [student, setStudent] = useState<StudentDetail | null>(null);
   const byRoll = useRef(new Map<string, StudentDetail>());
+  const setDrivePath = useSetDrivePathCrumbs();
+  const testFolderHref = resultsTestFolderHref(basePath, resultSet.testNumber);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,8 +73,32 @@ export function PortalResultSetView({
     };
   }, [portal, sheet.classLevel, resultSet.school]);
 
+  // Keep Test → Class in the top trail so Back / Test crumb returns to the class list.
+  useEffect(() => {
+    const classHref = resultSetHref(basePath, resultSet.id, sheet.classLevel);
+    const crumbs = [
+      { label: `Test ${resultSet.testNumber}`, href: testFolderHref },
+      { label: sheet.classLabel || sheet.label || `Class ${sheet.classLevel}`, href: classHref },
+    ];
+    writeResultsFolderTrail(testFolderHref, [{ label: `Test ${resultSet.testNumber}`, href: testFolderHref }]);
+    setDrivePath?.(crumbs);
+  }, [
+    basePath,
+    resultSet.id,
+    resultSet.testNumber,
+    sheet.classLabel,
+    sheet.classLevel,
+    sheet.label,
+    setDrivePath,
+    testFolderHref,
+  ]);
+
   const closeStudent = useCallback(() => setStudent(null), []);
-  useRegisterInPageBack(student ? closeStudent : null);
+  const backToClassList = useCallback(() => {
+    router.push(readResultsReturnHref() || testFolderHref);
+  }, [router, testFolderHref]);
+  // Student open → close profile; otherwise Back returns to this test’s class list.
+  useRegisterInPageBack(student ? closeStudent : backToClassList);
 
   const openStudent = (roll: string) => {
     const key = foldRoll(roll);

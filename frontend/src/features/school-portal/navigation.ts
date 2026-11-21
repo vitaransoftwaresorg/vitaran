@@ -121,5 +121,12 @@ export function getSchoolParentHref(pathname: string, search = ""): string | nul
 
   if (allItems.some((item) => item.href === pathname)) return dashboard;
   if (/\/answer-keys\/[^/]+\/answers$/.test(pathname)) return pathname.replace(/\/[^/]+\/answers$/, "");
+  // Class result sheet → that test’s class list (not the tests root).
+  if (/\/results\/[^/]+$/.test(pathname)) {
+    const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+    const from = params.get("from");
+    if (from?.startsWith("/school/results")) return from;
+    return "/school/results";
+  }
   return getSchoolBreadcrumbs(pathname).at(-2)?.href ?? dashboard;
 }
