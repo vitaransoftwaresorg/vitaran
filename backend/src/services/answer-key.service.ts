@@ -111,7 +111,7 @@ function toAnswerKeyDto(
     corrections,
     subjectRanges: asSubjectRanges(row.subjectRanges),
     keyTypeRanges: asKeyTypeRanges(row.keyTypeRanges),
-    correctMarks: row.correctMarks ?? 1,
+    correctMarks: row.correctMarks ?? 4,
     wrongMarks: row.wrongMarks ?? 0,
     answerCount: Object.keys(answers).length,
     correctionCount: corrections.length,
@@ -372,17 +372,24 @@ export async function getAnswerKeyStats() {
   return { total, published };
 }
 
+/** Empty drafts created before the default rose from 1 → 4 still store 1; bump them on open. */
+async function promoteEmptyDraftCorrectMarks<T extends AnswerKeySummary | AnswerKeyDetail>(row: T): Promise<T> {
+  if (Object.keys(asAnswers(row.answers)).length > 0) return row;
+  if ((row.correctMarks ?? 1) !== 1) return row;
+  return (await answerKeyRepository.updateAnswerKey(row.id, { correctMarks: 4 })) as T;
+}
+
 export async function getAnswerKey(id: string) {
   const answerKey = await answerKeyRepository.findAnswerKeyById(id);
   if (!answerKey) throw new AppError(404, "Answer key not found");
-  return answerKeyDto(answerKey);
+  return answerKeyDto(await promoteEmptyDraftCorrectMarks(answerKey));
 }
 
 function emptyKeyFile() {
   return { fileName: "Answer key", fileSize: 0, data: Buffer.alloc(0) };
 }
 
-async function blankKeyFields(programCode: string): Promise<ParsedJsonFields> {
+async function blankKeyFields(programCode: string): Promise<ParsedJsonFields & { correctMarks: number; wrongMarks: number }> {
   const program = await programRepository.findProgramByCode(programCode);
   return {
     answers: {} as Prisma.InputJsonValue,
@@ -390,6 +397,8 @@ async function blankKeyFields(programCode: string): Promise<ParsedJsonFields> {
     printedAnswers: {} as Prisma.InputJsonValue,
     printedExplanations: {} as Prisma.InputJsonValue,
     subjectRanges: defaultSubjectRanges(program?.subjects ?? []) as Prisma.InputJsonValue,
+    correctMarks: 4,
+    wrongMarks: 0,
   };
 }
 
@@ -406,7 +415,7 @@ export async function uploadAnswerKey({ schoolId, program, ...meta }: UploadAnsw
     type: meta.type,
     schoolId: resolvedSchoolId,
   });
-  if (draft) return answerKeyDto(draft);
+  if (draft) return answerKeyDto(await promoteEmptyDraftCorrectMarks(draft));
 
   const created = await answerKeyRepository.createAnswerKey({
     type: meta.type,
@@ -605,7 +614,7 @@ export async function ensureSchoolSectionKey(input: {
       });
       return answerKeyDto(cleared);
     }
-    return answerKeyDto(existing);
+    return answerKeyDto(await promoteEmptyDraftCorrectMarks(existing));
   }
 
   const created = await answerKeyRepository.createAnswerKey({
@@ -631,7 +640,7 @@ export async function ensureSchoolSectionKey(input: {
     published: false,
   });
   notifyContentChanged({ kind: KIND, schoolId: school.id, adminOnly: true });
-  return answerKeyDto(created);
+  return answerKeyDto(await promoteEmptyDraftCorrectMarks(created));
 }
 
 export async function listVisibleAnswerKeys(actor: ContentActor) {
@@ -815,7 +824,7 @@ export async function getAnswerKeyPdf(id: string, actor: ContentActor) {
       testNumber: row.testNumber,
       testId: testId ?? null,
       classLevel: row.classLevel,
-      correctMarks: row.correctMarks ?? 1,
+      correctMarks: row.correctMarks ?? 4,
       wrongMarks: row.wrongMarks ?? 0,
       publishedAt: row.publishedAt ?? row.updatedAt,
       answers,
@@ -834,10 +843,11 @@ export async function getAnswerKeyPdf(id: string, actor: ContentActor) {
 }
 
 export async function getVisibleAnswerKey(id: string, actor: ContentActor) {
-  const row = await answerKeyRepository.findVisibleAnswerKey(
+  const found = await answerKeyRepository.findVisibleAnswerKey(
     id,
     await buildAnswerKeyAccessFilter(actor),
   );
+  const row = found ? await promoteEmptyDraftCorrectMarks(found) : found;
   if (!row) throw new AppError(404, "Answer key not found");
   return answerKeyDto(row);
 }
@@ -883,7 +893,7 @@ export async function getAdminAnswerKeyPdf(id: string) {
       testNumber: row.testNumber,
       testId: testId ?? null,
       classLevel: row.classLevel,
-      correctMarks: row.correctMarks ?? 1,
+      correctMarks: row.correctMarks ?? 4,
       wrongMarks: row.wrongMarks ?? 0,
       publishedAt: row.publishedAt ?? row.updatedAt,
       answers,
@@ -920,7 +930,7 @@ export async function getPublicAnswerKeyPdf(id: string) {
       testNumber: row.testNumber,
       testId: testId ?? null,
       classLevel: row.classLevel,
-      correctMarks: row.correctMarks ?? 1,
+      correctMarks: row.correctMarks ?? 4,
       wrongMarks: row.wrongMarks ?? 0,
       publishedAt: row.publishedAt ?? row.updatedAt,
       answers,

@@ -406,7 +406,7 @@ export function asKeyTypeRanges(value: unknown): KeyTypeRange[] {
         from,
         to,
         type,
-        correctMarks: asMarksInt(correctMarks, 1),
+        correctMarks: asMarksInt(correctMarks, 4),
         wrongMarks: asMarksInt(wrongMarks, 0),
       },
     ];

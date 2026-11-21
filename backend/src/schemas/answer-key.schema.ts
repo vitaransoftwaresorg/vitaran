@@ -95,7 +95,7 @@ export const saveAnswerKeyAnswersSchema = z.object({
     )
     .default([]),
   testId: testIdField.optional(),
-  correctMarks: z.coerce.number().int().min(0).max(100).default(1),
+  correctMarks: z.coerce.number().int().min(0).max(100).default(4),
   wrongMarks: z.coerce.number().int().min(0).max(100).default(0),
 });
 

@@ -50,14 +50,14 @@ export function roundMarks(value: number) {
 }
 
 export type QuestionScoreOptions = {
-  /** normal = any correct option earns full marks; mcq = partial per option. */
+  /** normal = any subset of key options = full (extras = 0); mcq = equal partial per option. */
   mode?: "normal" | "mcq";
   wrongMarks?: number;
 };
 
 /**
  * Score one question.
- * Normal (key A/B/C): any one correct option marked → full marks.
+ * Normal (key A/B/C): any non-empty subset of key options → full marks; any wrong option (D, A+D, A+B+C+D) → 0.
  * MCQ (key A/B/C): equal share per key option (A+B → 2/3); any wrong option (A+B+D) → 0.
  */
 export function questionScore(
@@ -78,18 +78,16 @@ export function questionScore(
   if (wanted.length === 0) return { result: "unkeyed", marks: 0 };
 
   const wrongPenalty = wrongMarks > 0 ? -wrongMarks : 0;
+  // Any option not in the key zeros Normal and MCQ (e.g. key A/B/C, marked A/D → 0).
+  const hasExtra = filled.some((option) => !wanted.includes(option));
+  if (hasExtra) return { result: "wrong", marks: mode === "normal" ? wrongPenalty : 0 };
 
   if (mode === "normal") {
-    const hit = filled.some((option) => wanted.includes(option));
-    if (hit) return { result: "correct", marks: correctMarks };
-    return { result: "wrong", marks: wrongPenalty };
+    // Only correct options marked (A, B, A+B, A+B+C, …) → full marks.
+    return { result: "correct", marks: correctMarks };
   }
 
-  // MCQ: any option not in the key zeros the question (e.g. key A/B/C, marked A/B/D → 0).
-  const hasExtra = filled.some((option) => !wanted.includes(option));
-  if (hasExtra) return { result: "wrong", marks: 0 };
-
-  // Only correct options marked → partial credit per option, full if all key options marked.
+  // MCQ: equal share per key option; full if all key options marked.
   const perOption = correctMarks / wanted.length;
   const earned = roundMarks(Math.min(filled.length * perOption, correctMarks));
   const allWantedMarked = wanted.every((option) => filled.includes(option));

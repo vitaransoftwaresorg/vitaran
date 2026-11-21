@@ -30,9 +30,18 @@ import { enteredTestId, TEST_ID_LENGTH, TEST_ID_MESSAGE, TEST_ID_PATTERN, testId
 import { TestIdStatus, useTestIdCheck } from "./test-id-status";
 
 const OPTIONS: AnswerOption[] = ["A", "B", "C", "D"];
-const DEFAULT_CORRECT_MARKS = 1;
+const DEFAULT_CORRECT_MARKS = 4;
 const MAX_SUBJECT_QUESTIONS = 100;
 const MAX_MARK_VALUE = 100;
+
+/** Drafts with no answers yet: treat legacy stored 1 as the new default 4. */
+function initialCorrectMarks(answerKey: { answerCount?: number; correctMarks?: number }) {
+  const stored = answerKey.correctMarks;
+  if ((answerKey.answerCount ?? 0) === 0 && (stored == null || stored === 1)) {
+    return DEFAULT_CORRECT_MARKS;
+  }
+  return stored ?? DEFAULT_CORRECT_MARKS;
+}
 
 function clampMark(value: number) {
   return Math.min(MAX_MARK_VALUE, Math.max(0, value));
@@ -166,13 +175,11 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
     answerKey.subjectRanges.length > 0 ? answerKey.subjectRanges : FALLBACK_RANGES;
   const [answers, setAnswers] = useState<Record<string, KeyAnswer>>(() => answerKey.answers);
   const [explanations, setExplanations] = useState<Record<string, string>>(() => answerKey.explanations);
-  const [correctMarks, setCorrectMarks] = useState(
-    () => answerKey.correctMarks ?? DEFAULT_CORRECT_MARKS,
-  );
+  const [correctMarks, setCorrectMarks] = useState(() => initialCorrectMarks(answerKey));
   const [wrongMarks, setWrongMarks] = useState(() => answerKey.wrongMarks ?? 0);
   const [keyTypeRanges, setKeyTypeRanges] = useState<KeyTypeRange[]>(() =>
     normalizeKeyTypeRanges(answerKey.keyTypeRanges, {
-      correctMarks: answerKey.correctMarks ?? DEFAULT_CORRECT_MARKS,
+      correctMarks: initialCorrectMarks(answerKey),
       wrongMarks: answerKey.wrongMarks ?? 0,
     }),
   );
@@ -188,11 +195,11 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
       answerKey.explanations,
       initialRanges,
       normalizeKeyTypeRanges(answerKey.keyTypeRanges, {
-        correctMarks: answerKey.correctMarks ?? DEFAULT_CORRECT_MARKS,
+        correctMarks: initialCorrectMarks(answerKey),
         wrongMarks: answerKey.wrongMarks ?? 0,
       }),
       enteredTestId(answerKey.testId),
-      answerKey.correctMarks ?? DEFAULT_CORRECT_MARKS,
+      initialCorrectMarks(answerKey),
       answerKey.wrongMarks ?? 0,
     ),
   );

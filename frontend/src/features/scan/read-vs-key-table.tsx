@@ -42,14 +42,14 @@ function answerTone(
     .filter((part) => part === "A" || part === "B" || part === "C" || part === "D");
   if (wanted.length === 0) return "plain";
 
-  // Normal: any one correct option → full credit (even if extras are marked).
-  if (mode === "normal") {
-    return marked.some((option) => wanted.includes(option)) ? "correct" : "wrong";
-  }
-
-  // MCQ: any extra (non-key) option → 0; otherwise equal partial per key option marked.
+  // Any wrong (non-key) option → 0 for Normal and MCQ.
   const hasExtra = marked.some((option) => !wanted.includes(option));
   if (hasExtra) return "wrong";
+
+  // Normal: any non-empty subset of key options → full credit.
+  if (mode === "normal") return "correct";
+
+  // MCQ: equal partial per key option marked.
   const hit = wanted.filter((option) => marked.includes(option)).length;
   if (hit === wanted.length) return "correct";
   if (hit > 0) return "partial";
@@ -90,8 +90,8 @@ export function ReadVsKeyTable({
         <p className="text-sm font-bold text-brand-950">Read vs answer key</p>
         <p className="text-xs text-neutral-500">
           {showPartial
-            ? "Normal: any correct option = full marks. MCQ: equal partial per key option; any wrong option = 0."
-            : "Green = correct, red = wrong, amber = blank. Any correct option earns full marks."}
+            ? "Normal: any subset of correct options = full; any wrong option = 0. MCQ: equal partial; any wrong = 0."
+            : "Green = correct, red = wrong, amber = blank. Subset of correct options = full; any wrong option = 0."}
         </p>
       </header>
       <div data-table-scroll className="overflow-x-auto">

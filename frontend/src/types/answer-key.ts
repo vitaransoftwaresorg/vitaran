@@ -70,7 +70,7 @@ export type KeyTypeRange = {
 /** Fill marks on legacy ranges that only had from/to/type. */
 export function normalizeKeyTypeRanges(
   ranges: Array<Partial<KeyTypeRange> & Pick<KeyTypeRange, "from" | "to" | "type">> | null | undefined,
-  defaults: { correctMarks: number; wrongMarks: number } = { correctMarks: 1, wrongMarks: 0 },
+  defaults: { correctMarks: number; wrongMarks: number } = { correctMarks: 4, wrongMarks: 0 },
 ): KeyTypeRange[] {
   if (!ranges?.length) return [];
   return ranges.map((range) => ({
@@ -93,7 +93,11 @@ export const ANSWER_KEY_QUESTION_TYPES: Array<{
   label: string;
   hint: string;
 }> = [
-  { value: "normal", label: "Normal", hint: "Any correct option = full marks" },
+  {
+    value: "normal",
+    label: "Normal",
+    hint: "Any subset of correct options = full; any wrong option = 0",
+  },
   {
     value: "mcq",
     label: "MCQ",

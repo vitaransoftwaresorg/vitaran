@@ -306,7 +306,7 @@ model AnswerKey {
   /// Per-range question types (normal / mcq). Unlisted questions are normal.
   keyTypeRanges Json? @map("key_type_ranges")
   /// Marks awarded for a matching option (and for ADD if attempted).
-  correctMarks Int @default(1) @map("correct_marks")
+  correctMarks Int @default(4) @map("correct_marks")
   /// Marks deducted for a wrong option. Blank stays 0.
   wrongMarks   Int @default(0) @map("wrong_marks")
   /// Schools only see published answer keys.
