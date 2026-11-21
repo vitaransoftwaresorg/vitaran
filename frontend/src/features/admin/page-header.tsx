@@ -46,7 +46,7 @@ export function PageHeader({ title, description, count, toolbar, actions }: Page
           ) : null}
         </div>
       )}
-      {toolbar}
+      {toolbar ? <div className="min-w-0 w-full lg:w-auto lg:shrink-0">{toolbar}</div> : null}
       {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );

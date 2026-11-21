@@ -236,6 +236,7 @@ model SchoolSection {
   @@index([programId])
   @@index([classTeacherId])
   students       Student[]
+  answerKeys     AnswerKey[]
   @@map("school_sections")
 }
 
@@ -271,6 +272,7 @@ model Student {
 }
 
 /// Regular keys are shared by every school on the program; customized keys belong to one school.
+/// Section school keys (`schoolId` + optional `sectionId`) override the platform key for OMR.
 /// `programCode` matches LearningProgram.code.
 /// `testId` + `testNumber` link keys to results for the same school/program/class.
 model AnswerKey {
@@ -279,6 +281,9 @@ model AnswerKey {
   type        SchoolType
   schoolId    String?    @map("school_id") @db.Uuid
   school      School?    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  /// When set, this key overrides the platform key for one school section.
+  sectionId   String?    @map("section_id") @db.Uuid
+  section     SchoolSection? @relation(fields: [sectionId], references: [id], onDelete: Cascade)
   /// Human-facing test ID (freeform), shared with results. Entered on the answers editor.
   testId      String?    @map("test_id") @db.VarChar(64)
   /// Ordinal test number (1–30).
@@ -298,6 +303,8 @@ model AnswerKey {
   printedExplanations Json? @map("printed_explanations")
   /// Subject bands in paper order: MPC (75) or MPCB (100), 25 questions each.
   subjectRanges Json? @map("subject_ranges")
+  /// Per-range question types (normal / mcq). Unlisted questions are normal.
+  keyTypeRanges Json? @map("key_type_ranges")
   /// Marks awarded for a matching option (and for ADD if attempted).
   correctMarks Int @default(1) @map("correct_marks")
   /// Marks deducted for a wrong option. Blank stays 0.
@@ -310,11 +317,13 @@ model AnswerKey {
   omScans     OmScan[]
   objections  AnswerKeyObjection[]
 
-  @@unique([testId])
+  /// Uniqueness: platform keys one-per-testId; school/section overrides share that testId (SQL partial indexes).
   @@index([createdAt])
   @@index([schoolId])
+  @@index([sectionId])
   @@index([programCode])
   @@index([testId, testNumber])
+  @@index([testId, schoolId, sectionId])
   @@map("answer_keys")
 }
 

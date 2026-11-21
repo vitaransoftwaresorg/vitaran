@@ -46,18 +46,20 @@ const HEADING: Record<string, string> = {
 const isOption = (value: string): value is AnswerOption =>
   ANSWER_OPTIONS.includes(value as AnswerOption);
 
+/** Parse "A", "B/C", "BC", "B, C", "ADD", etc. */
 export function parseKeyAnswer(value: unknown): KeyAnswer | null {
-  if (typeof value !== "string") return null;
-  const token = value.trim().toUpperCase();
+  if (value == null) return null;
+  const token = String(value).trim().toUpperCase();
+  if (!token) return null;
   if (token === "ADD" || token === "BONUS" || token === "FREE") return "ADD";
-  const parts = token
-    .split("/")
-    .map((part) => part.trim())
-    .filter(isOption);
+  // Keep only A–D letters so "B/C", "BC", "B, C", "B & C" all work.
+  const letters = token.replace(/[^A-Z]/g, "");
+  if (letters === "ADD" || letters === "BONUS" || letters === "FREE") return "ADD";
+  if (!letters || /[^ABCD]/.test(letters)) return null;
+  const parts = [...letters].filter(isOption);
   if (parts.length === 0) return null;
   if (parts.length === 1) return parts[0]!;
-  const unique = [...new Set(parts)];
-  return unique.join("/") as KeyAnswer;
+  return [...new Set(parts)].sort().join("/") as KeyAnswer;
 }
 
 export function keyOptions(answer: KeyAnswer | null | undefined): AnswerOption[] {
@@ -70,7 +72,8 @@ export function isBonusKey(answer: KeyAnswer | null | undefined) {
 }
 
 export function matchesKey(marked: AnswerOption | null | undefined, expected: KeyAnswer) {
-  if (expected === "ADD") return Boolean(marked);
+  // ADD always counts as correct (attempted or not).
+  if (expected === "ADD") return true;
   return Boolean(marked && keyOptions(expected).includes(marked));
 }
 
@@ -89,7 +92,8 @@ export function markedList(value: unknown): AnswerOption[] {
 
 /** Single-correct keys ignore double marks. Multi-correct keys need the same set. */
 export function markedMatchesKey(marked: AnswerOption[], expected: KeyAnswer) {
-  if (isBonusKey(expected)) return marked.length > 0;
+  // ADD always counts as correct (attempted or not).
+  if (isBonusKey(expected)) return true;
   const wanted = keyOptions(expected);
   if (wanted.length === 0 || marked.length === 0) return false;
   if (marked.length > 1 && wanted.length === 1) return false;
@@ -248,7 +252,9 @@ export function parseAnswerKeyText(text: string): ParsedAnswerKey {
   return { testId, answers, explanations, subjectRanges };
 }
 
-const KEY_TOKEN = /(\d{1,3})\s*\)\s*(Add|BONUS|FREE|[A-D](?:\s*\/\s*[A-D])*)(?![A-Za-z])/gi;
+/** "1) C", "12) B/C", "12) BC", "12) B, C", "60) Add". */
+const KEY_TOKEN =
+  /(\d{1,3})\s*\)\s*(Add|BONUS|FREE|[A-D](?:[\s/,&+|.-]*[A-D])*)(?![A-Za-z])/gi;
 
 /** A key line is "1) C 2) A 3) B …"; prose never packs this many "n) X" pairs on one line. */
 function isKeyLine(line: string) {
@@ -362,6 +368,76 @@ export function asSubjectRanges(value: unknown): SubjectRange[] {
       },
     ];
   });
+}
+
+export type KeyQuestionType = "normal" | "mcq";
+
+export type KeyTypeRange = {
+  from: number;
+  to: number;
+  type: KeyQuestionType;
+  /** Overrides key-level correct marks for questions in this range. */
+  correctMarks: number;
+  /** Overrides key-level wrong marks for questions in this range. */
+  wrongMarks: number;
+};
+
+function asMarksInt(value: unknown, fallback: number): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isInteger(n) || n < 0 || n > 100) return fallback;
+  return n;
+}
+
+export function asKeyTypeRanges(value: unknown): KeyTypeRange[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const { from, to, type, correctMarks, wrongMarks } = row as Record<string, unknown>;
+    if (typeof from !== "number" || typeof to !== "number") return [];
+    if (from < 1 || to > 200 || to < from) return [];
+    if (type !== "normal" && type !== "mcq") return [];
+    return [
+      {
+        from,
+        to,
+        type,
+        correctMarks: asMarksInt(correctMarks, 1),
+        wrongMarks: asMarksInt(wrongMarks, 0),
+      },
+    ];
+  });
+}
+
+/** Later overlapping ranges win. */
+export function keyTypeRangeForQuestion(
+  ranges: KeyTypeRange[],
+  question: number,
+): KeyTypeRange | undefined {
+  let match: KeyTypeRange | undefined;
+  for (const range of ranges) {
+    if (question >= range.from && question <= range.to) match = range;
+  }
+  return match;
+}
+
+/** Unlisted questions are normal. Later overlapping ranges win. */
+export function keyTypeForQuestion(ranges: KeyTypeRange[], question: number): KeyQuestionType {
+  return keyTypeRangeForQuestion(ranges, question)?.type ?? "normal";
+}
+
+/** Range marks take priority; unlisted questions use the key-level defaults. */
+export function marksForQuestion(
+  ranges: KeyTypeRange[],
+  question: number,
+  defaults: { correctMarks: number; wrongMarks: number },
+): { correctMarks: number; wrongMarks: number; type: KeyQuestionType } {
+  const match = keyTypeRangeForQuestion(ranges, question);
+  if (!match) return { ...defaults, type: "normal" };
+  return {
+    type: match.type,
+    correctMarks: match.correctMarks,
+    wrongMarks: match.wrongMarks,
+  };
 }
 
 export type AnswerCorrection = {

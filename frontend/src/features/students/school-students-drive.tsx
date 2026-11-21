@@ -133,6 +133,7 @@ export function SchoolStudentsDrive({
         students={roster}
         mode="school"
         baseHref={SCHOOL_STUDENTS_PATH}
+        seats={seats}
         subjects={subjectsForSchoolClass(schoolPrograms, classLevel, roster[0]?.programId)}
         emptyMessage={emptyRosterMessage(section, seats, classCount)}
       />

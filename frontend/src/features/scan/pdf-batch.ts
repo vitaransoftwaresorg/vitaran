@@ -37,8 +37,13 @@ function schedule(delay: number) {
 
 function summarize(job: PdfJob) {
   const parts = [`${job.read} sheet${job.read === 1 ? "" : "s"} read`];
-  if (job.duplicates) parts.push(`${job.duplicates} duplicate${job.duplicates === 1 ? "" : "s"} skipped`);
-  if (job.failures.length) parts.push(`${job.failures.length} failed`);
+  if (job.duplicates) {
+    parts.push(
+      `${job.duplicates} duplicate${job.duplicates === 1 ? "" : "s"} — enter correct registration`,
+    );
+  }
+  const otherFailures = Math.max(0, job.failures.length - job.duplicates);
+  if (otherFailures) parts.push(`${otherFailures} failed`);
   return parts.join(" · ");
 }
 
@@ -59,7 +64,7 @@ function onFinished() {
       description:
         job.failures.slice(0, 6).map(failureLine).join("\n") +
         (job.failures.length > 6 ? `\n+${job.failures.length - 6} more` : "") +
-        "\nView or scan them again under “Pages that could not be read”.",
+        "\nEnter registration or scan again under “Pages that could not be read”.",
       duration: 15000,
       classNames: { description: "whitespace-pre-line" },
     });
@@ -100,7 +105,7 @@ async function poll() {
       failures: [
         ...job.failures,
         ...status.items.flatMap((item) =>
-          item.error && !item.duplicateOf
+          item.error
             ? [{ page: item.page, message: item.error, hasImage: Boolean(item.hasImage) }]
             : [],
         ),

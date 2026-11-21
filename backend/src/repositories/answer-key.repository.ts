@@ -20,9 +20,13 @@ export const answerKeySummarySelect = {
   printedAnswers: true,
   printedExplanations: true,
   subjectRanges: true,
+  keyTypeRanges: true,
   correctMarks: true,
   wrongMarks: true,
+  schoolId: true,
   school: { select: { id: true, name: true, code: true } },
+  sectionId: true,
+  section: { select: { id: true, name: true, classLevel: true } },
 } satisfies Prisma.AnswerKeySelect;
 
 export const answerKeyDetailSelect = {
@@ -121,6 +125,58 @@ export function findAnswerKeyTestIds() {
 export function findAnswerKeyByTestId(testId: string, exceptId?: string) {
   return prisma.answerKey.findFirst({
     where: { testId, ...(exceptId ? { id: { not: exceptId } } : {}) },
+    select: answerKeyDetailSelect,
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
+/** Shared / platform key for a test ID (no school). */
+export function findPlatformAnswerKeyByTestId(testId: string, exceptId?: string) {
+  return prisma.answerKey.findFirst({
+    where: {
+      testId,
+      schoolId: null,
+      ...(exceptId ? { id: { not: exceptId } } : {}),
+    },
+    select: answerKeyDetailSelect,
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
+/** School override for a test ID — sectionId null means school-wide / whole-class. */
+export function findSchoolAnswerKeyByTestId(
+  testId: string,
+  schoolId: string,
+  sectionId: string | null,
+  exceptId?: string,
+) {
+  return prisma.answerKey.findFirst({
+    where: {
+      testId,
+      schoolId,
+      sectionId,
+      ...(exceptId ? { id: { not: exceptId } } : {}),
+    },
+    select: answerKeyDetailSelect,
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
+export function findSchoolSectionAnswerKeySlot(slot: {
+  schoolId: string;
+  sectionId: string | null;
+  programCode: string;
+  testNumber: number;
+  classLevel: number;
+}) {
+  return prisma.answerKey.findFirst({
+    where: {
+      schoolId: slot.schoolId,
+      sectionId: slot.sectionId,
+      programCode: slot.programCode,
+      testNumber: slot.testNumber,
+      classLevel: slot.classLevel,
+    },
     select: answerKeyDetailSelect,
     orderBy: { updatedAt: "desc" },
   });

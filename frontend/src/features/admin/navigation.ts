@@ -3,6 +3,7 @@ import {
   CirclePlus,
   GraduationCap,
   KeyRound,
+  KeySquare,
   LayoutDashboard,
   MessageSquareWarning,
   ScanLine,
@@ -44,6 +45,7 @@ export const adminNavGroups: AdminNavGroup[] = [
     label: "Content",
     items: [
       { title: "Answer Keys", href: "/admin/answer-keys", icon: KeyRound },
+      { title: "School Keys", href: "/admin/school-keys", icon: KeySquare },
       { title: "Key Objections", href: "/admin/objections", icon: MessageSquareWarning },
       { title: "Results and Ranks", href: "/admin/results", icon: Trophy },
       { title: "OMR Scan", href: "/admin/omr-scan", icon: ScanLine },
@@ -99,6 +101,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   answers: "Enter answers",
   enter: "Enter marks",
   "answer-keys": "Answer Keys",
+  "school-keys": "School Keys",
   objections: "Key Objections",
   upload: "Upload",
   results: "Results and Ranks",
@@ -112,7 +115,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function crumbLabel(segment: string, previous: string | undefined) {
   if (SEGMENT_LABELS[segment]) return SEGMENT_LABELS[segment];
-  if (previous === "answer-keys") return "Key";
+  if (previous === "answer-keys" || previous === "school-keys") return "Key";
   return "Details";
 }
 
@@ -146,6 +149,7 @@ export function getAdminBreadcrumbs(pathname: string): AdminBreadcrumb[] {
     const previous = segments[index - 1];
     // UUID detail ids are resolved by name in the top nav (school / program / answer key).
     if (previous === "answer-keys" && UUID.test(segment)) return;
+    if (previous === "school-keys" && UUID.test(segment)) return;
     if (previous === "programs" && UUID.test(segment)) return;
     if (previous === "schools" && UUID.test(segment)) return;
     crumbs.push({
@@ -174,6 +178,11 @@ function adminDriveParentHref(pathname: string, search: string): string | null {
 export function getAdminParentHref(pathname: string, search = ""): string | null {
   if (/^\/admin\/answer-keys\/[^/]+\/(edit|answers)$/.test(pathname)) {
     return readAnswerKeysReturnHref() ?? "/admin/answer-keys";
+  }
+  if (/^\/admin\/school-keys\/[^/]+\/answers$/.test(pathname)) {
+    const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+    const from = params.get("from");
+    return from && from.startsWith("/admin/school-keys") ? from : "/admin/school-keys";
   }
   // Class enter board — back to the school’s test folder (school-first drive).
   if (pathname === "/admin/results/enter") {
@@ -208,6 +217,22 @@ export function getAdminParentHref(pathname: string, search = ""): string | null
   }
   if (pathname === "/admin/answer-keys" || pathname === "/admin/results") {
     return adminDriveParentHref(pathname, search);
+  }
+  if (pathname === "/admin/school-keys") {
+    const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+    if (params.has("section") || params.has("class")) {
+      params.delete("section");
+      params.delete("class");
+      const query = params.toString();
+      return query ? `/admin/school-keys?${query}` : "/admin/school-keys";
+    }
+    if (params.has("test")) {
+      params.delete("test");
+      const query = params.toString();
+      return query ? `/admin/school-keys?${query}` : "/admin/school-keys";
+    }
+    if (params.has("school")) return "/admin/school-keys";
+    return "/admin";
   }
   return getAdminBreadcrumbs(pathname).at(-2)?.href ?? null;
 }

@@ -1,15 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { FileSpreadsheet, Plus } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/features/admin/page-header";
 import { verifySchoolSession } from "@/features/school-auth/session";
 import { SchoolStudentsDrive } from "@/features/students/school-students-drive";
-import {
-  seatsForClass,
-  sectionIdsForClass,
-  studentsInClass,
-} from "@/features/students/school-roster";
+import { sectionIdsForClass, studentsInClass } from "@/features/students/school-roster";
 import { subjectsForSchoolClass } from "@/features/students/report-subjects";
 import { ClassProfilesPdfActions } from "@/features/students/student-pdf-actions";
 import { cn } from "@/lib/utils";
@@ -66,14 +62,8 @@ export default async function SchoolStudentsPage({
     inClass && classLevel != null
       ? studentsInClass(students, classLevel, section, { sectionIds })
       : [];
-  const seats =
-    inClass && classLevel != null ? seatsForClass(organization, classLevel, section) : 0;
-  // Badge = students on roster; seats usage stays in the description (one aligned line).
+  // Badge = students on roster; seat usage (used/seats) lives next to the table search.
   const headerCount = inClass ? roster.length : students.length;
-  const classDescription =
-    inClass && seats > 0
-      ? `${roster.length} of ${seats} seats used`
-      : description;
   const classSubjects =
     inClass && classLevel != null
       ? subjectsForSchoolClass(
@@ -87,7 +77,7 @@ export default async function SchoolStudentsPage({
     <>
       <PageHeader
         title={inClass ? title : undefined}
-        description={classDescription}
+        description={description}
         count={headerCount}
         actions={
           inClass ? (
@@ -111,7 +101,15 @@ export default async function SchoolStudentsPage({
                 Add students
               </Link>
             </div>
-          ) : undefined
+          ) : (
+            <Link
+              href="/school/students/import"
+              className={cn(buttonVariants({ size: "sm", variant: "outline" }), "h-8 gap-1.5 rounded-lg")}
+            >
+              <FileSpreadsheet className="size-4" />
+              Import all students
+            </Link>
+          )
         }
       />
       <SchoolStudentsDrive

@@ -15,3 +15,13 @@ export function isRollUnreadError(message: string) {
     /not bubble filled/i.test(message)
   );
 }
+
+/** Same registration as an earlier page — allow entering the correct one. */
+export function isDuplicateRollError(message: string) {
+  return /same registration number as page/i.test(message);
+}
+
+/** Show the enter-registration recovery panel for unread or duplicate rolls. */
+export function canRecoverRoll(message: string) {
+  return isRollUnreadError(message) || isDuplicateRollError(message);
+}

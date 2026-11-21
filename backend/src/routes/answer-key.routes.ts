@@ -3,8 +3,10 @@ import multer from "multer";
 import {
   checkAnswerKeyTestId,
   deleteAnswerKey,
+  ensureSchoolSectionKey,
   getAdminAnswerKeyPdf,
   getAnswerKey,
+  getAnswerKeyOmrStatus,
   getAnswerKeyStats,
   getPublicAnswerKey,
   getPublicAnswerKeyPdf,
@@ -15,8 +17,10 @@ import {
   listAnswerKeys,
   listPublicAnswerKeys,
   listSchoolAnswerKeys,
+  listSchoolSectionKeys,
   listSchoolTests,
   listTeacherAnswerKeys,
+  parseAnswerKeyPdf,
   saveAnswerKeyAnswers,
   setAnswerKeyPublished,
   setAnswerKeyTestId,
@@ -41,8 +45,10 @@ import { validate } from "../middleware/validate.js";
 import {
   answerKeyIdParamsSchema,
   checkTestIdQuerySchema,
+  ensureSchoolSectionKeySchema,
   listAnswerKeysQuerySchema,
   saveAnswerKeyAnswersSchema,
+  schoolSectionKeysQuerySchema,
   schoolTestsQuerySchema,
   setAnswerKeyTestIdSchema,
   updateAnswerKeyQuerySchema,
@@ -65,15 +71,32 @@ const readObjectionImage = multer({
   limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 10 },
 }).single("image");
 
+/** PDF for Import only — kept in memory, never written to storage. */
+const readImportPdf = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024, files: 1 },
+}).single("pdf");
+
 export const answerKeyRouter = Router();
 
 answerKeyRouter.use(requireAdmin);
 
 answerKeyRouter.get("/", validate(listAnswerKeysQuerySchema, "query"), listAnswerKeys);
 answerKeyRouter.post("/", validate(uploadAnswerKeyQuerySchema, "query"), uploadAnswerKey);
+answerKeyRouter.post("/parse-pdf", readImportPdf, parseAnswerKeyPdf);
 answerKeyRouter.get("/stats", getAnswerKeyStats);
 answerKeyRouter.get("/test-id/check", validate(checkTestIdQuerySchema, "query"), checkAnswerKeyTestId);
 answerKeyRouter.get("/school-tests", validate(schoolTestsQuerySchema, "query"), listSchoolTests);
+answerKeyRouter.get(
+  "/school-section-keys",
+  validate(schoolSectionKeysQuerySchema, "query"),
+  listSchoolSectionKeys,
+);
+answerKeyRouter.post(
+  "/school-section-keys",
+  validate(ensureSchoolSectionKeySchema),
+  ensureSchoolSectionKey,
+);
 answerKeyRouter.get(
   "/objections",
   validate(listAnswerKeyObjectionsQuerySchema, "query"),
@@ -89,6 +112,7 @@ answerKeyRouter.patch(
   resolveAdminObjection,
 );
 answerKeyRouter.get("/:id", validateId, getAnswerKey);
+answerKeyRouter.get("/:id/omr-status", validateId, getAnswerKeyOmrStatus);
 answerKeyRouter.get("/:id/pdf", validateId, getAdminAnswerKeyPdf);
 answerKeyRouter.patch(
   "/:id/test-id",

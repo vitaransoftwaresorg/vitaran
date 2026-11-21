@@ -44,7 +44,10 @@ export function AnswerKeyPdfActions({ basePath, id, disabled = false, className 
       </button>
       <a
         href={answerKeyPdfHref(basePath, id, true)}
-        className={cn(BUTTON, "bg-brand-900 text-white hover:bg-brand-800 active:scale-[0.98]")}
+        className={cn(
+          BUTTON,
+          "border border-brand-200 bg-transparent text-brand-900 hover:border-brand-900 hover:bg-brand-50 active:scale-[0.98]",
+        )}
       >
         <Download className="size-4" />
         PDF

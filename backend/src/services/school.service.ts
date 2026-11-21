@@ -25,6 +25,10 @@ import { hashPassword, verifyPassword } from "../utils/password.js";
 import { decryptSecret, encryptSecret } from "../utils/secret-box.js";
 import { sendSchoolCredentialsEmail } from "./mail.service.js";
 import { deleteObject, getObject, replaceObject } from "./object-storage.js";
+import {
+  realignSchoolRosterToOfferings,
+  type OfferingSnapshot,
+} from "./roster-lifecycle.js";
 
 const KIND = "schools" as const;
 
@@ -460,12 +464,31 @@ export async function updateSchool(
   const seal = password && (await passwordChanged(id, password));
   const schoolCode = code !== undefined ? await assertSchoolCodeAvailable(code, id) : undefined;
 
+  const previousOfferings: OfferingSnapshot[] | null = offerings
+    ? current.schoolPrograms.map((row) => ({
+        programId: row.programId,
+        programCode: row.program.code,
+        programName: row.program.name,
+        classLevels: row.classes.map((cls) => cls.classLevel),
+      }))
+    : null;
+
   const school = await schoolRepository.updateSchool(id, {
     ...input,
     ...(schoolCode !== undefined ? { code: schoolCode } : {}),
     ...(offerings ? { programs: offerings } : {}),
     ...(seal && password ? await sealPassword(password) : {}),
   });
+
+  if (previousOfferings && offerings) {
+    const nextOfferings: OfferingSnapshot[] = school.schoolPrograms.map((row) => ({
+      programId: row.programId,
+      programCode: row.program.code,
+      programName: row.program.name,
+      classLevels: row.classes.map((cls) => cls.classLevel),
+    }));
+    await realignSchoolRosterToOfferings(id, previousOfferings, nextOfferings);
+  }
 
   if (programs || customProgram) {
     await teacherRepository.pruneAssignmentsOutsideSchoolOfferings(id);

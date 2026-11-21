@@ -1,7 +1,7 @@
 import type { Prisma } from "../generated/prisma/client.js";
 import * as answerKeyRepository from "../repositories/answer-key.repository.js";
 import { recordOmrResult } from "../services/result.service.js";
-import { asAnswers, asSubjectRanges, type AnswerOption } from "../utils/answer-key-parse.js";
+import { asAnswers, asKeyTypeRanges, asSubjectRanges, type AnswerOption } from "../utils/answer-key-parse.js";
 import { notifyContentChanged } from "../utils/content-events.js";
 import { logger } from "../utils/logger.js";
 import { asRgba } from "../utils/omr-geometry.js";
@@ -13,21 +13,33 @@ import { scoreSheet, sheetFlags } from "./score.js";
 
 export type ScoringKey = Pick<
   answerKeyRepository.AnswerKeyDetail,
-  "answers" | "subjectRanges" | "correctMarks" | "wrongMarks"
+  "answers" | "subjectRanges" | "keyTypeRanges" | "correctMarks" | "wrongMarks"
 >;
 
 type Marked = Record<string, AnswerOption | AnswerOption[]>;
 
 /** Two keys with the same fingerprint give every sheet the same marks. */
 export function scoringFingerprint(key: ScoringKey) {
-  return JSON.stringify([asAnswers(key.answers), asSubjectRanges(key.subjectRanges), key.correctMarks, key.wrongMarks]);
+  return JSON.stringify([
+    asAnswers(key.answers),
+    asSubjectRanges(key.subjectRanges),
+    asKeyTypeRanges(key.keyTypeRanges),
+    key.correctMarks,
+    key.wrongMarks,
+  ]);
 }
 
 export function scoreWithKey(answers: Marked, key: ScoringKey) {
-  return scoreSheet(answers, key.answers, key.subjectRanges, {
-    correctMarks: key.correctMarks,
-    wrongMarks: key.wrongMarks,
-  });
+  return scoreSheet(
+    answers,
+    key.answers,
+    key.subjectRanges,
+    {
+      correctMarks: key.correctMarks,
+      wrongMarks: key.wrongMarks,
+    },
+    key.keyTypeRanges,
+  );
 }
 
 /** Green/red evaluated sheet for the given key, drawn on the straightened sheet. */
@@ -46,6 +58,11 @@ const rerun = new Set<string>();
  * Re-mark every saved sheet of this answer key in the background: marks, flags, the evaluated image
  * and the student's result row. Rank cards and class PDFs are built from the result rows.
  */
+/** True while saved OMR sheets are being re-marked for this answer key. */
+export function isRegradeRunningForKey(answerKeyId: string) {
+  return running.has(answerKeyId);
+}
+
 export function regradeScansForKey(answerKeyId: string) {
   if (running.has(answerKeyId)) {
     rerun.add(answerKeyId);

@@ -2,16 +2,12 @@
 
 import { verifySchoolSession } from "@/features/school-auth/session";
 import {
-  contentSlotsFromSchool,
   programCodesFromSlots,
+  resourceSlotsFromSchool,
 } from "@/features/schools/content-slots";
 import { verifyTeacherSession } from "@/features/teacher-auth/session";
 import type { Subject } from "@/types/school";
 import type { TeacherAssignment } from "@/types/teacher";
-import {
-  listSchoolClassOrganization,
-  listTeacherClassOrganization,
-} from "@/services/sections";
 import { portalProgramIds, regularCatalogIds } from "./portal-programs";
 
 export type PortalResourcesPayload = {
@@ -28,11 +24,24 @@ function namesFrom(
   return Object.fromEntries(rows.map((row) => [row.programCode, row.programName]));
 }
 
-/** School offerings ∩ created classes/sections, flattened for resources. */
+function payloadFromSlots(
+  slots: ReturnType<typeof resourceSlotsFromSchool>,
+  assignments: TeacherAssignment[],
+): PortalResourcesPayload {
+  const programCodes = programCodesFromSlots(slots);
+  return {
+    programIds: portalProgramIds(programCodes),
+    catalogIds: regularCatalogIds(programCodes),
+    programNames: namesFrom([...slots, ...assignments]),
+    subjectIds: [...new Set(assignments.map((row) => row.subject))],
+    assignments,
+  };
+}
+
+/** School Teachers Resources — one enrolled class on a program is enough to show it. */
 export async function loadSchoolPortalResourcesAction(): Promise<PortalResourcesPayload> {
   const school = await verifySchoolSession();
-  const organization = await listSchoolClassOrganization();
-  const slots = contentSlotsFromSchool(school.schoolPrograms, organization);
+  const slots = resourceSlotsFromSchool(school.schoolPrograms);
   const assignments: TeacherAssignment[] = slots.flatMap((slot) =>
     slot.subjects.map((subject) => ({
       programId: slot.programId,
@@ -42,21 +51,13 @@ export async function loadSchoolPortalResourcesAction(): Promise<PortalResources
       subject,
     })),
   );
-  const programCodes = programCodesFromSlots(slots);
-
-  return {
-    programIds: portalProgramIds(programCodes),
-    catalogIds: regularCatalogIds(programCodes),
-    programNames: namesFrom(slots),
-    subjectIds: [...new Set(assignments.map((row) => row.subject))],
-    assignments,
-  };
+  return payloadFromSlots(slots, assignments);
 }
 
+/** Teacher portal — enrolled school classes ∩ this teacher's assignments. */
 export async function loadTeacherPortalResourcesAction(): Promise<PortalResourcesPayload> {
   const teacher = await verifyTeacherSession();
-  const organization = await listTeacherClassOrganization();
-  const schoolSlots = contentSlotsFromSchool(teacher.school.schoolPrograms, organization);
+  const schoolSlots = resourceSlotsFromSchool(teacher.school.schoolPrograms);
   const teacherKeys = new Set(
     teacher.assignments.map((row) => `${row.programCode}:${row.classLevel}`),
   );
@@ -69,16 +70,5 @@ export async function loadTeacherPortalResourcesAction(): Promise<PortalResource
         slot.programCode === row.programCode && slot.classLevel === row.classLevel,
     ),
   );
-  const programCodes = programCodesFromSlots(slots);
-
-  return {
-    programIds: portalProgramIds(programCodes),
-    catalogIds: regularCatalogIds(programCodes),
-    programNames: namesFrom([
-      ...slots,
-      ...assignments,
-    ]),
-    subjectIds: [...new Set(assignments.map((row) => row.subject))],
-    assignments,
-  };
+  return payloadFromSlots(slots, assignments);
 }

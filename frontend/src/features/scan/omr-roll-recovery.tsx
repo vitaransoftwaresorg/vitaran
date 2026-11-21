@@ -7,7 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ScanPortal } from "@/services/scans";
 import { lookupOmrStudentByRollAction, type OmrStudentMatch } from "./omr-student-actions";
-import { isRollUnreadError, ROLL_LENGTH, rollInput } from "./roll-helpers";
+import {
+  canRecoverRoll,
+  isDuplicateRollError,
+  ROLL_LENGTH,
+  rollInput,
+} from "./roll-helpers";
 
 type OmrRollRecoveryProps = {
   portal: ScanPortal;
@@ -17,7 +22,7 @@ type OmrRollRecoveryProps = {
   onSaveWithRoll: (rollNo: string) => void | Promise<void>;
 };
 
-/** Manual registration when bubbles could not be read — compact: reg → name / class → save. */
+/** Manual registration when bubbles could not be read or a duplicate roll was found. */
 export function OmrRollRecovery({
   portal,
   message,
@@ -25,7 +30,8 @@ export function OmrRollRecovery({
   schoolId,
   onSaveWithRoll,
 }: OmrRollRecoveryProps) {
-  const unread = isRollUnreadError(message);
+  const recoverable = canRecoverRoll(message);
+  const duplicate = isDuplicateRollError(message);
   const [rollNo, setRollNo] = useState("");
   const [match, setMatch] = useState<OmrStudentMatch | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
@@ -66,7 +72,7 @@ export function OmrRollRecovery({
     };
   }, [rollNo, portal, schoolId]);
 
-  if (!unread) return null;
+  if (!recoverable) return null;
 
   const rollComplete = rollInput(rollNo).length === ROLL_LENGTH;
 
@@ -89,7 +95,11 @@ export function OmrRollRecovery({
 
   return (
     <div className="space-y-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-sm text-amber-950">
-      <p className="text-xs font-medium text-amber-900/90">Couldn’t read registration — enter it:</p>
+      <p className="text-xs font-medium text-amber-900/90">
+        {duplicate
+          ? "Duplicate registration — enter the correct one:"
+          : "Couldn’t read registration — enter it:"}
+      </p>
       <div className="flex gap-2">
         <Input
           id="omr-recovery-roll"

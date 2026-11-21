@@ -1,9 +1,11 @@
 import {
   asAnswers,
+  asKeyTypeRanges,
   asSubjectRanges,
   isBonusKey,
   keyOptions,
   markedList,
+  marksForQuestion,
   type AnswerOption,
   type KeyAnswer,
   type SubjectRange,
@@ -37,7 +39,7 @@ export type QuestionResult = "correct" | "wrong" | "partial" | "blank" | "unkeye
 
 export type QuestionScore = {
   result: QuestionResult;
-  /** Marks awarded for this question (never negative). */
+  /** Marks awarded for this question (may be negative when wrongMarks apply). */
   marks: number;
 };
 
@@ -47,32 +49,51 @@ export function roundMarks(value: number) {
   return Number(value.toFixed(3));
 }
 
+export type QuestionScoreOptions = {
+  /** normal = any correct option earns full marks; mcq = partial per option. */
+  mode?: "normal" | "mcq";
+  wrongMarks?: number;
+};
+
 /**
- * MCQ marks: each key option is worth an equal share of correctMarks.
- * Correctly marked options earn their share; wrong options earn 0 (no negative).
+ * Score one question.
+ * Normal: any marked option that is in the key → full correctMarks.
+ * MCQ: equal share of correctMarks per key option marked; any extra (wrong) option → 0.
  */
 export function questionScore(
   marked: AnswerOption | AnswerOption[] | string | undefined,
   expected: KeyAnswer | undefined,
   correctMarks: number,
+  options: QuestionScoreOptions = {},
 ): QuestionScore {
+  const mode = options.mode ?? "normal";
+  const wrongMarks = options.wrongMarks ?? 0;
+  // ADD: always award correct marks whether attempted or not.
+  if (isBonusKey(expected)) return { result: "correct", marks: correctMarks };
   const filled = markedList(marked);
   if (filled.length === 0) return { result: "blank", marks: 0 };
   if (!expected) return { result: "unkeyed", marks: 0 };
-  if (isBonusKey(expected)) return { result: "correct", marks: correctMarks };
 
   const wanted = keyOptions(expected);
   if (wanted.length === 0) return { result: "unkeyed", marks: 0 };
 
-  const perOption = correctMarks / wanted.length;
-  let earned = 0;
-  for (const option of filled) {
-    if (wanted.includes(option)) earned += perOption;
-  }
-  earned = roundMarks(Math.min(earned, correctMarks));
+  const wrongPenalty = wrongMarks > 0 ? -wrongMarks : 0;
 
+  if (mode === "normal") {
+    const hit = filled.some((option) => wanted.includes(option));
+    if (hit) return { result: "correct", marks: correctMarks };
+    return { result: "wrong", marks: wrongPenalty };
+  }
+
+  // MCQ: any option not in the key zeros the question (e.g. key A/B/C, marked A/B/D → 0).
+  const hasExtra = filled.some((option) => !wanted.includes(option));
+  if (hasExtra) return { result: "wrong", marks: 0 };
+
+  // Only correct options marked → partial credit per option, full if all key options marked.
+  const perOption = correctMarks / wanted.length;
+  const earned = roundMarks(Math.min(filled.length * perOption, correctMarks));
   const allWantedMarked = wanted.every((option) => filled.includes(option));
-  if (earned <= 0) return { result: "wrong", marks: 0 };
+  if (earned <= 0) return { result: "wrong", marks: wrongPenalty };
   if (allWantedMarked) return { result: "correct", marks: correctMarks };
   return { result: "partial", marks: earned };
 }
@@ -81,9 +102,10 @@ export function questionScore(
 export function questionResult(
   marked: AnswerOption | AnswerOption[] | string | undefined,
   expected: KeyAnswer | undefined,
+  mode: "normal" | "mcq" = "normal",
 ): QuestionResult {
   // correctMarks only scales marks; result kind is independent of the absolute value.
-  return questionScore(marked, expected, 1).result;
+  return questionScore(marked, expected, 1, { mode }).result;
 }
 
 /** A 75-question test ignores bubbles 76–100 on the 100-question sheet. */
@@ -106,34 +128,37 @@ export function scoreSheet(
   keyAnswers: unknown,
   rangesInput: unknown,
   marks: { correctMarks: number; wrongMarks: number },
+  keyTypeRangesInput: unknown = [],
 ): SheetScore {
   const key = asAnswers(keyAnswers);
   const ranges = asSubjectRanges(rangesInput);
+  const keyTypeRanges = asKeyTypeRanges(keyTypeRangesInput);
   const keyedLast = Math.max(0, ...Object.keys(key).map(Number).filter(Number.isFinite));
   const fallbackTo = keyedLast || 100;
   const bands: SubjectRange[] =
     ranges.length > 0 ? ranges : [{ subject: "TOTAL", from: 1, to: fallbackTo, maxMarks: fallbackTo * marks.correctMarks }];
-  const correctMarks = marks.correctMarks;
-  // wrongMarks ignored — wrong options carry 0, never negative.
   const subjectScores = bands.map((range) => {
     let correct = 0;
     let partial = 0;
     let wrong = 0;
     let blank = 0;
     let total = 0;
+    let maxTotal = 0;
     for (let question = range.from; question <= range.to; question += 1) {
+      const qMarks = marksForQuestion(keyTypeRanges, question, marks);
       const { result, marks: earned } = questionScore(
         marked[String(question)],
         key[String(question)],
-        correctMarks,
+        qMarks.correctMarks,
+        { mode: qMarks.type, wrongMarks: qMarks.wrongMarks },
       );
       total += earned;
+      maxTotal += qMarks.correctMarks;
       if (result === "blank") blank += 1;
       else if (result === "correct") correct += 1;
       else if (result === "partial") partial += 1;
       else if (result === "wrong") wrong += 1;
     }
-    const questions = range.to - range.from + 1;
     return {
       subject: range.subject,
       from: range.from,
@@ -143,7 +168,7 @@ export function scoreSheet(
       wrong,
       blank,
       total: roundMarks(total),
-      maxTotal: range.maxMarks || questions * correctMarks,
+      maxTotal: range.maxMarks || maxTotal,
     };
   });
 
@@ -151,6 +176,8 @@ export function scoreSheet(
   const last = Math.max(...bands.map((range) => range.to));
   const unattempted: number[] = [];
   for (let question = first; question <= last; question += 1) {
+    // ADD questions always score; never flag as un-attempted.
+    if (isBonusKey(key[String(question)])) continue;
     if (markedList(marked[String(question)]).length === 0) unattempted.push(question);
   }
 

@@ -1,8 +1,10 @@
 import type { RequestHandler } from "express";
 import type {
   CheckTestIdQuery,
+  EnsureSchoolSectionKeyInput,
   ListAnswerKeysQuery,
   SaveAnswerKeyAnswersInput,
+  SchoolSectionKeysQuery,
   SchoolTestsQuery,
   SetAnswerKeyTestIdInput,
   UpdateAnswerKeyQuery,
@@ -27,6 +29,21 @@ export const listSchoolTests: RequestHandler = async (req, res) => {
   sendSuccess(res, await answerKeyService.listSchoolTestsForResults(schoolId));
 };
 
+export const listSchoolSectionKeys: RequestHandler = async (req, res) => {
+  sendSuccess(
+    res,
+    await answerKeyService.listSchoolSectionKeyBoard(req.query as unknown as SchoolSectionKeysQuery),
+  );
+};
+
+export const ensureSchoolSectionKey: RequestHandler = async (req, res) => {
+  sendSuccess(
+    res,
+    await answerKeyService.ensureSchoolSectionKey(req.body as EnsureSchoolSectionKeyInput),
+    201,
+  );
+};
+
 export const checkAnswerKeyTestId: RequestHandler = async (req, res) => {
   const { testId, exceptId } = req.query as unknown as CheckTestIdQuery;
   sendSuccess(res, await answerKeyService.checkAnswerKeyTestId(testId, exceptId));
@@ -40,6 +57,10 @@ export const getAnswerKey: RequestHandler<IdParams> = async (req, res) => {
   sendSuccess(res, await answerKeyService.getAnswerKey(req.params.id));
 };
 
+export const getAnswerKeyOmrStatus: RequestHandler<IdParams> = async (req, res) => {
+  sendSuccess(res, await answerKeyService.getAnswerKeyOmrStatus(req.params.id));
+};
+
 export const getAdminAnswerKeyPdf: RequestHandler<IdParams> = async (req, res) => {
   sendPdf(res, await answerKeyService.getAdminAnswerKeyPdf(req.params.id));
 };
@@ -50,6 +71,11 @@ export const uploadAnswerKey: RequestHandler = async (req, res) => {
     await answerKeyService.uploadAnswerKey(req.query as unknown as UploadAnswerKeyQuery),
     201,
   );
+};
+
+/** Memory-only PDF parse for Import — does not store the file. */
+export const parseAnswerKeyPdf: RequestHandler = async (req, res) => {
+  sendSuccess(res, await answerKeyService.parseAnswerKeyPdfImport(req.file?.buffer ?? Buffer.alloc(0)));
 };
 
 export const updateAnswerKey: RequestHandler<IdParams> = async (req, res) => {

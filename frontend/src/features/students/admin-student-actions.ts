@@ -17,7 +17,12 @@ import type {
   CreateStudentInput,
   CreateStudentsBulkInput,
 } from "@/types/student";
-import type { BulkStudentFormState, StudentFormState } from "@/features/students/actions";
+import type {
+  BulkStudentFormState,
+  SchoolImportFormState,
+  SchoolImportGroupInput,
+  StudentFormState,
+} from "@/features/students/actions";
 
 const optionalStudentName = z.union([
   z.literal(""),
@@ -158,6 +163,132 @@ export async function createAdminStudentAction(
         submittedAt: Date.now(),
       };
     }
+    throw error;
+  }
+}
+
+/** Import many students across classes for one school — one bulk call per class/section group. */
+export async function importAdminStudentsAllAction(
+  schoolId: string,
+  input: {
+    groups: SchoolImportGroupInput[];
+    returnTo?: string;
+    stay?: boolean;
+  },
+): Promise<SchoolImportFormState> {
+  if (!input.groups.length) return { message: "Import at least one student" };
+
+  let total = 0;
+  const importRowErrors: Record<number, Record<string, string>> = {};
+
+  try {
+    for (const group of input.groups) {
+      if (!group.programId || group.classLevel == null) {
+        return { message: "Each student needs a class that is set up for this school" };
+      }
+
+      const validRows: BulkStudentRowInput[] = [];
+      const sourceByPayload: number[] = [];
+
+      for (const row of group.students) {
+        const blank =
+          !row.name.trim() &&
+          !row.rollNo.trim() &&
+          !(row.parentName ?? "").trim() &&
+          !(row.parentPhone ?? "").trim();
+        if (blank) continue;
+
+        const parsed = bulkRowSchema.safeParse({
+          ...row,
+          email: "",
+          parentPhone: String(row.parentPhone ?? "").replace(/\D/g, "").slice(0, 10),
+        });
+        if (!parsed.success) {
+          const flat = z.flattenError(parsed.error).fieldErrors;
+          importRowErrors[row.sourceIndex] = Object.fromEntries(
+            Object.entries(flat).map(([key, value]) => [key, value?.[0] ?? "Invalid"]),
+          );
+          continue;
+        }
+        sourceByPayload.push(row.sourceIndex);
+        validRows.push({
+          name: parsed.data.name,
+          rollNo: parsed.data.rollNo,
+          email: null,
+          parentName: parsed.data.parentName || null,
+          parentPhone: parsed.data.parentPhone || null,
+          sectionId: parsed.data.sectionId || row.sectionId || null,
+        });
+      }
+
+      if (Object.keys(importRowErrors).length > 0) {
+        return { message: "Fix the highlighted rows", importRowErrors };
+      }
+      if (validRows.length === 0) continue;
+
+      for (let offset = 0; offset < validRows.length; offset += 300) {
+        const chunk = validRows.slice(offset, offset + 300);
+        const chunkSources = sourceByPayload.slice(offset, offset + 300);
+        try {
+          const result = await createAdminSchoolStudentsBulk(schoolId, {
+            programId: group.programId,
+            classLevel: group.classLevel,
+            sectionId: group.sectionId ?? null,
+            students: chunk,
+          });
+          total += result.count;
+        } catch (error) {
+          unstable_rethrow(error);
+          if (error instanceof ApiError) {
+            if (Array.isArray(error.details)) {
+              for (const item of error.details) {
+                if (
+                  item &&
+                  typeof item === "object" &&
+                  "path" in item &&
+                  "message" in item &&
+                  Array.isArray((item as { path: unknown }).path)
+                ) {
+                  const path = (item as { path: string[]; message: string }).path;
+                  if (path[0] === "students" && path[1] != null && path[2]) {
+                    const sourceIndex = chunkSources[Number(path[1])];
+                    if (sourceIndex != null) {
+                      importRowErrors[sourceIndex] = {
+                        ...(importRowErrors[sourceIndex] ?? {}),
+                        [path[2]]: (item as { message: string }).message,
+                      };
+                    }
+                  }
+                }
+              }
+            }
+            return {
+              message:
+                Object.keys(importRowErrors).length > 0
+                  ? total > 0
+                    ? `Saved ${total} student${total === 1 ? "" : "s"}, then hit an error — fix the highlighted rows`
+                    : "Fix the highlighted rows"
+                  : total > 0
+                    ? `Saved ${total} student${total === 1 ? "" : "s"}, then: ${error.message}`
+                    : error.message,
+              importRowErrors:
+                Object.keys(importRowErrors).length > 0 ? importRowErrors : undefined,
+              count: total || undefined,
+            };
+          }
+          throw error;
+        }
+      }
+    }
+
+    revalidateAdminStudentPaths(schoolId);
+    if (total === 0) return { message: "Enter at least one student" };
+    if (input.stay) return { success: true, count: total };
+    redirect(
+      input.returnTo?.trim() || `/admin/schools/students?school=${schoolId}`,
+    );
+  } catch (error) {
+    unstable_rethrow(error);
     throw error;
   }
 }

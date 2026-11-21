@@ -71,7 +71,10 @@ function subjectsOf(data: AnswerKeyPdfData): SubjectRange[] {
 const keyOptions = (answer: KeyAnswer | undefined) =>
   !answer || answer === "ADD" ? [] : (answer.split("/") as string[]);
 
-/** Match the portal AnswerKeyOptionsTable (9 columns, column-major). */
+/**
+ * Match the portal AnswerKeyOptionsTable (9 columns, column-major).
+ * Row reads: 1, 13, 25, 37, … for a 100-question paper.
+ */
 const TABLE_COLUMNS = 9;
 
 export async function renderAnswerKeyPdf(data: AnswerKeyPdfData, logos: AnswerKeyPdfLogos) {

@@ -4,8 +4,14 @@ import { revalidatePath } from "next/cache";
 import { SCHOOL_BASE_PATH, TEACHER_BASE_PATH } from "@/constants/auth";
 import { deleteDocument, publishDocument, saveDocument } from "@/features/documents/save";
 import * as answerKeyService from "@/services/answer-keys";
-import type { SubjectRange, TestIdAvailability } from "@/types/answer-key";
-import { ANSWER_KEY_NOUN, ANSWER_KEYS_PATH } from "./constants";
+import type {
+  AnswerKeyOmrStatus,
+  KeyTypeRange,
+  ParsedAnswerKeyImport,
+  SubjectRange,
+  TestIdAvailability,
+} from "@/types/answer-key";
+import { ANSWER_KEY_NOUN, ANSWER_KEYS_PATH, SCHOOL_KEYS_PATH } from "./constants";
 import {
   ANSWER_KEY_FIELDS,
   getAnswerKeySchema,
@@ -15,6 +21,7 @@ import {
 
 function revalidateAnswerKeyViews() {
   revalidatePath(ANSWER_KEYS_PATH);
+  revalidatePath(SCHOOL_KEYS_PATH);
   revalidatePath(`${SCHOOL_BASE_PATH}/answer-keys`);
   revalidatePath(`${TEACHER_BASE_PATH}/answer-keys`);
 }
@@ -82,6 +89,21 @@ export async function createAnswerKeyAction(input: {
   }
 }
 
+export async function ensureSchoolSectionKeyAction(input: {
+  platformKeyId: string;
+  schoolId: string;
+  sectionId?: string | null;
+}): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
+  try {
+    const created = await answerKeyService.ensureSchoolSectionKey(input);
+    revalidateAnswerKeyViews();
+    return { ok: true, id: created.id };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Could not create this school key.";
+    return { ok: false, message };
+  }
+}
+
 export async function checkAnswerKeyTestIdAction(
   testId: string,
   exceptId?: string,
@@ -90,6 +112,19 @@ export async function checkAnswerKeyTestIdAction(
     return { ok: true, ...(await answerKeyService.checkAnswerKeyTestId(testId, exceptId)) };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Could not check this test ID." };
+  }
+}
+
+export async function getAnswerKeyOmrStatusAction(
+  id: string,
+): Promise<({ ok: true } & AnswerKeyOmrStatus) | { ok: false; message: string }> {
+  try {
+    return { ok: true, ...(await answerKeyService.getAnswerKeyOmrStatus(id)) };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Could not check OMR status.",
+    };
   }
 }
 
@@ -126,6 +161,7 @@ export async function saveAnswerKeyAnswersAction(
     explanations: Record<string, string>;
     printedAnswers?: Record<string, string>;
     subjectRanges: SubjectRange[];
+    keyTypeRanges?: KeyTypeRange[];
     testId?: string;
     correctMarks: number;
     wrongMarks: number;
@@ -134,6 +170,25 @@ export async function saveAnswerKeyAnswersAction(
   const result = await answerKeyService.saveAnswerKeyAnswers(id, input);
   revalidateAnswerKeyViews();
   return result;
+}
+
+/** Parse a PDF for Import — answers only; nothing is saved until the editor Save. */
+export async function parseAnswerKeyPdfAction(
+  formData: FormData,
+): Promise<{ ok: true; data: ParsedAnswerKeyImport } | { ok: false; message: string }> {
+  const file = formData.get("pdf");
+  if (!(file instanceof File) || file.size === 0) {
+    return { ok: false, message: "Choose a PDF answer key to import" };
+  }
+  try {
+    const data = await answerKeyService.parseAnswerKeyPdf(file);
+    return { ok: true, data };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Could not read answers from this PDF",
+    };
+  }
 }
 
 export async function deleteAnswerKeyAction(id: string) {

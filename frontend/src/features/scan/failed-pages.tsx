@@ -11,7 +11,7 @@ import { getScanBatch, setScanBatch, type PdfFailure } from "./batch-store";
 import { asJpegFile } from "./camera";
 import { OmrRollRecovery } from "./omr-roll-recovery";
 import { fetchFailedPageImage, resolvePdfFailure } from "./pdf-batch";
-import { isRollUnreadError, ROLL_LENGTH, rollInput } from "./roll-helpers";
+import { canRecoverRoll, ROLL_LENGTH, rollInput } from "./roll-helpers";
 
 /** Failed PDF pages: look at what the reader saw, then photograph the paper sheet again. */
 export function FailedPages({
@@ -110,7 +110,7 @@ export function FailedPages({
   return (
     <details className="text-xs text-red-700" open>
       <summary className="cursor-pointer font-medium">
-        Pages that could not be read ({failures.length}) — view them or scan the paper sheet again
+        Pages that need attention ({failures.length}) — enter registration or scan again
       </summary>
       <input
         ref={inputRef}
@@ -126,14 +126,14 @@ export function FailedPages({
       />
       <ul className="mt-2 max-h-96 divide-y divide-red-100 overflow-y-auto rounded-lg border border-red-100 bg-red-50/40">
         {failures.map((failure) => {
-          const unreadRoll = isRollUnreadError(failure.message);
+          const recoverRoll = canRecoverRoll(failure.message);
           const busy = rescanning === failure.page || savingPage === failure.page;
           return (
             <li key={failure.page} className="space-y-2 px-3 py-2">
               <div className="flex items-center gap-2">
                 <p className="min-w-0 flex-1">
                   <span className="font-semibold">Page {failure.page}</span>
-                  {!unreadRoll ? <span className="text-red-600"> · {failure.message}</span> : null}
+                  <span className="text-red-600"> · {failure.message}</span>
                 </p>
                 {failure.hasImage ? (
                   <Button
@@ -162,7 +162,7 @@ export function FailedPages({
                   {rescanning === failure.page ? "Reading…" : "Scan again"}
                 </Button>
               </div>
-              {unreadRoll ? (
+              {recoverRoll && failure.hasImage ? (
                 <OmrRollRecovery
                   portal={portal}
                   message={failure.message}

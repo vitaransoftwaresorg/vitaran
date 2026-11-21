@@ -391,7 +391,9 @@ function answerTone(marked: Array<"A" | "B" | "C" | "D">, expected?: string): An
   if (expected === "ADD") return "correct";
   const wanted = expected.split("/").filter((part) => part === "A" || part === "B" || part === "C" || part === "D");
   if (wanted.length === 0) return "plain";
-  // Equal share per key option; wrong options add 0 and do not cancel correct ones.
+  // MCQ-style: any option not in the key zeros the question; else partial per hit.
+  const hasExtra = marked.some((option) => !wanted.includes(option));
+  if (hasExtra) return "wrong";
   const hit = wanted.filter((option) => marked.includes(option)).length;
   if (hit === wanted.length) return "correct";
   if (hit > 0 && wanted.length > 1) return "partial";
@@ -425,7 +427,7 @@ function AnswerGrid({
         <p className="text-sm font-bold text-brand-950">Read vs answer key</p>
         <p className="text-xs text-neutral-500">
           {showPartial
-            ? "Green = correct, yellow = partial, red = wrong, amber = blank. Multi-correct keys split marks equally per option."
+            ? "Green = correct, yellow = partial, red = wrong, amber = blank. Partial only if every mark is a key option; any extra option = 0."
             : "Green = correct, red = wrong, amber = blank."}
         </p>
       </header>

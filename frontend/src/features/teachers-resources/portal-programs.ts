@@ -17,24 +17,45 @@ const CATALOG_PREFERENCE = [
 
 export type PortalProgram = ProgramContent;
 
+/**
+ * Newer regular catalog codes that reuse solution books / labels from a classic program.
+ * DB may enrol NEWINTEGRATED while Teachers Resources still ships Integrated PDFs.
+ */
+const CATALOG_BOOK_ALIASES: Record<string, string> = {
+  NEWADVANCED: "ADVANCED",
+  NEWINTEGRATED: "INTEGRATED",
+};
+
+export function catalogSourceId(code: string) {
+  return CATALOG_BOOK_ALIASES[code] ?? code;
+}
+
 export function isRegularCatalog(code: string) {
-  return programs.some((program) => program.id === code);
+  return programs.some((program) => program.id === catalogSourceId(code));
 }
 
-/** Regular programs a customized school actually selected (source of question papers). */
+/** Regular programs selected for solution-book sources (aliases resolve to classic codes). */
 export function regularCatalogIds(programCodes: string[]) {
-  return programCodes.filter(isRegularCatalog);
+  return [
+    ...new Set(
+      programCodes
+        .map(catalogSourceId)
+        .filter((code) => programs.some((program) => program.id === code)),
+    ),
+  ];
 }
 
-/** Customized catalog codes — the school's own program. */
+/** Customized / non-classic catalog codes — the school's own program tabs. */
 export function customProgramIds(programCodes: string[]) {
-  return programCodes.filter((code) => !isRegularCatalog(code));
+  return programCodes.filter((code) => !programs.some((program) => program.id === code));
 }
 
-/** Customized schools see their own program; regular schools keep the catalog tabs. */
+/**
+ * Every enrolled program the portal should show as a tab.
+ * Do not drop classic codes (ADVANCED) when NEW* codes are also present.
+ */
 export function portalProgramIds(programCodes: string[]) {
-  const custom = customProgramIds(programCodes);
-  return custom.length > 0 ? custom : programCodes;
+  return [...new Set(programCodes)];
 }
 
 /** Regular catalog tabs first, then customized programs the school actually has. */
@@ -103,6 +124,10 @@ export function booksForPortalProgram(
   catalogIds?: string[],
 ) {
   if (books[program.title]) return books[program.title] ?? [];
+
+  // NEWADVANCED / NEWINTEGRATED → classic Advanced / Integrated PDFs.
+  const aliased = programs.find((row) => row.id === catalogSourceId(program.id));
+  if (aliased && books[aliased.title]?.length) return books[aliased.title] ?? [];
 
   const enrolledTitles = titlesForCatalogs(catalogIds ?? []);
   const titles =

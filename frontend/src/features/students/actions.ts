@@ -181,6 +181,159 @@ export async function createStudentAction(
   }
 }
 
+export type SchoolImportStudentInput = BulkStudentRowInput & {
+  /** Excel / preview row index for error mapping. */
+  sourceIndex: number;
+};
+
+export type SchoolImportGroupInput = {
+  programId: string;
+  classLevel: number;
+  sectionId?: string | null;
+  students: SchoolImportStudentInput[];
+};
+
+export type SchoolImportFormState = BulkStudentFormState & {
+  /** Global Excel row index → field errors (school-wide import). */
+  importRowErrors?: Record<number, Record<string, string>>;
+};
+
+function validateImportGroupStudents(students: SchoolImportStudentInput[]) {
+  const importRowErrors: Record<number, Record<string, string>> = {};
+  const validRows: BulkStudentRowInput[] = [];
+  const sourceByPayload: number[] = [];
+
+  for (const row of students) {
+    const blank =
+      !row.name.trim() &&
+      !row.rollNo.trim() &&
+      !(row.parentName ?? "").trim() &&
+      !(row.parentPhone ?? "").trim();
+    if (blank) continue;
+
+    const parsed = bulkRowSchema.safeParse({
+      ...row,
+      email: "",
+      parentPhone: String(row.parentPhone ?? "").replace(/\D/g, "").slice(0, 10),
+    });
+    if (!parsed.success) {
+      const flat = z.flattenError(parsed.error).fieldErrors;
+      importRowErrors[row.sourceIndex] = Object.fromEntries(
+        Object.entries(flat).map(([key, value]) => [key, value?.[0] ?? "Invalid"]),
+      );
+      continue;
+    }
+    sourceByPayload.push(row.sourceIndex);
+    validRows.push({
+      name: parsed.data.name,
+      rollNo: parsed.data.rollNo,
+      email: null,
+      parentName: parsed.data.parentName || null,
+      parentPhone: parsed.data.parentPhone || null,
+      sectionId: parsed.data.sectionId || row.sectionId || null,
+    });
+  }
+
+  return { importRowErrors, validRows, sourceByPayload };
+}
+
+function mapApiStudentErrors(
+  error: ApiError,
+  sourceByPayload: number[],
+  into: Record<number, Record<string, string>>,
+) {
+  if (!Array.isArray(error.details)) return;
+  for (const item of error.details) {
+    if (
+      !item ||
+      typeof item !== "object" ||
+      !("path" in item) ||
+      !("message" in item) ||
+      !Array.isArray((item as { path: unknown }).path)
+    ) {
+      continue;
+    }
+    const path = (item as { path: string[]; message: string }).path;
+    if (path[0] !== "students" || path[1] == null || !path[2]) continue;
+    const sourceIndex = sourceByPayload[Number(path[1])];
+    if (sourceIndex == null) continue;
+    into[sourceIndex] = {
+      ...(into[sourceIndex] ?? {}),
+      [path[2]]: (item as { message: string }).message,
+    };
+  }
+}
+
+/** Import many students across classes — one bulk call per class/section group. */
+export async function importSchoolStudentsAllAction(input: {
+  groups: SchoolImportGroupInput[];
+  returnTo?: string;
+  stay?: boolean;
+}): Promise<SchoolImportFormState> {
+  if (!input.groups.length) return { message: "Import at least one student" };
+
+  let total = 0;
+  const importRowErrors: Record<number, Record<string, string>> = {};
+
+  try {
+    for (const group of input.groups) {
+      if (!group.programId || group.classLevel == null) {
+        return { message: "Each student needs a class that is set up for this school" };
+      }
+
+      const validated = validateImportGroupStudents(group.students);
+      Object.assign(importRowErrors, validated.importRowErrors);
+      if (Object.keys(validated.importRowErrors).length > 0) {
+        return { message: "Fix the highlighted rows", importRowErrors };
+      }
+      if (validated.validRows.length === 0) continue;
+
+      // API max is 300 per request — chunk large class groups.
+      for (let offset = 0; offset < validated.validRows.length; offset += 300) {
+        const chunk = validated.validRows.slice(offset, offset + 300);
+        const chunkSources = validated.sourceByPayload.slice(offset, offset + 300);
+        try {
+          const result = await createSchoolStudentsBulk({
+            programId: group.programId,
+            classLevel: group.classLevel,
+            sectionId: group.sectionId ?? null,
+            students: chunk,
+          });
+          total += result.count;
+        } catch (error) {
+          unstable_rethrow(error);
+          if (error instanceof ApiError) {
+            mapApiStudentErrors(error, chunkSources, importRowErrors);
+            return {
+              message:
+                Object.keys(importRowErrors).length > 0
+                  ? total > 0
+                    ? `Saved ${total} student${total === 1 ? "" : "s"}, then hit an error — fix the highlighted rows`
+                    : "Fix the highlighted rows"
+                  : total > 0
+                    ? `Saved ${total} student${total === 1 ? "" : "s"}, then: ${error.message}`
+                    : error.message,
+              importRowErrors:
+                Object.keys(importRowErrors).length > 0 ? importRowErrors : undefined,
+              count: total || undefined,
+            };
+          }
+          throw error;
+        }
+      }
+    }
+
+    revalidatePath("/school/classes");
+    revalidatePath("/school/students");
+    if (total === 0) return { message: "Enter at least one student" };
+    if (input.stay) return { success: true, count: total };
+    redirect(input.returnTo?.trim() || "/school/students");
+  } catch (error) {
+    unstable_rethrow(error);
+    throw error;
+  }
+}
+
 export async function createSchoolStudentsBulkAction(input: {
   programId: string;
   classLevel: number;

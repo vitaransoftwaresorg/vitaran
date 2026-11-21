@@ -28,6 +28,8 @@ type StudentsTableProps = {
   /** School portal in-page: detail at `${baseHref}/${id}` */
   baseHref?: string;
   showSchool?: boolean;
+  /** Planned seat capacity — shown as used/seats next to the search. */
+  seats?: number;
   /** Subject labels for the Reports → Subjects menu (shared across the roster when set). */
   subjects?: string[];
   onView?: (id: string) => void;
@@ -41,6 +43,7 @@ export function StudentsTable({
   mode = "school",
   baseHref,
   showSchool = false,
+  seats,
   subjects,
   onView,
   onEdit,
@@ -95,12 +98,21 @@ export function StudentsTable({
   return (
     <div className="overflow-hidden rounded-xl border border-brand-200 bg-white shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-100 bg-brand-50/40 px-3 py-2.5 sm:px-4">
-        <p className="text-xs font-medium text-neutral-500 tabular-nums">
-          {filtered.length === students.length
-            ? `${students.length} student${students.length === 1 ? "" : "s"}`
-            : `${filtered.length} of ${students.length} students`}
+        <p className="min-w-0 shrink-0 text-xs font-medium text-neutral-500 tabular-nums">
+          {seats != null && seats > 0
+            ? filtered.length === students.length
+              ? `${students.length}/${seats}`
+              : `${filtered.length} of ${students.length}/${seats}`
+            : filtered.length === students.length
+              ? `${students.length} student${students.length === 1 ? "" : "s"}`
+              : `${filtered.length} of ${students.length} students`}
         </p>
-        <TableSearch value={query} onChange={setQuery} placeholder="Search students" />
+        <TableSearch
+          value={query}
+          onChange={setQuery}
+          placeholder="Search students"
+          className="min-w-0 flex-1 sm:flex-none"
+        />
       </div>
       {filtered.length === 0 ? (
         <p className="px-4 py-8 text-center text-sm text-neutral-500">No matching students.</p>

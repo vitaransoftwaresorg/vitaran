@@ -334,7 +334,13 @@ export function BulkStudentForm({
   async function downloadTemplate() {
     setTemplateBusy(true);
     try {
-      await downloadStudentsTemplate();
+      await downloadStudentsTemplate({
+        includeSection: perRowSection,
+        scopeLabel: placementReady ? placementLabel : undefined,
+        fileName: placementReady
+          ? `students-${placementLabel.replace(/\s+/g, "-").toLowerCase()}.xlsx`
+          : undefined,
+      });
     } catch {
       setState({ message: "Could not create the template. Try again." });
     } finally {

@@ -36,6 +36,24 @@ export function contentSlotsFromSchool(
   );
 }
 
+/**
+ * Teachers Resources: any program with at least one enrolled class.
+ * Uses Programs & classes only — does not require Classes & sections yet.
+ */
+export function resourceSlotsFromSchool(
+  schoolPrograms: SchoolProgramOffering[],
+): ContentSlot[] {
+  return schoolPrograms.flatMap((program) =>
+    program.classes.map((cls) => ({
+      programId: program.programId,
+      programCode: program.programCode,
+      programName: program.programName,
+      classLevel: cls.classLevel,
+      subjects: cls.subjects,
+    })),
+  );
+}
+
 export function programCodesFromSlots(slots: ContentSlot[]) {
   return [...new Set(slots.map((slot) => slot.programCode))];
 }

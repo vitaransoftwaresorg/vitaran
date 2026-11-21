@@ -36,6 +36,22 @@ export const schoolTestsQuerySchema = z.object({
   schoolId: z.uuid(),
 });
 
+export const schoolSectionKeysQuerySchema = z
+  .object({
+    schoolId: z.uuid(),
+    sectionId: z.uuid().optional(),
+    classLevel: z.coerce.number().int().min(1).max(12).optional(),
+  })
+  .refine((value) => Boolean(value.sectionId || value.classLevel), {
+    message: "Select a section or class",
+  });
+
+export const ensureSchoolSectionKeySchema = z.object({
+  platformKeyId: z.uuid(),
+  schoolId: z.uuid(),
+  sectionId: z.uuid().optional().nullable(),
+});
+
 export const answerKeyIdParamsSchema = z.object({
   id: z.uuid(),
 });
@@ -61,6 +77,23 @@ export const saveAnswerKeyAnswersSchema = z.object({
       }),
     )
     .default([]),
+  /** Question ranges with a key type. Omitted questions stay normal. */
+  keyTypeRanges: z
+    .array(
+      z
+        .object({
+          from: z.number().int().min(1).max(200),
+          to: z.number().int().min(1).max(200),
+          type: z.enum(["normal", "mcq"]),
+          correctMarks: z.coerce.number().int().min(0).max(100),
+          wrongMarks: z.coerce.number().int().min(0).max(100),
+        })
+        .refine((row) => row.to >= row.from, {
+          message: "To must be greater than or equal to From",
+          path: ["to"],
+        }),
+    )
+    .default([]),
   testId: testIdField.optional(),
   correctMarks: z.coerce.number().int().min(0).max(100).default(1),
   wrongMarks: z.coerce.number().int().min(0).max(100).default(0),
@@ -78,6 +111,8 @@ export const checkTestIdQuerySchema = z.object({
 
 export type UploadAnswerKeyQuery = z.infer<typeof uploadAnswerKeyQuerySchema>;
 export type UpdateAnswerKeyQuery = z.infer<typeof updateAnswerKeyQuerySchema>;
+export type SchoolSectionKeysQuery = z.infer<typeof schoolSectionKeysQuerySchema>;
+export type EnsureSchoolSectionKeyInput = z.infer<typeof ensureSchoolSectionKeySchema>;
 export type ListAnswerKeysQuery = z.infer<typeof listAnswerKeysQuerySchema>;
 export type SchoolTestsQuery = z.infer<typeof schoolTestsQuerySchema>;
 export type SaveAnswerKeyAnswersInput = z.infer<typeof saveAnswerKeyAnswersSchema>;

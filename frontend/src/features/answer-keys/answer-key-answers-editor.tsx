@@ -1,23 +1,28 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { AlertCircle, Loader2, Minus, Plus, Save } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { AlertCircle, Download, FileSpreadsheet, Loader2, Minus, Plus, Save, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { subjectLabel } from "@/features/schools/constants";
 import { cn } from "@/lib/utils";
-import type { AnswerKeyDetail, AnswerOption, KeyAnswer, SubjectRange } from "@/types/answer-key";
-import { isBonusKey, isMultiKey, joinKeyOptions, keyOptions } from "@/types/answer-key";
-import { saveAnswerKeyAnswersAction } from "./actions";
+import type { AnswerKeyDetail, AnswerOption, KeyAnswer, KeyTypeRange, SubjectRange } from "@/types/answer-key";
+import {
+  isBonusKey,
+  joinKeyOptions,
+  keyOptions,
+  marksForQuestion,
+  normalizeKeyTypeRanges,
+} from "@/types/answer-key";
+import {
+  getAnswerKeyOmrStatusAction,
+  parseAnswerKeyPdfAction,
+  saveAnswerKeyAnswersAction,
+} from "./actions";
+import { AnswerKeyConfigDialog } from "./answer-key-config-dialog";
+import { downloadAnswerKeyTemplate, readAnswerKeyExcel } from "./answer-key-excel";
 import { AnswerKeyOptionsTable } from "./answer-key-options-table";
 import { AnswerKeyPdfActions } from "./answer-key-pdf-actions";
 import { ANSWER_KEYS_PATH } from "./constants";
@@ -28,85 +33,6 @@ const OPTIONS: AnswerOption[] = ["A", "B", "C", "D"];
 const DEFAULT_CORRECT_MARKS = 1;
 const MAX_SUBJECT_QUESTIONS = 100;
 const MAX_MARK_VALUE = 100;
-
-type QuestionMode = "non_mcq" | "mcq";
-
-const MODE_ITEMS = [
-  { value: "non_mcq", label: "Non MCQ" },
-  { value: "mcq", label: "MCQ" },
-] as const;
-
-function inferQuestionMode(answers: Record<string, KeyAnswer>): QuestionMode | "" {
-  const values = Object.values(answers);
-  if (values.length === 0) return "";
-  return values.some(isMultiKey) ? "mcq" : "non_mcq";
-}
-
-type AnswerKeyAnswersEditorProps = {
-  answerKey: AnswerKeyDetail;
-  /** Program · Test · Class, shown on the same row as Save. */
-  heading?: string;
-  /** School / teacher: look, don't edit. */
-  readOnly?: boolean;
-};
-
-function questionsIn(range: SubjectRange) {
-  return Array.from({ length: Math.max(0, range.to - range.from + 1) }, (_, index) => range.from + index);
-}
-
-function countOf(range: SubjectRange) {
-  return Math.max(0, range.to - range.from + 1);
-}
-
-function snapshot(
-  answers: Record<string, KeyAnswer>,
-  explanations: Record<string, string>,
-  ranges: SubjectRange[],
-  testId: string,
-  correctMarks: number,
-  wrongMarks: number,
-) {
-  return JSON.stringify({ answers, explanations, ranges, testId, correctMarks, wrongMarks });
-}
-
-function rangesFromCounts(
-  rows: Array<{ subject: string; count: number }>,
-  correctMarks: number,
-): SubjectRange[] {
-  let from = 1;
-  return rows
-    .filter((row) => row.count > 0)
-    .map((row) => {
-      const to = from + row.count - 1;
-      const range = { subject: row.subject, from, to, maxMarks: row.count * correctMarks };
-      from = to + 1;
-      return range;
-    });
-}
-
-function remapBySubject<T>(
-  previous: Record<string, T>,
-  fromRanges: SubjectRange[],
-  toRanges: SubjectRange[],
-) {
-  const next: Record<string, T> = {};
-  for (const oldRange of fromRanges) {
-    const newRange = toRanges.find((range) => range.subject === oldRange.subject);
-    if (!newRange) continue;
-    const oldQuestions = questionsIn(oldRange);
-    const newQuestions = questionsIn(newRange);
-    oldQuestions.forEach((oldQuestion, index) => {
-      const value = previous[String(oldQuestion)];
-      if (value === undefined || index >= newQuestions.length) return;
-      next[String(newQuestions[index]!)] = value;
-    });
-  }
-  return next;
-}
-
-const FALLBACK_RANGES: SubjectRange[] = [
-  { subject: "MATHEMATICS", from: 1, to: 100, maxMarks: 400 },
-];
 
 function clampMark(value: number) {
   return Math.min(MAX_MARK_VALUE, Math.max(0, value));
@@ -159,20 +85,99 @@ function MarksStepper({
   );
 }
 
+type AnswerKeyAnswersEditorProps = {
+  answerKey: AnswerKeyDetail;
+  /** Program · Test · Class, shown on the same row as Save. */
+  heading?: string;
+  /** School / teacher: look, don't edit. */
+  readOnly?: boolean;
+};
+
+function questionsIn(range: SubjectRange) {
+  return Array.from({ length: Math.max(0, range.to - range.from + 1) }, (_, index) => range.from + index);
+}
+
+function countOf(range: SubjectRange) {
+  return Math.max(0, range.to - range.from + 1);
+}
+
+function snapshot(
+  answers: Record<string, KeyAnswer>,
+  explanations: Record<string, string>,
+  ranges: SubjectRange[],
+  keyTypeRanges: KeyTypeRange[],
+  testId: string,
+  correctMarks: number,
+  wrongMarks: number,
+) {
+  return JSON.stringify({
+    answers,
+    explanations,
+    ranges,
+    keyTypeRanges,
+    testId,
+    correctMarks,
+    wrongMarks,
+  });
+}
+
+function rangesFromCounts(
+  rows: Array<{ subject: string; count: number }>,
+  correctMarks: number,
+): SubjectRange[] {
+  let from = 1;
+  return rows
+    .filter((row) => row.count > 0)
+    .map((row) => {
+      const to = from + row.count - 1;
+      const range = { subject: row.subject, from, to, maxMarks: row.count * correctMarks };
+      from = to + 1;
+      return range;
+    });
+}
+
+function remapBySubject<T>(
+  previous: Record<string, T>,
+  fromRanges: SubjectRange[],
+  toRanges: SubjectRange[],
+) {
+  const next: Record<string, T> = {};
+  for (const oldRange of fromRanges) {
+    const newRange = toRanges.find((range) => range.subject === oldRange.subject);
+    if (!newRange) continue;
+    const oldQuestions = questionsIn(oldRange);
+    const newQuestions = questionsIn(newRange);
+    oldQuestions.forEach((oldQuestion, index) => {
+      const value = previous[String(oldQuestion)];
+      if (value === undefined || index >= newQuestions.length) return;
+      next[String(newQuestions[index]!)] = value;
+    });
+  }
+  return next;
+}
+
+const FALLBACK_RANGES: SubjectRange[] = [
+  { subject: "MATHEMATICS", from: 1, to: 100, maxMarks: 400 },
+];
+
 export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }: AnswerKeyAnswersEditorProps) {
   const [saving, startSaving] = useTransition();
   const initialRanges =
     answerKey.subjectRanges.length > 0 ? answerKey.subjectRanges : FALLBACK_RANGES;
   const [answers, setAnswers] = useState<Record<string, KeyAnswer>>(() => answerKey.answers);
   const [explanations, setExplanations] = useState<Record<string, string>>(() => answerKey.explanations);
-  const [questionMode, setQuestionMode] = useState<QuestionMode | "">(() =>
-    inferQuestionMode(answerKey.answers),
-  );
-  const [testId, setTestId] = useState(() => enteredTestId(answerKey.testId));
   const [correctMarks, setCorrectMarks] = useState(
     () => answerKey.correctMarks ?? DEFAULT_CORRECT_MARKS,
   );
   const [wrongMarks, setWrongMarks] = useState(() => answerKey.wrongMarks ?? 0);
+  const [keyTypeRanges, setKeyTypeRanges] = useState<KeyTypeRange[]>(() =>
+    normalizeKeyTypeRanges(answerKey.keyTypeRanges, {
+      correctMarks: answerKey.correctMarks ?? DEFAULT_CORRECT_MARKS,
+      wrongMarks: answerKey.wrongMarks ?? 0,
+    }),
+  );
+  const [configOpen, setConfigOpen] = useState(false);
+  const [testId, setTestId] = useState(() => enteredTestId(answerKey.testId));
   const [counts, setCounts] = useState(() =>
     initialRanges.map((range) => ({ subject: range.subject, count: countOf(range) })),
   );
@@ -182,18 +187,53 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
       answerKey.answers,
       answerKey.explanations,
       initialRanges,
+      normalizeKeyTypeRanges(answerKey.keyTypeRanges, {
+        correctMarks: answerKey.correctMarks ?? DEFAULT_CORRECT_MARKS,
+        wrongMarks: answerKey.wrongMarks ?? 0,
+      }),
       enteredTestId(answerKey.testId),
       answerKey.correctMarks ?? DEFAULT_CORRECT_MARKS,
       answerKey.wrongMarks ?? 0,
     ),
   );
   const [printedAnswers, setPrintedAnswers] = useState(() => answerKey.printedAnswers ?? {});
-  const testIdCheck = useTestIdCheck(readOnly ? "" : testId, answerKey.id);
-  const isMcq = questionMode === "mcq";
+  const [omrLocked, setOmrLocked] = useState(false);
+  const [omrLockMessage, setOmrLockMessage] = useState<string | null>(null);
+  const locked = readOnly || omrLocked;
+  const testIdCheck = useTestIdCheck(locked ? "" : testId, answerKey.id);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [templateBusy, setTemplateBusy] = useState(false);
+  const [importing, setImporting] = useState(false);
+
+  useEffect(() => {
+    if (readOnly) return;
+    let live = true;
+    const check = async () => {
+      const result = await getAnswerKeyOmrStatusAction(answerKey.id);
+      if (!live || !result.ok) return;
+      setOmrLocked(result.locked);
+      setOmrLockMessage(result.message);
+    };
+    void check();
+    const timer = window.setInterval(() => void check(), 3000);
+    return () => {
+      live = false;
+      window.clearInterval(timer);
+    };
+  }, [answerKey.id, readOnly]);
 
   const dirty = useMemo(
-    () => snapshot(answers, explanations, ranges, testId.trim(), correctMarks, wrongMarks) !== baseline,
-    [answers, explanations, ranges, testId, correctMarks, wrongMarks, baseline],
+    () =>
+      snapshot(
+        answers,
+        explanations,
+        ranges,
+        keyTypeRanges,
+        testId.trim(),
+        correctMarks,
+        wrongMarks,
+      ) !== baseline,
+    [answers, explanations, ranges, keyTypeRanges, testId, correctMarks, wrongMarks, baseline],
   );
   const totalQuestions = ranges.reduce((sum, range) => sum + countOf(range), 0);
   const incomplete = ranges.flatMap((range) => questionsIn(range).filter((question) => !answers[String(question)]));
@@ -217,62 +257,125 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
     window.setTimeout(() => el?.classList.remove("ring-2", "ring-red-400"), 1600);
   }
 
-  function changeQuestionMode(next: QuestionMode | null) {
-    const mode = next ?? "";
-    setQuestionMode(mode);
-    if (mode !== "non_mcq") return;
-    // Non MCQ keeps only the first selected option per question.
-    setAnswers((current) => {
-      let changed = false;
-      const nextAnswers: Record<string, KeyAnswer> = {};
-      for (const [question, answer] of Object.entries(current)) {
-        if (isBonusKey(answer)) {
-          nextAnswers[question] = answer;
-          continue;
-        }
-        const options = keyOptions(answer);
-        if (options.length <= 1) {
-          nextAnswers[question] = answer;
-          continue;
-        }
-        changed = true;
-        nextAnswers[question] = options[0]!;
-      }
-      if (changed) toast.message("Switched to Non MCQ — kept one option per question");
-      return changed ? nextAnswers : current;
-    });
-  }
-
   function toggleOption(question: string, option: AnswerOption) {
-    if (readOnly) return;
-    if (!questionMode) {
-      toast.error("Select Non MCQ or MCQ first");
-      return;
-    }
+    if (locked) return;
+    // Both Normal and MCQ allow multiple correct options on the key.
     setAnswers((current) => {
       const next = { ...current };
-      if (isMcq) {
-        const picked = new Set(keyOptions(current[question]));
-        if (picked.has(option)) picked.delete(option);
-        else picked.add(option);
-        const joined = joinKeyOptions(picked);
-        if (!joined) delete next[question];
-        else next[question] = joined;
-        return next;
-      }
-      // Non MCQ: single option only (tap again to clear).
-      if (current[question] === option) delete next[question];
-      else next[question] = option;
+      const picked = new Set(keyOptions(current[question]));
+      if (picked.has(option)) picked.delete(option);
+      else picked.add(option);
+      const joined = joinKeyOptions(picked);
+      if (!joined) delete next[question];
+      else next[question] = joined;
       return next;
     });
   }
 
-  function save() {
-    const nextTestId = testId.trim();
-    if (!questionMode) {
-      toast.error("Select Non MCQ or MCQ at the top");
+  function applyKeyTypeRanges(nextRanges: KeyTypeRange[]) {
+    setKeyTypeRanges(nextRanges);
+  }
+
+  async function downloadTemplate() {
+    setTemplateBusy(true);
+    try {
+      await downloadAnswerKeyTemplate({
+        questionCount: Math.max(totalQuestions, 1),
+        fileName: `answer-key-${enteredTestId(testId) || answerKey.id.slice(0, 8)}.xlsx`,
+      });
+    } catch {
+      toast.error("Could not create the template. Try again.");
+    } finally {
+      setTemplateBusy(false);
+    }
+  }
+
+  function applyImportedAnswers(
+    imported: Array<{ question: number; answer: KeyAnswer }>,
+    sourceName: string,
+  ) {
+    const allowed = new Set(ranges.flatMap((range) => questionsIn(range).map(String)));
+    const next: Record<string, KeyAnswer> = { ...answers };
+    let applied = 0;
+    let skipped = 0;
+
+    for (const row of imported) {
+      const key = String(row.question);
+      if (!allowed.has(key)) {
+        skipped += 1;
+        continue;
+      }
+      next[key] = row.answer;
+      applied += 1;
+    }
+
+    if (applied === 0) {
+      toast.error(
+        skipped
+          ? `None of the ${imported.length} answers match this key’s question numbers.`
+          : "No answers could be imported.",
+      );
       return;
     }
+
+    setAnswers(next);
+    toast.success(
+      `Imported ${applied} answer${applied === 1 ? "" : "s"} from ${sourceName}` +
+        (skipped ? ` · ${skipped} outside this paper skipped` : "") +
+        ". Review, then Save.",
+    );
+  }
+
+  async function importFile(file: File) {
+    if (locked) return;
+    setImporting(true);
+    try {
+      const isPdf =
+        file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+
+      if (isPdf) {
+        // PDF is parsed on the server in memory — never stored.
+        const formData = new FormData();
+        formData.append("pdf", file);
+        const result = await parseAnswerKeyPdfAction(formData);
+        if (!result.ok) {
+          toast.error(result.message);
+          return;
+        }
+        const imported = Object.entries(result.data.answers).map(([question, answer]) => ({
+          question: Number(question),
+          answer,
+        }));
+        if (!imported.length) {
+          toast.error(`No answers found in ${file.name}.`);
+          return;
+        }
+        if (result.data.testId && !testId.trim()) {
+          setTestId(enteredTestId(result.data.testId));
+        }
+        applyImportedAnswers(imported, file.name);
+        return;
+      }
+
+      const imported = await readAnswerKeyExcel(file);
+      if (!imported.length) {
+        toast.error(`No answers found in ${file.name}. Fill the Answer column and try again.`);
+        return;
+      }
+      applyImportedAnswers(imported, file.name);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not read this file.");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  function save() {
+    if (omrLocked) {
+      toast.error(omrLockMessage ?? "OMR evaluation is ongoing. Editing is locked.");
+      return;
+    }
+    const nextTestId = testId.trim();
     if (!TEST_ID_PATTERN.test(nextTestId)) {
       toast.error(TEST_ID_MESSAGE);
       document.querySelector<HTMLInputElement>('[aria-label="Test ID"]')?.focus();
@@ -300,6 +403,7 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
           explanations,
           printedAnswers,
           subjectRanges: ranges,
+          keyTypeRanges,
           testId: nextTestId,
           correctMarks,
           wrongMarks,
@@ -307,21 +411,28 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
         setAnswers(saved.answers);
         setExplanations(saved.explanations);
         setPrintedAnswers(saved.printedAnswers ?? {});
+        const savedCorrect = saved.correctMarks ?? DEFAULT_CORRECT_MARKS;
+        const savedWrong = saved.wrongMarks ?? 0;
+        const savedTypeRanges = normalizeKeyTypeRanges(saved.keyTypeRanges, {
+          correctMarks: savedCorrect,
+          wrongMarks: savedWrong,
+        });
+        setKeyTypeRanges(savedTypeRanges);
         setTestId(enteredTestId(saved.testId));
-        setCorrectMarks(saved.correctMarks ?? DEFAULT_CORRECT_MARKS);
-        setWrongMarks(saved.wrongMarks ?? 0);
+        setCorrectMarks(savedCorrect);
+        setWrongMarks(savedWrong);
         setCounts(
           saved.subjectRanges.map((range) => ({ subject: range.subject, count: countOf(range) })),
         );
-        setQuestionMode(inferQuestionMode(saved.answers) || questionMode);
         setBaseline(
           snapshot(
             saved.answers,
             saved.explanations,
             saved.subjectRanges,
+            savedTypeRanges,
             enteredTestId(saved.testId),
-            saved.correctMarks ?? DEFAULT_CORRECT_MARKS,
-            saved.wrongMarks ?? 0,
+            savedCorrect,
+            savedWrong,
           ),
         );
         toast.success("Saved");
@@ -333,32 +444,16 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
 
   return (
     <div className="space-y-5">
+      {omrLocked && omrLockMessage ? (
+        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-sm text-amber-950">
+          <AlertCircle className="mt-0.5 size-4 shrink-0 text-amber-700" />
+          <p className="font-medium">{omrLockMessage}</p>
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         {heading ? (
           <h1 className="text-base font-bold text-brand-900 sm:text-lg">{heading}</h1>
         ) : null}
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold tracking-wider text-neutral-500 uppercase">
-            Question type
-          </span>
-          <Select
-            value={questionMode || null}
-            items={[...MODE_ITEMS]}
-            onValueChange={(value) => changeQuestionMode((value as QuestionMode | null) ?? null)}
-            disabled={pending || readOnly}
-          >
-            <SelectTrigger className="h-8 w-[8.5rem]" aria-label="Question type" size="sm">
-              <SelectValue placeholder="Select" />
-            </SelectTrigger>
-            <SelectContent>
-              {MODE_ITEMS.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
         <p className="text-sm font-medium text-neutral-500">{totalQuestions} questions</p>
         {incomplete.length > 0 ? (
           <button
@@ -370,37 +465,78 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
             {incomplete.length} incomplete
           </button>
         ) : null}
-        <div className="ml-auto flex flex-wrap items-center gap-2">
-          <AnswerKeyPdfActions
-            basePath={ANSWER_KEYS_PATH}
-            id={answerKey.id}
-            disabled={Object.keys(answers).length === 0}
-          />
-          {!readOnly ? (
-            <Button type="button" onClick={save} disabled={pending}>
-              {saving ? <Loader2 className="animate-spin" /> : <Save />}
-              Save
-            </Button>
+        <div className="ml-auto flex flex-wrap items-end gap-2">
+          {!locked ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending}
+                onClick={() => setConfigOpen(true)}
+              >
+                <Settings2 className="size-4" />
+                Configuration
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending || templateBusy || importing}
+                onClick={() => void downloadTemplate()}
+              >
+                {templateBusy ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+                Template
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending || importing || templateBusy}
+                onClick={() => fileRef.current?.click()}
+              >
+                {importing ? <Loader2 className="size-4 animate-spin" /> : <FileSpreadsheet className="size-4" />}
+                Import
+              </Button>
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".xlsx,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  event.target.value = "";
+                  if (file) void importFile(file);
+                }}
+              />
+            </>
+          ) : null}
+          {Object.keys(answers).length > 0 ? (
+            <AnswerKeyPdfActions basePath={ANSWER_KEYS_PATH} id={answerKey.id} />
+          ) : null}
+          {!locked ? (
+            <div className="flex flex-col items-end gap-1">
+              {Object.keys(answers).length === 0 ? (
+                <span className="text-xs font-medium text-neutral-400">Answers not published yet</span>
+              ) : null}
+              <Button type="button" onClick={save} disabled={pending}>
+                {saving ? <Loader2 className="animate-spin" /> : <Save />}
+                Save
+              </Button>
+            </div>
+          ) : Object.keys(answers).length === 0 ? (
+            <span className="text-xs font-medium text-neutral-400">Answers not published yet</span>
           ) : null}
         </div>
       </div>
-      {questionMode === "mcq" ? (
-        <p className="text-xs text-neutral-500">
-          MCQ: select every correct option for each question (e.g. A and C → A/C).
-        </p>
-      ) : questionMode === "non_mcq" ? (
-        <p className="text-xs text-neutral-500">Non MCQ: one correct option per question.</p>
-      ) : !readOnly ? (
-        <p className="text-xs text-amber-700">Choose Non MCQ or MCQ before entering answers.</p>
-      ) : null}
 
       <div className="overflow-x-auto rounded-2xl border border-brand-100 bg-white">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-neutral-100 text-left text-xs font-medium tracking-wide text-neutral-500 uppercase">
               <th className="px-4 py-2 font-medium">Test ID</th>
-              <th className="px-4 py-2 font-medium">Correct answer</th>
-              <th className="px-4 py-2 font-medium">Wrong answer</th>
+              <th className="px-4 py-2 font-medium">Correct</th>
+              <th className="px-4 py-2 font-medium">Wrong</th>
             </tr>
           </thead>
           <tbody>
@@ -409,7 +545,7 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
                 <div className="flex flex-col gap-1.5">
                   <Input
                     value={testId}
-                    disabled={pending || readOnly}
+                    disabled={pending || locked}
                     inputMode="numeric"
                     autoComplete="off"
                     maxLength={TEST_ID_LENGTH}
@@ -419,13 +555,13 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
                     className="h-9 w-full max-w-40 bg-white font-mono text-sm tracking-widest tabular-nums"
                     onChange={(event) => setTestId(testIdDigits(event.currentTarget.value))}
                   />
-                  {!readOnly ? <TestIdStatus check={testIdCheck} length={testId.trim().length} /> : null}
+                  {!locked ? <TestIdStatus check={testIdCheck} length={testId.trim().length} /> : null}
                 </div>
               </td>
               <td className="px-4 py-3">
                 <MarksStepper
                   value={correctMarks}
-                  disabled={pending || readOnly}
+                  disabled={pending || locked}
                   ariaLabel="Marks for a correct answer"
                   onChange={setCorrectMarks}
                 />
@@ -433,7 +569,7 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
               <td className="px-4 py-3">
                 <MarksStepper
                   value={wrongMarks}
-                  disabled={pending || readOnly}
+                  disabled={pending || locked}
                   ariaLabel="Negative marks for a wrong answer"
                   prefix="−"
                   onChange={setWrongMarks}
@@ -444,7 +580,7 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
         </table>
       </div>
 
-      {!readOnly && counts.length > 0 ? (
+      {!locked && counts.length > 0 ? (
         <div className="flex flex-wrap gap-3 rounded-2xl border border-brand-100 bg-white p-4">
           {counts.map((row) => (
             <label key={row.subject} className="flex min-w-40 flex-1 items-center gap-2">
@@ -468,12 +604,15 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
         <AnswerKeyOptionsTable
           questions={ranges.flatMap((range) => questionsIn(range))}
           answers={answers}
+          correctMarks={correctMarks}
+          wrongMarks={wrongMarks}
+          keyTypeRanges={keyTypeRanges}
         />
       ) : null}
 
       {ranges.length === 0 ? (
         <p className="rounded-xl border border-dashed border-neutral-300 bg-white p-8 text-center text-sm text-neutral-500">
-          {readOnly ? "No answers published for this test yet." : "Set questions for each subject, then fill the key."}
+          {locked ? "No answers published for this test yet." : "Set questions for each subject, then fill the key."}
         </p>
       ) : (
         ranges.map((range) => (
@@ -490,6 +629,13 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
               {questionsIn(range).map((question) => {
                 const key = String(question);
                 const missing = !answers[key];
+                const questionMarks = marksForQuestion(keyTypeRanges, question, {
+                  correctMarks,
+                  wrongMarks,
+                });
+                const questionType = questionMarks.type;
+                const isMcq = questionType === "mcq";
+                const isBonus = isBonusKey(answers[key]);
                 return (
                   <li
                     id={`answer-key-q-${question}`}
@@ -501,6 +647,13 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
                   >
                     <div>
                       <p className="text-sm font-bold text-neutral-700 tabular-nums">Q{question}</p>
+                      {isBonus ? (
+                        <p className="mt-0.5 text-[11px] font-semibold text-sky-700">
+                          ADD +{questionMarks.correctMarks}
+                        </p>
+                      ) : isMcq ? (
+                        <p className="mt-0.5 text-[11px] font-semibold text-brand-700">MCQ</p>
+                      ) : null}
                       {missing ? (
                         <p className="mt-0.5 text-[11px] font-semibold text-red-700">Incomplete</p>
                       ) : null}
@@ -512,15 +665,15 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
                           <button
                             key={option}
                             type="button"
-                            disabled={pending || readOnly}
+                            disabled={pending || locked}
                             onClick={() => toggleOption(key, option)}
                             className={cn(
                               "size-8 rounded-md text-xs font-bold",
                               selected
                                 ? "bg-brand-900 text-white"
                                 : "border border-neutral-200 bg-white text-neutral-700",
-                              !readOnly && !selected && "hover:bg-neutral-50",
-                              readOnly && "cursor-default",
+                              !locked && !selected && "hover:bg-neutral-50",
+                              locked && "cursor-default",
                             )}
                           >
                             {option}
@@ -529,13 +682,9 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
                       })}
                       <button
                         type="button"
-                        disabled={pending || readOnly}
+                        disabled={pending || locked}
                         onClick={() => {
-                          if (readOnly) return;
-                          if (!questionMode) {
-                            toast.error("Select Non MCQ or MCQ first");
-                            return;
-                          }
+                          if (locked) return;
                           setAnswers((current) =>
                             isBonusKey(current[key])
                               ? (() => {
@@ -546,25 +695,28 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
                               : { ...current, [key]: "ADD" },
                           );
                         }}
-                        title={`Bonus: ${correctMarks} marks if the student attempted this question`}
+                        title={`ADD: +${questionMarks.correctMarks} whether attempted or not (config marks win when set)`}
                         className={cn(
                           "h-8 rounded-md px-2 text-[11px] font-bold",
-                          isBonusKey(answers[key])
+                          isBonus
                             ? "bg-sky-700 text-white"
                             : "border border-neutral-200 bg-white text-neutral-700",
-                          !readOnly && !isBonusKey(answers[key]) && "hover:bg-neutral-50",
-                          readOnly && "cursor-default",
+                          !locked && !isBonus && "hover:bg-neutral-50",
+                          locked && "cursor-default",
                         )}
                       >
                         ADD
+                        {isBonus ? (
+                          <span className="ml-1 tabular-nums">+{questionMarks.correctMarks}</span>
+                        ) : null}
                       </button>
-                      {isMcq && keyOptions(answers[key]).length > 1 ? (
+                      {keyOptions(answers[key]).length > 1 ? (
                         <span className="ml-1 text-[11px] font-semibold text-brand-800">
                           {answers[key]}
                         </span>
                       ) : null}
                     </div>
-                    {readOnly ? (
+                    {locked ? (
                       <p className="w-full min-w-0 whitespace-pre-wrap text-sm text-neutral-700">
                         {explanations[key] || <span className="text-neutral-400">No explanation</span>}
                       </p>
@@ -587,6 +739,18 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
           </section>
         ))
       )}
+
+      {!locked ? (
+        <AnswerKeyConfigDialog
+          open={configOpen}
+          onOpenChange={setConfigOpen}
+          maxQuestion={Math.max(totalQuestions, 1)}
+          value={keyTypeRanges}
+          defaultCorrectMarks={correctMarks}
+          defaultWrongMarks={wrongMarks}
+          onSave={applyKeyTypeRanges}
+        />
+      ) : null}
     </div>
   );
 }

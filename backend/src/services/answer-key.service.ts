@@ -7,6 +7,7 @@ import type {
 } from "../repositories/answer-key.repository.js";
 import * as programRepository from "../repositories/program.repository.js";
 import * as schoolRepository from "../repositories/school.repository.js";
+import * as sectionRepository from "../repositories/section.repository.js";
 import type {
   ListAnswerKeysQuery,
   SaveAnswerKeyAnswersInput,
@@ -16,11 +17,15 @@ import type {
 import {
   asAnswers,
   asExplanations,
+  asKeyTypeRanges,
   asSubjectRanges,
   defaultSubjectRanges,
   diffCorrections,
+  parseAnswerKeyPdf,
+  type ParsedAnswerKey,
 } from "../utils/answer-key-parse.js";
-import { regradeScansForKey, scoringFingerprint } from "../scan/regrade.js";
+import { isOmrEvaluationActiveForTestId } from "../scan/service.js";
+import { isRegradeRunningForKey, regradeScansForKey, scoringFingerprint } from "../scan/regrade.js";
 import { AppError } from "../utils/app-error.js";
 import { notifyContentChanged } from "../utils/content-events.js";
 import { downloadFileName } from "../utils/download-file-name.js";
@@ -37,12 +42,14 @@ const KIND = "answer-keys";
 /** Regular catalog keys for the public site — never school-customized keys. */
 const PUBLIC_ANSWER_KEY_FILTER: Prisma.AnswerKeyWhereInput = {
   type: SchoolType.REGULAR,
+  schoolId: null,
 };
 
 /** Openable public keys (PDF / answers) must be published. */
 const PUBLIC_ANSWER_KEY_LIVE_FILTER: Prisma.AnswerKeyWhereInput = {
   published: true,
   type: SchoolType.REGULAR,
+  schoolId: null,
 };
 
 async function assertAnswerKeysPublic() {
@@ -103,11 +110,16 @@ function toAnswerKeyDto(
     printedExplanations: forPortal ? {} : printedExplanations,
     corrections,
     subjectRanges: asSubjectRanges(row.subjectRanges),
+    keyTypeRanges: asKeyTypeRanges(row.keyTypeRanges),
     correctMarks: row.correctMarks ?? 1,
     wrongMarks: row.wrongMarks ?? 0,
     answerCount: Object.keys(answers).length,
     correctionCount: corrections.length,
     school: row.school && toSchoolRef(row.school),
+    sectionId: row.sectionId ?? null,
+    section: row.section
+      ? { id: row.section.id, name: row.section.name, classLevel: row.section.classLevel }
+      : null,
     publishedAt: row.publishedAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
@@ -125,20 +137,54 @@ type ParsedJsonFields = {
 const classLevelIssue = (message: string) =>
   new AppError(400, message, [{ path: ["classLevel"], message }]);
 
-/** Test numbers may repeat. Test IDs may not — one key per ID. */
-async function assertUniqueTestId(testId: string | undefined, exceptId?: string) {
+/**
+ * Platform keys: one shared key per test ID.
+ * School/section keys may reuse that same test ID (OMR prefers the school key).
+ */
+async function assertUniqueTestId(
+  testId: string | undefined,
+  exceptId?: string,
+  scope?: { schoolId: string; sectionId: string | null },
+) {
   if (!testId) return;
-  const existing = await answerKeyRepository.findAnswerKeyByTestId(testId, exceptId);
+  const existing = scope
+    ? await answerKeyRepository.findSchoolAnswerKeyByTestId(
+        testId,
+        scope.schoolId,
+        scope.sectionId,
+        exceptId,
+      )
+    : await answerKeyRepository.findPlatformAnswerKeyByTestId(testId, exceptId);
   if (existing) {
     throw new AppError(400, "This test ID is already used", [
-      { path: ["testId"], message: "This test ID is already used. Test numbers can repeat; test IDs cannot." },
+      {
+        path: ["testId"],
+        message: scope
+          ? "This test ID is already used by another school key for this section."
+          : "This test ID is already used. Test numbers can repeat; test IDs cannot.",
+      },
     ]);
   }
 }
 
-/** Live check for the admin form: is this test ID free, and if not, which key holds it? */
+/**
+ * Live check for the admin form.
+ * Platform keys: unique among platform keys only (school keys may reuse the ID).
+ * School keys: unique among that school/section only (may match the platform key).
+ */
 export async function checkAnswerKeyTestId(testId: string, exceptId?: string) {
-  const existing = await answerKeyRepository.findAnswerKeyByTestId(testId, exceptId);
+  const current = exceptId ? await answerKeyRepository.findAnswerKeyById(exceptId) : null;
+  const scope = current?.schoolId
+    ? { schoolId: current.schoolId, sectionId: current.sectionId ?? null }
+    : undefined;
+  const existing = scope
+    ? await answerKeyRepository.findSchoolAnswerKeyByTestId(
+        testId,
+        scope.schoolId,
+        scope.sectionId,
+        exceptId,
+      )
+    : await answerKeyRepository.findPlatformAnswerKeyByTestId(testId, exceptId);
   return {
     testId,
     available: !existing,
@@ -234,8 +280,9 @@ export async function listRecentAnswerKeys({
   type,
   schoolId,
 }: ListAnswerKeysQuery) {
+  // Section school keys live under School Keys — keep them out of the main drive.
   const where: Prisma.AnswerKeyWhereInput[] = [
-    { testNumber, type, ...(program ? { programCode: program } : {}) },
+    { testNumber, type, sectionId: null, ...(program ? { programCode: program } : {}) },
   ];
   if (schoolId) {
     const school = await schoolRepository.findSchoolById(schoolId);
@@ -381,9 +428,17 @@ export async function uploadAnswerKey({ schoolId, program, ...meta }: UploadAnsw
 }
 
 export async function updateAnswerKey(id: string, { schoolId, program, ...meta }: UpdateAnswerKeyQuery) {
+  const existing = await answerKeyRepository.findAnswerKeyById(id);
+  if (!existing) throw new AppError(404, "Answer key not found");
   const resolvedSchoolId = await resolveSchoolId(meta.type, schoolId);
   await assertProgramClass(meta.type, program, meta.classLevel, resolvedSchoolId);
-  await assertUniqueTestId(meta.testId, id);
+  await assertUniqueTestId(
+    meta.testId,
+    id,
+    resolvedSchoolId
+      ? { schoolId: resolvedSchoolId, sectionId: existing.sectionId ?? null }
+      : undefined,
+  );
 
   const answerKey = await answerKeyRepository.updateAnswerKey(id, {
     type: meta.type,
@@ -396,6 +451,187 @@ export async function updateAnswerKey(id: string, { schoolId, program, ...meta }
   // The key may have moved to another school, so tell every school.
   notifyContentChanged({ kind: KIND, schoolId: null, adminOnly: !answerKey.published });
   return answerKeyDto(answerKey);
+}
+
+/**
+ * List platform answer keys for a school section (or whole class) and any school override.
+ * OMR uses the school key when present, otherwise the platform ("our") key.
+ */
+export async function listSchoolSectionKeyBoard(input: {
+  schoolId: string;
+  sectionId?: string;
+  classLevel?: number;
+}) {
+  const school = await schoolRepository.findSchoolById(input.schoolId);
+  if (!school) throw new AppError(404, "School not found");
+
+  let classLevel = input.classLevel;
+  let programCode: string | undefined;
+  let sectionId: string | null = null;
+  let sectionName: string | null = null;
+
+  if (input.sectionId) {
+    const section = await sectionRepository.findSectionById(input.sectionId);
+    if (!section || section.schoolId !== input.schoolId) {
+      throw new AppError(404, "Section not found");
+    }
+    classLevel = section.classLevel;
+    programCode = section.program.code;
+    sectionId = section.id;
+    sectionName = section.name;
+  } else if (classLevel != null) {
+    const offering = school.schoolPrograms.find((row) =>
+      row.classes.some((cls) => cls.classLevel === classLevel),
+    );
+    programCode = offering?.program.code;
+  } else {
+    throw new AppError(400, "Select a section or class");
+  }
+
+  if (classLevel == null || !programCode) {
+    throw new AppError(400, "This class has no program enrollment");
+  }
+
+  const platformKeys = await answerKeyRepository.findAnswerKeys({
+    schoolId: null,
+    type: SchoolType.REGULAR,
+    programCode,
+    classLevel,
+    sectionId: null,
+  });
+  const schoolKeys = await answerKeyRepository.findAnswerKeys({
+    schoolId: school.id,
+    sectionId,
+    classLevel,
+    programCode,
+  });
+  const schoolByTest = new Map(
+    schoolKeys
+      .filter((key) => key.testId)
+      .map((key) => [key.testId!.toLowerCase(), key]),
+  );
+  const schoolBySlot = new Map(
+    schoolKeys.map((key) => [`${key.testNumber}:${key.classLevel}`, key]),
+  );
+
+  const items = await Promise.all(
+    platformKeys
+      .filter((key) => Object.keys(asAnswers(key.answers)).length > 0 || enteredTestId(key.testId))
+      .map(async (platform) => {
+        const override =
+          (platform.testId && schoolByTest.get(platform.testId.toLowerCase())) ||
+          schoolBySlot.get(`${platform.testNumber}:${platform.classLevel}`) ||
+          null;
+        return {
+          platform: await answerKeyDto(platform),
+          schoolKey: override ? await answerKeyDto(override) : null,
+        };
+      }),
+  );
+
+  items.sort((a, b) => a.platform.testNumber - b.platform.testNumber);
+
+  return {
+    school: toSchoolRef(school),
+    sectionId,
+    sectionName,
+    classLevel,
+    programCode,
+    items,
+  };
+}
+
+/**
+ * Create (or reopen) a blank school/section key linked to the platform test ID.
+ * Answers start empty — admin enters them. OMR uses this key only once answers exist;
+ * otherwise it falls back to the platform key.
+ */
+export async function ensureSchoolSectionKey(input: {
+  platformKeyId: string;
+  schoolId: string;
+  sectionId?: string | null;
+}) {
+  const platform = await answerKeyRepository.findAnswerKeyById(input.platformKeyId);
+  if (!platform || platform.schoolId) {
+    throw new AppError(404, "Platform answer key not found");
+  }
+  if (!enteredTestId(platform.testId)) {
+    throw new AppError(400, "Assign a test ID on the platform answer key first");
+  }
+
+  const school = await schoolRepository.findSchoolById(input.schoolId);
+  if (!school) throw new AppError(404, "School not found");
+
+  let sectionId: string | null = input.sectionId ?? null;
+  if (sectionId) {
+    const section = await sectionRepository.findSectionById(sectionId);
+    if (!section || section.schoolId !== school.id) {
+      throw new AppError(404, "Section not found");
+    }
+    if (section.classLevel !== platform.classLevel) {
+      throw new AppError(400, `This section is Class ${section.classLevel}, but the key is Class ${platform.classLevel}`);
+    }
+  }
+
+  const existing =
+    (await answerKeyRepository.findSchoolAnswerKeyByTestId(
+      platform.testId!,
+      school.id,
+      sectionId,
+    )) ||
+    (await answerKeyRepository.findSchoolSectionAnswerKeySlot({
+      schoolId: school.id,
+      sectionId,
+      programCode: platform.programCode,
+      testNumber: platform.testNumber,
+      classLevel: platform.classLevel,
+    }));
+
+  if (existing) {
+    // Older creates copied platform answers — strip unedited clones so the editor starts blank.
+    const schoolAnswers = asAnswers(existing.answers);
+    const platformAnswers = asAnswers(platform.answers);
+    const stillClone =
+      Object.keys(schoolAnswers).length > 0 &&
+      JSON.stringify(schoolAnswers) === JSON.stringify(platformAnswers);
+    if (stillClone) {
+      const cleared = await answerKeyRepository.updateAnswerKey(existing.id, {
+        answers: {} as Prisma.InputJsonValue,
+        explanations: {} as Prisma.InputJsonValue,
+        printedAnswers: {} as Prisma.InputJsonValue,
+        printedExplanations: {} as Prisma.InputJsonValue,
+        fileName: "School key",
+        fileSize: 0,
+      });
+      return answerKeyDto(cleared);
+    }
+    return answerKeyDto(existing);
+  }
+
+  const created = await answerKeyRepository.createAnswerKey({
+    type: school.type,
+    schoolId: school.id,
+    sectionId,
+    testId: platform.testId,
+    testNumber: platform.testNumber,
+    classLevel: platform.classLevel,
+    programCode: platform.programCode,
+    fileName: "School key",
+    fileSize: 0,
+    data: Buffer.alloc(0),
+    answers: {} as Prisma.InputJsonValue,
+    explanations: {} as Prisma.InputJsonValue,
+    printedAnswers: {} as Prisma.InputJsonValue,
+    printedExplanations: {} as Prisma.InputJsonValue,
+    // Keep paper layout / marks from the platform key; answers stay blank.
+    subjectRanges: (platform.subjectRanges ?? []) as Prisma.InputJsonValue,
+    keyTypeRanges: (platform.keyTypeRanges ?? []) as Prisma.InputJsonValue,
+    correctMarks: platform.correctMarks,
+    wrongMarks: platform.wrongMarks,
+    published: false,
+  });
+  notifyContentChanged({ kind: KIND, schoolId: school.id, adminOnly: true });
+  return answerKeyDto(created);
 }
 
 export async function listVisibleAnswerKeys(actor: ContentActor) {
@@ -435,15 +671,76 @@ export async function deleteAnswerKey(id: string) {
   notifyContentChanged({ kind: KIND, schoolId, adminOnly: !published });
 }
 
+function testIdScope(existing: AnswerKeyDetail) {
+  return existing.schoolId
+    ? { schoolId: existing.schoolId, sectionId: existing.sectionId ?? null }
+    : undefined;
+}
+
+const OMR_LOCK_MESSAGE =
+  "OMR evaluation is ongoing for this test ID. Editing is locked until scanning finishes.";
+const OMR_REGRADE_MESSAGE =
+  "OMR sheets are being re-marked for this key. Editing is locked until that finishes.";
+
+function omrLockForKey(existing: AnswerKeyDetail, nextTestId?: string) {
+  const testIds = [enteredTestId(existing.testId), enteredTestId(nextTestId)].filter(Boolean);
+  const scanning = testIds.some((testId) => isOmrEvaluationActiveForTestId(testId));
+  const regrading = isRegradeRunningForKey(existing.id);
+  const locked = scanning || regrading;
+  return {
+    locked,
+    scanning,
+    regrading,
+    testId: enteredTestId(existing.testId) || null,
+    message: locked ? (scanning ? OMR_LOCK_MESSAGE : OMR_REGRADE_MESSAGE) : null,
+  };
+}
+
+/** Lock platform + school keys that share this test ID while sheets are being scored. */
+export async function getAnswerKeyOmrStatus(id: string) {
+  const existing = await answerKeyRepository.findAnswerKeyById(id);
+  if (!existing) throw new AppError(404, "Answer key not found");
+  return omrLockForKey(existing);
+}
+
+function assertAnswerKeyEditable(existing: AnswerKeyDetail, nextTestId?: string) {
+  const status = omrLockForKey(existing, nextTestId);
+  if (status.locked) {
+    throw new AppError(423, status.message ?? OMR_LOCK_MESSAGE);
+  }
+}
+
 export async function setAnswerKeyTestId(id: string, testId: string) {
   const existing = await answerKeyRepository.findAnswerKeyById(id);
   if (!existing) throw new AppError(404, "Answer key not found");
+  assertAnswerKeyEditable(existing, testId);
   if (testId !== existing.testId) {
-    await assertUniqueTestId(testId, id);
+    await assertUniqueTestId(testId, id, testIdScope(existing));
   }
   const answerKey = await answerKeyRepository.updateAnswerKey(id, { testId });
   notifyContentChanged({ kind: KIND, schoolId: answerKey.school?.id ?? null });
   return answerKeyDto(answerKey);
+}
+
+/**
+ * Parse answers from a PDF in memory only — never stores the file.
+ * Used by the key editor Import flow.
+ */
+export async function parseAnswerKeyPdfImport(pdf: Buffer): Promise<ParsedAnswerKey> {
+  if (!pdf.length) throw new AppError(400, "Choose a PDF answer key to import");
+  try {
+    const parsed = await parseAnswerKeyPdf(pdf);
+    if (Object.keys(parsed.answers).length === 0) {
+      throw new AppError(400, "No answers found in this PDF. Use a typed key list or a printed KEY grid.");
+    }
+    return parsed;
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new AppError(
+      400,
+      error instanceof Error ? error.message : "Could not read answers from this PDF",
+    );
+  }
 }
 
 /** Admin edits one question's option and explanation after parse. */
@@ -463,6 +760,7 @@ export async function saveAnswerKeyAnswers(id: string, input: SaveAnswerKeyAnswe
     input.subjectRanges.length > 0
       ? input.subjectRanges
       : asSubjectRanges(existing.subjectRanges);
+  const keyTypeRanges = asKeyTypeRanges(input.keyTypeRanges);
 
   const nextTestId = (input.testId ?? existing.testId)?.trim() || "";
   if (!nextTestId) {
@@ -470,8 +768,9 @@ export async function saveAnswerKeyAnswers(id: string, input: SaveAnswerKeyAnswe
       { path: ["testId"], message: "Enter the test ID" },
     ]);
   }
+  assertAnswerKeyEditable(existing, nextTestId);
   if (nextTestId !== existing.testId) {
-    await assertUniqueTestId(nextTestId, id);
+    await assertUniqueTestId(nextTestId, id, testIdScope(existing));
   }
 
   const answerKey = await answerKeyRepository.updateAnswerKey(id, {
@@ -481,6 +780,7 @@ export async function saveAnswerKeyAnswers(id: string, input: SaveAnswerKeyAnswe
       ? { printedAnswers: printedAnswers as Prisma.InputJsonValue }
       : {}),
     subjectRanges: subjectRanges as Prisma.InputJsonValue,
+    keyTypeRanges: keyTypeRanges as Prisma.InputJsonValue,
     testId: nextTestId,
     correctMarks: input.correctMarks,
     wrongMarks: input.wrongMarks,

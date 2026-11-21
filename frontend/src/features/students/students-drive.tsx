@@ -161,6 +161,7 @@ export function StudentsDrive({
       <StudentsTable
         students={roster}
         mode="admin"
+        seats={seats}
         subjects={subjectsForClassLevel(classLevel)}
         emptyMessage={emptyRosterMessage(section, seats, classCount)}
       />

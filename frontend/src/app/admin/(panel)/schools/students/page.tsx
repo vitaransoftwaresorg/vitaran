@@ -1,17 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { FileSpreadsheet, Plus } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/features/admin/page-header";
 import { subjectsForClassLevel } from "@/features/schools/constants";
 import { AdminStudentRollSearch } from "@/features/students/admin-student-roll-search";
 import { ClassProfilesPdfActions } from "@/features/students/student-pdf-actions";
 import { StudentsDrive } from "@/features/students/students-drive";
-import {
-  seatsForClass,
-  sectionIdsForClass,
-  studentsInClass,
-} from "@/features/students/school-roster";
+import { sectionIdsForClass, studentsInClass } from "@/features/students/school-roster";
 import { cn } from "@/lib/utils";
 import { listAdminSchoolSections } from "@/services/sections";
 import { listSchoolOptions } from "@/services/schools";
@@ -78,19 +74,11 @@ export default async function AdminAllStudentsPage({
     inClass && classLevel != null
       ? studentsInClass(students, classLevel, section, { sectionIds })
       : [];
-  const seats =
-    inClass && classLevel != null ? seatsForClass(organization, classLevel, section) : 0;
-  // One line for seat usage — don't also pass seats as `count` (that renders as "N items").
-  const classDescription =
-    inClass && seats > 0
-      ? `${roster.length} of ${seats} seats used`
-      : description;
-
   return (
     <>
       <PageHeader
         title={school ? undefined : "Students"}
-        description={classDescription}
+        description={description}
         count={school ? undefined : schools.length}
         toolbar={<AdminStudentRollSearch schoolId={school?.id} />}
         actions={
@@ -117,6 +105,14 @@ export default async function AdminAllStudentsPage({
                 Add students
               </Link>
             </div>
+          ) : school && !inClass ? (
+            <Link
+              href={`/admin/schools/${school.id}/students/import`}
+              className={cn(buttonVariants({ size: "sm", variant: "outline" }), "h-8 gap-1.5 rounded-lg")}
+            >
+              <FileSpreadsheet className="size-4" />
+              Import all students
+            </Link>
           ) : undefined
         }
       />

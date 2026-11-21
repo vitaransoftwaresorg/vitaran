@@ -262,7 +262,9 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
                     {reading ? <Loader2 className="size-3 animate-spin" /> : null}
                     {reading ? `Reading page ${Math.min(job.done + 1, job.pageCount)} of ${job.pageCount}` : `Read ${job.pageCount} pages`}
                     {" · "}Test ID {job.testId}
-                    {job.duplicates ? ` · ${job.duplicates} duplicate${job.duplicates === 1 ? "" : "s"} skipped` : ""}
+                    {job.duplicates
+                      ? ` · ${job.duplicates} duplicate${job.duplicates === 1 ? "" : "s"} — enter correct registration`
+                      : ""}
                     {job.failures.length ? ` · ${job.failures.length} failed` : ""}
                   </p>
                   {job.failures.length ? (

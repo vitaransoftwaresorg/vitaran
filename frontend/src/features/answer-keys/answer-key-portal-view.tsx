@@ -148,7 +148,13 @@ export function AnswerKeyPortalView({
 
   return (
     <div className="space-y-5 sm:space-y-6">
-      <AnswerKeyOptionsTable questions={questions} answers={answerKey.answers} />
+      <AnswerKeyOptionsTable
+        questions={questions}
+        answers={answerKey.answers}
+        correctMarks={answerKey.correctMarks}
+        wrongMarks={answerKey.wrongMarks}
+        keyTypeRanges={answerKey.keyTypeRanges ?? []}
+      />
 
       <div className="space-y-4 sm:space-y-5">
         <p className="text-sm font-bold text-neutral-900">

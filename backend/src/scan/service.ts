@@ -237,13 +237,6 @@ function contextSchool(context: ScanContext): ScanSchool | null {
   return null;
 }
 
-function keyVisibleTo(key: ScanKey, school: ScanSchool) {
-  if (school.type === SchoolType.CUSTOMIZED) {
-    return key.type === SchoolType.CUSTOMIZED && key.school?.id === school.id;
-  }
-  return key.type === SchoolType.REGULAR;
-}
-
 function programNameOf(context: ScanContext, key: ScanKey) {
   const programs =
     context.kind === "school"
@@ -254,7 +247,38 @@ function programNameOf(context: ScanContext, key: ScanKey) {
   return programs.find((row) => row.programCode === key.programCode)?.programName ?? key.programCode;
 }
 
-type ScanStudent = { name: string; rollNo: string; classLevel: number; programCode: string | null };
+type ScanStudent = {
+  name: string;
+  rollNo: string;
+  classLevel: number;
+  programCode: string | null;
+  sectionId?: string | null;
+};
+
+function keyHasAnswers(key: ScanKey) {
+  return Object.keys(asAnswers(key.answers)).length > 0;
+}
+
+/**
+ * OMR key order: school section key → school-wide key → our (platform) key.
+ * Blank / draft school keys are skipped so grading falls back to the platform key.
+ */
+function rankKeyForSchool(key: ScanKey, school: ScanSchool, sectionId: string | null | undefined) {
+  const schoolOverride = key.school?.id === school.id;
+  if (schoolOverride && !keyHasAnswers(key)) return 99;
+  if (schoolOverride && sectionId && key.sectionId === sectionId) return 0;
+  if (schoolOverride && !key.sectionId) return 1;
+  if (!key.school && key.type === SchoolType.REGULAR) return 2;
+  if (school.type === SchoolType.CUSTOMIZED && key.type === SchoolType.CUSTOMIZED && key.school?.id === school.id) {
+    return keyHasAnswers(key) ? 1 : 99;
+  }
+  return 99;
+}
+
+/** True when this key can grade a sheet for the school (school override or our platform key). */
+function keyVisibleTo(key: ScanKey, school: ScanSchool) {
+  return rankKeyForSchool(key, school, undefined) < 99;
+}
 
 /** The key must be for the student's class and program as stored in the database. */
 async function resolveKey(school: ScanSchool | null, tests: string[], student: ScanStudent) {
@@ -264,8 +288,14 @@ async function resolveKey(school: ScanSchool | null, tests: string[], student: S
       const keys = await answerKeyRepository.findAnswerKeys({
         testId: { equals: testId.trim(), mode: "insensitive" },
       });
-      const visible = (school ? keys.filter((key) => keyVisibleTo(key, school)) : keys).sort(
-        (a, b) => Number(b.published) - Number(a.published),
+      const visible = (
+        school
+          ? keys
+              .map((key) => ({ key, rank: rankKeyForSchool(key, school, student.sectionId) }))
+              .filter((row) => row.rank < 99)
+              .sort((a, b) => a.rank - b.rank || Number(b.key.published) - Number(a.key.published))
+              .map((row) => row.key)
+          : keys.filter((key) => !key.school).sort((a, b) => Number(b.published) - Number(a.published))
       );
       if (visible.length === 0) {
         throw new AppError(404, `No answer key for test ID ${testId}${school ? ` at ${school.name}` : ""}`);
@@ -424,6 +454,24 @@ function unsavedDto(previewId: string, row: Pending, _embedImage = true): ScanDt
 }
 
 /** Entered test ID must match an answer key this school can use — checked before any sheet is read. */
+/**
+ * Live phone/PDF evaluation for this test ID (pending previews or an unfinished PDF batch).
+ * Used to lock answer-key edits while sheets are being scored.
+ */
+export function isOmrEvaluationActiveForTestId(testId: string) {
+  const needle = testId.trim().toUpperCase();
+  if (!needle) return false;
+  purgeExpiredPdfBatches();
+  for (const batch of pdfBatches.values()) {
+    if (batch.cancelled || batch.finished) continue;
+    if (batch.testId.trim().toUpperCase() === needle) return true;
+  }
+  for (const row of pending.values()) {
+    if (row.identity.testId.trim().toUpperCase() === needle) return true;
+  }
+  return false;
+}
+
 export async function checkTestId(context: ScanContext, testId: string) {
   const value = testId.trim().toUpperCase();
   if (!value) throw new AppError(400, "Enter the test ID from the answer key.");
@@ -509,6 +557,17 @@ export async function registerOmrPdf(
   }
 }
 
+/** Thumbnail kept for failed / duplicate PDF pages so the examiner can enter a registration. */
+async function storePdfPageThumb(batchId: string, page: number, jpeg: Buffer) {
+  const thumb = await sharp(jpeg)
+    .resize({ width: 900, withoutEnlargement: true })
+    .jpeg({ quality: 75 })
+    .toBuffer()
+    .catch(() => undefined);
+  if (!thumb) return undefined;
+  return storeBatchPageImage(batchId, page, thumb).catch(() => undefined);
+}
+
 /** Reads pages one after another so live phone scans still get served between pages. */
 async function readPdfBatch(context: ScanContext, batch: PdfBatch) {
   if (!batch.pdfPath) return;
@@ -528,10 +587,17 @@ async function readPdfBatch(context: ScanContext, batch: PdfBatch) {
         });
         const firstPage = pageOfRoll.get(scan.rollNo);
         if (firstPage != null) {
+          // Keep a page image so the examiner can enter the correct registration (same as unread-roll recovery).
+          const imagePath = await storePdfPageThumb(batch.id, page, sheet.jpeg);
           const dup = pending.get(previewId);
           if (dup) void removePendingDir(dup.diskDir);
           pending.delete(previewId);
-          batch.items.push({ page, duplicateOf: firstPage, error: `Same registration number as page ${firstPage}` });
+          batch.items.push({
+            page,
+            duplicateOf: firstPage,
+            imagePath,
+            error: `Same registration number as page ${firstPage}`,
+          });
         } else {
           pageOfRoll.set(scan.rollNo, page);
           const row = pending.get(previewId);
@@ -540,15 +606,7 @@ async function readPdfBatch(context: ScanContext, batch: PdfBatch) {
         }
       } catch (error) {
         if (!(error instanceof AppError)) logger.error({ err: error, page, batchId: batch.id }, "PDF page read failed");
-        let imagePath: string | undefined;
-        if (sheet) {
-          const thumb = await sharp(sheet.jpeg)
-            .resize({ width: 900, withoutEnlargement: true })
-            .jpeg({ quality: 75 })
-            .toBuffer()
-            .catch(() => undefined);
-          if (thumb) imagePath = await storeBatchPageImage(batch.id, page, thumb).catch(() => undefined);
-        }
+        const imagePath = sheet ? await storePdfPageThumb(batch.id, page, sheet.jpeg) : undefined;
         batch.items.push({
           page,
           imagePath,
@@ -694,11 +752,18 @@ export async function previewScan(
     rollNo: enrolled.rollNo,
     classLevel: enrolled.classLevel,
     programCode: enrolled.program?.code ?? null,
+    sectionId: enrolled.sectionId ?? enrolled.section?.id ?? null,
   });
-  const score = scoreSheet(read.answers, key.answers, key.subjectRanges, {
-    correctMarks: key.correctMarks,
-    wrongMarks: key.wrongMarks,
-  });
+  const score = scoreSheet(
+    read.answers,
+    key.answers,
+    key.subjectRanges,
+    {
+      correctMarks: key.correctMarks,
+      wrongMarks: key.wrongMarks,
+    },
+    key.keyTypeRanges,
+  );
   const previewId = crypto.randomUUID();
   let preview = await previewImage(image, read, key.answers, score);
   // PDF batch pages already are flat JPEGs — reuse the same buffer instead of a second full copy.
@@ -791,6 +856,7 @@ async function rebindPendingRoll(context: ScanContext, previewId: string, rollNo
     rollNo: enrolled.rollNo,
     classLevel: enrolled.classLevel,
     programCode: enrolled.program?.code ?? null,
+    sectionId: enrolled.sectionId ?? enrolled.section?.id ?? null,
   });
   if (key.id !== row.key.id) {
     const readFlags = row.flags.filter((flag) => flag.reason !== "Un-attempted");
@@ -800,10 +866,16 @@ async function rebindPendingRoll(context: ScanContext, previewId: string, rollNo
       row.score = score;
       await replacePendingPreview(row.diskDir, image);
     } else {
-      row.score = scoreSheet(row.answers, key.answers, key.subjectRanges, {
-        correctMarks: key.correctMarks,
-        wrongMarks: key.wrongMarks,
-      });
+      row.score = scoreSheet(
+        row.answers,
+        key.answers,
+        key.subjectRanges,
+        {
+          correctMarks: key.correctMarks,
+          wrongMarks: key.wrongMarks,
+        },
+        key.keyTypeRanges,
+      );
     }
     row.flags = sheetFlags(row.score, readFlags);
     row.key = { ...row.key, ...key };
@@ -852,10 +924,16 @@ async function useCurrentKey(row: Pending) {
     row.score = score;
     await replacePendingPreview(row.diskDir, image);
   } else {
-    row.score = scoreSheet(row.answers, current.answers, current.subjectRanges, {
-      correctMarks: current.correctMarks,
-      wrongMarks: current.wrongMarks,
-    });
+    row.score = scoreSheet(
+      row.answers,
+      current.answers,
+      current.subjectRanges,
+      {
+        correctMarks: current.correctMarks,
+        wrongMarks: current.wrongMarks,
+      },
+      current.keyTypeRanges,
+    );
   }
   row.flags = sheetFlags(row.score, readFlags);
   row.key = { ...row.key, ...current };

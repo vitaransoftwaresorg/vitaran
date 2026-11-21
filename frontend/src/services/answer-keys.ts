@@ -8,7 +8,10 @@ import type {
   AnswerKey,
   AnswerKeyDetail,
   AnswerKeyInput,
+  AnswerKeyOmrStatus,
   AnswerOption,
+  KeyTypeRange,
+  ParsedAnswerKeyImport,
   SchoolTestOption,
   SubjectRange,
   TestIdAvailability,
@@ -47,6 +50,39 @@ export function listSchoolTests(schoolId: string) {
   return adminApi<SchoolTestOption[]>(`${BASE}/school-tests?${query}`);
 }
 
+export type SchoolSectionKeyBoard = {
+  school: { id: string; name: string; code: string };
+  sectionId: string | null;
+  sectionName: string | null;
+  classLevel: number;
+  programCode: string;
+  items: Array<{ platform: AnswerKey; schoolKey: AnswerKey | null }>;
+};
+
+/** Platform keys + school overrides for one section (or whole class). */
+export function listSchoolSectionKeys(input: {
+  schoolId: string;
+  sectionId?: string;
+  classLevel?: number;
+}) {
+  const query = new URLSearchParams({ schoolId: input.schoolId });
+  if (input.sectionId) query.set("sectionId", input.sectionId);
+  if (input.classLevel != null) query.set("classLevel", String(input.classLevel));
+  return adminApi<SchoolSectionKeyBoard>(`${BASE}/school-section-keys?${query}`);
+}
+
+/** Clone / reopen a school section key from a platform answer key. */
+export function ensureSchoolSectionKey(input: {
+  platformKeyId: string;
+  schoolId: string;
+  sectionId?: string | null;
+}) {
+  return adminApi<AnswerKey>(`${BASE}/school-section-keys`, {
+    method: "POST",
+    body: input,
+  });
+}
+
 export function getAnswerKeyStats() {
   return adminApi<ContentStats>(`${BASE}/stats`);
 }
@@ -58,6 +94,10 @@ export async function getAnswerKey(id: string): Promise<AnswerKeyDetail | null> 
     if (error instanceof ApiError && (error.status === 404 || error.status === 400)) return null;
     throw error;
   }
+}
+
+export function getAnswerKeyOmrStatus(id: string) {
+  return adminApi<AnswerKeyOmrStatus>(`${itemPath(BASE, id)}/omr-status`);
 }
 
 export function createAnswerKey(input: AnswerKeyInput) {
@@ -93,12 +133,20 @@ export function saveAnswerKeyAnswers(
     explanations: Record<string, string>;
     printedAnswers?: Record<string, AnswerOption | string>;
     subjectRanges: SubjectRange[];
+    keyTypeRanges?: KeyTypeRange[];
     testId?: string;
     correctMarks: number;
     wrongMarks: number;
   },
 ) {
   return adminApi<AnswerKeyDetail>(`${itemPath(BASE, id)}/answers`, { method: "PATCH", body: input });
+}
+
+/** Parse answers from a PDF in memory — the file is not stored. */
+export function parseAnswerKeyPdf(file: File) {
+  const body = new FormData();
+  body.append("pdf", file);
+  return adminApi<ParsedAnswerKeyImport>(`${BASE}/parse-pdf`, { method: "POST", body });
 }
 
 /** Only the keys the signed-in school may see: regular keys for its programs, or its own. */

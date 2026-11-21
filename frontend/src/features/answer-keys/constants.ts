@@ -2,6 +2,9 @@ export const ANSWER_KEY_NOUN = "answer key";
 
 export const ANSWER_KEYS_PATH = "/admin/answer-keys";
 
+/** Per-school / section override keys (OMR prefers these over platform keys). */
+export const SCHOOL_KEYS_PATH = "/admin/school-keys";
+
 /** Photo attached to an objection, streamed through the portal's own session. */
 export const objectionImageHref = (portal: "admin" | "school" | "teacher", objectionId: string) =>
   `/${portal}/answer-keys/objections/${encodeURIComponent(objectionId)}/image`;

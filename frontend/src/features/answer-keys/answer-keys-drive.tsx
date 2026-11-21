@@ -10,7 +10,6 @@ import {
   customizedProgramCode,
   programLabel,
   soleSchoolForCustomProgram,
-  unmatchedCustomizedSchools,
   TYPE_LABELS,
 } from "@/features/schools/constants";
 import type { AnswerKey } from "@/types/answer-key";
@@ -91,21 +90,15 @@ export function AnswerKeysDrive({
     programs[0]?.code;
 
   const breadcrumbs: DriveCrumb[] = [{ label: "Answer keys", href: ANSWER_KEYS_PATH }];
-  if (path.program) {
-    breadcrumbs.push({
-      label:
-        selectedProgram?.type === "CUSTOMIZED"
-          ? programName(path.program)
-          : schoolForFolder?.type === "CUSTOMIZED"
-            ? (schoolForFolder.name ?? programName(path.program))
-            : programName(path.program),
-      href: link({ program: path.program, schoolId: soleSchool?.id }),
-    });
-  }
-  if (schoolId && schoolId !== soleSchool?.id) {
+  if (schoolId && (schoolForFolder?.type === "CUSTOMIZED" || customProgram)) {
     breadcrumbs.push({
       label: currentSchool?.name ?? "School",
-      href: link({ program: path.program, schoolId }),
+      href: link({ program: path.program ?? customCode, schoolId }),
+    });
+  } else if (path.program) {
+    breadcrumbs.push({
+      label: programName(path.program),
+      href: link({ program: path.program }),
     });
   }
   if (path.testNumber) {
@@ -155,28 +148,33 @@ export function AnswerKeysDrive({
   const driveItems: DriveItem[] = [];
 
   if (atRoot) {
+    // Regular keys are shared by program. Customized keys follow the school roster
+    // (one folder per customized school) — never list catalog custom programs separately.
     driveItems.push(
-      ...[...programs]
-        .sort((a, b) => (a.type === "CUSTOMIZED" ? 1 : 0) - (b.type === "CUSTOMIZED" ? 1 : 0))
+      ...programs
+        .filter((program) => (program.type ?? "REGULAR") === "REGULAR")
         .map((program) => ({
           id: `program:${program.code}`,
           name: programLabel(program.code, program.name),
           kind: "folder" as const,
-          href: link({
-            program: program.code,
-            schoolId: soleSchoolForCustomProgram(program, customizedOnly)?.id,
-          }),
-          detail: TYPE_LABELS[program.type ?? "REGULAR"],
+          href: link({ program: program.code }),
+          detail: TYPE_LABELS.REGULAR,
         })),
-      ...unmatchedCustomizedSchools(programs, customizedOnly).map((school) => ({
-        id: `school:${school.id}`,
-        name: school.name,
-        kind: "folder" as const,
-        href: link({ schoolId: school.id }),
-        detail: TYPE_LABELS.CUSTOMIZED,
-      })),
+      ...[...customizedOnly]
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((school) => ({
+          id: `school:${school.id}`,
+          name: school.name,
+          kind: "folder" as const,
+          href: link({
+            schoolId: school.id,
+            program: customizedProgramCode(school, programs),
+          }),
+          detail: TYPE_LABELS.CUSTOMIZED,
+        })),
     );
   } else if (inCustomSchools) {
+    // Legacy URL: customized program without school — pick from school roster.
     driveItems.push(
       ...customizedOnly
         .filter((school) => school.programs?.includes(path.program!))

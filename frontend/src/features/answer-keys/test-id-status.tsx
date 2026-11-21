@@ -19,8 +19,9 @@ export type TestIdCheck =
   | { state: "error"; message: string };
 
 /**
- * Checks a test ID against existing answer keys as soon as all 6 digits are in.
- * `exceptId` is the key being edited, so its own ID is not reported as taken.
+ * Checks a test ID as soon as all 6 digits are in.
+ * `exceptId` is the key being edited (own row ignored). School keys may share a
+ * platform test ID; platform keys stay unique among platform keys only.
  */
 export function useTestIdCheck(testId: string, exceptId?: string): TestIdCheck {
   const value = testId.trim();
