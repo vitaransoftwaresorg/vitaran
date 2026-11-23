@@ -13,13 +13,17 @@ import { startPdfJob } from "./pdf-batch";
 import { checkTestIdAction } from "./actions";
 import { DocumentScanner } from "./document-scanner";
 import { OmrRollRecovery } from "./omr-roll-recovery";
+import type { OmrStudentMatch } from "./omr-student-actions";
 import { requestTiltPermission } from "./phone-tilt";
-import { isRollUnreadError, ROLL_LENGTH, rollInput } from "./roll-helpers";
+import { canRecoverRoll, ROLL_LENGTH, rollInput } from "./roll-helpers";
 import { FULL_PAGE_QUAD, type SheetQuad } from "./sheet-detect";
 import { getOmrUploadAuthAction } from "./upload-auth";
 import type { ScanQueueItem } from "./queue-item";
+import type { PreviewScanFailure } from "./actions";
 
-type ScanFn = (form: FormData) => Promise<{ ok: true; result: ScanPreview } | { ok: false; message: string }>;
+type ScanFn = (
+  form: FormData,
+) => Promise<{ ok: true; result: ScanPreview } | PreviewScanFailure>;
 
 const MAX_SIDE = 4096;
 const JPEG_QUALITY = 0.97;
@@ -141,6 +145,8 @@ export function ScanCamera({
   const [scannerOpen, setScannerOpen] = useState(false);
   const [testCheck, setTestCheck] = useState<TestCheckState | null>(null);
   const [rollError, setRollError] = useState<string | null>(null);
+  const [rollMatches, setRollMatches] = useState<OmrStudentMatch[]>([]);
+  const [rollHint, setRollHint] = useState("");
   const retryRef = useRef<{ source: Blob; corners?: SheetQuad } | null>(null);
   const enteredTest = testId.trim();
   const testComplete = TEST_ID_PATTERN.test(enteredTest);
@@ -188,8 +194,13 @@ export function ScanCamera({
     </p>
   ) : checked.ok ? (
     <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-xs text-emerald-900">
-      {checked.keys.map((key) => (
-        <p key={`${key.programCode}:${key.classLevel}:${key.testNumber}`} className="font-semibold">
+      {checked.keys.map((key, index) => (
+        <p
+          key={`${key.owner ?? "platform"}:${key.sectionName ?? ""}:${key.programCode}:${key.classLevel}:${key.testNumber}:${index}`}
+          className="font-semibold"
+        >
+          {key.owner ? `${key.owner} · ` : ""}
+          {key.sectionName ? `Section ${key.sectionName} · ` : ""}
           {key.programName} · Test {key.testNumber} · Class {key.classLevel}
         </p>
       ))}
@@ -198,15 +209,33 @@ export function ScanCamera({
     <p className="text-[11px] font-medium text-red-700">{checked.message}</p>
   );
 
-  async function readPhoto(source: Blob, corners?: SheetQuad, forcedRoll?: string) {
+  async function readPhoto(
+    source: Blob,
+    corners?: SheetQuad,
+    forcedRoll?: string,
+    forcedSchoolId?: string,
+  ) {
     const file = await asJpegFile(source);
     const form = new FormData();
     form.append("file", file);
     if (testId.trim()) form.append("testId", testId.trim());
     const roll = rollInput(forcedRoll ?? "");
     if (roll.length === ROLL_LENGTH) form.append("rollNo", roll);
+    if (forcedSchoolId) form.append("schoolId", forcedSchoolId);
     if (corners) form.append("corners", JSON.stringify(corners.map((p) => [p.x, p.y])));
     return scanAction(form);
+  }
+
+  function rememberRollFailure(
+    source: Blob,
+    corners: SheetQuad | undefined,
+    result: PreviewScanFailure,
+  ) {
+    if (!canRecoverRoll(result.message) && !(result.matches && result.matches.length > 1)) return;
+    retryRef.current = { source, corners };
+    setRollError(result.message);
+    setRollMatches(result.matches ?? []);
+    setRollHint(result.rollNo ?? "");
   }
 
   async function submit(source: Blob, corners?: SheetQuad) {
@@ -214,18 +243,19 @@ export function ScanCamera({
     setBusy(true);
     setStatus("Reading sheet…");
     setRollError(null);
+    setRollMatches([]);
+    setRollHint("");
     try {
       const result = await readPhoto(source, corners);
       if (!result.ok) {
         toast.error(result.message);
-        if (isRollUnreadError(result.message)) {
-          retryRef.current = { source, corners };
-          setRollError(result.message);
-        }
+        rememberRollFailure(source, corners, result);
         return;
       }
       retryRef.current = null;
       setRollError(null);
+      setRollMatches([]);
+      setRollHint("");
       onScanned(result.result);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not read this sheet. Try again.");
@@ -235,7 +265,7 @@ export function ScanCamera({
     }
   }
 
-  async function saveFailedWithRoll(typedRoll: string) {
+  async function saveFailedWithRoll(typedRoll: string, schoolId?: string) {
     const pending = retryRef.current;
     if (!pending) return;
     const typed = rollInput(typedRoll);
@@ -247,15 +277,17 @@ export function ScanCamera({
     setBusy(true);
     setStatus("Saving with registration…");
     try {
-      const result = await readPhoto(pending.source, pending.corners, typed);
+      const result = await readPhoto(pending.source, pending.corners, typed, schoolId);
       if (!result.ok) {
         toast.error(result.message);
-        // Keep the unread recovery form open so they can fix the number.
-        if (isRollUnreadError(result.message)) setRollError(result.message);
+        // Keep recovery open so they can pick another student or fix the number.
+        rememberRollFailure(pending.source, pending.corners, result);
         return;
       }
       retryRef.current = null;
       setRollError(null);
+      setRollMatches([]);
+      setRollHint("");
       onScanned(result.result);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not save this sheet. Try again.");
@@ -266,13 +298,15 @@ export function ScanCamera({
   }
 
   function failedRollPanel() {
-    if (!rollError || !isRollUnreadError(rollError)) return null;
+    if (!rollError || !canRecoverRoll(rollError)) return null;
     return (
       <OmrRollRecovery
         portal={portal}
         message={rollError}
         busy={busy}
-        onSaveWithRoll={(roll) => void saveFailedWithRoll(roll)}
+        initialMatches={rollMatches}
+        initialRollNo={rollHint}
+        onSaveWithRoll={(roll, schoolId) => void saveFailedWithRoll(roll, schoolId)}
       />
     );
   }

@@ -31,6 +31,7 @@ import {
 import { displaySectionName } from "@/features/schools/section-label";
 import { capitalizeWords, toPhoneDigits } from "@/features/schools/schema";
 import { capitalizeInput, capitalizeWords as titleCase } from "@/lib/name-case";
+import { navigateFresh } from "@/features/students/navigate-fresh";
 import {
   clearStudentDraft,
   parseStudentDraft,
@@ -397,8 +398,7 @@ export function BulkStudentForm({
       setDone(true);
       if (after) after();
       else if (!stayInPlace) {
-        router.push(returnTo);
-        router.refresh();
+        navigateFresh(router, returnTo);
       }
     });
   }

@@ -61,9 +61,9 @@ async function keepSample(bytes: Buffer, fileName: string) {
 
 const IMAGE_MAX = 8 * 1024 * 1024;
 const PDF_MAX = 500 * 1024 * 1024;
-const PREVIEW_TTL_MS = 30 * 60 * 1000;
+const PREVIEW_TTL_MS = 60 * 60 * 1000;
 /** Idle TTL from the last finished page (refreshed as each page completes). */
-const PDF_BATCH_TTL_MS = 30 * 60 * 1000;
+const PDF_BATCH_TTL_MS = 60 * 60 * 1000;
 
 type PdfBatchItem = {
   page: number;
@@ -348,7 +348,69 @@ async function resolveKey(school: ScanSchool | null, tests: string[], student: S
   throw lastError ?? new AppError(404, "No published answer key for this sheet");
 }
 
-async function resolveStudent(school: ScanSchool | null, candidates: string[]) {
+function ambiguousRollMatches(
+  rows: Array<{
+    id: string;
+    name: string;
+    rollNo: string;
+    classLevel: number;
+    school: { id: string; name: string };
+    program: { name: string } | null;
+    section: { name: string } | null;
+  }>,
+) {
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    rollNo: row.rollNo,
+    classLevel: row.classLevel,
+    sectionName: row.section?.name ?? null,
+    programName: row.program?.name ?? null,
+    schoolId: row.school.id,
+    schoolName: row.school.name,
+  }));
+}
+
+function throwAmbiguousRoll(
+  rollNo: string,
+  matched: Array<{
+    id: string;
+    name: string;
+    rollNo: string;
+    classLevel: number;
+    school: { id: string; name: string };
+    program: { name: string } | null;
+    section: { name: string } | null;
+  }>,
+): never {
+  throw new AppError(
+    422,
+    `Registration number ${rollNo} matches ${matched.length} students. Pick one or enter another registration.`,
+    {
+      code: "AMBIGUOUS_ROLL",
+      rollNo,
+      matches: ambiguousRollMatches(matched),
+    },
+  );
+}
+
+async function resolveStudent(
+  school: ScanSchool | null,
+  candidates: string[],
+  preferredSchoolId?: string,
+) {
+  // Examiner picked a school when the same reg exists at more than one school.
+  if (preferredSchoolId && !school) {
+    const knownRolls = (await studentRepository.listSchoolRolls(preferredSchoolId)).map(
+      (row) => row.rollNo,
+    );
+    const rollNo = pickRollNo(candidates, knownRolls);
+    if (rollNo) {
+      const enrolled = await studentRepository.findActiveStudentInSchool(preferredSchoolId, rollNo);
+      if (enrolled) return enrolled;
+    }
+  }
+
   if (school) {
     const knownRolls = (await studentRepository.listSchoolRolls(school.id)).map((row) => row.rollNo);
     const rollNo = pickRollNo(candidates, knownRolls);
@@ -377,6 +439,7 @@ async function resolveStudent(school: ScanSchool | null, candidates: string[]) {
   const rollNo = pickRollNo(candidates, uniqueHits.map((row) => row.rollNo));
   const matched = uniqueHits.filter((row) => row.rollNo.toUpperCase() === rollNo.toUpperCase());
   if (matched.length === 1) return matched[0]!;
+  if (matched.length > 1) throwAmbiguousRoll(rollNo!, matched);
   if (!rollNo && !digits.length) {
     throw new AppError(
       422,
@@ -500,8 +563,12 @@ export async function checkTestId(context: ScanContext, testId: string) {
   const value = testId.trim().toUpperCase();
   if (!value) throw new AppError(400, "Enter the test ID from the answer key.");
   const school = contextSchool(context);
+  // Drafts with no saved answers are not usable for OMR — hide them from the check.
   const keys = (await answerKeyRepository.findAnswerKeys({})).filter(
-    (key) => key.testId?.trim().toUpperCase() === value && (!school || keyVisibleTo(key, school)),
+    (key) =>
+      key.testId?.trim().toUpperCase() === value &&
+      keyHasAnswers(key) &&
+      (!school || keyVisibleTo(key, school)),
   );
   if (!keys.length) {
     throw new AppError(
@@ -514,11 +581,15 @@ export async function checkTestId(context: ScanContext, testId: string) {
     testId: keys[0]!.testId!.trim(),
     keys: keys.map((key) => {
       const named = programNameOf(context, key);
+      const owner = key.school?.name?.trim() || "Platform";
+      const section = key.section?.name?.trim();
       return {
         testNumber: key.testNumber,
         classLevel: key.classLevel,
         programCode: key.programCode,
         programName: named !== key.programCode ? named : (catalog.get(key.programCode) ?? key.programCode),
+        owner,
+        sectionName: section || null,
       };
     }),
   };
@@ -728,12 +799,24 @@ export async function previewScan(
   context: ScanContext,
   image: Buffer,
   fileName: string,
-  identity: { rollNo?: string; testId?: string; flat?: boolean; lean?: boolean; corners?: SheetCorners } = {},
+  identity: {
+    rollNo?: string;
+    testId?: string;
+    schoolId?: string;
+    flat?: boolean;
+    lean?: boolean;
+    corners?: SheetCorners;
+  } = {},
 ) {
   if (image.length > IMAGE_MAX) throw new AppError(413, "OMR image is too large (max 8 MB)");
   if (!identity.flat) void keepSample(image, fileName || "omr.jpg");
   const typedRoll = (identity.rollNo ?? "").replace(/\D/g, "");
   const typedTest = (identity.testId ?? "").trim();
+  const preferredSchoolId =
+    typeof identity.schoolId === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identity.schoolId)
+      ? identity.schoolId
+      : undefined;
   const read = await readQueued(image, fileName, {
     rollNo: typedRoll,
     testId: typedTest,
@@ -745,6 +828,7 @@ export async function previewScan(
   const enrolled = await resolveStudent(
     sessionSchool,
     typedRoll ? [typedRoll] : [read.rollNo, ...read.rollCandidates],
+    preferredSchoolId,
   );
   const school: ScanSchool = sessionSchool ?? {
     id: enrolled.school.id,

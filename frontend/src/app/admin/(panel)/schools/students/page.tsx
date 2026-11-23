@@ -4,6 +4,11 @@ import { FileSpreadsheet, Plus } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/features/admin/page-header";
 import { subjectsForClassLevel } from "@/features/schools/constants";
+import {
+  DEFAULT_STUDENTS_PAGE_SIZE,
+  parseListPage,
+  parseListPageSize,
+} from "@/features/list/page-params";
 import { AdminStudentRollSearch } from "@/features/students/admin-student-roll-search";
 import { DeleteRosterStudentsButton } from "@/features/students/delete-roster-students-button";
 import { ClassProfilesPdfActions } from "@/features/students/student-pdf-actions";
@@ -36,34 +41,39 @@ export default async function AdminAllStudentsPage({
       ? classLevelRaw
       : undefined;
   const section = first(query.section)?.trim().toUpperCase() || undefined;
+  const page = parseListPage(query.page);
+  const pageSize = parseListPageSize(query.pageSize, DEFAULT_STUDENTS_PAGE_SIZE, 100);
 
   const schools = await listSchoolOptions();
   const school = schoolId ? schools.find((item) => item.id === schoolId) : undefined;
 
-  // Load organization first so section filters can use ids; scope the roster fetch by class
-  // so production schools with >500 students still show the open section.
   const organization = school ? await listAdminSchoolSections(school.id) : null;
   const sectionIds =
     school && classLevel != null && section
       ? sectionIdsForClass(organization, classLevel, section)
       : undefined;
-  const students = school
-    ? (
-        await listAdminSchoolStudents(school.id, {
-          pageSize: 500,
-          status: "ACTIVE",
-          ...(classLevel != null ? { classLevel } : {}),
-          ...(sectionIds?.length === 1 ? { sectionId: sectionIds[0] } : {}),
-        })
-      ).items
-    : [];
+  const hasSections =
+    classLevel != null &&
+    (organization?.sections ?? []).some((row) => row.classLevel === classLevel);
+  const showRosterTable = Boolean(school && classLevel != null && (section || !hasSections));
+
+  const studentsPage = school
+    ? await listAdminSchoolStudents(school.id, {
+        status: "ACTIVE",
+        ...(classLevel != null ? { classLevel } : {}),
+        ...(sectionIds?.length === 1 ? { sectionId: sectionIds[0] } : {}),
+        ...(showRosterTable
+          ? { page, pageSize }
+          : { pageSize: 500 }),
+      })
+    : null;
+  const students = studentsPage?.items ?? [];
 
   const inClass = Boolean(school && classLevel != null);
-  // School / class names live in the top-nav trail — don't repeat them as a page title.
   const classScopeLabel =
     inClass && classLevel != null
       ? section
-        ? `Class ${classLevel}-${section} students`
+        ? `Class ${classLevel}-${section}`
         : `Class ${classLevel} students`
       : undefined;
   const description = school
@@ -101,7 +111,7 @@ export default async function AdminAllStudentsPage({
                   classLevel={classLevel}
                   sectionId={sectionIds?.length === 1 ? sectionIds[0] : null}
                   sectionLabel={section}
-                  studentCount={roster.length}
+                  studentCount={showRosterTable ? (studentsPage?.pagination.total ?? roster.length) : roster.length}
                 />
               ) : null}
               <Link
@@ -134,6 +144,10 @@ export default async function AdminAllStudentsPage({
         section={section}
         organization={organization}
         students={students}
+        pagination={showRosterTable ? studentsPage?.pagination : undefined}
+        listParams={{
+          pageSize: pageSize === DEFAULT_STUDENTS_PAGE_SIZE ? undefined : pageSize,
+        }}
       />
     </>
   );

@@ -8,7 +8,7 @@ import { listAdminPrograms } from "@/services/programs";
 import { listAdminClassScans } from "@/services/scans";
 import { getClassResultTemplate, getResultSheet, listResultSets } from "@/services/results";
 import { listSchoolOptions } from "@/services/schools";
-import { listAdminSchoolStudents } from "@/services/students";
+import { listAllAdminSchoolStudents } from "@/services/students";
 
 export const metadata: Metadata = { title: "Enter results" };
 
@@ -71,10 +71,9 @@ export default async function AdminResultEnterPage({
       ? undefined
       : program);
 
-  // Same class roster as Students — not a separate results-only list / program filter.
-  const studentPage = await listAdminSchoolStudents(schoolId, {
+  // Same ACTIVE class roster as Students — not seats/strength, not a results-only list.
+  const studentPage = await listAllAdminSchoolStudents(schoolId, {
     classLevel,
-    pageSize: 500,
     status: "ACTIVE",
   });
 

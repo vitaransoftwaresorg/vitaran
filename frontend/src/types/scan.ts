@@ -24,7 +24,15 @@ export function formatMarks(value: number) {
 /** Answer key(s) behind an entered test ID. */
 export type TestIdCheck = {
   testId: string;
-  keys: Array<{ testNumber: number; classLevel: number; programCode: string; programName: string }>;
+  keys: Array<{
+    testNumber: number;
+    classLevel: number;
+    programCode: string;
+    programName: string;
+    /** Platform or school name that owns this key. */
+    owner?: string;
+    sectionName?: string | null;
+  }>;
 };
 
 /** A saved OMR in a class, for the results table's OMR column. */

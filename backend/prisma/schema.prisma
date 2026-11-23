@@ -106,11 +106,32 @@ model School {
   schoolClasses     SchoolClass[]
   students          Student[]
   omScans           OmScan[]
+  studentResources  SchoolStudentResource[]
 
   @@index([status])
   @@index([board])
   @@index([createdAt])
   @@map("schools")
+}
+
+/// Per-class / subject PDF for customized schools (uploaded at registration or later).
+model SchoolStudentResource {
+  id         String   @id @default(uuid()) @db.Uuid
+  schoolId   String   @map("school_id") @db.Uuid
+  school     School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  classLevel Int      @map("class_level") @db.SmallInt
+  subject    String   @db.VarChar(64)
+  fileName   String   @map("file_name") @db.VarChar(255)
+  fileSize   Int      @map("file_size")
+  mimeType   String   @map("mime_type") @db.VarChar(64)
+  /// PDF bytes or object-storage ref; omitted from list queries.
+  data       Bytes
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([schoolId, classLevel, subject])
+  @@index([schoolId])
+  @@map("school_student_resources")
 }
 
 /// A school enrolled in a catalog program, with per-class subject selections.

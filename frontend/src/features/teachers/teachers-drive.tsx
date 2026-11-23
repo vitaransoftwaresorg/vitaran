@@ -6,8 +6,9 @@ import { DriveBrowser, type DriveItem } from "@/features/documents/drive-browser
 import { TYPE_LABELS } from "@/features/schools/constants";
 import { setAdminTeacherStatusAction } from "@/features/teachers/actions";
 import { TeachersTable } from "@/features/teachers/teachers-table";
-import type { SchoolOption } from "@/types/school";
+import type { Pagination, SchoolOption } from "@/types/school";
 import type { Teacher } from "@/types/teacher";
+import { ListPagination } from "@/components/shared/list-pagination";
 
 export const TEACHERS_PATH = "/admin/teachers";
 
@@ -15,20 +16,29 @@ type TeachersDriveProps = {
   schools: SchoolOption[];
   schoolId?: string;
   teachers?: Teacher[];
+  pagination?: Pagination;
+  listParams?: Record<string, string | number | undefined | null>;
 };
 
 function schoolHref(schoolId: string) {
   return `${TEACHERS_PATH}?${new URLSearchParams({ school: schoolId })}`;
 }
 
-export function TeachersDrive({ schools, schoolId, teachers = [] }: TeachersDriveProps) {
+export function TeachersDrive({
+  schools,
+  schoolId,
+  teachers = [],
+  pagination,
+  listParams,
+}: TeachersDriveProps) {
   const school = schools.find((item) => item.id === schoolId);
   const setDrivePath = useSetDrivePathCrumbs();
+  const totalTeachers = pagination?.total ?? teachers.length;
 
   useEffect(() => {
     if (!setDrivePath) return;
     if (schoolId && school) {
-      const n = teachers.length;
+      const n = totalTeachers;
       setDrivePath([
         { label: school.name, href: schoolHref(school.id) },
         {
@@ -39,7 +49,7 @@ export function TeachersDrive({ schools, schoolId, teachers = [] }: TeachersDriv
       return () => setDrivePath([]);
     }
     setDrivePath([]);
-  }, [school, schoolId, teachers.length, setDrivePath]);
+  }, [school, schoolId, totalTeachers, setDrivePath]);
 
   if (schoolId && school) {
     return (
@@ -48,6 +58,17 @@ export function TeachersDrive({ schools, schoolId, teachers = [] }: TeachersDriv
         showSchool={false}
         editHrefBase={TEACHERS_PATH}
         onToggleStatus={setAdminTeacherStatusAction}
+        pagination={
+          pagination ? (
+            <ListPagination
+              pagination={pagination}
+              basePath={TEACHERS_PATH}
+              searchParams={{ school: school.id, ...listParams }}
+              noun="teachers"
+              pageSizeOptions={[10, 20, 50, 100]}
+            />
+          ) : undefined
+        }
       />
     );
   }
@@ -60,6 +81,8 @@ export function TeachersDrive({ schools, schoolId, teachers = [] }: TeachersDriv
       kind: "folder" as const,
       href: schoolHref(item.id),
       detail: TYPE_LABELS[item.type],
+      imageSrc: item.hasLogo ? `/admin/schools/${item.id}/logo` : undefined,
+      nameLogo: true,
     }));
 
   return (

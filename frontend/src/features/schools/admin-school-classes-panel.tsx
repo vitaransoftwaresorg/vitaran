@@ -37,12 +37,18 @@ import {
   updateAdminWholeClassAction,
 } from "@/features/schools/section-actions";
 import { capitalizeWords } from "@/features/schools/schema";
-import { STUDENTS_PATH } from "@/features/students/school-roster";
+import {
+  CAPACITY_LABELS,
+  rosterCountForClass,
+  rosterCountLabel,
+  STUDENTS_PATH,
+} from "@/features/students/school-roster";
 import { cn } from "@/lib/utils";
 import { formatNumber } from "@/utils/format";
 import type { SchoolProgramOffering } from "@/types/program";
 import type { Subject } from "@/types/school";
 import type { ClassOrganization, SectionInput } from "@/types/section";
+import type { SchoolStudentCounts } from "@/types/student";
 import type { ClassTeacherSlot } from "@/types/teacher";
 
 const linkBtn =
@@ -91,6 +97,11 @@ type AdminSchoolClassesPanelProps = {
   readOnly?: boolean;
   /** Cap class/section seats by school total strength. */
   strength?: { studentStrength: number | null; used: number };
+  /**
+   * ACTIVE roster counts (same list Students / Results use).
+   * Seats column stays capacity; Students column shows enrolled + link.
+   */
+  rosterCounts?: SchoolStudentCounts | null;
   /** When deferred, Add/Delete stay local until school Save. Seat edits on saved rows save immediately. */
   persist?: "immediate" | "deferred";
   /** Restored class drafts after refresh (registration form). */
@@ -116,6 +127,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
   embedded = false,
   readOnly = false,
   strength,
+  rosterCounts = null,
   persist = "immediate",
   initialCreates = [],
   initialDeletes = [],
@@ -566,7 +578,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     const remaining = seatsRemaining(excludeCurrentSeats);
     if (remaining == null) return undefined;
     if (count > remaining) {
-      return `Only ${remaining} seat${remaining === 1 ? "" : "s"} left under school strength (${formatNumber(strength!.studentStrength!)} total)`;
+      return `Only ${remaining} seat${remaining === 1 ? "" : "s"} left under ${CAPACITY_LABELS.schoolLimit.toLowerCase()} (${formatNumber(strength!.studentStrength!)} total)`;
     }
     return undefined;
   }
@@ -858,7 +870,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
               {editErrors.programId ? <FieldError>{editErrors.programId}</FieldError> : null}
             </Field>
             <Field data-invalid={editErrors.studentCount ? true : undefined}>
-              <FieldLabel>Seats *</FieldLabel>
+              <FieldLabel>{CAPACITY_LABELS.classSeats} *</FieldLabel>
               <Input
                 value={editSeats}
                 className="h-9"
@@ -949,7 +961,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
             <AlertDialogDescription>
               {classOptions.length === 0
                 ? "Select programs and classes first. Options follow those checks."
-                : "Pick class, program, and seats. After choosing a program, select subjects to grant access. Section defaults to A if left blank."}
+                : "Pick class, program, and seat limit (capacity — not the student list). After choosing a program, select subjects. Section defaults to A if left blank."}
             </AlertDialogDescription>
           </AlertDialogHeader>
 
@@ -1092,7 +1104,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
             ) : null}
 
             <Field data-invalid={errors.studentCount ? true : undefined}>
-              <FieldLabel>Seats</FieldLabel>
+              <FieldLabel>{CAPACITY_LABELS.classSeats}</FieldLabel>
               <Input
                 value={studentCount}
                 className="h-9"
@@ -1152,8 +1164,8 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                 <th className="px-4 py-2.5">Section</th>
                 <th className="px-4 py-2.5">Program</th>
                 <th className="px-4 py-2.5">Subjects</th>
-                <th className="px-4 py-2.5 text-right">Seats</th>
-                <th className="px-4 py-2.5">Students</th>
+                <th className="px-4 py-2.5 text-right">{CAPACITY_LABELS.classSeats}</th>
+                <th className="px-4 py-2.5">Roster</th>
                 <th className="px-4 py-2.5">Class teacher</th>
                 <th className="px-4 py-2.5">Teachers</th>
                 {canEdit ? <th className="px-4 py-2.5 text-right"> </th> : null}
@@ -1164,6 +1176,10 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                 const studentsLink = schoolId
                   ? classStudentsHref(row.classLevel, row.section, row.kind)
                   : null;
+                const enrolled = row.draft
+                  ? 0
+                  : rosterCountForClass(rosterCounts, row);
+                const rosterLabel = rosterCountLabel(enrolled);
                 return (
                   <tr
                     key={row.key}
@@ -1189,7 +1205,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                       {canEdit ? (
                         <button
                           type="button"
-                          title="Edit class"
+                          title={`Edit ${CAPACITY_LABELS.classSeats.toLowerCase()}`}
                           className="rounded-md px-1.5 py-0.5 hover:bg-brand-50 hover:text-brand-900"
                           onClick={() => openEdit(row)}
                         >
@@ -1201,12 +1217,16 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                     </td>
                     <td className="px-4 py-3">
                       {studentsLink ? (
-                        <Link href={studentsLink} className={linkBtn}>
+                        <Link
+                          href={studentsLink}
+                          className={linkBtn}
+                          title="Open roster — same list Results uses"
+                        >
                           <GraduationCap className="size-3.5 shrink-0" strokeWidth={2} />
-                          Students
+                          {rosterLabel}
                         </Link>
                       ) : (
-                        <span className="text-neutral-400">{EMPTY}</span>
+                        <span className="text-neutral-400 tabular-nums">{rosterLabel}</span>
                       )}
                     </td>
                     <td className="px-4 py-3">

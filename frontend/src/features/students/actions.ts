@@ -1,9 +1,9 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { z } from "zod";
 import { ApiError } from "@/services/api-client";
+import { revalidateSchoolRoster } from "@/features/students/revalidate-roster";
 import {
   createSchoolStudent,
   createSchoolStudentsBulk,
@@ -175,8 +175,7 @@ export async function createStudentAction(
       classLevel: data.classLevel,
       sectionId: data.sectionId || null,
     });
-    revalidatePath("/school/classes");
-    revalidatePath("/school/students");
+    revalidateSchoolRoster();
     if (stay) {
       return { success: true, studentId: student.id, submittedAt: Date.now() };
     }
@@ -340,9 +339,7 @@ export async function importSchoolStudentsAllAction(input: {
         }
       }
     }
-
-    revalidatePath("/school/classes");
-    revalidatePath("/school/students");
+    revalidateSchoolRoster();
     if (total === 0) return { message: "Enter at least one student" };
     if (input.stay) return { success: true, count: total };
     redirect(input.returnTo?.trim() || "/school/students");
@@ -417,8 +414,7 @@ export async function createSchoolStudentsBulkAction(input: {
 
   try {
     const result = await createSchoolStudentsBulk(payload);
-    revalidatePath("/school/classes");
-    revalidatePath("/school/students");
+    revalidateSchoolRoster();
     if (input.stay) {
       return { success: true, count: result.count };
     }
@@ -498,8 +494,7 @@ export async function updateStudentAction(
       classLevel: data.classLevel,
       sectionId: data.sectionId || null,
     });
-    revalidatePath("/school/classes");
-    revalidatePath("/school/students");
+    revalidateSchoolRoster();
     if (stay) {
       return { success: true, studentId: id, submittedAt: Date.now() };
     }
@@ -521,15 +516,13 @@ export async function updateStudentAction(
 
 export async function deleteStudentAction(id: string, returnTo = "/school/classes") {
   await deleteSchoolStudent(id);
-  revalidatePath("/school/classes");
-  revalidatePath("/school/students");
+    revalidateSchoolRoster();
   redirect(returnTo);
 }
 
 export async function deleteStudentInPlaceAction(id: string) {
   await deleteSchoolStudent(id);
-  revalidatePath("/school/classes");
-  revalidatePath("/school/students");
+    revalidateSchoolRoster();
   return { ok: true as const };
 }
 
@@ -537,9 +530,7 @@ export async function deleteStudentInPlaceAction(id: string) {
 export async function deleteSectionStudentsAction(sectionId: string) {
   try {
     const result = await deleteSchoolSectionStudents(sectionId);
-    revalidatePath("/school/classes");
-    revalidatePath("/school/students");
-    revalidatePath("/school/results");
+    revalidateSchoolRoster();
     return { ok: true as const, deleted: result.deleted };
   } catch (error) {
     unstable_rethrow(error);
@@ -554,9 +545,7 @@ export async function deleteSectionStudentsAction(sectionId: string) {
 export async function deleteClassStudentsAction(classLevel: number) {
   try {
     const result = await deleteSchoolClassStudents(classLevel);
-    revalidatePath("/school/classes");
-    revalidatePath("/school/students");
-    revalidatePath("/school/results");
+    revalidateSchoolRoster();
     return { ok: true as const, deleted: result.deleted };
   } catch (error) {
     unstable_rethrow(error);

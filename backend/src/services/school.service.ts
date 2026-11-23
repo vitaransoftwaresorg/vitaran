@@ -72,6 +72,7 @@ export type SchoolOptionDto = {
   programs: string[];
   programLabels: Record<string, string>;
   offerings: { code: string; name: string; classLevels: number[] }[];
+  hasLogo: boolean;
 };
 
 export type SchoolDto = SchoolSummaryDto & {
@@ -155,6 +156,7 @@ export function toSchoolOptionDto(school: SchoolOptionRow): SchoolOptionDto {
     programs: offerings.map((row) => row.code),
     programLabels: Object.fromEntries(offerings.map((row) => [row.code, row.name])),
     offerings,
+    hasLogo: Boolean(school.logoMimeType),
   };
 }
 

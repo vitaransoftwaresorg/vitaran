@@ -8,9 +8,12 @@ const CATALOG_TITLES = programs.map((program) => program.title);
 
 /** Prefer Advanced when a customized school has no regular enrolment to copy from. */
 const CATALOG_PREFERENCE = [
+  "New Advanced Program",
   "Advanced Program",
   "Revised Advanced Program",
+  "New Integrated Program",
   "Integrated Program",
+  "New Olympiad Program",
   "Olympiad Program",
   "Olympiad Program Class 1 to 5",
 ];
@@ -18,12 +21,13 @@ const CATALOG_PREFERENCE = [
 export type PortalProgram = ProgramContent;
 
 /**
- * Newer regular catalog codes that reuse solution books / labels from a classic program.
- * DB may enrol NEWINTEGRATED while Teachers Resources still ships Integrated PDFs.
+ * Extra catalog codes that reuse the New Integrated / New Advanced solution books.
+ * Classic Integrated / Advanced / Olympiad can be added later as separate tabs.
  */
 const CATALOG_BOOK_ALIASES: Record<string, string> = {
   NEWADVANCED: "ADVANCED",
   NEWINTEGRATED: "INTEGRATED",
+  NEWOLYMPIAD: "OLYMPIAD",
 };
 
 export function catalogSourceId(code: string) {

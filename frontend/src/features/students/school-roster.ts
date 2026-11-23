@@ -4,15 +4,66 @@ import {
 } from "@/features/schools/section-label";
 import type { ClassOrganization } from "@/types/section";
 import type { SchoolOption } from "@/types/school";
-import type { Student } from "@/types/student";
+import type { SchoolStudentCounts, Student } from "@/types/student";
 
 export const STUDENTS_PATH = "/admin/schools/students";
 
 /**
- * App-wide rule: there is one school student roster.
+ * App-wide rule: there is one school student roster (ACTIVE Student rows).
  * Students / Classes / Results / OMR / ranks / reports all slice that same list.
+ *
+ * Capacity is never the student list:
+ * - School strength / seat limit = max seats for the school
+ * - Class/section seats = max seats for that class
+ * - Roster = real enrolled Student rows (Add / Import)
+ *
  * Deleting a student, section, or class removes those rolls from Results and OMR too.
  */
+
+/** UI copy — capacity fields must never say "students". */
+export const CAPACITY_LABELS = {
+  schoolLimit: "School seat limit",
+  schoolLimitHint: "Maximum seats for this school — not the student list.",
+  classSeats: "Seat limit",
+  seatsAssigned: "seats assigned",
+  seatsWord: "seats",
+} as const;
+
+export const ROSTER_LABELS = {
+  short: "Roster",
+  onRoster: "on roster",
+  empty: "No students yet",
+  chip: "Roster",
+} as const;
+
+/** e.g. "12 on roster" / "No students yet" */
+export function rosterCountLabel(enrolled: number) {
+  if (enrolled <= 0) return ROSTER_LABELS.empty;
+  return `${enrolled} ${ROSTER_LABELS.onRoster}`;
+}
+
+/** Total ACTIVE students on the school roster (same source Results uses). */
+export function rosterTotal(counts: SchoolStudentCounts | null | undefined) {
+  if (!counts) return 0;
+  return Object.values(counts.byProgram).reduce((sum, n) => sum + n, 0);
+}
+
+/** Enrolled roster count for one class/section row (not seat capacity). */
+export function rosterCountForClass(
+  counts: SchoolStudentCounts | null | undefined,
+  row: {
+    kind: "section" | "whole";
+    id: string;
+    programId: string;
+    classLevel: number;
+  },
+) {
+  if (!counts) return 0;
+  if (row.kind === "section") return counts.bySection[row.id] ?? 0;
+  return counts.byWhole
+    .filter((item) => item.programId === row.programId && item.classLevel === row.classLevel)
+    .reduce((sum, item) => sum + item.count, 0);
+}
 
 /** Filter a school roster to enrolled program codes (empty set = keep all). */
 export function filterStudentsByProgramCodes(

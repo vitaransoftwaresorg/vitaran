@@ -8,6 +8,7 @@ import type {
   CreateStudentInput,
   CreateStudentsBulkInput,
   CreateStudentsBulkResult,
+  SchoolStudentCounts,
   Student,
   StudentDetail,
   StudentListResult,
@@ -16,6 +17,7 @@ import type {
 } from "@/types/student";
 
 export type { ReportCardKind } from "@/features/students/portal";
+export type { SchoolStudentCounts } from "@/types/student";
 
 type ListParams = {
   schoolId?: string;
@@ -41,13 +43,6 @@ function queryString(params: ListParams = {}) {
 export function listSchoolStudents(params?: ListParams) {
   return schoolApi<StudentListResult>(`/school/students${queryString(params)}`);
 }
-
-export type SchoolStudentCounts = {
-  byProgram: Record<string, number>;
-  byClass: { programId: string; classLevel: number; count: number }[];
-  bySection: Record<string, number>;
-  byWhole: { programId: string; classLevel: number; count: number }[];
-};
 
 export function getSchoolStudentCounts() {
   return schoolApi<SchoolStudentCounts>("/school/students/counts");
@@ -112,6 +107,31 @@ export function listAdminSchoolStudents(schoolId: string, params?: ListParams) {
   return adminApi<StudentListResult>(
     `/schools/${encodeURIComponent(schoolId)}/students${queryString(params)}`,
   );
+}
+
+/** Full ACTIVE class roster for Results / OMR — pages past the API 500-row cap. */
+export async function listAllAdminSchoolStudents(
+  schoolId: string,
+  params: Omit<ListParams, "page" | "pageSize"> = {},
+) {
+  const pageSize = 500;
+  const first = await listAdminSchoolStudents(schoolId, { ...params, page: 1, pageSize });
+  const items = [...first.items];
+  const totalPages = first.pagination.totalPages;
+  for (let page = 2; page <= totalPages; page += 1) {
+    const next = await listAdminSchoolStudents(schoolId, { ...params, page, pageSize });
+    items.push(...next.items);
+  }
+  return {
+    items,
+    pagination: {
+      ...first.pagination,
+      page: 1,
+      pageSize: items.length || pageSize,
+      total: first.pagination.total,
+      totalPages: 1,
+    },
+  } satisfies StudentListResult;
 }
 
 export function listAdminStudents(params?: ListParams) {
@@ -231,13 +251,13 @@ export function getTeacherStudentPerformance(id: string) {
   return teacherApi<StudentTestResult[]>(`/teacher/students/${encodeURIComponent(id)}/performance`);
 }
 
-/** Exact registration-number match, used to open a student from a result sheet row. */
-export async function findStudentIdByRoll(
+/** Exact registration-number matches (all schools when admin has no school filter). */
+export async function findStudentsByRoll(
   portal: "admin" | "school" | "teacher",
   roll: string,
   schoolId?: string,
 ) {
-  const params = { q: roll, pageSize: 20 };
+  const params = { q: roll, pageSize: 20, status: "ACTIVE" };
   const result =
     portal === "school"
       ? await listSchoolStudents(params)
@@ -245,7 +265,17 @@ export async function findStudentIdByRoll(
         ? await listTeacherStudents(params)
         : await (schoolId ? listAdminSchoolStudents(schoolId, params) : listAdminStudents(params));
   const fold = (value: string) => value.trim().toLowerCase();
-  return result.items.find((student) => fold(student.rollNo) === fold(roll))?.id ?? null;
+  return result.items.filter((student) => fold(student.rollNo) === fold(roll));
+}
+
+/** Exact registration-number match, used to open a student from a result sheet row. */
+export async function findStudentIdByRoll(
+  portal: "admin" | "school" | "teacher",
+  roll: string,
+  schoolId?: string,
+) {
+  const matches = await findStudentsByRoll(portal, roll, schoolId);
+  return matches[0]?.id ?? null;
 }
 
 export type { Student, StudentDetail, StudentTestResult };

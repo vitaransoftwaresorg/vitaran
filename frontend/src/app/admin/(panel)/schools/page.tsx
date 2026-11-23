@@ -63,6 +63,7 @@ export default async function SchoolsPage({ searchParams }: PageProps<"/admin/sc
                 status: params.status,
                 board: params.board,
                 type: params.type,
+                pageSize: params.pageSize === 10 ? undefined : String(params.pageSize),
               }}
             />
           </>

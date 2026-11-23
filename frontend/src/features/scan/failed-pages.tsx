@@ -10,8 +10,11 @@ import { previewScanAction } from "./actions";
 import { getScanBatch, setScanBatch, type PdfFailure } from "./batch-store";
 import { asJpegFile } from "./camera";
 import { OmrRollRecovery } from "./omr-roll-recovery";
+import type { OmrStudentMatch } from "./omr-student-actions";
 import { fetchFailedPageImage, resolvePdfFailure } from "./pdf-batch";
 import { canRecoverRoll, ROLL_LENGTH, rollInput } from "./roll-helpers";
+
+const NO_MATCHES: OmrStudentMatch[] = [];
 
 /** Failed PDF pages: look at what the reader saw, then photograph the paper sheet again. */
 export function FailedPages({
@@ -30,6 +33,8 @@ export function FailedPages({
   const [rescanning, setRescanning] = useState<number | null>(null);
   const [viewing, setViewing] = useState<PdfFailure | null>(null);
   const [savingPage, setSavingPage] = useState<number | null>(null);
+  const [pageMatches, setPageMatches] = useState<Record<number, OmrStudentMatch[]>>({});
+  const [pageRollHints, setPageRollHints] = useState<Record<number, string>>({});
 
   function pickPhoto(page: number) {
     targetRef.current = page;
@@ -47,6 +52,13 @@ export function FailedPages({
       const result = await previewScanAction(portal, form);
       if (!result.ok) {
         toast.error(`Page ${page}: ${result.message}`);
+        if (result.matches?.length) {
+          setPageMatches((prev) => ({ ...prev, [page]: result.matches ?? [] }));
+          setPageRollHints((prev) => ({
+            ...prev,
+            [page]: result.rollNo ?? "",
+          }));
+        }
         return;
       }
       const reg = result.result.scan.student.rollNo;
@@ -66,7 +78,7 @@ export function FailedPages({
     }
   }
 
-  async function saveWithRoll(failure: PdfFailure, typedRoll: string) {
+  async function saveWithRoll(failure: PdfFailure, typedRoll: string, schoolId?: string) {
     if (!failure.hasImage) {
       toast.error("No page image to save — scan this sheet again.");
       return;
@@ -85,9 +97,17 @@ export function FailedPages({
       form.append("file", await asJpegFile(blob));
       form.append("testId", testId);
       form.append("rollNo", typed);
+      if (schoolId) form.append("schoolId", schoolId);
       const result = await previewScanAction(portal, form);
       if (!result.ok) {
         toast.error(`Page ${failure.page}: ${result.message}`);
+        if (result.matches?.length) {
+          setPageMatches((prev) => ({ ...prev, [failure.page]: result.matches ?? [] }));
+          setPageRollHints((prev) => ({
+            ...prev,
+            [failure.page]: result.rollNo ?? typed,
+          }));
+        }
         return;
       }
       const reg = result.result.scan.student.rollNo;
@@ -98,6 +118,11 @@ export function FailedPages({
       }
       setScanBatch([...getScanBatch(), result.result]);
       resolvePdfFailure(failure.page);
+      setPageMatches((prev) => {
+        const next = { ...prev };
+        delete next[failure.page];
+        return next;
+      });
       setViewing((current) => (current?.page === failure.page ? null : current));
       toast.success(`Page ${failure.page} saved · ${result.result.scan.student.name}`);
     } catch (error) {
@@ -167,7 +192,9 @@ export function FailedPages({
                   portal={portal}
                   message={failure.message}
                   busy={disabled || busy}
-                  onSaveWithRoll={(roll) => void saveWithRoll(failure, roll)}
+                  initialMatches={pageMatches[failure.page] ?? NO_MATCHES}
+                  initialRollNo={pageRollHints[failure.page] ?? ""}
+                  onSaveWithRoll={(roll, schoolId) => void saveWithRoll(failure, roll, schoolId)}
                 />
               ) : null}
             </li>

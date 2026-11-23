@@ -98,6 +98,50 @@ export function uploadSchoolLogo(id: string, file: File) {
   });
 }
 
+export type SchoolStudentResource = {
+  id: string;
+  schoolId: string;
+  classLevel: number;
+  subject: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function listSchoolStudentResources(schoolId: string) {
+  return adminApi<SchoolStudentResource[]>(
+    `/schools/${encodeURIComponent(schoolId)}/student-resources`,
+  );
+}
+
+export function uploadSchoolStudentResource(
+  schoolId: string,
+  classLevel: number,
+  subject: string,
+  file: File,
+) {
+  const body = new FormData();
+  body.append("file", file);
+  body.append("classLevel", String(classLevel));
+  body.append("subject", subject);
+  return adminApi<SchoolStudentResource>(
+    `/schools/${encodeURIComponent(schoolId)}/student-resources`,
+    { method: "PUT", body },
+  );
+}
+
+export function fetchSchoolStudentResource(
+  schoolId: string,
+  classLevel: number,
+  subject: string,
+) {
+  return adminFetch(
+    `/schools/${encodeURIComponent(schoolId)}/student-resources/${classLevel}/${encodeURIComponent(subject)}`,
+  );
+}
+
 export function deleteSchoolLogo(id: string) {
   return adminApi<SchoolDetail>(`/schools/${encodeURIComponent(id)}/logo`, {
     method: "DELETE",

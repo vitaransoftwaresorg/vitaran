@@ -66,6 +66,10 @@ export type DriveItem = {
   onSaveTestId?: (testId: string) => void | Promise<void>;
   /** Shown when the row is clicked but has no href (e.g. Not Published). */
   blockedMessage?: string;
+  /** Optional image for folder rows (e.g. school logo). */
+  imageSrc?: string;
+  /** When true and there is no imageSrc, show initials from the name instead of a folder icon. */
+  nameLogo?: boolean;
 };
 
 type DriveBrowserProps = {
@@ -378,8 +382,33 @@ function RowOpen({
   return <div className={cn("min-w-0", className)}>{children}</div>;
 }
 
+function nameInitials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) {
+    return `${parts[0]![0] ?? ""}${parts[1]![0] ?? ""}`.toUpperCase();
+  }
+  return name.trim().slice(0, 2).toUpperCase() || "?";
+}
+
 function ItemIcon({ item }: { item: DriveItem }) {
   if (item.kind === "folder") {
+    if (item.imageSrc) {
+      return (
+        // eslint-disable-next-line @next/next/no-img-element -- school logo from admin proxy
+        <img
+          src={item.imageSrc}
+          alt=""
+          className="size-7 rounded-md border border-neutral-200 bg-white object-contain p-0.5"
+        />
+      );
+    }
+    if (item.nameLogo) {
+      return (
+        <span className="flex size-7 items-center justify-center rounded-md border border-brand-100 bg-brand-50 text-[10px] font-semibold tracking-wide text-brand-800">
+          {nameInitials(item.name)}
+        </span>
+      );
+    }
     return <FolderGlyph className="size-6" />;
   }
 

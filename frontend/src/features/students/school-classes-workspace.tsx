@@ -192,7 +192,7 @@ export function SchoolClassesWorkspace({
       focus.kind === "section"
         ? `Class ${focus.row.classLevel}-${focus.row.name}`
         : `Class ${focus.row.classLevel}`;
-    const description = `${capitalizeWords(focus.row.programName)} · ${enrolled}/${seats} seats used`;
+    const description = `${capitalizeWords(focus.row.programName)} · ${enrolled} on roster · ${seats} seat limit`;
     const classSubjects =
       schoolPrograms
         .find((program) => program.programId === focus.row.programId)
@@ -226,7 +226,7 @@ export function SchoolClassesWorkspace({
               />
               {full ? (
                 <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
-                  Full ({seats} seats). Edit the class to add more seats.
+                  Roster full ({seats} seat limit). Edit the class to raise the limit.
                 </p>
               ) : (
                 <Link

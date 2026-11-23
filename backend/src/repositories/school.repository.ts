@@ -51,6 +51,7 @@ export const schoolOptionSelect = {
   name: true,
   code: true,
   type: true,
+  logoMimeType: true,
   schoolPrograms: {
     orderBy: { program: { name: "asc" } },
     select: {

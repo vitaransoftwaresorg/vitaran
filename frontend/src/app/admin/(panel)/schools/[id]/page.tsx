@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Clock, MapPin, School } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -12,10 +13,17 @@ import { CredentialMailBar } from "@/features/auth/credential-mail-bar";
 import { AdminSchoolClassesPanel } from "@/features/schools/admin-school-classes-panel";
 import { SchoolDetailActions } from "@/features/schools/school-detail-actions";
 import {
+  CAPACITY_LABELS,
+  ROSTER_LABELS,
+  rosterTotal,
+  STUDENTS_PATH,
+} from "@/features/students/school-roster";
+import {
   getAdminSchoolSectionStrength,
   listAdminSchoolSections,
 } from "@/services/sections";
 import { getSchool } from "@/services/schools";
+import { getAdminSchoolStudentCounts } from "@/services/students";
 import { listAdminClassTeacherSlots } from "@/services/teachers";
 import { formatDateTime, formatNumber } from "@/utils/format";
 
@@ -59,16 +67,19 @@ export default async function SchoolDetailsPage({ params }: PageProps<"/admin/sc
   const { id } = await params;
   const school = await getSchool(id);
   if (!school) notFound();
-  const [organization, strength, classTeacherSlots] = await Promise.all([
+  const [organization, strength, classTeacherSlots, rosterCounts] = await Promise.all([
     listAdminSchoolSections(school.id),
     getAdminSchoolSectionStrength(school.id),
     listAdminClassTeacherSlots(school.id),
+    getAdminSchoolStudentCounts(school.id),
   ]);
   const teachersHref = `/admin/teachers?school=${school.id}`;
+  const studentsHref = `${STUDENTS_PATH}?school=${encodeURIComponent(school.id)}`;
+  const enrolled = rosterTotal(rosterCounts);
   const seatsUsedLabel =
     strength.studentStrength == null
-      ? `${formatNumber(strength.used)} seats assigned`
-      : `${formatNumber(strength.used)} / ${formatNumber(strength.studentStrength)} seats`;
+      ? `${formatNumber(strength.used)} ${CAPACITY_LABELS.seatsAssigned}`
+      : `${formatNumber(strength.used)} / ${formatNumber(strength.studentStrength)} ${CAPACITY_LABELS.seatsWord}`;
 
   return (
     <div className="space-y-3">
@@ -120,7 +131,15 @@ export default async function SchoolDetailsPage({ params }: PageProps<"/admin/sc
             }
           />
           <Chip
-            label="Students"
+            label={ROSTER_LABELS.chip}
+            value={
+              <Link href={studentsHref} className="underline-offset-2 hover:underline">
+                {formatNumber(enrolled)}
+              </Link>
+            }
+          />
+          <Chip
+            label="Seat limit"
             value={school.studentStrength ? formatNumber(school.studentStrength) : EMPTY}
           />
           <Chip label="Programs" value={school.schoolPrograms.length} />
@@ -135,7 +154,18 @@ export default async function SchoolDetailsPage({ params }: PageProps<"/admin/sc
           <Field label="Type">{TYPE_LABELS[school.type]}</Field>
           <Field label="School email">{school.accountEmail}</Field>
           <Field label="School mobile">{school.accountPhone}</Field>
-          <Field label="Student strength">
+          <Field label="Roster (enrolled)">
+            <Link href={studentsHref} className="text-brand-900 hover:underline">
+              {formatNumber(enrolled)}
+            </Link>
+            {enrolled === 0 ? (
+              <span className="mt-0.5 block text-xs font-normal text-neutral-500">
+                Seat limits are capacity only. Add or import students under Students to fill
+                Results.
+              </span>
+            ) : null}
+          </Field>
+          <Field label={CAPACITY_LABELS.schoolLimit}>
             {school.studentStrength ? formatNumber(school.studentStrength) : null}
           </Field>
           <Field label="Principal">{school.principalName}</Field>
@@ -177,6 +207,7 @@ export default async function SchoolDetailsPage({ params }: PageProps<"/admin/sc
           studentStrength: strength.studentStrength,
           used: strength.used,
         }}
+        rosterCounts={rosterCounts}
       />
 
       <CredentialMailBar

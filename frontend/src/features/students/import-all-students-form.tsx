@@ -26,6 +26,7 @@ import {
   resolveSchoolImportRows,
   type ResolvedImportRow,
 } from "@/features/students/import-placement";
+import { navigateFresh } from "@/features/students/navigate-fresh";
 import {
   downloadStudentsTemplate,
   MAX_SCHOOL_IMPORT_ROWS,
@@ -191,8 +192,7 @@ export function ImportAllStudentsForm({
       });
       setState(result);
       if (!result.success) return;
-      router.push(returnTo);
-      router.refresh();
+      navigateFresh(router, returnTo);
     });
   }
 

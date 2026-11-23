@@ -8,6 +8,7 @@ import {
   listAdminSchoolSections,
 } from "@/services/sections";
 import { getSchool } from "@/services/schools";
+import { getAdminSchoolStudentCounts } from "@/services/students";
 import { listAdminClassTeacherSlots } from "@/services/teachers";
 import { formatNumber } from "@/utils/format";
 
@@ -18,10 +19,11 @@ export default async function EditSchoolPage({ params }: PageProps<"/admin/schoo
   const [school, catalog] = await Promise.all([getSchool(id), listPrograms()]);
   if (!school) notFound();
 
-  const [organization, strength, classTeacherSlots] = await Promise.all([
+  const [organization, strength, classTeacherSlots, rosterCounts] = await Promise.all([
     listAdminSchoolSections(school.id),
     getAdminSchoolSectionStrength(school.id),
     listAdminClassTeacherSlots(school.id),
+    getAdminSchoolStudentCounts(school.id),
   ]);
   const seatsUsedLabel =
     strength.studentStrength == null
@@ -43,6 +45,7 @@ export default async function EditSchoolPage({ params }: PageProps<"/admin/schoo
             studentStrength: strength.studentStrength,
             used: strength.used,
           },
+          rosterCounts,
         }}
       />
     </div>

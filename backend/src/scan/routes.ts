@@ -90,12 +90,13 @@ function omrRouter(contextOf: (res: Response) => scanService.ScanContext) {
   router.post("/preview", omrScanRateLimit, readImage, async (req, res) => {
     const file = req.file;
     if (!file?.buffer) throw new AppError(400, "Attach an OMR sheet image");
-    const body = req.body as { rollNo?: string; testId?: string; corners?: string };
+    const body = req.body as { rollNo?: string; testId?: string; schoolId?: string; corners?: string };
     sendSuccess(
       res,
       await scanService.previewScan(contextOf(res), file.buffer, file.originalname, {
         rollNo: typeof body?.rollNo === "string" ? body.rollNo : "",
         testId: typeof body?.testId === "string" ? body.testId : "",
+        schoolId: typeof body?.schoolId === "string" ? body.schoolId : "",
         corners: parseCorners(body?.corners),
       }),
     );

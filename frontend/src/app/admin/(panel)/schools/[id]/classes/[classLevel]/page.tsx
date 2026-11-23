@@ -41,7 +41,7 @@ export default async function AdminSchoolClassLevelPage({ params }: Props) {
             >
               <h2 className="text-lg font-bold text-brand-950">{program.programName}</h2>
               <p className="mt-2 text-sm text-neutral-600">
-                {countByProgram[program.programId] ?? 0} students
+                {countByProgram[program.programId] ?? 0} on roster
               </p>
             </Link>
           </li>

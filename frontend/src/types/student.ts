@@ -35,6 +35,14 @@ export type StudentListResult = {
   };
 };
 
+/** ACTIVE roster totals — same source Students / Results / OMR use (not seat capacity). */
+export type SchoolStudentCounts = {
+  byProgram: Record<string, number>;
+  byClass: { programId: string; classLevel: number; count: number }[];
+  bySection: Record<string, number>;
+  byWhole: { programId: string; classLevel: number; count: number }[];
+};
+
 export type CreateStudentInput = {
   name: string;
   rollNo: string;

@@ -11,9 +11,10 @@ import {
   sectionIdsForClass,
   studentsInClass,
 } from "@/features/students/school-roster";
+import { ListPagination } from "@/components/shared/list-pagination";
 import { StudentsTable } from "@/features/students/students-table";
 import type { ClassOrganization } from "@/types/section";
-import type { SchoolOption } from "@/types/school";
+import type { Pagination, SchoolOption } from "@/types/school";
 import type { Student } from "@/types/student";
 
 type StudentsDriveProps = {
@@ -23,8 +24,10 @@ type StudentsDriveProps = {
   /** Optional single-section filter; class view shows both sections. */
   section?: string;
   organization?: ClassOrganization | null;
-  /** When a school is open: full roster for that school. */
+  /** When a school is open: roster page for that school. */
   students?: Student[];
+  pagination?: Pagination;
+  listParams?: Record<string, string | number | undefined | null>;
 };
 
 function schoolHref(schoolId: string) {
@@ -66,8 +69,8 @@ function emptyRosterMessage(section: string | undefined, seats: number, classCou
   }
   if (seats > 0) {
     return section
-      ? `Class section has ${seats} seats, but no students on the roster yet. Add students here — Results only lists roster rolls.`
-      : `Class has ${seats} seats, but no students on the roster yet.`;
+      ? `Seat limit ${seats} — roster is empty. Add students here (Results uses this same roster).`
+      : `Seat limit ${seats} — roster is empty. Add students to fill Results.`;
   }
   return section
     ? "No students in this class section yet."
@@ -152,6 +155,8 @@ export function StudentsDrive({
   section,
   organization,
   students = [],
+  pagination,
+  listParams,
 }: StudentsDriveProps) {
   const school = schools.find((item) => item.id === schoolId);
   const setDrivePath = useSetDrivePathCrumbs();
@@ -185,11 +190,9 @@ export function StudentsDrive({
         const roster = studentsInClass(students, classLevel, folder.label, {
           sectionIds: folder.sectionId ? [folder.sectionId] : undefined,
         });
-        const seatsDetail = folder.seats > 0 ? `${folder.seats} seats` : null;
+        const seatsDetail = folder.seats > 0 ? `${folder.seats} seat limit` : null;
         const rosterDetail =
-          roster.length > 0
-            ? `${roster.length} student${roster.length === 1 ? "" : "s"}`
-            : null;
+          roster.length > 0 ? `${roster.length} on roster` : null;
         return {
           id: folder.sectionId ?? `${classLevel}-${folder.label}`,
           name: `Section ${folder.label}`,
@@ -213,7 +216,7 @@ export function StudentsDrive({
     const sectionIds = sectionIdsForClass(organization, classLevel, section);
     const roster = studentsInClass(students, classLevel, section, { sectionIds });
     const seats = seatsForClass(organization, classLevel, section);
-    const classCount = studentsInClass(students, classLevel).length;
+    const classCount = pagination?.total ?? studentsInClass(students, classLevel).length;
 
     return (
       <StudentsTable
@@ -222,6 +225,22 @@ export function StudentsDrive({
         seats={seats}
         subjects={subjectsForClassLevel(classLevel)}
         emptyMessage={emptyRosterMessage(section, seats, classCount)}
+        pagination={
+          pagination ? (
+            <ListPagination
+              pagination={pagination}
+              basePath={STUDENTS_PATH}
+              searchParams={{
+                school: school.id,
+                class: classLevel,
+                section,
+                ...listParams,
+              }}
+              noun="students"
+              pageSizeOptions={[10, 20, 50, 100]}
+            />
+          ) : undefined
+        }
       />
     );
   }
@@ -239,10 +258,10 @@ export function StudentsDrive({
         folder.sections.length > 0
           ? `${folder.sections.length} section${folder.sections.length === 1 ? "" : "s"}`
           : null;
-      const seatsDetail = folder.seats > 0 ? `${folder.seats} seats` : null;
+      const seatsDetail = folder.seats > 0 ? `${folder.seats} seat limit` : null;
       const rosterDetail =
         folder.studentCount > 0
-          ? `${folder.studentCount} student${folder.studentCount === 1 ? "" : "s"}`
+          ? `${folder.studentCount} on roster`
           : null;
       const countDetail = [rosterDetail, seatsDetail].filter(Boolean).join(" · ") || "Empty";
       return {
@@ -272,6 +291,8 @@ export function StudentsDrive({
       kind: "folder" as const,
       href: schoolHref(item.id),
       detail: TYPE_LABELS[item.type],
+      imageSrc: item.hasLogo ? `/admin/schools/${item.id}/logo` : undefined,
+      nameLogo: true,
     }));
 
   return (

@@ -11,7 +11,49 @@ export type SolutionBook = {
 };
 
 export const solutionBooks: Record<string, SolutionBook[]> = {
+  "Olympiad Program": [],
+  "Advanced Program": [
+    { subject: "Mathematics", grade: 6, href: "/solution-books/classic-advanced/mathematics/class-6.pdf" },
+    { subject: "Mathematics", grade: 7, href: "/solution-books/classic-advanced/mathematics/class-7.pdf" },
+    { subject: "Mathematics", grade: 8, href: "/solution-books/classic-advanced/mathematics/class-8.pdf" },
+    { subject: "Mathematics", grade: 9, href: "/solution-books/classic-advanced/mathematics/class-9.pdf" },
+    { subject: "Physics", grade: 6, href: "/solution-books/classic-advanced/physics/class-6.pdf" },
+    { subject: "Physics", grade: 7, href: "/solution-books/classic-advanced/physics/class-7.pdf" },
+    { subject: "Physics", grade: 8, href: "/solution-books/classic-advanced/physics/class-8.pdf" },
+    { subject: "Physics", grade: 9, href: "/solution-books/classic-advanced/physics/class-9.pdf" },
+    { subject: "Physics", grade: 10, href: "/solution-books/classic-advanced/physics/class-10.pdf" },
+    { subject: "Chemistry", grade: 6, href: "/solution-books/classic-advanced/chemistry/class-6.pdf" },
+    { subject: "Chemistry", grade: 7, href: "/solution-books/classic-advanced/chemistry/class-7.pdf" },
+    { subject: "Chemistry", grade: 8, href: "/solution-books/classic-advanced/chemistry/class-8.pdf" },
+    { subject: "Chemistry", grade: 9, href: "/solution-books/classic-advanced/chemistry/class-9.pdf" },
+    { subject: "Biology", grade: 6, href: "/solution-books/classic-advanced/biology/class-6.pdf" },
+    { subject: "Biology", grade: 7, href: "/solution-books/classic-advanced/biology/class-7.pdf" },
+    { subject: "Biology", grade: 8, href: "/solution-books/classic-advanced/biology/class-8.pdf" },
+    { subject: "Biology", grade: 9, href: "/solution-books/classic-advanced/biology/class-9.pdf" },
+  ],
   "Integrated Program": [
+    { subject: "Mathematics", grade: 6, href: "/solution-books/classic-integrated/mathematics/class-6.pdf" },
+    { subject: "Mathematics", grade: 7, href: "/solution-books/classic-integrated/mathematics/class-7.pdf" },
+    { subject: "Mathematics", grade: 8, href: "/solution-books/classic-integrated/mathematics/class-8.pdf" },
+    { subject: "Mathematics", grade: 9, href: "/solution-books/classic-integrated/mathematics/class-9.pdf" },
+    { subject: "Mathematics", grade: 10, href: "/solution-books/classic-integrated/mathematics/class-10.pdf" },
+    { subject: "Physics", grade: 6, href: "/solution-books/classic-integrated/physics/class-6.pdf" },
+    { subject: "Physics", grade: 7, href: "/solution-books/classic-integrated/physics/class-7.pdf" },
+    { subject: "Physics", grade: 8, href: "/solution-books/classic-integrated/physics/class-8.pdf" },
+    { subject: "Physics", grade: 9, href: "/solution-books/classic-integrated/physics/class-9.pdf" },
+    { subject: "Physics", grade: 10, href: "/solution-books/classic-integrated/physics/class-10.pdf" },
+    { subject: "Chemistry", grade: 6, href: "/solution-books/classic-integrated/chemistry/class-6.pdf" },
+    { subject: "Chemistry", grade: 7, href: "/solution-books/classic-integrated/chemistry/class-7.pdf" },
+    { subject: "Chemistry", grade: 8, href: "/solution-books/classic-integrated/chemistry/class-8.pdf" },
+    { subject: "Chemistry", grade: 9, href: "/solution-books/classic-integrated/chemistry/class-9.pdf" },
+    { subject: "Chemistry", grade: 10, href: "/solution-books/classic-integrated/chemistry/class-10.pdf" },
+    { subject: "Biology", grade: 6, href: "/solution-books/classic-integrated/biology/class-6.pdf" },
+    { subject: "Biology", grade: 7, href: "/solution-books/classic-integrated/biology/class-7.pdf" },
+    { subject: "Biology", grade: 8, href: "/solution-books/classic-integrated/biology/class-8.pdf" },
+    { subject: "Biology", grade: 9, href: "/solution-books/classic-integrated/biology/class-9.pdf" },
+    { subject: "Biology", grade: 10, href: "/solution-books/classic-integrated/biology/class-10.pdf" },
+  ],
+  "New Integrated Program": [
       { subject: "Mathematics", grade: 6, href: "/solution-books/integrated/mathematics/class-6.pdf" },
       { subject: "Mathematics", grade: 7, href: "/solution-books/integrated/mathematics/class-7.pdf" },
       { subject: "Mathematics", grade: 8, href: "/solution-books/integrated/mathematics/class-8.pdf" },
@@ -33,7 +75,7 @@ export const solutionBooks: Record<string, SolutionBook[]> = {
       { subject: "Biology", grade: 9, href: "/solution-books/integrated/biology/class-9.pdf" },
       { subject: "Biology", grade: 10, href: "/solution-books/integrated/biology/class-10.pdf" },
   ],
-  "Advanced Program": [
+  "New Advanced Program": [
       { subject: "Mathematics", grade: 6, href: "/solution-books/advanced/mathematics/class-6.pdf" },
       { subject: "Mathematics", grade: 7, href: "/solution-books/advanced/mathematics/class-7.pdf" },
       { subject: "Mathematics", grade: 8, href: "/solution-books/advanced/mathematics/class-8.pdf" },
@@ -77,7 +119,7 @@ export const solutionBooks: Record<string, SolutionBook[]> = {
       { subject: "Biology", grade: 9, href: "/solution-books/revised-advanced/biology/class-9.pdf" },
       { subject: "Biology", grade: 10, href: "/solution-books/revised-advanced/biology/class-10.pdf" },
   ],
-  "Olympiad Program": [
+  "New Olympiad Program": [
       { subject: "Mathematics", grade: 6, volume: 1, href: "/solution-books/olympiad/mathematics/class-6-volume-1.pdf" },
       { subject: "Mathematics", grade: 7, volume: 1, href: "/solution-books/olympiad/mathematics/class-7-volume-1.pdf" },
       { subject: "Mathematics", grade: 8, volume: 1, href: "/solution-books/olympiad/mathematics/class-8-volume-1.pdf" },

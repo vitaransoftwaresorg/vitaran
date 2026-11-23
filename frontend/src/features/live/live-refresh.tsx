@@ -44,6 +44,13 @@ export function LiveRefresh({
     // and usePublicSettings — refreshing RSC here races into 503s under maintenance.
     if (payload?.kind === "settings") return;
     refresh();
+    // Roster mutations often fire while soft-navigating back to Students / Results;
+    // a follow-up refresh catches the destination after the route settles.
+    if (payload?.kind === "students" || payload?.kind === "sections") {
+      window.setTimeout(() => {
+        if (!isLiveSilenced()) refresh();
+      }, 200);
+    }
   }, path);
 
   return null;

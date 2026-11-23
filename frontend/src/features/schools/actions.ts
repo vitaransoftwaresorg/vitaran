@@ -24,6 +24,7 @@ import {
   type SchoolFormState,
   type SchoolFormValues,
 } from "./schema";
+import { parseResourceFieldName } from "./student-resource-fields";
 
 /** Program/class checks drive Classes, Resources, answer keys, and teacher views. */
 function revalidateSchoolPortalViews() {
@@ -80,6 +81,7 @@ function errorState(
 
 const LOGO_MAX_BYTES = 2 * 1024 * 1024;
 const LOGO_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const RESOURCE_PDF_MAX_BYTES = 20 * 1024 * 1024;
 
 function logoFromForm(formData: FormData): File | null {
   const logo = formData.get("logo");
@@ -91,6 +93,36 @@ function logoFieldError(file: File): string | null {
   if (!LOGO_TYPES.has(file.type)) return "Upload a PNG, JPEG, or WebP logo.";
   if (file.size > LOGO_MAX_BYTES) return "Logo must be under 2 MB.";
   return null;
+}
+
+function studentResourcesFromForm(formData: FormData) {
+  const files: Array<{ classLevel: number; subject: string; file: File }> = [];
+  for (const [name, value] of formData.entries()) {
+    if (!(value instanceof File) || value.size <= 0) continue;
+    const slot = parseResourceFieldName(name);
+    if (!slot) continue;
+    files.push({ ...slot, file: value });
+  }
+  return files;
+}
+
+function studentResourceFieldError(file: File): string | null {
+  const isPdf =
+    file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+  if (!isPdf) return "Student resources must be PDF files.";
+  if (file.size > RESOURCE_PDF_MAX_BYTES) return "Each student resource PDF must be under 20 MB.";
+  return null;
+}
+
+async function uploadStudentResourcesFromForm(schoolId: string, formData: FormData) {
+  const files = studentResourcesFromForm(formData);
+  for (const row of files) {
+    const error = studentResourceFieldError(row.file);
+    if (error) throw new ApiError(error, 400);
+  }
+  for (const row of files) {
+    await schoolService.uploadSchoolStudentResource(schoolId, row.classLevel, row.subject, row.file);
+  }
 }
 
 async function saveSchool(
@@ -114,6 +146,13 @@ async function saveSchool(
     }
   }
 
+  for (const row of studentResourcesFromForm(formData)) {
+    const resourceError = studentResourceFieldError(row.file);
+    if (resourceError) {
+      return errorState(mode, values, { message: resourceError });
+    }
+  }
+
   try {
     const school = await save(toSchoolInput(parsed.data));
     if (logo) {
@@ -126,6 +165,9 @@ async function saveSchool(
       }
     }
     await applyPendingClassChanges(school.id, school.schoolPrograms, formData);
+    if (mode === "create" && parsed.data.type === "CUSTOMIZED") {
+      await uploadStudentResourcesFromForm(school.id, formData);
+    }
     revalidateSchoolPortalViews();
     return { status: "success", schoolId: school.id, submittedAt: Date.now() };
   } catch (error) {

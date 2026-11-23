@@ -94,7 +94,8 @@ export function findActiveStudentsByRollNo(rollNo: string) {
       program: { select: { id: true, code: true, name: true } },
       section: { select: { id: true, name: true } },
     },
-    take: 8,
+    orderBy: [{ school: { name: "asc" } }, { name: "asc" }],
+    take: 20,
   });
 }
 
@@ -156,26 +157,31 @@ export async function findStudents(query: ListFilter) {
   return { items, total };
 }
 
+/** ACTIVE roster only — same set Students / Results / OMR use. */
 export async function countStudentsGrouped(schoolId: string) {
+  const where: Prisma.StudentWhereInput = {
+    schoolId,
+    status: StudentStatus.ACTIVE,
+  };
   const [byProgram, byClass, bySection, byWhole] = await Promise.all([
     prisma.student.groupBy({
       by: ["programId"],
-      where: { schoolId },
+      where,
       _count: { _all: true },
     }),
     prisma.student.groupBy({
       by: ["programId", "classLevel"],
-      where: { schoolId },
+      where,
       _count: { _all: true },
     }),
     prisma.student.groupBy({
       by: ["sectionId"],
-      where: { schoolId, sectionId: { not: null } },
+      where: { ...where, sectionId: { not: null } },
       _count: { _all: true },
     }),
     prisma.student.groupBy({
       by: ["programId", "classLevel"],
-      where: { schoolId, sectionId: null },
+      where: { ...where, sectionId: null },
       _count: { _all: true },
     }),
   ]);

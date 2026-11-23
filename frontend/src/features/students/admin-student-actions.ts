@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { redirect, unstable_rethrow } from "next/navigation";
 import { z } from "zod";
 import { ApiError } from "@/services/api-client";
@@ -25,6 +24,7 @@ import type {
   SchoolImportGroupInput,
   StudentFormState,
 } from "@/features/students/actions";
+import { revalidateAdminRoster } from "@/features/students/revalidate-roster";
 
 /** Blank / null / whitespace → ""; otherwise min 2 chars. */
 const optionalStudentName = z.preprocess(
@@ -122,11 +122,7 @@ function apiFieldErrors(error: ApiError): Record<string, string[] | undefined> |
 }
 
 function revalidateAdminStudentPaths(schoolId?: string) {
-  revalidatePath(`/admin/schools/students`);
-  if (schoolId) {
-    revalidatePath(`/admin/schools/${schoolId}`);
-    revalidatePath(`/admin/schools/${schoolId}/students`);
-  }
+  revalidateAdminRoster(schoolId);
 }
 
 export async function createAdminStudentAction(

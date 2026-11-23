@@ -36,12 +36,13 @@ function client(portal: ScanPortal) {
 export function previewScan(
   portal: ScanPortal,
   file: File,
-  identity?: { rollNo?: string; testId?: string; corners?: string },
+  identity?: { rollNo?: string; testId?: string; schoolId?: string; corners?: string },
 ) {
   const body = new FormData();
   body.append("file", file);
   if (identity?.rollNo) body.append("rollNo", identity.rollNo);
   if (identity?.testId) body.append("testId", identity.testId);
+  if (identity?.schoolId) body.append("schoolId", identity.schoolId);
   /** JSON `[[x, y] ×4]` (TL, TR, BR, BL, 0–1) from the phone document scanner. */
   if (identity?.corners) body.append("corners", identity.corners);
   const route = client(portal);

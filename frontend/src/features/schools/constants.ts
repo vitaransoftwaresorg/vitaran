@@ -21,11 +21,17 @@ export const STATUS_LABELS: Record<SchoolStatus, string> = {
 
 /** Fallback labels for seeded catalog codes; prefer LearningProgram.name when available. */
 export const PROGRAM_LABELS: Record<string, string> = {
-  INTEGRATED: "Integrated Program",
-  ADVANCED: "Advanced Program",
+  INTEGRATED: "New Integrated Program",
+  ADVANCED: "New Advanced Program",
   REVISED_ADVANCED: "Revised Advanced Program",
-  OLYMPIAD: "Olympiad Program",
+  OLYMPIAD: "New Olympiad Program",
   OLYMPIAD_PRIMARY: "Olympiad Program Class 1 to 5",
+  NEWINTEGRATED: "New Integrated Program",
+  NEWADVANCED: "New Advanced Program",
+  NEWOLYMPIAD: "New Olympiad Program",
+  INTEGRATED_CLASSIC: "Integrated Program",
+  ADVANCED_CLASSIC: "Advanced Program",
+  OLYMPIAD_CLASSIC: "Olympiad Program",
 };
 
 /** Same title-casing as the admin programs table. */

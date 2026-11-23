@@ -293,8 +293,8 @@ export function SchoolClassesBoard({
                     <th className="px-4 py-2.5">Program</th>
                     <th className="px-4 py-2.5">Class</th>
                     <th className="px-4 py-2.5">Section</th>
-                    <th className="px-4 py-2.5">Seats</th>
-                    <th className="px-4 py-2.5">Students</th>
+                    <th className="px-4 py-2.5">Seat limit</th>
+                    <th className="px-4 py-2.5">Roster</th>
                     <th className="px-4 py-2.5">Class teacher</th>
                     <th className="px-4 py-2.5">Teachers</th>
                     <th className="px-4 py-2.5 text-right">Actions</th>
@@ -311,20 +311,23 @@ export function SchoolClassesBoard({
                       </td>
                       <td className="px-4 py-3 text-neutral-900">Class {item.classLevel}</td>
                       <td className="px-4 py-3 text-neutral-700">{item.sectionLabel}</td>
-                      <td className="px-4 py-3 tabular-nums">
-                        <span
-                          className={cn(
-                            "font-medium",
-                            item.enrolled >= item.seats ? "text-amber-700" : "text-neutral-900",
-                          )}
-                        >
-                          {item.enrolled}/{item.seats}
-                        </span>
+                      <td className="px-4 py-3 tabular-nums text-neutral-900">
+                        {item.seats}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
-                        <button type="button" onClick={item.open} className={linkBtn}>
+                        <button
+                          type="button"
+                          onClick={item.open}
+                          className={cn(
+                            linkBtn,
+                            item.enrolled >= item.seats && item.seats > 0 && "text-amber-800",
+                          )}
+                          title="Open roster — same list Results uses"
+                        >
                           <GraduationCap className="size-3.5 shrink-0" strokeWidth={2} />
-                          Students
+                          {item.enrolled > 0
+                            ? `${item.enrolled} on roster`
+                            : "No students yet"}
                         </button>
                       </td>
                       <td className="px-4 py-3">

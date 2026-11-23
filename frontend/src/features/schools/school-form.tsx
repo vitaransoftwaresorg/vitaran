@@ -75,14 +75,15 @@ import {
   syncCustomSubjectOfferings,
 } from "./offerings";
 import {
-  LAST_STEP,
   SCHOOL_FORM_STEPS,
   STEP_SEARCH_PARAM,
   firstStepWithErrors,
   getReachableStep,
   pickStepErrors,
   resolveInitialStep,
+  schoolFormSteps,
 } from "./form-steps";
+import { StudentResourcesStep } from "./student-resources-step";
 import { clearSchoolDraft, saveSchoolDraft, useSchoolDraft } from "./school-draft";
 import { HintedInput } from "./hinted-input";
 import { LogoCropper } from "./logo-cropper";
@@ -103,6 +104,7 @@ import {
   type TextField,
 } from "./schema";
 import type { ClassOrganization } from "@/types/section";
+import type { SchoolStudentCounts } from "@/types/student";
 import type { ClassTeacherSlot } from "@/types/teacher";
 
 type SchoolClassesPanelData = {
@@ -112,6 +114,8 @@ type SchoolClassesPanelData = {
   teachersHref: string;
   /** School total strength budget — class/section seats cannot exceed this. */
   strength?: { studentStrength: number | null; used: number };
+  /** ACTIVE roster counts — same list Students / Results use (not seat capacity). */
+  rosterCounts?: SchoolStudentCounts | null;
 };
 
 type SchoolFormProps = {
@@ -509,16 +513,26 @@ function SchoolFormWizard({
   }, []);
 
   const errors: SchoolFormErrors = { ...serverErrors, ...clientErrors };
-  const isLast = step === LAST_STEP;
+  const formSteps = schoolFormSteps(schoolType, mode);
+  const lastStep = formSteps.length - 1;
+  const isLast = step === lastStep;
+
+  // Drop off the resources step when switching away from Customized.
+  useEffect(() => {
+    if (isEdit) return;
+    if (schoolType !== "CUSTOMIZED" && step > SCHOOL_FORM_STEPS.length - 1) {
+      setStep(SCHOOL_FORM_STEPS.length - 1);
+    }
+  }, [schoolType, step, isEdit]);
 
   // Replace (not push) so steps never add history entries: the browser and
   // header Back buttons leave the form, while the URL still restores the step.
   useEffect(() => {
     if (isEdit) return;
     const params = new URLSearchParams(window.location.search);
-    params.set(STEP_SEARCH_PARAM, SCHOOL_FORM_STEPS[step].id);
+    params.set(STEP_SEARCH_PARAM, formSteps[step]?.id ?? SCHOOL_FORM_STEPS[0].id);
     window.history.replaceState(null, "", `?${params}`);
-  }, [step, isEdit]);
+  }, [step, isEdit, schoolType, mode]);
 
   const readValues = () => readFormValues(new FormData(formRef.current!));
 
@@ -741,7 +755,7 @@ function SchoolFormWizard({
         {!isEdit && (
           <div className="border-b border-neutral-200 px-5 py-5 md:px-8">
             <SchoolFormStepper
-              steps={SCHOOL_FORM_STEPS}
+              steps={formSteps}
               current={step}
               reachable={Math.max(maxReached, step)}
               onSelect={goToStep}
@@ -991,8 +1005,15 @@ function SchoolFormWizard({
             </Field>
 
                 <Field data-invalid={invalid("studentStrength")} className="lg:col-span-3">
-              <FieldLabel htmlFor="studentStrength">Student strength</FieldLabel>
-              <Input {...fieldProps("studentStrength")} inputMode="numeric" placeholder="e.g. 1200" />
+              <FieldLabel htmlFor="studentStrength">School seat limit</FieldLabel>
+              <Input
+                {...fieldProps("studentStrength")}
+                inputMode="numeric"
+                placeholder="e.g. 1200"
+              />
+              <p className="text-xs text-neutral-500">
+                Maximum seats across classes — not the student list. Add students under Students.
+              </p>
               {error("studentStrength")}
             </Field>
               </div>
@@ -1163,6 +1184,7 @@ function SchoolFormWizard({
                   teachersHref={classesPanel?.teachersHref ?? "/admin/teachers"}
                   embedded
                   strength={classesPanel?.strength}
+                  rosterCounts={classesPanel?.rosterCounts}
                   persist={schoolId ? "immediate" : "deferred"}
                   initialCreates={initialClassCreates}
                   initialDeletes={initialClassDeletes}
@@ -1225,6 +1247,12 @@ function SchoolFormWizard({
                 value={JSON.stringify(classDrafts.deleteSectionIds)}
               />
             </div>
+
+            {!isEdit && schoolType === "CUSTOMIZED" ? (
+              <div {...panel(3)}>
+                <StudentResourcesStep />
+              </div>
+            ) : null}
 
             {offerings.map((token) => (
               <input key={token} type="hidden" name="offerings" value={token} />

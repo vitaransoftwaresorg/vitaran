@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
 import { toast } from "sonner";
 import { IconRowActions } from "@/components/shared/icon-row-actions";
 import { matchesSearch, TableSearch } from "@/components/shared/table-search";
@@ -26,6 +26,7 @@ type TeachersTableProps = {
   editHrefBase: string;
   onToggleStatus: (id: string, status: TeacherStatus) => Promise<{ ok: boolean; message?: string }>;
   showSchool?: boolean;
+  pagination?: ReactNode;
 };
 
 function StatusSwitch({
@@ -94,6 +95,7 @@ export function TeachersTable({
   editHrefBase,
   onToggleStatus,
   showSchool,
+  pagination,
 }: TeachersTableProps) {
   const [query, setQuery] = useState("");
 
@@ -126,7 +128,7 @@ export function TeachersTable({
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-brand-100 bg-white shadow-[0_12px_32px_-20px_rgb(25_28_95/0.35)]">
+    <div className="rounded-2xl border border-brand-100 bg-white shadow-[0_12px_32px_-20px_rgb(25_28_95/0.35)]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-100 bg-brand-50/40 px-3 py-2.5 sm:px-5">
         <p className="text-xs font-medium text-neutral-500 tabular-nums">
           {filtered.length === teachers.length
@@ -138,6 +140,7 @@ export function TeachersTable({
       {filtered.length === 0 ? (
         <p className="px-5 py-10 text-center text-sm text-neutral-500">No matching teachers.</p>
       ) : (
+      <div className="overflow-x-auto">
       <Table>
         <TableHeader>
           <TableRow className="border-brand-100 bg-brand-50/60 hover:bg-brand-50/60">
@@ -223,7 +226,9 @@ export function TeachersTable({
           ))}
         </TableBody>
       </Table>
+      </div>
       )}
+      {pagination}
     </div>
   );
 }

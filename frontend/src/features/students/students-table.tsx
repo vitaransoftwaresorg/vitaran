@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition, type ReactNode } from "react";
 import { Eye, Loader2, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { matchesSearch, TableSearch } from "@/components/shared/table-search";
@@ -35,6 +35,8 @@ type StudentsTableProps = {
   onView?: (id: string) => void;
   onEdit?: (id: string) => void;
   onDeleted?: () => void;
+  /** Server pagination footer (when the parent page loads by page/pageSize). */
+  pagination?: ReactNode;
 };
 
 export function StudentsTable({
@@ -48,6 +50,7 @@ export function StudentsTable({
   onView,
   onEdit,
   onDeleted,
+  pagination,
 }: StudentsTableProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
@@ -96,16 +99,16 @@ export function StudentsTable({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-brand-200 bg-white shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)]">
+    <div className="rounded-xl border border-brand-200 bg-white shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-100 bg-brand-50/40 px-3 py-2.5 sm:px-4">
         <p className="min-w-0 shrink-0 text-xs font-medium text-neutral-500 tabular-nums">
           {seats != null && seats > 0
             ? filtered.length === students.length
-              ? `${students.length}/${seats}`
-              : `${filtered.length} of ${students.length}/${seats}`
+              ? `${students.length} on roster · ${seats} seat limit`
+              : `${filtered.length} of ${students.length} on roster · ${seats} seat limit`
             : filtered.length === students.length
-              ? `${students.length} student${students.length === 1 ? "" : "s"}`
-              : `${filtered.length} of ${students.length} students`}
+              ? `${students.length} on roster`
+              : `${filtered.length} of ${students.length} on roster`}
         </p>
         <TableSearch
           value={query}
@@ -117,7 +120,8 @@ export function StudentsTable({
       {filtered.length === 0 ? (
         <p className="px-4 py-8 text-center text-sm text-neutral-500">No matching students.</p>
       ) : (
-        <table className="w-full text-left text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] text-left text-sm">
           <thead className="border-b border-brand-100 bg-brand-50/60 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">
             <tr>
               {showSchool ? <th className="px-4 py-2.5">School</th> : null}
@@ -302,7 +306,9 @@ export function StudentsTable({
             })}
           </tbody>
         </table>
+        </div>
       )}
+      {pagination}
     </div>
   );
 }

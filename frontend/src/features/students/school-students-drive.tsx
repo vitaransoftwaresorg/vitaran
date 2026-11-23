@@ -9,9 +9,11 @@ import {
   sectionIdsForClass,
   studentsInClass,
 } from "@/features/students/school-roster";
+import { ListPagination } from "@/components/shared/list-pagination";
 import { StudentsTable } from "@/features/students/students-table";
 import type { ClassOrganization } from "@/types/section";
 import type { SchoolProgramOffering } from "@/types/program";
+import type { Pagination } from "@/types/school";
 import type { Student } from "@/types/student";
 
 export const SCHOOL_STUDENTS_PATH = "/school/students";
@@ -23,6 +25,8 @@ type SchoolStudentsDriveProps = {
   organization?: ClassOrganization | null;
   students?: Student[];
   schoolPrograms?: SchoolProgramOffering[];
+  pagination?: Pagination;
+  listParams?: Record<string, string | number | undefined | null>;
 };
 
 type ClassFolder = {
@@ -66,8 +70,8 @@ function emptyRosterMessage(section: string | undefined, seats: number, classCou
   }
   if (seats > 0) {
     return section
-      ? `Class section has ${seats} seats, but no students on the roster yet. Add students here — Results only lists roster rolls.`
-      : `Class has ${seats} seats, but no students on the roster yet.`;
+      ? `Seat limit ${seats} — roster is empty. Add students here (Results uses this same roster).`
+      : `Seat limit ${seats} — roster is empty. Add students to fill Results.`;
   }
   return section
     ? "No students in this class section yet."
@@ -144,6 +148,8 @@ export function SchoolStudentsDrive({
   organization,
   students = [],
   schoolPrograms,
+  pagination,
+  listParams,
 }: SchoolStudentsDriveProps) {
   // Class open, no section yet, and class has sections → pick a section (delete students section-wise).
   if (classLevel != null && !section) {
@@ -157,11 +163,9 @@ export function SchoolStudentsDrive({
         const roster = studentsInClass(students, classLevel, folder.label, {
           sectionIds: folder.sectionId ? [folder.sectionId] : undefined,
         });
-        const seatsDetail = folder.seats > 0 ? `${folder.seats} seats` : null;
+        const seatsDetail = folder.seats > 0 ? `${folder.seats} seat limit` : null;
         const rosterDetail =
-          roster.length > 0
-            ? `${roster.length} student${roster.length === 1 ? "" : "s"}`
-            : null;
+          roster.length > 0 ? `${roster.length} on roster` : null;
         return {
           id: folder.sectionId ?? `${classLevel}-${folder.label}`,
           name: `Section ${folder.label}`,
@@ -185,7 +189,7 @@ export function SchoolStudentsDrive({
     const sectionIds = sectionIdsForClass(organization, classLevel, section);
     const roster = studentsInClass(students, classLevel, section, { sectionIds });
     const seats = seatsForClass(organization, classLevel, section);
-    const classCount = studentsInClass(students, classLevel).length;
+    const classCount = pagination?.total ?? studentsInClass(students, classLevel).length;
     return (
       <StudentsTable
         students={roster}
@@ -194,6 +198,17 @@ export function SchoolStudentsDrive({
         seats={seats}
         subjects={subjectsForSchoolClass(schoolPrograms, classLevel, roster[0]?.programId)}
         emptyMessage={emptyRosterMessage(section, seats, classCount)}
+        pagination={
+          pagination ? (
+            <ListPagination
+              pagination={pagination}
+              basePath={SCHOOL_STUDENTS_PATH}
+              searchParams={{ class: classLevel, section, ...listParams }}
+              noun="students"
+              pageSizeOptions={[10, 20, 50, 100]}
+            />
+          ) : undefined
+        }
       />
     );
   }
@@ -207,11 +222,9 @@ export function SchoolStudentsDrive({
       folder.sections.length > 0
         ? `${folder.sections.length} section${folder.sections.length === 1 ? "" : "s"}`
         : null;
-    const seatsDetail = folder.seats > 0 ? `${folder.seats} seats` : null;
+    const seatsDetail = folder.seats > 0 ? `${folder.seats} seat limit` : null;
     const rosterDetail =
-      folder.studentCount > 0
-        ? `${folder.studentCount} student${folder.studentCount === 1 ? "" : "s"}`
-        : null;
+      folder.studentCount > 0 ? `${folder.studentCount} on roster` : null;
     const countDetail = [rosterDetail, seatsDetail].filter(Boolean).join(" · ") || "Empty";
     return {
       id: folder.key,

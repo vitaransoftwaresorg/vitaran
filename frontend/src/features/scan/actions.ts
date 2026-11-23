@@ -12,6 +12,15 @@ import {
   type ScanPortal,
 } from "@/services/scans";
 import type { OmScan, ScanPreview, TestIdCheck } from "@/types/scan";
+import type { OmrStudentMatch } from "./omr-student-actions";
+import { ambiguousMatchesFromDetails } from "./roll-helpers";
+
+export type PreviewScanFailure = {
+  ok: false;
+  message: string;
+  matches?: OmrStudentMatch[];
+  rollNo?: string;
+};
 
 const PATHS: Record<ScanPortal, string> = {
   admin: "/admin/omr-scan",
@@ -28,17 +37,47 @@ function scanFile(formData: FormData): { ok: true; file: File } | { ok: false; e
 export async function previewScanAction(
   portal: ScanPortal,
   formData: FormData,
-): Promise<{ ok: true; result: ScanPreview } | { ok: false; message: string }> {
+): Promise<{ ok: true; result: ScanPreview } | PreviewScanFailure> {
   const parsed = scanFile(formData);
   if (!parsed.ok) return { ok: false, message: parsed.error };
   const rollNo = String(formData.get("rollNo") ?? "").trim();
   const testId = String(formData.get("testId") ?? "").trim();
+  const schoolId = String(formData.get("schoolId") ?? "").trim();
   const corners = String(formData.get("corners") ?? "").trim();
   try {
-    return { ok: true, result: await previewScan(portal, parsed.file, { rollNo, testId, corners }) };
+    return {
+      ok: true,
+      result: await previewScan(portal, parsed.file, {
+        rollNo,
+        testId,
+        schoolId: schoolId || undefined,
+        corners,
+      }),
+    };
   } catch (error) {
-    const message = error instanceof ApiError ? error.message : "Could not read the sheet. Try a clearer photo.";
-    return { ok: false, message };
+    const message =
+      error instanceof ApiError ? error.message : "Could not read the sheet. Try a clearer photo.";
+    if (!(error instanceof ApiError)) return { ok: false, message };
+    const matches = ambiguousMatchesFromDetails(error.details);
+    if (!matches?.length) return { ok: false, message };
+    return {
+      ok: false,
+      message,
+      rollNo:
+        typeof (error.details as { rollNo?: unknown })?.rollNo === "string"
+          ? String((error.details as { rollNo: string }).rollNo)
+          : rollNo || undefined,
+      matches: matches.map((row) => ({
+        id: row.id ?? `${row.schoolId}:${row.rollNo}`,
+        name: row.name,
+        rollNo: row.rollNo,
+        classLevel: row.classLevel,
+        sectionName: row.sectionName ?? null,
+        programName: row.programName ?? null,
+        schoolId: row.schoolId,
+        schoolName: row.schoolName,
+      })),
+    };
   }
 }
 

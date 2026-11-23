@@ -4,6 +4,11 @@ import { FileSpreadsheet, Plus } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/features/admin/page-header";
 import { verifySchoolSession } from "@/features/school-auth/session";
+import {
+  DEFAULT_STUDENTS_PAGE_SIZE,
+  parseListPage,
+  parseListPageSize,
+} from "@/features/list/page-params";
 import { DeleteRosterStudentsButton } from "@/features/students/delete-roster-students-button";
 import { SchoolStudentsDrive } from "@/features/students/school-students-drive";
 import { sectionIdsForClass, studentsInClass } from "@/features/students/school-roster";
@@ -31,6 +36,8 @@ export default async function SchoolStudentsPage({
       ? classLevelRaw
       : undefined;
   const section = first(query.section)?.trim().toUpperCase() || undefined;
+  const page = parseListPage(query.page);
+  const pageSize = parseListPageSize(query.pageSize, DEFAULT_STUDENTS_PAGE_SIZE, 100);
 
   const school = await verifySchoolSession();
 
@@ -39,12 +46,16 @@ export default async function SchoolStudentsPage({
     classLevel != null && section
       ? sectionIdsForClass(organization, classLevel, section)
       : undefined;
-  // Scope by class/section so large schools are not truncated by the 500-row page size.
+  const hasSections =
+    classLevel != null &&
+    (organization.sections ?? []).some((row) => row.classLevel === classLevel);
+  const showRosterTable = Boolean(classLevel != null && (section || !hasSections));
+
   const studentsPage = await listSchoolStudents({
-    pageSize: 500,
     status: "ACTIVE",
     ...(classLevel != null ? { classLevel } : {}),
     ...(sectionIds?.length === 1 ? { sectionId: sectionIds[0] } : {}),
+    ...(showRosterTable ? { page, pageSize } : { pageSize: 500 }),
   });
   const students = studentsPage.items;
 
@@ -54,10 +65,6 @@ export default async function SchoolStudentsPage({
       ? `Class ${classLevel}-${section}`
       : `Class ${classLevel}`
     : "Students";
-  const hasSections =
-    inClass &&
-    classLevel != null &&
-    (organization.sections ?? []).some((row) => row.classLevel === classLevel);
   const description = inClass
     ? section
       ? `${school.name} · section students`
@@ -69,8 +76,11 @@ export default async function SchoolStudentsPage({
     inClass && classLevel != null
       ? studentsInClass(students, classLevel, section, { sectionIds })
       : [];
-  // Badge = students on roster; seat usage (used/seats) lives next to the table search.
-  const headerCount = inClass ? roster.length : students.length;
+  const headerCount = showRosterTable
+    ? studentsPage.pagination.total
+    : inClass
+      ? roster.length
+      : students.length;
   const classSubjects =
     inClass && classLevel != null
       ? subjectsForSchoolClass(
@@ -102,7 +112,7 @@ export default async function SchoolStudentsPage({
                   classLevel={classLevel}
                   sectionId={sectionIds?.length === 1 ? sectionIds[0] : null}
                   sectionLabel={section}
-                  studentCount={roster.length}
+                  studentCount={showRosterTable ? studentsPage.pagination.total : roster.length}
                 />
               ) : null}
               <Link
@@ -134,6 +144,10 @@ export default async function SchoolStudentsPage({
         organization={organization}
         students={students}
         schoolPrograms={school.schoolPrograms}
+        pagination={showRosterTable ? studentsPage.pagination : undefined}
+        listParams={{
+          pageSize: pageSize === DEFAULT_STUDENTS_PAGE_SIZE ? undefined : pageSize,
+        }}
       />
     </>
   );

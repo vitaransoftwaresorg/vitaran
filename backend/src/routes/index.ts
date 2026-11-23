@@ -24,6 +24,10 @@ import {
 import { programCatalogRouter, programRouter } from "./program.routes.js";
 import { schoolRouter } from "./school.routes.js";
 import {
+  adminSchoolStudentResourceRouter,
+  schoolStudentResourceRouter,
+} from "./school-student-resource.routes.js";
+import {
   adminSchoolSectionRouter,
   schoolSectionRouter,
   teacherSectionRouter,
@@ -48,6 +52,7 @@ apiRouter.use("/public/events", publicEventsRouter);
 apiRouter.use("/admin/settings", adminSettingsRouter);
 apiRouter.get("/dashboard", requireAdmin, getAdminDashboard);
 apiRouter.use("/schools", schoolRouter);
+apiRouter.use("/schools/:id/student-resources", adminSchoolStudentResourceRouter);
 apiRouter.use("/schools/:schoolId/sections", adminSchoolSectionRouter);
 apiRouter.use("/schools/:schoolId/students", adminSchoolStudentRouter);
 apiRouter.use("/students", adminStudentRouter);
@@ -58,6 +63,7 @@ apiRouter.use("/answer-keys", answerKeyRouter);
 apiRouter.use("/public/answer-keys", publicAnswerKeyRouter);
 apiRouter.use("/results", resultRouter);
 apiRouter.use("/public/results", publicResultRouter);
+apiRouter.use("/school/student-resources", blockIfMaintenance, schoolStudentResourceRouter);
 apiRouter.use("/school/teachers", blockIfMaintenance, schoolTeacherRouter);
 apiRouter.use("/school/sections", blockIfMaintenance, schoolSectionRouter);
 apiRouter.use("/teacher/sections", blockIfMaintenance, teacherSectionRouter);
