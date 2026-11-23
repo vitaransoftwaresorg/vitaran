@@ -41,6 +41,7 @@ export default async function AdminAllStudentsPage({
       ? classLevelRaw
       : undefined;
   const section = first(query.section)?.trim().toUpperCase() || undefined;
+  const fromSchool = first(query.from)?.trim().toLowerCase() === "school";
   const page = parseListPage(query.page);
   const pageSize = parseListPageSize(query.pageSize, DEFAULT_STUDENTS_PAGE_SIZE, 100);
 
@@ -145,6 +146,7 @@ export default async function AdminAllStudentsPage({
         organization={organization}
         students={students}
         pagination={showRosterTable ? studentsPage?.pagination : undefined}
+        fromSchool={fromSchool}
         listParams={{
           pageSize: pageSize === DEFAULT_STUDENTS_PAGE_SIZE ? undefined : pageSize,
         }}

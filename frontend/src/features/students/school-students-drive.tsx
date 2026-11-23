@@ -4,11 +4,7 @@ import { DriveBrowser, type DriveCrumb, type DriveItem } from "@/features/docume
 import { programLabel } from "@/features/schools/constants";
 import { displaySectionName } from "@/features/schools/section-label";
 import { subjectsForSchoolClass } from "@/features/students/report-subjects";
-import {
-  seatsForClass,
-  sectionIdsForClass,
-  studentsInClass,
-} from "@/features/students/school-roster";
+import { sectionIdsForClass, studentsInClass } from "@/features/students/school-roster";
 import { ListPagination } from "@/components/shared/list-pagination";
 import { StudentsTable } from "@/features/students/students-table";
 import type { ClassOrganization } from "@/types/section";
@@ -64,18 +60,13 @@ function sectionsForClass(
   });
 }
 
-function emptyRosterMessage(section: string | undefined, seats: number, classCount = 0) {
+function emptyRosterMessage(section: string | undefined, classCount = 0) {
   if (section && classCount > 0) {
     return `No students in section ${section}. ${classCount} student${classCount === 1 ? " is" : "s are"} in this class under another section — open the class (without a section filter) to see them.`;
   }
-  if (seats > 0) {
-    return section
-      ? `Seat limit ${seats} — roster is empty. Add students here (Results uses this same roster).`
-      : `Seat limit ${seats} — roster is empty. Add students to fill Results.`;
-  }
   return section
-    ? "No students in this class section yet."
-    : "No students in this class yet.";
+    ? "No students in this class section yet. Add students here (Results uses this same list)."
+    : "No students in this class yet. Add students to fill Results.";
 }
 
 function classFoldersForSchool(
@@ -163,15 +154,14 @@ export function SchoolStudentsDrive({
         const roster = studentsInClass(students, classLevel, folder.label, {
           sectionIds: folder.sectionId ? [folder.sectionId] : undefined,
         });
-        const seatsDetail = folder.seats > 0 ? `${folder.seats} seat limit` : null;
         const rosterDetail =
-          roster.length > 0 ? `${roster.length} on roster` : null;
+          roster.length > 0 ? `${roster.length} students` : null;
         return {
           id: folder.sectionId ?? `${classLevel}-${folder.label}`,
           name: `Section ${folder.label}`,
           kind: "folder" as const,
           href: sectionHref(classLevel, folder.label),
-          detail: [rosterDetail, seatsDetail].filter(Boolean).join(" · ") || "Empty",
+          detail: rosterDetail || "Empty",
         };
       });
       return (
@@ -189,16 +179,14 @@ export function SchoolStudentsDrive({
   if (classLevel != null) {
     const sectionIds = sectionIdsForClass(organization, classLevel, section);
     const roster = studentsInClass(students, classLevel, section, { sectionIds });
-    const seats = seatsForClass(organization, classLevel, section);
     const classCount = pagination?.total ?? studentsInClass(students, classLevel).length;
     return (
       <StudentsTable
         students={roster}
         mode="school"
         baseHref={SCHOOL_STUDENTS_PATH}
-        seats={seats}
         subjects={subjectsForSchoolClass(schoolPrograms, classLevel, roster[0]?.programId)}
-        emptyMessage={emptyRosterMessage(section, seats, classCount)}
+        emptyMessage={emptyRosterMessage(section, classCount)}
         scopeKey={`school:${classLevel}:${section ?? ""}`}
         pagination={
           pagination ? (
@@ -224,10 +212,9 @@ export function SchoolStudentsDrive({
       folder.sections.length > 0
         ? `${folder.sections.length} section${folder.sections.length === 1 ? "" : "s"}`
         : null;
-    const seatsDetail = folder.seats > 0 ? `${folder.seats} seat limit` : null;
     const rosterDetail =
-      folder.studentCount > 0 ? `${folder.studentCount} on roster` : null;
-    const countDetail = [rosterDetail, seatsDetail].filter(Boolean).join(" · ") || "Empty";
+      folder.studentCount > 0 ? `${folder.studentCount} students` : null;
+    const countDetail = rosterDetail || "Empty";
     return {
       id: folder.key,
       name: `Class ${folder.classLevel}`,

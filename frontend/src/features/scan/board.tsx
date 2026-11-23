@@ -48,6 +48,7 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
   const [cameraKey, setCameraKey] = useState(0);
   // Owned by this page, so opening it any way (back from review, refresh, menu) starts with an empty test ID.
   const [testId, setTestId] = useState("");
+  const [examPattern, setExamPattern] = useState<"" | "MPCB" | "PCB" | "MPC">("");
   const restRef = useRef<ScanQueueItem[]>([]);
 
   useEffect(
@@ -179,6 +180,7 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
         const form = new FormData();
         form.append("file", next.file);
         if (next.testId) form.append("testId", next.testId);
+        if (next.examPattern) form.append("examPattern", next.examPattern);
         const result = await previewScanAction(portal, form);
         if (result.ok) {
           setScanBatch([result.result]);
@@ -216,6 +218,8 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
           scanAction={(form) => previewScanAction(portal, form)}
           testId={testId}
           onTestId={setTestId}
+          examPattern={examPattern}
+          onExamPattern={setExamPattern}
         />
       ) : null}
 
@@ -263,12 +267,18 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
                     {reading ? `Reading page ${Math.min(job.done + 1, job.pageCount)} of ${job.pageCount}` : `Read ${job.pageCount} pages`}
                     {" · "}Test ID {job.testId}
                     {job.duplicates
-                      ? ` · ${job.duplicates} duplicate${job.duplicates === 1 ? "" : "s"} — enter correct registration`
+                      ? ` · ${job.duplicates} duplicate sheet${job.duplicates === 1 ? "" : "s"} — enter the correct registration for each`
                       : ""}
                     {job.failures.length ? ` · ${job.failures.length} failed` : ""}
                   </p>
                   {job.failures.length ? (
-                    <FailedPages portal={portal} testId={job.testId} failures={job.failures} disabled={savingAll} />
+                    <FailedPages
+                      portal={portal}
+                      testId={job.testId}
+                      examPattern={job.examPattern}
+                      failures={job.failures}
+                      disabled={savingAll}
+                    />
                   ) : null}
                 </div>
               ) : null}

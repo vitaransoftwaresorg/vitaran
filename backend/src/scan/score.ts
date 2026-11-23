@@ -24,16 +24,6 @@ export type SubjectScore = {
   maxTotal: number;
 };
 
-/**
- * More than this many unfilled questions in a subject → student did not take
- * that subject (omit from scores, rank card, and total max e.g. 400 → 300).
- */
-export const SUBJECT_NOT_TAKEN_BLANK_THRESHOLD = 15;
-
-export function subjectTaken(score: Pick<SubjectScore, "blank">) {
-  return score.blank <= SUBJECT_NOT_TAKEN_BLANK_THRESHOLD;
-}
-
 export type SheetScore = {
   subjectScores: SubjectScore[];
   unattempted: number[];
@@ -150,7 +140,7 @@ export function scoreSheet(
   const bands =
     allBands.filter((range) => range.maxMarks > 0 && range.to >= range.from);
   const scoredBands = bands.length > 0 ? bands : allBands.filter((range) => range.to >= range.from);
-  const rawScores = scoredBands.map((range) => {
+  const subjectScores = scoredBands.map((range) => {
     let correct = 0;
     let partial = 0;
     let wrong = 0;
@@ -184,9 +174,6 @@ export function scoreSheet(
       maxTotal: range.maxMarks || maxTotal,
     };
   });
-
-  // Drop subjects the student left mostly blank — not taken for this test.
-  const subjectScores = rawScores.filter(subjectTaken);
 
   const unattempted: number[] = [];
   for (const range of subjectScores) {

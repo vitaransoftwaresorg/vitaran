@@ -5,7 +5,6 @@ import type { ResultSheetParams } from "../schemas/result.schema.js";
 import { AppError } from "../utils/app-error.js";
 import { downloadFileName } from "../utils/download-file-name.js";
 import type { CellValue } from "../utils/excel.js";
-import { SUBJECT_NOT_TAKEN_BLANK_THRESHOLD } from "../scan/score.js";
 import {
   columnRole,
   foldRoll,
@@ -100,23 +99,17 @@ async function classCards(params: ResultSheetParams, viewer?: Viewer) {
     const counts = omr.byRoll.get(foldRoll(roll));
     const classCell = cellText(row[at("class")]);
     const sectionCell = cellText(row[at("section")]);
+    // Null subject cells = not on this student’s exam pattern (e.g. PCB skips Maths).
     const subjects = paperSubjects
-      .map((paper) => {
-        const omr = counts?.get(paper.index);
-        return {
-          label: paper.label,
-          marks: numberCell(row[paper.index]),
-          max: paper.max,
-          ...omr,
-        };
-      })
-      // Not taken: null sheet cell, or OMR left more than 15 questions blank.
-      .filter((subject) => {
-        if (subject.blank != null && subject.blank > SUBJECT_NOT_TAKEN_BLANK_THRESHOLD) return false;
-        return subject.marks != null;
-      });
+      .map((paper) => ({
+        label: paper.label,
+        marks: numberCell(row[paper.index]),
+        max: paper.max,
+        ...counts?.get(paper.index),
+      }))
+      .filter((subject) => subject.marks != null);
     const totalMax =
-      subjects.reduce((sum, subject) => sum + (subject.max ?? SUBJECT_PAPER_MAX), 0) || null;
+      subjects.reduce((sum, subject) => sum + (subject.max ?? SUBJECT_PAPER_MAX), 0) || classTotalMax;
     const total =
       subjects.length > 0
         ? subjects.reduce((sum, subject) => sum + (subject.marks ?? 0), 0)
@@ -136,11 +129,7 @@ async function classCards(params: ResultSheetParams, viewer?: Viewer) {
         classLabel: classCell || `${params.classLevel}${sectionCell}`,
       },
       subjects,
-      paperMarks: paperSubjects.map((paper) => {
-        const omr = counts?.get(paper.index);
-        if (omr?.blank != null && omr.blank > SUBJECT_NOT_TAKEN_BLANK_THRESHOLD) return null;
-        return numberCell(row[paper.index]);
-      }),
+      paperMarks: paperSubjects.map((paper) => numberCell(row[paper.index])),
       total,
       totalMax,
       percentage,

@@ -8,7 +8,7 @@ import { programLabel } from "@/features/schools/constants";
 import type { TestIdAvailability } from "@/types/answer-key";
 import { checkAnswerKeyTestIdAction } from "./actions";
 import { ANSWER_KEYS_PATH } from "./constants";
-import { TEST_ID_LENGTH, TEST_ID_PATTERN } from "./test-id";
+import { TEST_ID_MAX_LENGTH, TEST_ID_MIN_LENGTH, TEST_ID_PATTERN } from "./test-id";
 
 type CheckResult = { value: string } & (({ ok: true } & TestIdAvailability) | { ok: false; message: string });
 
@@ -19,7 +19,7 @@ export type TestIdCheck =
   | { state: "error"; message: string };
 
 /**
- * Checks a test ID as soon as all 6 digits are in.
+ * Checks a test ID as soon as 6 or 7 digits are in.
  * `exceptId` is the key being edited (own row ignored). School keys may share a
  * platform test ID; platform keys stay unique among platform keys only.
  */
@@ -52,11 +52,15 @@ export function useTestIdCheck(testId: string, exceptId?: string): TestIdCheck {
 export function TestIdStatus({ check, length }: { check: TestIdCheck; length: number }) {
   switch (check.state) {
     case "empty":
-      return <p className="text-xs text-neutral-500">Enter the 6-digit test ID printed on the OMR sheets.</p>;
+      return (
+        <p className="text-xs text-neutral-500">
+          Enter the 6- or 7-digit test ID printed on the OMR sheets.
+        </p>
+      );
     case "typing":
       return (
         <p className="text-xs text-neutral-500 tabular-nums">
-          Enter all 6 digits ({length}/{TEST_ID_LENGTH})
+          Enter {TEST_ID_MIN_LENGTH}–{TEST_ID_MAX_LENGTH} digits ({length}/{TEST_ID_MAX_LENGTH})
         </p>
       );
     case "checking":

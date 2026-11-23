@@ -320,10 +320,10 @@ export function BulkStudentForm({
       );
       const skipped = students.length - added.length;
       setImportNote(
-        `Imported ${added.length} student${added.length === 1 ? "" : "s"} from ${file.name}` +
+        `Loaded ${added.length} student${added.length === 1 ? "" : "s"} from ${file.name} into a draft` +
           (skipped ? ` · ${skipped} left out (limit ${MAX_IMPORT_ROWS} per save)` : "") +
           (perRowSection ? " · set Section per row if needed" : "") +
-          ". Check the rows below, then save them.",
+          ". Nothing is saved yet — review the rows, then click Save.",
       );
     } catch (error) {
       setState({ message: error instanceof Error ? error.message : "Could not read this Excel file." });
@@ -463,10 +463,10 @@ export function BulkStudentForm({
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-brand-200 bg-brand-50/40 px-3 py-2.5">
         <FileSpreadsheet className="size-5 shrink-0 text-brand-700" />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-brand-950">Import from Excel</p>
+          <p className="text-sm font-semibold text-brand-950">Load from Excel (draft)</p>
           <p className="text-xs text-neutral-500">
-            Reg No *, {perRowSection ? "Section *, " : ""}Student name optional · Parent optional · up to{" "}
-            {MAX_IMPORT_ROWS}
+            Fills the table only — click Save to store students. Reg No * ·{" "}
+            {perRowSection ? "Section * · " : ""}name/parent optional · up to {MAX_IMPORT_ROWS}
             {perRowSection ? " · mix sections in one file" : ""}
           </p>
         </div>
@@ -500,13 +500,13 @@ export function BulkStudentForm({
           onClick={() => fileRef.current?.click()}
         >
           {importing ? <Loader2 className="size-4 animate-spin" /> : <FileSpreadsheet className="size-4" />}
-          {importing ? "Reading…" : "Import Excel"}
+          {importing ? "Reading…" : "Load Excel"}
         </Button>
       </div>
 
       {importNote ? (
-        <p className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-          <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+        <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-950">
+          <FileClock className="mt-0.5 size-4 shrink-0" />
           {importNote}
         </p>
       ) : null}
@@ -680,7 +680,7 @@ export function BulkStudentForm({
           {filledCount > 1 ? `Save ${filledCount} students` : "Save student"}
         </Button>
         <p className="text-xs text-neutral-500">
-          Excel fills a draft only — blank rows are skipped on Save.
+          Excel loads a draft only — students are stored when you click Save. Blank rows are skipped.
         </p>
       </div>
     </div>

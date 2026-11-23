@@ -25,6 +25,7 @@ export function SchoolNavTrail({
   useLayoutEffect(() => {
     rememberAdminNavLabel("school", id, name);
     setDrivePath?.(crumbs);
+    return () => setDrivePath?.([]);
   }, [id, name, crumbs, setDrivePath]);
 
   return null;

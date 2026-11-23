@@ -192,7 +192,7 @@ export function getAdminParentHref(pathname: string, search = ""): string | null
     const query = params.toString();
     return query ? `/admin/results?${query}` : "/admin/results";
   }
-  // Students drive: class → school → schools list.
+  // Students drive: class → school folder → Students list (or school profile if from=school).
   if (pathname === "/admin/schools/students") {
     const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
     if (params.has("class") || params.has("section")) {
@@ -201,13 +201,21 @@ export function getAdminParentHref(pathname: string, search = ""): string | null
       const query = params.toString();
       return query ? `/admin/schools/students?${query}` : "/admin/schools/students";
     }
-    if (params.has("school")) return "/admin/schools/students";
+    const schoolId = params.get("school");
+    if (schoolId && params.get("from") === "school") {
+      return `/admin/schools/${encodeURIComponent(schoolId)}`;
+    }
+    if (schoolId) return "/admin/schools/students";
     return "/admin";
   }
-  // Teachers drive: school roster → schools list.
+  // Teachers drive: school folder → Teachers list (or school profile if from=school).
   if (pathname === "/admin/teachers") {
     const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-    if (params.has("school") || params.has("schoolId")) return "/admin/teachers";
+    const schoolId = params.get("school") ?? params.get("schoolId");
+    if (schoolId && params.get("from") === "school") {
+      return `/admin/schools/${encodeURIComponent(schoolId)}`;
+    }
+    if (schoolId) return "/admin/teachers";
     return "/admin";
   }
   // Add teacher lives under /schools/:id/teachers/new — back to the school’s teachers drive.

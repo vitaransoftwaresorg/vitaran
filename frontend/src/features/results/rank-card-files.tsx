@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { Award, Download, Eye, FileText, Loader2, Printer, X } from "lucide-react";
+import { ImageZoomPane } from "@/components/shared/image-zoom-pane";
 import { SharePdfButton } from "@/components/shared/share-pdf-button";
 import { Button } from "@/components/ui/button";
 import { printImage, printPdf } from "@/features/answer-keys/print-pdf";
@@ -106,7 +107,7 @@ export function RankCardCell({
         </Dialog.Trigger>
         <Dialog.Portal>
           <Dialog.Backdrop className="fixed inset-0 z-[60] bg-black/70 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />
-          <Dialog.Popup className="fixed top-1/2 left-1/2 z-[60] flex h-[94vh] w-[94vw] max-w-3xl -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl bg-white shadow-2xl outline-none duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
+          <Dialog.Popup className="fixed top-1/2 left-1/2 z-[60] flex h-[94vh] w-[94vw] max-w-4xl -translate-x-1/2 -translate-y-1/2 flex-col rounded-xl bg-white shadow-2xl outline-none duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
             <header className="flex items-center gap-2 border-b border-neutral-200 px-4 py-2.5">
               <Dialog.Title className="min-w-0 flex-1 truncate text-sm font-semibold text-neutral-900">
                 Report card · {name} · {roll}
@@ -142,13 +143,14 @@ export function RankCardCell({
                 <X className="size-4" />
               </Dialog.Close>
             </header>
-            <div className="min-h-0 flex-1 bg-neutral-100 p-3">
+            <ImageZoomPane className="min-h-0 flex-1 bg-neutral-100" toolbarLeft="Report card" resetKey={jpgHref}>
               <img
                 src={jpgHref}
                 alt={`Report card of ${name}`}
-                className="size-full object-contain"
+                className="mx-auto block h-auto w-full object-contain"
+                draggable={false}
               />
-            </div>
+            </ImageZoomPane>
           </Dialog.Popup>
         </Dialog.Portal>
       </Dialog.Root>

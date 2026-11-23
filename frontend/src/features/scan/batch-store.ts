@@ -39,6 +39,7 @@ export type PdfJob = {
   batchId: string;
   fileName: string;
   testId: string;
+  examPattern: string;
   pageCount: number;
   done: number;
   finished: boolean;
@@ -51,7 +52,13 @@ export type PdfJob = {
   duplicates: number;
 };
 
-export type PdfFailure = { page: number; message: string; hasImage: boolean };
+export type PdfFailure = {
+  page: number;
+  message: string;
+  hasImage: boolean;
+  /** Duplicate reg that was read — shown so the examiner enters a different one. */
+  rollNo?: string;
+};
 
 let pdfJob: PdfJob | null = null;
 

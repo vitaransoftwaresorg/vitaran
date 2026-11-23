@@ -385,7 +385,7 @@ async function applyPendingClassChanges(
       classLevel: row.classLevel,
       name: row.name?.trim() || "A",
       programId,
-      studentCount: row.studentCount,
+      studentCount: row.studentCount ?? 5000,
     });
   }
 }

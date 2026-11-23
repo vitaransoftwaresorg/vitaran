@@ -5,3 +5,6 @@ export function enteredTestId(testId: string | null | undefined) {
   const value = testId?.trim() ?? "";
   return value && !GENERATED_TEST_ID.test(value) ? value : "";
 }
+
+export const TEST_ID_PATTERN = /^\d{6,7}$/;
+export const TEST_ID_MESSAGE = "Test ID must be 6 or 7 digits";

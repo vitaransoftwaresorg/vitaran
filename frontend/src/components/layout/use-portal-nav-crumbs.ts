@@ -140,30 +140,47 @@ export function usePortalNavCrumbs(routeCrumbs: PortalNavCrumb[]): PortalNavCrum
       return dedupeCrumbs([...section, ...trail]);
     }
 
-    // Students drive: "Schools" = this page’s school list (/admin/schools/students), not /admin/schools.
+    // Students drive: from Students page vs from school profile (?from=school).
     if (pathname === "/admin/schools/students" || pathname.startsWith("/admin/schools/students/")) {
       const dashboard = routeCrumbs[0] ? [routeCrumbs[0]] : [];
-      const schoolsHere = { label: "Schools", href: "/admin/schools/students" };
       const school = searchParams.get("school");
+      const fromSchool = searchParams.get("from") === "school";
       if (!school && pathname === "/admin/schools/students") {
-        return dedupeCrumbs([...dashboard, schoolsHere]);
+        return dedupeCrumbs([
+          ...dashboard,
+          { label: "Schools", href: "/admin/schools/students" },
+        ]);
       }
       const rest = routeCrumbs
         .slice(2)
         .filter((crumb) => crumb.label !== "Students" && crumb.label !== "Details");
-      return dedupeCrumbs([...dashboard, schoolsHere, ...folders, ...rest]);
+      return dedupeCrumbs([
+        ...dashboard,
+        {
+          label: "Schools",
+          href: fromSchool ? "/admin/schools" : "/admin/schools/students",
+        },
+        ...folders,
+        ...rest,
+      ]);
     }
 
-    // Teachers drive: "Schools" = this page’s school list (/admin/teachers), not /admin/schools.
-    // Inside a school: one leaf (school name), not School › Teachers.
+    // Teachers drive: from Teachers page vs from school profile (?from=school).
     if (/\/teachers$/.test(pathname)) {
       const dashboard = routeCrumbs[0] ? [routeCrumbs[0]] : [];
-      const schoolsHere = { label: "Schools", href: "/admin/teachers" };
       const school = searchParams.get("school") ?? searchParams.get("schoolId");
+      const fromSchool = searchParams.get("from") === "school";
       if (!school) {
-        return dedupeCrumbs([...dashboard, schoolsHere]);
+        return dedupeCrumbs([
+          ...dashboard,
+          { label: "Schools", href: "/admin/teachers" },
+        ]);
       }
-      return dedupeCrumbs([...dashboard, schoolsHere, ...folders]);
+      return dedupeCrumbs([
+        ...dashboard,
+        { label: "Schools", href: fromSchool ? "/admin/schools" : "/admin/teachers" },
+        ...folders,
+      ]);
     }
 
     // Program detail / edit: Dashboard › Programs › Name [› Edit]

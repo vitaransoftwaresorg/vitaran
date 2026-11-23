@@ -39,7 +39,7 @@ function summarize(job: PdfJob) {
   const parts = [`${job.read} sheet${job.read === 1 ? "" : "s"} read`];
   if (job.duplicates) {
     parts.push(
-      `${job.duplicates} duplicate${job.duplicates === 1 ? "" : "s"} — enter correct registration`,
+      `${job.duplicates} duplicate sheet${job.duplicates === 1 ? "" : "s"} — enter the correct registration for each`,
     );
   }
   const otherFailures = Math.max(0, job.failures.length - job.duplicates);
@@ -85,6 +85,21 @@ export async function fetchFailedPageImage(page: number) {
   return fetchPdfPageImageDirect(auth.batchesUrl, auth.token, job.batchId, page);
 }
 
+function failureFromItem(item: {
+  page: number;
+  error?: string;
+  hasImage?: boolean;
+  rollNo?: string;
+}): PdfFailure | null {
+  if (!item.error) return null;
+  return {
+    page: item.page,
+    message: item.error,
+    hasImage: Boolean(item.hasImage),
+    rollNo: item.rollNo?.trim() || undefined,
+  };
+}
+
 async function poll() {
   timer = null;
   const job = getPdfJob();
@@ -93,24 +108,53 @@ async function poll() {
     const status = await fetchPdfBatchDirect(auth.batchesUrl, auth.token, job.batchId, job.next);
     errors = 0;
     if (getPdfJob()?.batchId !== job.batchId) return;
+
+    // Same registration on 2+ sheets → none stay in review; every copy is an enter-reg card.
+    const demotions = status.demotions ?? [];
+    const collideRolls = new Set(
+      [...demotions, ...status.items]
+        .filter((item) => Boolean(item.demoted || item.duplicateOf != null))
+        .map((item) => item.rollNo?.trim())
+        .filter((roll): roll is string => Boolean(roll)),
+    );
+    if (collideRolls.size) {
+      setScanBatch(
+        getScanBatch().filter((preview) => !collideRolls.has(preview.scan.student.rollNo.trim())),
+      );
+    }
+
     const previews = status.items.flatMap((item) => (item.preview ? [item.preview] : []));
-    if (previews.length) setScanBatch([...getScanBatch(), ...previews]);
+    if (previews.length) {
+      setScanBatch([
+        ...getScanBatch().filter((preview) => !collideRolls.has(preview.scan.student.rollNo.trim())),
+        ...previews.filter((preview) => !collideRolls.has(preview.scan.student.rollNo.trim())),
+      ]);
+    }
+
     const next = job.next + status.items.length;
+    const incomingFailures = [...demotions, ...status.items]
+      .map(failureFromItem)
+      .filter((row): row is PdfFailure => row != null);
+    const byPage = new Map(job.failures.map((row) => [row.page, row]));
+    for (const row of incomingFailures) {
+      // Prefer the latest message (e.g. “appears on 2 sheets” → “appears on 3 sheets”).
+      byPage.set(row.page, row);
+    }
+    const mergedFailures = [...byPage.values()].sort((a, b) => a.page - b.page);
+    const duplicatePages = mergedFailures.filter(
+      (row) =>
+        /duplicate registration number/i.test(row.message) ||
+        /same registration number as page/i.test(row.message),
+    ).length;
+
     setPdfJob({
       ...job,
       done: status.done,
       finished: status.finished && next >= status.done,
       next,
       read: job.read + previews.length,
-      failures: [
-        ...job.failures,
-        ...status.items.flatMap((item) =>
-          item.error
-            ? [{ page: item.page, message: item.error, hasImage: Boolean(item.hasImage) }]
-            : [],
-        ),
-      ],
-      duplicates: job.duplicates + status.items.filter((item) => item.duplicateOf).length,
+      failures: mergedFailures,
+      duplicates: duplicatePages,
     });
     if (getPdfJob()?.finished) {
       onFinished();
@@ -133,6 +177,7 @@ function begin(summary: PdfBatchSummary) {
     batchId: summary.batchId,
     fileName: summary.fileName,
     testId: summary.testId,
+    examPattern: summary.examPattern ?? "MPCB",
     pageCount: summary.pageCount,
     done: summary.done,
     finished: false,

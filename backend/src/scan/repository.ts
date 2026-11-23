@@ -121,6 +121,7 @@ export function findScanForRegrade(id: string) {
       rollNo: true,
       answers: true,
       flags: true,
+      subjectScores: true,
       image: true,
     },
   });

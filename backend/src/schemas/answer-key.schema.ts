@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { SchoolType } from "../generated/prisma/enums.js";
 import { subjectCodeSchema } from "../utils/subject.js";
+import { TEST_ID_MESSAGE, TEST_ID_PATTERN } from "../utils/test-id.js";
 
 const programCode = z.string().trim().min(1).max(64);
 
-const TEST_ID_MESSAGE = "Test ID must be exactly 6 digits";
-const testIdField = z.string().trim().regex(/^\d{6}$/, TEST_ID_MESSAGE);
+const testIdField = z.string().trim().regex(TEST_ID_PATTERN, TEST_ID_MESSAGE);
 
 export const uploadAnswerKeyQuerySchema = z.object({
   program: programCode,
@@ -16,7 +16,7 @@ export const uploadAnswerKeyQuerySchema = z.object({
     .trim()
     .optional()
     .transform((value) => (value ? value : undefined))
-    .refine((value) => value === undefined || /^\d{6}$/.test(value), TEST_ID_MESSAGE),
+    .refine((value) => value === undefined || TEST_ID_PATTERN.test(value), TEST_ID_MESSAGE),
   testNumber: z.coerce.number().int().min(1).max(18),
   classLevel: z.coerce.number().int().min(1).max(12),
 });

@@ -360,9 +360,8 @@ export function ClassResultsBoard({
 
         {rows.length === 0 ? (
           <p className="px-5 py-10 text-center text-sm text-neutral-500 sm:px-6">
-            No students on this class roster yet. Results uses the same list as
-            Students — add or import there. Seat limits are capacity only, not the
-            student list.
+            No students in this class yet. Results uses the same list as
+            Students — add or import there.
           </p>
         ) : visibleRows.length === 0 ? (
           <p className="px-5 py-10 text-center text-sm text-neutral-500 sm:px-6">

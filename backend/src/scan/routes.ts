@@ -90,13 +90,20 @@ function omrRouter(contextOf: (res: Response) => scanService.ScanContext) {
   router.post("/preview", omrScanRateLimit, readImage, async (req, res) => {
     const file = req.file;
     if (!file?.buffer) throw new AppError(400, "Attach an OMR sheet image");
-    const body = req.body as { rollNo?: string; testId?: string; schoolId?: string; corners?: string };
+    const body = req.body as {
+      rollNo?: string;
+      testId?: string;
+      schoolId?: string;
+      examPattern?: string;
+      corners?: string;
+    };
     sendSuccess(
       res,
       await scanService.previewScan(contextOf(res), file.buffer, file.originalname, {
         rollNo: typeof body?.rollNo === "string" ? body.rollNo : "",
         testId: typeof body?.testId === "string" ? body.testId : "",
         schoolId: typeof body?.schoolId === "string" ? body.schoolId : "",
+        examPattern: typeof body?.examPattern === "string" ? body.examPattern : "",
         corners: parseCorners(body?.corners),
       }),
     );
@@ -105,16 +112,22 @@ function omrRouter(contextOf: (res: Response) => scanService.ScanContext) {
   router.post("/split-pdf", omrScanRateLimit, readPdf, async (req, res) => {
     const file = req.file;
     if (!file?.path) throw new AppError(400, "Attach a PDF of OMR sheets");
-    const fromBody = req.body?.testId;
-    const fromQuery = req.query?.testId;
-    const fromHeader = req.get("x-test-id");
-    const testId = [fromBody, fromQuery, fromHeader]
-      .flatMap((value) => (Array.isArray(value) ? value : [value]))
-      .map((value) => (typeof value === "string" ? value.trim() : ""))
-      .find(Boolean) ?? "";
+    const pick = (...sources: unknown[]) =>
+      sources
+        .flatMap((value) => (Array.isArray(value) ? value : [value]))
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .find(Boolean) ?? "";
+    const testId = pick(req.body?.testId, req.query?.testId, req.get("x-test-id"));
+    const examPattern = pick(req.body?.examPattern, req.query?.examPattern, req.get("x-exam-pattern"));
     sendSuccess(
       res,
-      await scanService.registerOmrPdf(contextOf(res), file.path, file.originalname, { testId }, file.size),
+      await scanService.registerOmrPdf(
+        contextOf(res),
+        file.path,
+        file.originalname,
+        { testId, examPattern },
+        file.size,
+      ),
     );
   });
   router.get("/batches/active", (_req, res) => {
@@ -159,7 +172,11 @@ function omrRouter(contextOf: (res: Response) => scanService.ScanContext) {
     );
   });
   router.get("/check-test/:testId", async (req, res) => {
-    const testId = z.string().trim().regex(/^\d{6}$/, "Test ID must be exactly 6 digits").parse(req.params.testId);
+    const testId = z
+      .string()
+      .trim()
+      .regex(/^\d{6,7}$/, "Test ID must be 6 or 7 digits")
+      .parse(req.params.testId);
     sendSuccess(res, await scanService.checkTestId(contextOf(res), testId));
   });
   router.get("/class", async (req, res) => {

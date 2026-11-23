@@ -10,7 +10,7 @@ const sectionCreateSchema = z.object({
   classLevel: z.number().int().min(1).max(12),
   name: z.string().nullable().optional(),
   programId: z.string().min(1),
-  studentCount: z.number().int().min(1),
+  studentCount: z.number().int().min(1).optional().default(5000),
   programName: z.string().optional().default(""),
   subjects: z.array(z.string()).optional().default([]),
   draftId: z.string().optional(),

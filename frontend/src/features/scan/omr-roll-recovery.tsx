@@ -21,6 +21,8 @@ type OmrRollRecoveryProps = {
   message: string;
   busy?: boolean;
   schoolId?: string;
+  /** Unique id when several recovery forms are on the page (one per duplicate sheet). */
+  inputId?: string;
   /** Matches already known from the scan error (same reg at multiple schools). */
   initialMatches?: OmrStudentMatch[];
   initialRollNo?: string;
@@ -41,14 +43,20 @@ export function OmrRollRecovery({
   message,
   busy = false,
   schoolId,
+  inputId = "omr-recovery-roll",
   initialMatches = [],
   initialRollNo = "",
   onSaveWithRoll,
 }: OmrRollRecoveryProps) {
   const recoverable = canRecoverRoll(message);
   const duplicate = isDuplicateRollError(message);
+  const duplicateRoll =
+    message.match(/duplicate registration number\s+(\d+)/i)?.[1] ??
+    (initialRollNo.trim() ? rollInput(initialRollNo) : "");
   const ambiguous = isAmbiguousRollError(message) || initialMatches.length > 1;
-  const [rollNo, setRollNo] = useState(() => rollInput(initialRollNo));
+  // Duplicates: leave the field empty so the examiner types the correct reg (not the colliding one).
+  const seedRoll = duplicate ? "" : initialRollNo;
+  const [rollNo, setRollNo] = useState(() => rollInput(seedRoll));
   const [matches, setMatches] = useState<OmrStudentMatch[]>(initialMatches);
   const [selectedId, setSelectedId] = useState<string | null>(
     initialMatches.length === 1 ? initialMatches[0]!.id : null,
@@ -56,15 +64,15 @@ export function OmrRollRecovery({
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [lookingUp, setLookingUp] = useState(false);
 
-  const initialKey = `${initialRollNo}:${initialMatches.map((row) => row.id).join(",")}`;
+  const initialKey = `${seedRoll}:${initialMatches.map((row) => row.id).join(",")}`;
 
   useEffect(() => {
-    setRollNo(rollInput(initialRollNo));
-    setMatches(initialMatches);
-    setSelectedId(initialMatches.length === 1 ? initialMatches[0]!.id : null);
+    setRollNo(rollInput(seedRoll));
+    setMatches(duplicate ? [] : initialMatches);
+    setSelectedId(!duplicate && initialMatches.length === 1 ? initialMatches[0]!.id : null);
     setLookupError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset when the scan error / seed list changes
-  }, [message, initialKey]);
+  }, [message, initialKey, duplicate]);
 
   useEffect(() => {
     const roll = rollInput(rollNo);
@@ -143,19 +151,21 @@ export function OmrRollRecovery({
         {ambiguous
           ? `Same registration at ${matches.length || "several"} schools — pick the student or enter another reg:`
           : duplicate
-            ? "Duplicate registration — enter the correct one:"
+            ? duplicateRoll
+              ? `Duplicate registration number ${duplicateRoll} — please enter the correct registration number:`
+              : "Duplicate registration number — please enter the correct registration number:"
             : "Couldn’t read registration — enter it:"}
       </p>
       <div className="flex gap-2">
         <Input
-          id="omr-recovery-roll"
+          id={inputId}
           inputMode="numeric"
           autoComplete="off"
           maxLength={ROLL_LENGTH}
           value={rollNo}
           disabled={busy}
-          placeholder="7-digit reg"
-          aria-label="Registration number"
+          placeholder="Enter correct 7-digit reg"
+          aria-label="Correct registration number"
           className="h-9 flex-1 rounded-lg border-amber-200 bg-white px-2.5 text-sm tracking-widest tabular-nums"
           onChange={(event) => setRollNo(rollInput(event.currentTarget.value))}
         />

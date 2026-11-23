@@ -28,6 +28,7 @@ export default async function AdminTeachersPage({
   // Prefer `school`; keep `schoolId` for older links (e.g. school profile).
   const schoolIdRaw = first(query.school) ?? first(query.schoolId);
   const schoolId = schoolIdRaw && UUID.test(schoolIdRaw) ? schoolIdRaw : undefined;
+  const fromSchool = first(query.from)?.trim().toLowerCase() === "school";
   const page = parseListPage(query.page);
   const pageSize = parseListPageSize(query.pageSize, DEFAULT_TEACHERS_PAGE_SIZE, 200);
 
@@ -61,6 +62,7 @@ export default async function AdminTeachersPage({
         schoolId={school?.id}
         teachers={teachersPage?.items ?? []}
         pagination={teachersPage?.pagination}
+        fromSchool={fromSchool}
         listParams={{
           pageSize: pageSize === DEFAULT_TEACHERS_PAGE_SIZE ? undefined : pageSize,
         }}

@@ -12,31 +12,33 @@ export const STUDENTS_PATH = "/admin/schools/students";
  * App-wide rule: there is one school student roster (ACTIVE Student rows).
  * Students / Classes / Results / OMR / ranks / reports all slice that same list.
  *
- * Capacity is never the student list:
- * - School strength / seat limit = max seats for the school
- * - Class/section seats = max seats for that class
+ * Capacity:
+ * - School seat limit = max ACTIVE students for the school (only enrollment cap)
  * - Roster = real enrolled Student rows (Add / Import)
+ * - Section/class seat columns are legacy and not enforced
  *
  * Deleting a student, section, or class removes those rolls from Results and OMR too.
  */
 
-/** UI copy — capacity fields must never say "students". */
+/** UI copy for the school-wide seat limit. */
 export const CAPACITY_LABELS = {
   schoolLimit: "School seat limit",
-  schoolLimitHint: "Maximum seats for this school — not the student list.",
-  classSeats: "Seat limit",
-  seatsAssigned: "seats assigned",
+  schoolLimitHint: "Maximum students for this school.",
+  seatsAssigned: "students",
   seatsWord: "seats",
 } as const;
 
+/** Stored on section/class rows for the API — not shown or enforced as a limit. */
+export const DEFAULT_SECTION_SEATS = 5000;
+
 export const ROSTER_LABELS = {
-  short: "Roster",
-  onRoster: "on roster",
+  short: "Students",
+  onRoster: "students",
   empty: "No students yet",
-  chip: "Roster",
+  chip: "Students",
 } as const;
 
-/** e.g. "12 on roster" / "No students yet" */
+/** e.g. "12 students" / "No students yet" */
 export function rosterCountLabel(enrolled: number) {
   if (enrolled <= 0) return ROSTER_LABELS.empty;
   return `${enrolled} ${ROSTER_LABELS.onRoster}`;

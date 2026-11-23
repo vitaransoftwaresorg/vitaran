@@ -73,8 +73,8 @@ export default async function SchoolDetailsPage({ params }: PageProps<"/admin/sc
     listAdminClassTeacherSlots(school.id),
     getAdminSchoolStudentCounts(school.id),
   ]);
-  const teachersHref = `/admin/teachers?school=${school.id}`;
-  const studentsHref = `${STUDENTS_PATH}?school=${encodeURIComponent(school.id)}`;
+  const teachersHref = `/admin/teachers?school=${encodeURIComponent(school.id)}&from=school`;
+  const studentsHref = `${STUDENTS_PATH}?school=${encodeURIComponent(school.id)}&from=school`;
   const enrolled = rosterTotal(rosterCounts);
   const seatsUsedLabel =
     strength.studentStrength == null
@@ -154,14 +154,13 @@ export default async function SchoolDetailsPage({ params }: PageProps<"/admin/sc
           <Field label="Type">{TYPE_LABELS[school.type]}</Field>
           <Field label="School email">{school.accountEmail}</Field>
           <Field label="School mobile">{school.accountPhone}</Field>
-          <Field label="Roster (enrolled)">
+          <Field label="Students (enrolled)">
             <Link href={studentsHref} className="text-brand-900 hover:underline">
               {formatNumber(enrolled)}
             </Link>
             {enrolled === 0 ? (
               <span className="mt-0.5 block text-xs font-normal text-neutral-500">
-                Seat limits are capacity only. Add or import students under Students to fill
-                Results.
+                Add or import students under Students to fill Results.
               </span>
             ) : null}
           </Field>

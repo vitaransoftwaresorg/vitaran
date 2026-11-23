@@ -58,14 +58,14 @@ export default async function AdminSchoolProgramClassesPage({ params }: Props) {
               levelSections.length > 0
                 ? `${levelSections.length} section${levelSections.length === 1 ? "" : "s"}`
                 : whole
-                  ? `Section A · ${whole.studentCount} seat limit`
+                  ? "Section A"
                   : "Offered on school";
             return (
               <li key={level} className="flex items-center gap-3 px-4 py-3.5">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-neutral-950">Class {level}</p>
                   <p className="mt-0.5 text-xs text-neutral-500">
-                    {detail} · {countByLevel[level] ?? 0} on roster
+                    {detail} · {countByLevel[level] ?? 0} students
                   </p>
                 </div>
                 <AdminRowActions

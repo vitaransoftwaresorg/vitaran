@@ -241,7 +241,7 @@ function FormFields({ schools, programs, answerKey, values, errors, message, pen
               name="testId"
               inputMode="numeric"
               autoComplete="off"
-              placeholder="6 digits, e.g. 626304"
+              placeholder="6 or 7 digits, e.g. 626304"
               value={testId}
               onChange={(event) => setField("testId", testIdDigits(event.currentTarget.value))}
               aria-invalid={errors.testId?.length || testIdCheck.state === "taken" ? true : undefined}

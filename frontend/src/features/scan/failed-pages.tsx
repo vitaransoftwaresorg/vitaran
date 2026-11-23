@@ -12,19 +12,21 @@ import { asJpegFile } from "./camera";
 import { OmrRollRecovery } from "./omr-roll-recovery";
 import type { OmrStudentMatch } from "./omr-student-actions";
 import { fetchFailedPageImage, resolvePdfFailure } from "./pdf-batch";
-import { canRecoverRoll, ROLL_LENGTH, rollInput } from "./roll-helpers";
+import { canRecoverRoll, isDuplicateRollError, ROLL_LENGTH, rollInput } from "./roll-helpers";
 
 const NO_MATCHES: OmrStudentMatch[] = [];
 
-/** Failed PDF pages: look at what the reader saw, then photograph the paper sheet again. */
+/** Each failed / duplicate PDF page gets its own enter-reg + save row. */
 export function FailedPages({
   portal,
   testId,
+  examPattern,
   failures,
   disabled,
 }: {
   portal: ScanPortal;
   testId: string;
+  examPattern: string;
   failures: PdfFailure[];
   disabled?: boolean;
 }) {
@@ -35,6 +37,9 @@ export function FailedPages({
   const [savingPage, setSavingPage] = useState<number | null>(null);
   const [pageMatches, setPageMatches] = useState<Record<number, OmrStudentMatch[]>>({});
   const [pageRollHints, setPageRollHints] = useState<Record<number, string>>({});
+
+  const sorted = [...failures].sort((a, b) => a.page - b.page);
+  const duplicateCount = sorted.filter((f) => isDuplicateRollError(f.message)).length;
 
   function pickPhoto(page: number) {
     targetRef.current = page;
@@ -49,6 +54,7 @@ export function FailedPages({
       const form = new FormData();
       form.append("file", await asJpegFile(file));
       form.append("testId", testId);
+      form.append("examPattern", examPattern);
       const result = await previewScanAction(portal, form);
       if (!result.ok) {
         toast.error(`Page ${page}: ${result.message}`);
@@ -63,8 +69,9 @@ export function FailedPages({
       }
       const reg = result.result.scan.student.rollNo;
       if (getScanBatch().some((item) => item.scan.student.rollNo === reg)) {
-        toast.warning(`Page ${page}: Reg ${reg} is already in this list.`);
-        resolvePdfFailure(page);
+        toast.warning(
+          `Page ${page}: Reg ${reg} is already in the review list. Enter a different registration for this sheet.`,
+        );
         return;
       }
       setScanBatch([...getScanBatch(), result.result]);
@@ -96,6 +103,7 @@ export function FailedPages({
       const form = new FormData();
       form.append("file", await asJpegFile(blob));
       form.append("testId", testId);
+      form.append("examPattern", examPattern);
       form.append("rollNo", typed);
       if (schoolId) form.append("schoolId", schoolId);
       const result = await previewScanAction(portal, form);
@@ -112,8 +120,9 @@ export function FailedPages({
       }
       const reg = result.result.scan.student.rollNo;
       if (getScanBatch().some((item) => item.scan.student.rollNo === reg)) {
-        toast.warning(`Page ${failure.page}: Reg ${reg} is already in this list.`);
-        resolvePdfFailure(failure.page);
+        toast.warning(
+          `Page ${failure.page}: Reg ${reg} is already in the review list. Enter a different registration for this sheet.`,
+        );
         return;
       }
       setScanBatch([...getScanBatch(), result.result]);
@@ -135,7 +144,12 @@ export function FailedPages({
   return (
     <details className="text-xs text-red-700" open>
       <summary className="cursor-pointer font-medium">
-        Pages that need attention ({failures.length}) — enter registration or scan again
+        {duplicateCount
+          ? `${duplicateCount} duplicate sheet${duplicateCount === 1 ? "" : "s"} — enter the correct registration for each`
+          : `Pages that need attention (${sorted.length}) — please enter the correct registration number`}
+        {sorted.length > duplicateCount
+          ? ` · ${sorted.length - duplicateCount} other`
+          : ""}
       </summary>
       <input
         ref={inputRef}
@@ -149,53 +163,74 @@ export function FailedPages({
           if (file) void rescan(file);
         }}
       />
-      <ul className="mt-2 max-h-96 divide-y divide-red-100 overflow-y-auto rounded-lg border border-red-100 bg-red-50/40">
-        {failures.map((failure) => {
+      <ul className="mt-2 max-h-[28rem] space-y-3 overflow-y-auto pr-0.5">
+        {sorted.map((failure, index) => {
           const recoverRoll = canRecoverRoll(failure.message);
+          const isDup = isDuplicateRollError(failure.message);
           const busy = rescanning === failure.page || savingPage === failure.page;
+          // After a failed save/lookup, keep the typed hint; don't seed the colliding duplicate roll.
+          const hintRoll = pageRollHints[failure.page] ?? "";
           return (
-            <li key={failure.page} className="space-y-2 px-3 py-2">
-              <div className="flex items-center gap-2">
-                <p className="min-w-0 flex-1">
-                  <span className="font-semibold">Page {failure.page}</span>
-                  <span className="text-red-600"> · {failure.message}</span>
-                </p>
-                {failure.hasImage ? (
+            <li
+              key={failure.page}
+              className="rounded-xl border border-red-200 bg-white p-3 shadow-sm"
+            >
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1 space-y-0.5">
+                  <p className="font-semibold text-neutral-900">
+                    Sheet {index + 1} of {sorted.length}
+                    <span className="font-normal text-neutral-500"> · PDF page {failure.page}</span>
+                    {isDup && failure.rollNo ? (
+                      <span className="font-normal text-amber-800"> · read as {failure.rollNo}</span>
+                    ) : null}
+                  </p>
+                  <p className={isDup ? "text-amber-800" : "text-red-600"}>{failure.message}</p>
+                </div>
+                <div className="flex shrink-0 gap-1.5">
+                  {failure.hasImage ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 gap-1 px-2 text-xs"
+                      onClick={() => setViewing(failure)}
+                    >
+                      <Eye className="size-3.5" />
+                      View
+                    </Button>
+                  ) : null}
                   <Button
                     type="button"
-                    variant="outline"
                     size="sm"
-                    className="h-7 shrink-0 gap-1 px-2 text-xs"
-                    onClick={() => setViewing(failure)}
+                    className="h-7 gap-1 px-2 text-xs"
+                    disabled={disabled || busy}
+                    onClick={() => pickPhoto(failure.page)}
                   >
-                    <Eye className="size-3.5" />
-                    View
+                    {rescanning === failure.page ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Camera className="size-3.5" />
+                    )}
+                    {rescanning === failure.page ? "Reading…" : "Scan again"}
                   </Button>
-                ) : null}
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-7 shrink-0 gap-1 px-2 text-xs"
-                  disabled={disabled || busy}
-                  onClick={() => pickPhoto(failure.page)}
-                >
-                  {rescanning === failure.page ? (
-                    <Loader2 className="size-3.5 animate-spin" />
-                  ) : (
-                    <Camera className="size-3.5" />
-                  )}
-                  {rescanning === failure.page ? "Reading…" : "Scan again"}
-                </Button>
+                </div>
               </div>
               {recoverRoll && failure.hasImage ? (
-                <OmrRollRecovery
-                  portal={portal}
-                  message={failure.message}
-                  busy={disabled || busy}
-                  initialMatches={pageMatches[failure.page] ?? NO_MATCHES}
-                  initialRollNo={pageRollHints[failure.page] ?? ""}
-                  onSaveWithRoll={(roll, schoolId) => void saveWithRoll(failure, roll, schoolId)}
-                />
+                <div className="mt-2 border-t border-red-100 pt-2">
+                  <OmrRollRecovery
+                    portal={portal}
+                    message={failure.message}
+                    busy={disabled || busy}
+                    inputId={`omr-recovery-roll-${failure.page}`}
+                    initialMatches={pageMatches[failure.page] ?? NO_MATCHES}
+                    initialRollNo={hintRoll}
+                    onSaveWithRoll={(roll, schoolId) => void saveWithRoll(failure, roll, schoolId)}
+                  />
+                </div>
+              ) : recoverRoll && !failure.hasImage ? (
+                <p className="mt-2 text-[11px] text-amber-800">
+                  No saved page image — use Scan again, then enter the registration number.
+                </p>
               ) : null}
             </li>
           );
@@ -212,7 +247,18 @@ export function FailedPages({
             {viewing ? <PageImage key={viewing.page} page={viewing.page} /> : null}
           </div>
           {viewing ? (
-            <div className="border-t border-neutral-100 p-4">
+            <div className="space-y-3 border-t border-neutral-100 p-4">
+              {canRecoverRoll(viewing.message) && viewing.hasImage ? (
+                <OmrRollRecovery
+                  portal={portal}
+                  message={viewing.message}
+                  busy={disabled || savingPage === viewing.page || rescanning != null}
+                  inputId={`omr-recovery-sheet-roll-${viewing.page}`}
+                  initialMatches={pageMatches[viewing.page] ?? NO_MATCHES}
+                  initialRollNo={pageRollHints[viewing.page] ?? ""}
+                  onSaveWithRoll={(roll, schoolId) => void saveWithRoll(viewing, roll, schoolId)}
+                />
+              ) : null}
               <Button
                 type="button"
                 className="w-full gap-1.5"

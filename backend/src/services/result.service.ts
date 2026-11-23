@@ -481,8 +481,8 @@ export async function recordOmrResult(entry: OmrResultEntry) {
     });
     if (value !== undefined) row[index] = value;
   });
-  // Clear subject cells first so a dropped subject (e.g. >15 blanks → not taken)
-  // is removed from the sheet instead of keeping a stale mark.
+  // Clear subject cells first so a narrower exam pattern (e.g. PCB) drops Maths
+  // instead of keeping a stale mark from a previous scan.
   for (let index = 0; index < roles.length; index += 1) {
     if (roles[index] === "subject") row[index] = null;
   }

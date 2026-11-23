@@ -42,6 +42,7 @@ export async function previewScanAction(
   if (!parsed.ok) return { ok: false, message: parsed.error };
   const rollNo = String(formData.get("rollNo") ?? "").trim();
   const testId = String(formData.get("testId") ?? "").trim();
+  const examPattern = String(formData.get("examPattern") ?? "").trim();
   const schoolId = String(formData.get("schoolId") ?? "").trim();
   const corners = String(formData.get("corners") ?? "").trim();
   try {
@@ -50,6 +51,7 @@ export async function previewScanAction(
       result: await previewScan(portal, parsed.file, {
         rollNo,
         testId,
+        examPattern: examPattern || undefined,
         schoolId: schoolId || undefined,
         corners,
       }),

@@ -7,7 +7,6 @@ import { programLabel, subjectsForClassLevel, TYPE_LABELS } from "@/features/sch
 import { displaySectionName } from "@/features/schools/section-label";
 import {
   STUDENTS_PATH,
-  seatsForClass,
   sectionIdsForClass,
   studentsInClass,
 } from "@/features/students/school-roster";
@@ -28,25 +27,39 @@ type StudentsDriveProps = {
   students?: Student[];
   pagination?: Pagination;
   listParams?: Record<string, string | number | undefined | null>;
+  /**
+   * Opened from a school profile (`?from=school`).
+   * Otherwise treated as opened from the Students page.
+   */
+  fromSchool?: boolean;
 };
 
-function schoolHref(schoolId: string) {
-  return `${STUDENTS_PATH}?${new URLSearchParams({ school: schoolId })}`;
+function studentsQuery(
+  schoolId: string,
+  opts?: { classLevel?: number; section?: string; fromSchool?: boolean },
+) {
+  const params = new URLSearchParams({ school: schoolId });
+  if (opts?.classLevel != null) params.set("class", String(opts.classLevel));
+  if (opts?.section) params.set("section", displaySectionName(opts.section));
+  if (opts?.fromSchool) params.set("from", "school");
+  return `${STUDENTS_PATH}?${params}`;
 }
 
-function classHref(schoolId: string, classLevel: number) {
-  return `${STUDENTS_PATH}?${new URLSearchParams({
-    school: schoolId,
-    class: String(classLevel),
-  })}`;
+function schoolHref(schoolId: string, fromSchool?: boolean) {
+  return studentsQuery(schoolId, { fromSchool });
 }
 
-function sectionHref(schoolId: string, classLevel: number, section: string) {
-  return `${STUDENTS_PATH}?${new URLSearchParams({
-    school: schoolId,
-    class: String(classLevel),
-    section: displaySectionName(section),
-  })}`;
+function classHref(schoolId: string, classLevel: number, fromSchool?: boolean) {
+  return studentsQuery(schoolId, { classLevel, fromSchool });
+}
+
+function sectionHref(
+  schoolId: string,
+  classLevel: number,
+  section: string,
+  fromSchool?: boolean,
+) {
+  return studentsQuery(schoolId, { classLevel, section, fromSchool });
 }
 
 function sectionsForClass(
@@ -63,18 +76,13 @@ function sectionsForClass(
   });
 }
 
-function emptyRosterMessage(section: string | undefined, seats: number, classCount = 0) {
+function emptyRosterMessage(section: string | undefined, classCount = 0) {
   if (section && classCount > 0) {
     return `No students in section ${section}. ${classCount} student${classCount === 1 ? " is" : "s are"} in this class under another section — open the class (without a section filter) to see them.`;
   }
-  if (seats > 0) {
-    return section
-      ? `Seat limit ${seats} — roster is empty. Add students here (Results uses this same roster).`
-      : `Seat limit ${seats} — roster is empty. Add students to fill Results.`;
-  }
   return section
-    ? "No students in this class section yet."
-    : "No students in this class yet.";
+    ? "No students in this class section yet. Add students here (Results uses this same list)."
+    : "No students in this class yet. Add students to fill Results.";
 }
 
 type ClassFolder = {
@@ -157,53 +165,65 @@ export function StudentsDrive({
   students = [],
   pagination,
   listParams,
+  fromSchool = false,
 }: StudentsDriveProps) {
   const school = schools.find((item) => item.id === schoolId);
   const setDrivePath = useSetDrivePathCrumbs();
 
   useEffect(() => {
     if (!setDrivePath) return;
-    if (schoolId && school && classLevel != null) {
-      const classLabel = section
-        ? `Class ${classLevel}-${section} students`
-        : `Class ${classLevel} students`;
-      setDrivePath([
-        { label: school.name, href: schoolHref(school.id) },
-        { label: classLabel, href: classHref(school.id, classLevel) },
-      ]);
+    if (schoolId && school) {
+      const schoolStudentsHref = schoolHref(school.id, fromSchool);
+      // Students page: stay in Students drive. School page: School profile › Students.
+      const crumbs: DriveCrumb[] = fromSchool
+        ? [
+            { label: school.name, href: `/admin/schools/${school.id}` },
+            { label: "Students", href: schoolStudentsHref },
+          ]
+        : [{ label: school.name, href: schoolStudentsHref }];
+      if (classLevel != null) {
+        crumbs.push({
+          label: section ? `Class ${classLevel}-${section}` : `Class ${classLevel}`,
+          href: classHref(school.id, classLevel, fromSchool),
+        });
+      }
+      setDrivePath(crumbs);
       return () => setDrivePath([]);
     }
-    if (!(schoolId && school)) {
-      setDrivePath([]);
-    }
-  }, [school, schoolId, classLevel, section, setDrivePath]);
+    setDrivePath([]);
+  }, [school, schoolId, classLevel, section, fromSchool, setDrivePath]);
 
   if (schoolId && school && classLevel != null && !section) {
     const sectionFolders = sectionsForClass(organization, classLevel);
     if (sectionFolders.length > 0) {
-      const breadcrumbs: DriveCrumb[] = [
-        { label: "Students", href: STUDENTS_PATH },
-        { label: school.name, href: schoolHref(school.id) },
-        { label: `Class ${classLevel}`, href: classHref(school.id, classLevel) },
-      ];
+      const breadcrumbs: DriveCrumb[] = fromSchool
+        ? [
+            { label: school.name, href: `/admin/schools/${school.id}` },
+            { label: "Students", href: schoolHref(school.id, true) },
+            { label: `Class ${classLevel}`, href: classHref(school.id, classLevel, true) },
+          ]
+        : [
+            { label: "Students", href: STUDENTS_PATH },
+            { label: school.name, href: schoolHref(school.id) },
+            { label: `Class ${classLevel}`, href: classHref(school.id, classLevel) },
+          ];
       const items: DriveItem[] = sectionFolders.map((folder) => {
         const roster = studentsInClass(students, classLevel, folder.label, {
           sectionIds: folder.sectionId ? [folder.sectionId] : undefined,
         });
-        const seatsDetail = folder.seats > 0 ? `${folder.seats} seat limit` : null;
         const rosterDetail =
-          roster.length > 0 ? `${roster.length} on roster` : null;
+          roster.length > 0 ? `${roster.length} students` : null;
         return {
           id: folder.sectionId ?? `${classLevel}-${folder.label}`,
           name: `Section ${folder.label}`,
           kind: "folder" as const,
-          href: sectionHref(school.id, classLevel, folder.label),
-          detail: [rosterDetail, seatsDetail].filter(Boolean).join(" · ") || "Empty",
+          href: sectionHref(school.id, classLevel, folder.label, fromSchool),
+          detail: rosterDetail || "Empty",
         };
       });
       return (
         <DriveBrowser
-          key={`school:${school.id}:class:${classLevel}`}
+          key={`school:${school.id}:class:${classLevel}:from=${fromSchool ? "school" : "students"}`}
           breadcrumbs={breadcrumbs}
           items={items}
           emptyText="No sections set up for this class"
@@ -216,17 +236,15 @@ export function StudentsDrive({
   if (schoolId && school && classLevel != null) {
     const sectionIds = sectionIdsForClass(organization, classLevel, section);
     const roster = studentsInClass(students, classLevel, section, { sectionIds });
-    const seats = seatsForClass(organization, classLevel, section);
     const classCount = pagination?.total ?? studentsInClass(students, classLevel).length;
 
     return (
       <StudentsTable
         students={roster}
         mode="admin"
-        seats={seats}
         subjects={subjectsForClassLevel(classLevel)}
-        emptyMessage={emptyRosterMessage(section, seats, classCount)}
-        scopeKey={`admin:${school.id}:${classLevel}:${section ?? ""}`}
+        emptyMessage={emptyRosterMessage(section, classCount)}
+        scopeKey={`admin:${school.id}:${classLevel}:${section ?? ""}:${fromSchool ? "s" : "d"}`}
         pagination={
           pagination ? (
             <ListPagination
@@ -236,6 +254,7 @@ export function StudentsDrive({
                 school: school.id,
                 class: classLevel,
                 section,
+                ...(fromSchool ? { from: "school" } : {}),
                 ...listParams,
               }}
               noun="students"
@@ -249,10 +268,15 @@ export function StudentsDrive({
 
   if (schoolId && school) {
     const folders = classFoldersForSchool(organization, students);
-    const breadcrumbs: DriveCrumb[] = [
-      { label: "Students", href: STUDENTS_PATH },
-      { label: school.name, href: schoolHref(school.id) },
-    ];
+    const breadcrumbs: DriveCrumb[] = fromSchool
+      ? [
+          { label: school.name, href: `/admin/schools/${school.id}` },
+          { label: "Students", href: schoolHref(school.id, true) },
+        ]
+      : [
+          { label: "Students", href: STUDENTS_PATH },
+          { label: school.name, href: schoolHref(school.id) },
+        ];
 
     const items: DriveItem[] = folders.map((folder) => {
       const programDetail = folder.programs.map((name) => programLabel(name, name)).join(", ");
@@ -260,24 +284,23 @@ export function StudentsDrive({
         folder.sections.length > 0
           ? `${folder.sections.length} section${folder.sections.length === 1 ? "" : "s"}`
           : null;
-      const seatsDetail = folder.seats > 0 ? `${folder.seats} seat limit` : null;
       const rosterDetail =
         folder.studentCount > 0
-          ? `${folder.studentCount} on roster`
+          ? `${folder.studentCount} students`
           : null;
-      const countDetail = [rosterDetail, seatsDetail].filter(Boolean).join(" · ") || "Empty";
+      const countDetail = rosterDetail || "Empty";
       return {
         id: folder.key,
         name: `Class ${folder.classLevel}`,
         kind: "folder" as const,
-        href: classHref(school.id, folder.classLevel),
+        href: classHref(school.id, folder.classLevel, fromSchool),
         detail: [programDetail, sectionDetail, countDetail].filter(Boolean).join(" · "),
       };
     });
 
     return (
       <DriveBrowser
-        key={`school:${school.id}`}
+        key={`school:${school.id}:from=${fromSchool ? "school" : "students"}`}
         breadcrumbs={breadcrumbs}
         items={items}
         emptyText="No classes set up yet"

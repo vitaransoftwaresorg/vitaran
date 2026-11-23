@@ -605,7 +605,7 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
                     inputMode="numeric"
                     autoComplete="off"
                     maxLength={TEST_ID_LENGTH}
-                    placeholder="6 digits"
+                    placeholder="6 or 7 digits"
                     aria-label="Test ID"
                     aria-invalid={testIdCheck.state === "taken" ? true : undefined}
                     className="h-9 w-full max-w-40 bg-white font-mono text-sm tracking-widest tabular-nums"

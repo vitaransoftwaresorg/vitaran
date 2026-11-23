@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Camera, Check, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useRegisterInPageBack } from "@/components/layout/in-page-back";
+import { ImageZoomPane } from "@/components/shared/image-zoom-pane";
 import { Button } from "@/components/ui/button";
 import { subjectLabel } from "@/features/schools/constants";
 import { cn } from "@/lib/utils";
@@ -307,8 +308,8 @@ function SheetImage({ portal, previewId, marked }: { portal: ScanPortal; preview
       active ? "bg-white text-neutral-950 shadow-sm" : "text-neutral-500 hover:text-neutral-800",
     );
   return (
-    <div className="space-y-2 rounded-xl border border-neutral-200 bg-neutral-50 p-2">
-      <div className="flex justify-center">
+    <div className="overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50">
+      <div className="flex justify-center border-b border-neutral-200 bg-white px-2 py-2">
         <div className="inline-flex rounded-lg bg-neutral-200/70 p-0.5">
           <button type="button" className={tab(view === "marked")} onClick={() => setView("marked")}>
             Evaluated
@@ -323,11 +324,19 @@ function SheetImage({ portal, previewId, marked }: { portal: ScanPortal; preview
           <Loader2 className="size-6 animate-spin text-brand-700" />
         </div>
       ) : src ? (
-        <img
-          src={src}
-          alt={view === "original" ? "Original OMR sheet" : "Evaluated OMR sheet"}
-          className="mx-auto max-h-[70vh] w-full object-contain"
-        />
+        <ImageZoomPane
+          className="h-[min(70vh,40rem)]"
+          toolbarLeft={view === "original" ? "Original OMR" : "Evaluated OMR"}
+          resetKey={view}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element -- blob / data URL from scan API */}
+          <img
+            src={src}
+            alt={view === "original" ? "Original OMR sheet" : "Evaluated OMR sheet"}
+            className="mx-auto block h-auto w-full object-contain"
+            draggable={false}
+          />
+        </ImageZoomPane>
       ) : (
         <p className="p-8 text-center text-sm text-neutral-500">No sheet image</p>
       )}

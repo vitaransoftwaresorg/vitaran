@@ -142,7 +142,7 @@ export function recomputeSheet(columns: string[], rows: CellValue[][], classLeve
     if (totalCol < 0) return row;
     const marks = subjectCols.map((index) => numberCell(row[index]));
     const takenCount = marks.filter((mark) => mark != null).length;
-    // Null subject = not taken (e.g. >15 blanks) — total/max only over attempted papers.
+    // Null subject = not on this student’s exam pattern — % out of attempted papers only.
     const rowMax = takenCount > 0 ? takenCount * SUBJECT_PAPER_MAX : totalMax;
     if (marks.some((mark) => mark != null)) {
       row[totalCol] = roundMarks(marks.reduce<number>((sum, mark) => sum + (mark ?? 0), 0));

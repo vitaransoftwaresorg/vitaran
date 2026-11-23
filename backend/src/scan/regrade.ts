@@ -9,6 +9,11 @@ import { readAnswerBubbles, type BubbleMap } from "./detect.js";
 import { getObject, replaceObject } from "../services/object-storage.js";
 import { markedSheetPreview } from "./marked-preview.js";
 import * as scanRepository from "./repository.js";
+import {
+  filterRangesForPattern,
+  filterRangesForSubjects,
+  type ExamPattern,
+} from "./exam-pattern.js";
 import { scoreSheet, sheetFlags } from "./score.js";
 
 export type ScoringKey = Pick<
@@ -17,6 +22,19 @@ export type ScoringKey = Pick<
 >;
 
 type Marked = Record<string, AnswerOption | AnswerOption[]>;
+
+export type ScoreOptions = {
+  /** Live scan: MPCB / PCB / MPC. */
+  examPattern?: ExamPattern | null;
+  /** Regrade: keep the subjects this sheet was originally scored on. */
+  subjects?: string[];
+};
+
+function scoringRanges(key: ScoringKey, options: ScoreOptions = {}) {
+  const all = asSubjectRanges(key.subjectRanges);
+  if (options.subjects?.length) return filterRangesForSubjects(all, options.subjects);
+  return filterRangesForPattern(all, options.examPattern);
+}
 
 /** Two keys with the same fingerprint give every sheet the same marks. */
 export function scoringFingerprint(key: ScoringKey) {
@@ -29,11 +47,11 @@ export function scoringFingerprint(key: ScoringKey) {
   ]);
 }
 
-export function scoreWithKey(answers: Marked, key: ScoringKey) {
+export function scoreWithKey(answers: Marked, key: ScoringKey, options: ScoreOptions = {}) {
   return scoreSheet(
     answers,
     key.answers,
-    key.subjectRanges,
+    scoringRanges(key, options),
     {
       correctMarks: key.correctMarks,
       wrongMarks: key.wrongMarks,
@@ -43,8 +61,14 @@ export function scoreWithKey(answers: Marked, key: ScoringKey) {
 }
 
 /** Green/red evaluated sheet for the given key, drawn on the straightened sheet. */
-export async function evaluatedImage(sheet: Buffer, bubbles: BubbleMap, answers: Marked, key: ScoringKey) {
-  const score = scoreWithKey(answers, key);
+export async function evaluatedImage(
+  sheet: Buffer,
+  bubbles: BubbleMap,
+  answers: Marked,
+  key: ScoringKey,
+  options: ScoreOptions = {},
+) {
+  const score = scoreWithKey(answers, key, options);
   const lists = Object.fromEntries(
     Object.entries(answers).map(([question, value]) => [question, Array.isArray(value) ? value : [value]]),
   );
@@ -123,7 +147,15 @@ async function regradeScan(id: string, key: NonNullable<Awaited<ReturnType<typeo
   const sheetBytes = await getObject(scan.image);
   if (!sheetBytes) throw new Error(`OMR sheet image missing for scan ${id}`);
   const { bubbles } = readAnswerBubbles(await asRgba(sheetBytes));
-  const { score, image } = await evaluatedImage(sheetBytes, bubbles, answers, key);
+  // Keep the exam pattern this sheet was scored with (e.g. PCB without Maths).
+  const priorSubjects = Array.isArray(scan.subjectScores)
+    ? (scan.subjectScores as Array<{ subject?: string }>)
+        .map((row) => row.subject)
+        .filter((subject): subject is string => typeof subject === "string" && subject.length > 0)
+    : [];
+  const { score, image } = await evaluatedImage(sheetBytes, bubbles, answers, key, {
+    subjects: priorSubjects,
+  });
   const readFlags = (Array.isArray(scan.flags) ? (scan.flags as Array<{ question: number; reason: string }>) : []).filter(
     (flag) => flag.reason !== "Un-attempted",
   );

@@ -18,12 +18,15 @@ const requiredSectionName = z
   .max(32)
   .transform((value) => value.toUpperCase());
 
+/** Legacy DB column — not enforced; school seat limit is the only cap. */
+const optionalSeatCount = z.number().int().min(1).max(5000).optional().default(5000);
+
 export const createSectionSchema = z.object({
   classLevel: z.number().int().min(1).max(12),
   /** Omit / blank = Section A (default when the class has no other sections). */
   name: optionalSectionName,
   programId: z.uuid(),
-  studentCount: z.number().int().min(1).max(5000),
+  studentCount: optionalSeatCount,
   classTeacherId: z.uuid().nullable().optional(),
   applyTeacherToClass: z.boolean().optional().default(false),
 });
@@ -32,7 +35,7 @@ export const updateSectionSchema = z
   .object({
     name: requiredSectionName,
     programId: z.uuid(),
-    studentCount: z.number().int().min(1).max(5000),
+    studentCount: z.number().int().min(1).max(5000).optional(),
     classTeacherId: z.uuid().nullable(),
     applyTeacherToClass: z.boolean().optional().default(false),
   })
@@ -44,7 +47,7 @@ export const updateSectionSchema = z
 export const updateSchoolClassSchema = z
   .object({
     programId: z.uuid(),
-    studentCount: z.number().int().min(1).max(5000),
+    studentCount: z.number().int().min(1).max(5000).optional(),
   })
   .partial()
   .refine((value) => Object.keys(value).length > 0, {

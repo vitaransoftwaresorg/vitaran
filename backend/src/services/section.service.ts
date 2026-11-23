@@ -10,7 +10,7 @@ import type {
 } from "../schemas/section.schema.js";
 import { AppError } from "../utils/app-error.js";
 import { notifyContentChanged } from "../utils/content-events.js";
-import { TeacherStatus } from "../generated/prisma/enums.js";
+import { StudentStatus, TeacherStatus } from "../generated/prisma/enums.js";
 import { DEFAULT_SECTION_NAME } from "../utils/section-label.js";
 import {
   removeClassFromSchoolData,
@@ -133,48 +133,6 @@ async function assertProgramOfferedForClass(
   return school;
 }
 
-async function usedSeats(
-  schoolId: string,
-  opts?: { excludeSectionId?: string; excludeClassId?: string },
-) {
-  const [sectionSum, sectionRows, wholeRows] = await Promise.all([
-    sectionRepository.sumStudentCount(schoolId, opts?.excludeSectionId),
-    sectionRepository.listSectionsBySchool(schoolId),
-    schoolClassRepository.listSchoolClassesBySchool(schoolId),
-  ]);
-  // Sections replace whole-class rows for that class level — never count both.
-  const levelsWithSections = new Set(sectionRows.map((row) => row.classLevel));
-  let wholeSum = 0;
-  for (const row of wholeRows) {
-    if (opts?.excludeClassId && row.id === opts.excludeClassId) continue;
-    if (levelsWithSections.has(row.classLevel)) continue;
-    wholeSum += row.studentCount;
-  }
-  return (sectionSum._sum.studentCount ?? 0) + wholeSum;
-}
-
-async function assertStrengthAllows(
-  schoolId: string,
-  nextCount: number,
-  opts?: { excludeSectionId?: string; excludeClassId?: string },
-) {
-  const school = await schoolRepository.findSchoolById(schoolId);
-  if (!school) throw new AppError(404, "School not found");
-
-  const ceiling = school.studentStrength;
-  if (ceiling == null) return school;
-
-  const used = await usedSeats(schoolId, opts);
-  if (used + nextCount > ceiling) {
-    throw new AppError(
-      400,
-      `Student strength exceeded. ${used} of ${ceiling} seats used; only ${Math.max(0, ceiling - used)} left.`,
-    );
-  }
-
-  return school;
-}
-
 async function assertClassTeacher(
   schoolId: string,
   classTeacherId: string | null | undefined,
@@ -201,11 +159,15 @@ async function assertClassTeacher(
   return classTeacherId;
 }
 
+/** School seat limit vs ACTIVE roster — section seat columns are not part of the budget. */
 export async function getStrengthBudget(schoolId: string): Promise<SectionStrengthDto> {
   const school = await schoolRepository.findSchoolById(schoolId);
   if (!school) throw new AppError(404, "School not found");
 
-  const used = await usedSeats(schoolId);
+  const used = await studentRepository.countStudents({
+    schoolId,
+    status: StudentStatus.ACTIVE,
+  });
   const ceiling = school.studentStrength;
 
   return {
@@ -251,11 +213,6 @@ export async function createSection(schoolId: string, input: CreateSectionInput)
     schoolId,
     input.classLevel,
   );
-
-  // Free the whole-class seats when this create replaces that row.
-  await assertStrengthAllows(schoolId, input.studentCount, {
-    excludeClassId: existingWhole?.id,
-  });
 
   const conflict = await sectionRepository.findSectionNameConflict(
     schoolId,
@@ -361,10 +318,6 @@ export async function updateSection(schoolId: string, id: string, input: UpdateS
     await assertProgramOfferedForClass(schoolId, nextProgramId, nextClassLevel);
   }
 
-  if (input.studentCount !== undefined) {
-    await assertStrengthAllows(schoolId, input.studentCount, { excludeSectionId: id });
-  }
-
   if (input.name && input.name !== existing.name) {
     const conflict = await sectionRepository.findSectionNameConflict(
       schoolId,
@@ -418,9 +371,6 @@ export async function updateSchoolClass(
   const nextProgramId = input.programId ?? existing.programId;
   if (input.programId) {
     await assertProgramOfferedForClass(schoolId, nextProgramId, existing.classLevel);
-  }
-  if (input.studentCount !== undefined) {
-    await assertStrengthAllows(schoolId, input.studentCount, { excludeClassId: id });
   }
 
   const row = await schoolClassRepository.updateSchoolClass(id, {

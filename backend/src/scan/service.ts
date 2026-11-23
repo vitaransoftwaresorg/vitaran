@@ -40,9 +40,10 @@ import {
   type SheetRead,
 } from "./read-sheet.js";
 import { getObject, putObject } from "../services/object-storage.js";
-import { evaluatedImage, scoringFingerprint } from "./regrade.js";
+import { parseExamPattern, type ExamPattern } from "./exam-pattern.js";
+import { evaluatedImage, scoreWithKey, scoringFingerprint } from "./regrade.js";
 import * as scanRepository from "./repository.js";
-import { scoreSheet, sheetFlags, type SheetScore } from "./score.js";
+import { sheetFlags, type SheetScore } from "./score.js";
 
 void purgeStaleOmrTemp();
 
@@ -69,8 +70,15 @@ type PdfBatchItem = {
   page: number;
   previewId?: string;
   error?: string;
-  /** Same registration number as an earlier page in this PDF; that page is kept. */
+  /** Another page in this PDF that shares the same registration. */
   duplicateOf?: number;
+  /** Registration that collided — client removes matching review sheets. */
+  rollNo?: string;
+  /**
+   * True when a later page forced this previously successful sheet into
+   * registration recovery (every duplicate sheet must be re-entered).
+   */
+  demoted?: boolean;
   /** Failed pages keep a small on-disk JPEG so the examiner can see why. */
   imagePath?: string;
 };
@@ -86,6 +94,8 @@ type PdfBatch = {
   pageCount: number;
   /** Forced test ID for every page — never OCR the header for this. */
   testId: string;
+  /** Exam pattern for every page in this PDF batch. */
+  examPattern: ExamPattern;
   items: PdfBatchItem[];
   finished: boolean;
   cancelled: boolean;
@@ -157,7 +167,7 @@ export type ScanDto = {
     schoolName: string;
   };
   flags: Array<{ question: number; reason: string }>;
-  subjectScores: ReturnType<typeof scoreSheet>["subjectScores"];
+  subjectScores: SheetScore["subjectScores"];
   correct: number;
   partial: number;
   wrong: number;
@@ -196,7 +206,8 @@ type Pending = {
   };
   answers: Record<string, "A" | "B" | "C" | "D" | Array<"A" | "B" | "C" | "D">>;
   flags: ScanDto["flags"];
-  score: ReturnType<typeof scoreSheet>;
+  score: SheetScore;
+  examPattern: ExamPattern;
   confidence: number;
   /** Sheet / raw / preview JPEGs live on disk under this directory (keeps 500-page batches off the heap). */
   diskDir: string;
@@ -603,7 +614,7 @@ export async function registerOmrPdf(
   context: ScanContext,
   pdfPath: string,
   fileName: string,
-  identity: { testId?: string } = {},
+  identity: { testId?: string; examPattern?: string } = {},
   fileSize = 0,
 ) {
   if (fileSize > PDF_MAX) {
@@ -613,6 +624,11 @@ export async function registerOmrPdf(
   if (!(identity.testId ?? "").trim()) {
     await removeOmrPath(pdfPath);
     throw new AppError(400, "Enter the test ID from the answer key before uploading");
+  }
+  const examPattern = parseExamPattern(identity.examPattern);
+  if (!examPattern) {
+    await removeOmrPath(pdfPath);
+    throw new AppError(400, "Choose the exam pattern (MPCB, PCB, or MPC) before uploading");
   }
   let accepted = false;
   try {
@@ -638,6 +654,7 @@ export async function registerOmrPdf(
       fileName: fileName || "omr.pdf",
       pageCount,
       testId,
+      examPattern,
       items: [],
       finished: false,
       cancelled: false,
@@ -645,7 +662,7 @@ export async function registerOmrPdf(
     pdfBatches.set(batch.id, batch);
     accepted = true;
     void readPdfBatch(context, batch);
-    return { batchId: batch.id, pageCount, testId };
+    return { batchId: batch.id, pageCount, testId, examPattern };
   } catch (error) {
     if (!accepted) await removeOmrPath(pdfPath);
     throw error;
@@ -663,11 +680,74 @@ async function storePdfPageThumb(batchId: string, page: number, jpeg: Buffer) {
   return storeBatchPageImage(batchId, page, thumb).catch(() => undefined);
 }
 
+/** Every sheet in a colliding group is a duplicate — none is kept as the “correct” OMR. */
+const duplicateRollMessage = (rollNo: string, pages: number[]) => {
+  const sorted = [...pages].sort((a, b) => a - b);
+  const n = sorted.length;
+  const pageList = sorted.join(", ");
+  return `Duplicate registration number ${rollNo} — appears on ${n} sheet${n === 1 ? "" : "s"} (pages ${pageList}) — please enter the correct registration number for this sheet`;
+};
+
+/** Drop pending preview and keep a page image so the examiner can enter a reg. */
+async function stripPdfPreviewKeepImage(batch: PdfBatch, item: PdfBatchItem) {
+  if (item.previewId) {
+    const row = pending.get(item.previewId);
+    if (row) {
+      if (!item.imagePath) {
+        const sheetBuf =
+          (await loadPendingImage(row.diskDir, "sheet").catch(() => null)) ??
+          (await loadPendingImage(row.diskDir, "raw").catch(() => null)) ??
+          (await loadPendingImage(row.diskDir, "preview").catch(() => null));
+        if (sheetBuf) {
+          item.imagePath = await storePdfPageThumb(batch.id, item.page, sheetBuf);
+        }
+      }
+      void removePendingDir(row.diskDir);
+      pending.delete(item.previewId);
+    }
+    item.previewId = undefined;
+  }
+}
+
+/** Mark every page that shares `rollNo` as a duplicate failure (all need enter-reg). */
+async function markRollGroupDuplicates(batch: PdfBatch, rollNo: string, pages: number[]) {
+  if (pages.length < 2) return;
+  const message = duplicateRollMessage(rollNo, pages);
+  const anchor = pages[0]!;
+  for (const page of pages) {
+    const item = batch.items.find((row) => row.page === page);
+    if (!item) continue;
+    await stripPdfPreviewKeepImage(batch, item);
+    item.rollNo = rollNo;
+    item.duplicateOf = page === anchor ? pages[1]! : anchor;
+    item.demoted = true;
+    item.error = message;
+  }
+}
+
+/** After the PDF is fully read, any registration on 2+ sheets is a full duplicate group. */
+async function finalizeDuplicateRolls(batch: PdfBatch) {
+  const pagesByRoll = new Map<string, number[]>();
+  for (const item of batch.items) {
+    const roll = item.rollNo?.trim();
+    if (!roll) continue;
+    // Only sheets that were read as this roll (success or already flagged duplicate).
+    if (item.error && !item.demoted && !item.duplicateOf) continue;
+    const list = pagesByRoll.get(roll) ?? [];
+    list.push(item.page);
+    pagesByRoll.set(roll, list);
+  }
+  for (const [rollNo, pages] of pagesByRoll) {
+    if (pages.length >= 2) await markRollGroupDuplicates(batch, rollNo, pages);
+  }
+}
+
 /** Reads pages one after another so live phone scans still get served between pages. */
 async function readPdfBatch(context: ScanContext, batch: PdfBatch) {
   if (!batch.pdfPath) return;
   const reader = await openOmrPdf(batch.pdfPath, batch.fileName);
-  const pageOfRoll = new Map<string, number>();
+  /** Every page that read this registration (none is “the correct” copy). */
+  const pagesByRoll = new Map<string, number[]>();
   try {
     for (let page = 1; page <= batch.pageCount && !batch.cancelled; page += 1) {
       await new Promise((resolve) => setImmediate(resolve));
@@ -677,27 +757,34 @@ async function readPdfBatch(context: ScanContext, batch: PdfBatch) {
         // Batch test ID always wins — never OCR the sheet header for PDFs.
         const { previewId, scan } = await previewScan(context, sheet.jpeg, sheet.fileName, {
           testId: batch.testId,
+          examPattern: batch.examPattern,
           flat: true,
           lean: true,
         });
-        const firstPage = pageOfRoll.get(scan.rollNo);
-        if (firstPage != null) {
-          // Keep a page image so the examiner can enter the correct registration (same as unread-roll recovery).
+        const rollNo = scan.rollNo;
+        const priorPages = pagesByRoll.get(rollNo) ?? [];
+        const allPages = [...priorPages, page];
+        pagesByRoll.set(rollNo, allPages);
+
+        if (priorPages.length > 0) {
+          // Collision: this sheet is a failure, and every earlier copy becomes one too.
           const imagePath = await storePdfPageThumb(batch.id, page, sheet.jpeg);
           const dup = pending.get(previewId);
           if (dup) void removePendingDir(dup.diskDir);
           pending.delete(previewId);
           batch.items.push({
             page,
-            duplicateOf: firstPage,
+            rollNo,
             imagePath,
-            error: `Same registration number as page ${firstPage}`,
+            demoted: true,
+            duplicateOf: priorPages[0],
+            error: duplicateRollMessage(rollNo, allPages),
           });
+          await markRollGroupDuplicates(batch, rollNo, allPages);
         } else {
-          pageOfRoll.set(scan.rollNo, page);
           const row = pending.get(previewId);
           if (row) row.expires = Date.now() + PDF_BATCH_TTL_MS;
-          batch.items.push({ page, previewId });
+          batch.items.push({ page, previewId, rollNo });
         }
       } catch (error) {
         if (!(error instanceof AppError)) logger.error({ err: error, page, batchId: batch.id }, "PDF page read failed");
@@ -710,6 +797,7 @@ async function readPdfBatch(context: ScanContext, batch: PdfBatch) {
       }
       batch.expires = Date.now() + PDF_BATCH_TTL_MS;
     }
+    if (!batch.cancelled) await finalizeDuplicateRolls(batch);
   } finally {
     batch.finished = true;
     await reader.close().catch(() => undefined);
@@ -728,6 +816,23 @@ function ownPdfBatch(context: ScanContext, batchId: string) {
   return batch;
 }
 
+function pdfBatchItemDto(item: PdfBatchItem) {
+  const row = item.previewId ? pending.get(item.previewId) : undefined;
+  return {
+    page: item.page,
+    error: item.error,
+    duplicateOf: item.duplicateOf,
+    rollNo: item.rollNo,
+    demoted: item.demoted,
+    hasImage: Boolean(item.imagePath),
+    /** Saved (or expired) sheets are no longer pending and are left out. */
+    preview:
+      row && item.previewId
+        ? { previewId: item.previewId, scan: unsavedDto(item.previewId, row, false) }
+        : undefined,
+  };
+}
+
 /** Progress plus sheets finished from index `from` on, so the page only downloads new sheets. */
 export function pdfBatchStatus(context: ScanContext, batchId: string, from = 0) {
   const batch = ownPdfBatch(context, batchId);
@@ -735,22 +840,16 @@ export function pdfBatchStatus(context: ScanContext, batchId: string, from = 0) 
     batchId: batch.id,
     fileName: batch.fileName,
     testId: batch.testId,
+    examPattern: batch.examPattern,
     pageCount: batch.pageCount,
     done: batch.items.length,
     finished: batch.finished,
-    items: batch.items.slice(from).map((item) => {
-      const row = item.previewId ? pending.get(item.previewId) : undefined;
-      return {
-        page: item.page,
-        error: item.error,
-        duplicateOf: item.duplicateOf,
-        hasImage: Boolean(item.imagePath),
-        /** Saved (or expired) sheets are no longer pending and are left out. */
-        preview: row && item.previewId
-          ? { previewId: item.previewId, scan: unsavedDto(item.previewId, row, false) }
-          : undefined,
-      };
-    }),
+    items: batch.items.slice(from).map(pdfBatchItemDto),
+    // Pages demoted after the client already pulled them as successful previews.
+    demotions: batch.items
+      .map((item, index) => ({ item, index }))
+      .filter(({ item, index }) => Boolean(item.demoted && item.error) && index < from)
+      .map(({ item }) => pdfBatchItemDto(item)),
   };
 }
 
@@ -778,6 +877,7 @@ export function activePdfBatch(context: ScanContext) {
     batchId: latest.id,
     fileName: latest.fileName,
     testId: latest.testId,
+    examPattern: latest.examPattern,
     pageCount: latest.pageCount,
     done: latest.items.length,
     finished: latest.finished,
@@ -803,6 +903,7 @@ export async function previewScan(
     rollNo?: string;
     testId?: string;
     schoolId?: string;
+    examPattern?: string;
     flat?: boolean;
     lean?: boolean;
     corners?: SheetCorners;
@@ -812,6 +913,10 @@ export async function previewScan(
   if (!identity.flat) void keepSample(image, fileName || "omr.jpg");
   const typedRoll = (identity.rollNo ?? "").replace(/\D/g, "");
   const typedTest = (identity.testId ?? "").trim();
+  const examPattern = parseExamPattern(identity.examPattern);
+  if (!examPattern) {
+    throw new AppError(400, "Choose the exam pattern (MPCB, PCB, or MPC) before scanning");
+  }
   const preferredSchoolId =
     typeof identity.schoolId === "string" &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identity.schoolId)
@@ -862,16 +967,13 @@ export async function previewScan(
     programCode: enrolled.program?.code ?? null,
     sectionId: enrolled.sectionId ?? enrolled.section?.id ?? null,
   });
-  const score = scoreSheet(
-    read.answers,
-    key.answers,
-    key.subjectRanges,
-    {
-      correctMarks: key.correctMarks,
-      wrongMarks: key.wrongMarks,
-    },
-    key.keyTypeRanges,
-  );
+  const score = scoreWithKey(read.answers, key, { examPattern });
+  if (score.subjectScores.length === 0) {
+    throw new AppError(
+      422,
+      `Answer key for ${testId} has no subjects for exam pattern ${examPattern}.`,
+    );
+  }
   const previewId = crypto.randomUUID();
   let preview = await previewImage(image, read, key.answers, score, key.keyTypeRanges);
   // PDF batch pages already are flat JPEGs — reuse the same buffer instead of a second full copy.
@@ -905,6 +1007,7 @@ export async function previewScan(
     answers: read.answers,
     flags: sheetFlags(score, read.flags),
     score,
+    examPattern,
     confidence: read.confidence,
     diskDir: stored.dir,
     sheetBytes: stored.sheetBytes,
@@ -970,20 +1073,13 @@ async function rebindPendingRoll(context: ScanContext, previewId: string, rollNo
     const readFlags = row.flags.filter((flag) => flag.reason !== "Un-attempted");
     if (row.bubbles) {
       const sheet = await loadPendingImage(row.diskDir, "sheet");
-      const { score, image } = await evaluatedImage(sheet, row.bubbles, row.answers, key);
+      const { score, image } = await evaluatedImage(sheet, row.bubbles, row.answers, key, {
+        examPattern: row.examPattern,
+      });
       row.score = score;
       await replacePendingPreview(row.diskDir, image);
     } else {
-      row.score = scoreSheet(
-        row.answers,
-        key.answers,
-        key.subjectRanges,
-        {
-          correctMarks: key.correctMarks,
-          wrongMarks: key.wrongMarks,
-        },
-        key.keyTypeRanges,
-      );
+      row.score = scoreWithKey(row.answers, key, { examPattern: row.examPattern });
     }
     row.flags = sheetFlags(row.score, readFlags);
     row.key = { ...row.key, ...key };
@@ -1028,20 +1124,13 @@ async function useCurrentKey(row: Pending) {
   const readFlags = row.flags.filter((flag) => flag.reason !== "Un-attempted");
   if (row.bubbles) {
     const sheet = await loadPendingImage(row.diskDir, "sheet");
-    const { score, image } = await evaluatedImage(sheet, row.bubbles, row.answers, current);
+    const { score, image } = await evaluatedImage(sheet, row.bubbles, row.answers, current, {
+      examPattern: row.examPattern,
+    });
     row.score = score;
     await replacePendingPreview(row.diskDir, image);
   } else {
-    row.score = scoreSheet(
-      row.answers,
-      current.answers,
-      current.subjectRanges,
-      {
-        correctMarks: current.correctMarks,
-        wrongMarks: current.wrongMarks,
-      },
-      current.keyTypeRanges,
-    );
+    row.score = scoreWithKey(row.answers, current, { examPattern: row.examPattern });
   }
   row.flags = sheetFlags(row.score, readFlags);
   row.key = { ...row.key, ...current };

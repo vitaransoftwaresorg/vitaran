@@ -29,8 +29,6 @@ type StudentsTableProps = {
   /** School portal in-page: detail at `${baseHref}/${id}` */
   baseHref?: string;
   showSchool?: boolean;
-  /** Planned seat capacity — shown as used/seats next to the search. */
-  seats?: number;
   /** Subject labels for the Reports → Subjects menu (shared across the roster when set). */
   subjects?: string[];
   onView?: (id: string) => void;
@@ -51,7 +49,6 @@ export function StudentsTable({
   mode = "school",
   baseHref,
   showSchool = false,
-  seats,
   subjects,
   onView,
   onEdit,
@@ -117,13 +114,9 @@ export function StudentsTable({
     <div className="rounded-xl border border-brand-200 bg-white shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-100 bg-brand-50/40 px-3 py-2.5 sm:px-4">
         <p className="min-w-0 shrink-0 text-xs font-medium text-neutral-500 tabular-nums">
-          {seats != null && seats > 0
-            ? filtered.length === students.length
-              ? `${students.length} on roster · ${seats} seat limit`
-              : `${filtered.length} of ${students.length} on roster · ${seats} seat limit`
-            : filtered.length === students.length
-              ? `${students.length} on roster`
-              : `${filtered.length} of ${students.length} on roster`}
+          {filtered.length === students.length
+            ? `${students.length} students`
+            : `${filtered.length} of ${students.length} students`}
         </p>
         <TableSearch
           value={query}

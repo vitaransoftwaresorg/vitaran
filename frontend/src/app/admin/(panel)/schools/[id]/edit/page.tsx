@@ -40,7 +40,7 @@ export default async function EditSchoolPage({ params }: PageProps<"/admin/schoo
           organization,
           classTeacherSlots,
           seatsUsedLabel,
-          teachersHref: `/admin/teachers?school=${school.id}`,
+          teachersHref: `/admin/teachers?school=${school.id}&from=school`,
           strength: {
             studentStrength: strength.studentStrength,
             used: strength.used,

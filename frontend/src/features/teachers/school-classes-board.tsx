@@ -29,7 +29,6 @@ import { loadSchoolSectionsAction } from "@/features/schools/section-actions";
 import { capitalizeWords } from "@/features/schools/schema";
 import { setClassTeacherAction } from "@/features/teachers/actions";
 import { useResetOnScopeChange } from "@/hooks/use-reset-on-scope-change";
-import { cn } from "@/lib/utils";
 import type { SchoolProgramOffering } from "@/types/program";
 import type {
   ClassOrganization,
@@ -253,7 +252,6 @@ export function SchoolClassesBoard({
       row.programName,
       row.classLevel,
       row.sectionLabel,
-      row.seats,
       row.enrolled,
       row.teacherName,
     ),
@@ -299,8 +297,7 @@ export function SchoolClassesBoard({
                     <th className="px-4 py-2.5">Program</th>
                     <th className="px-4 py-2.5">Class</th>
                     <th className="px-4 py-2.5">Section</th>
-                    <th className="px-4 py-2.5">Seat limit</th>
-                    <th className="px-4 py-2.5">Roster</th>
+                    <th className="px-4 py-2.5">Students</th>
                     <th className="px-4 py-2.5">Class teacher</th>
                     <th className="px-4 py-2.5">Teachers</th>
                     <th className="px-4 py-2.5 text-right">Actions</th>
@@ -317,22 +314,16 @@ export function SchoolClassesBoard({
                       </td>
                       <td className="px-4 py-3 text-neutral-900">Class {item.classLevel}</td>
                       <td className="px-4 py-3 text-neutral-700">{item.sectionLabel}</td>
-                      <td className="px-4 py-3 tabular-nums text-neutral-900">
-                        {item.seats}
-                      </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         <button
                           type="button"
                           onClick={item.open}
-                          className={cn(
-                            linkBtn,
-                            item.enrolled >= item.seats && item.seats > 0 && "text-amber-800",
-                          )}
-                          title="Open roster — same list Results uses"
+                          className={linkBtn}
+                          title="Open students — same list Results uses"
                         >
                           <GraduationCap className="size-3.5 shrink-0" strokeWidth={2} />
                           {item.enrolled > 0
-                            ? `${item.enrolled} on roster`
+                            ? `${item.enrolled} students`
                             : "No students yet"}
                         </button>
                       </td>

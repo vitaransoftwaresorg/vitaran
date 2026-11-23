@@ -140,17 +140,37 @@ async function assertSchoolOffering(
   return school;
 }
 
-/**
- * Seat check against section or whole-class strength.
- * Section strength = SchoolSection.studentCount; whole class = SchoolClass.studentCount.
- */
-async function assertSeatAvailable(
+/** Only school seat limit applies — section/class seat counts are not enforced. */
+async function assertSchoolStrengthAllows(
+  schoolId: string,
+  seatsNeeded = 1,
+  excludeStudentId?: string,
+) {
+  const school = await schoolRepository.findSchoolById(schoolId);
+  if (!school) throw new AppError(404, "School not found");
+  const ceiling = school.studentStrength;
+  if (ceiling == null) return;
+
+  const enrolled = await studentRepository.countStudents({
+    schoolId,
+    status: StudentStatus.ACTIVE,
+    ...(excludeStudentId ? { id: { not: excludeStudentId } } : {}),
+  });
+  if (enrolled + seatsNeeded > ceiling) {
+    throw new AppError(
+      400,
+      `School seat limit exceeded. ${enrolled} of ${ceiling} seats used; only ${Math.max(0, ceiling - enrolled)} left.`,
+      [{ path: ["schoolId"], message: "Not enough seats under the school seat limit" }],
+    );
+  }
+}
+
+/** Validate section/class placement (no per-section seat cap). */
+async function assertPlacementValid(
   schoolId: string,
   programId: string,
   classLevel: number,
   sectionId: string | null,
-  excludeStudentId?: string,
-  seatsNeeded = 1,
 ) {
   if (sectionId) {
     const section = await sectionRepository.findSectionById(sectionId);
@@ -163,18 +183,6 @@ async function assertSeatAvailable(
       throw new AppError(400, "Section does not match program and class", [
         { path: ["sectionId"], message: "Section must match the selected program and class" },
       ]);
-    }
-    const enrolled = await studentRepository.countStudents({
-      schoolId,
-      sectionId,
-      ...(excludeStudentId ? { id: { not: excludeStudentId } } : {}),
-    });
-    if (enrolled + seatsNeeded > section.studentCount) {
-      throw new AppError(
-        400,
-        `Section ${section.name} needs ${seatsNeeded} seat${seatsNeeded === 1 ? "" : "s"} but only ${Math.max(0, section.studentCount - enrolled)} left (${enrolled}/${section.studentCount} used).`,
-        [{ path: ["sectionId"], message: "Not enough seats in this section" }],
-      );
     }
     return;
   }
@@ -195,21 +203,18 @@ async function assertSeatAvailable(
       { path: ["classLevel"], message: "Create the whole class first under Classes" },
     ]);
   }
+}
 
-  const enrolled = await studentRepository.countStudents({
-    schoolId,
-    programId,
-    classLevel,
-    sectionId: null,
-    ...(excludeStudentId ? { id: { not: excludeStudentId } } : {}),
-  });
-  if (enrolled + seatsNeeded > whole.studentCount) {
-    throw new AppError(
-      400,
-      `Class ${classLevel} needs ${seatsNeeded} seat${seatsNeeded === 1 ? "" : "s"} but only ${Math.max(0, whole.studentCount - enrolled)} left (${enrolled}/${whole.studentCount} used).`,
-      [{ path: ["classLevel"], message: "Not enough seats in this class" }],
-    );
-  }
+async function assertSeatAvailable(
+  schoolId: string,
+  programId: string,
+  classLevel: number,
+  sectionId: string | null,
+  excludeStudentId?: string,
+  seatsNeeded = 1,
+) {
+  await assertPlacementValid(schoolId, programId, classLevel, sectionId);
+  await assertSchoolStrengthAllows(schoolId, seatsNeeded, excludeStudentId);
 }
 
 async function assertUniqueRoll(schoolId: string, rollNo: string, excludeId?: string) {
@@ -299,21 +304,11 @@ export async function createStudentsBulk(schoolId: string, input: CreateStudents
 
   await assertSchoolOffering(schoolId, input.programId, input.classLevel);
 
-  const seatsBySection = new Map<string | null, number>();
-  for (const row of rows) {
-    const key = row.sectionId ?? null;
-    seatsBySection.set(key, (seatsBySection.get(key) ?? 0) + 1);
+  const sectionIds = new Set(rows.map((row) => row.sectionId ?? null));
+  for (const sectionId of sectionIds) {
+    await assertPlacementValid(schoolId, input.programId, input.classLevel, sectionId);
   }
-  for (const [sectionId, seatsNeeded] of seatsBySection) {
-    await assertSeatAvailable(
-      schoolId,
-      input.programId,
-      input.classLevel,
-      sectionId,
-      undefined,
-      seatsNeeded,
-    );
-  }
+  await assertSchoolStrengthAllows(schoolId, rows.length);
 
   const seen = new Set<string>();
   for (const [index, row] of rows.entries()) {

@@ -52,7 +52,8 @@ export type SectionInput = {
   /** Blank / omit = Section A. */
   name?: string | null;
   programId: string;
-  studentCount: number;
+  /** Legacy — unused; school seat limit is the only enrollment cap. */
+  studentCount?: number;
   classTeacherId?: string | null;
   applyTeacherToClass?: boolean;
 };

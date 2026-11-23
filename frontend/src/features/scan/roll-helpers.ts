@@ -16,9 +16,12 @@ export function isRollUnreadError(message: string) {
   );
 }
 
-/** Same registration as an earlier page — allow entering the correct one. */
+/** Same registration as another page — allow entering the correct one for each sheet. */
 export function isDuplicateRollError(message: string) {
-  return /same registration number as page/i.test(message);
+  return (
+    /same registration number as page/i.test(message) ||
+    /duplicate registration number/i.test(message)
+  );
 }
 
 /** Same registration matches more than one student — pick one from the list. */

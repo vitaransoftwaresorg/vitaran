@@ -2,17 +2,8 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Dialog } from "@base-ui/react/dialog";
-import {
-  ChevronDown,
-  Download,
-  Eye,
-  FileDown,
-  Loader2,
-  Minus,
-  Plus,
-  RotateCcw,
-  X,
-} from "lucide-react";
+import { ChevronDown, Download, Eye, FileDown, Loader2, X } from "lucide-react";
+import { ImageZoomPane } from "@/components/shared/image-zoom-pane";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -33,15 +24,6 @@ import { RESULTS_PATH } from "./constants";
 type OmrKind = "preview" | "raw";
 
 const KIND_LABEL: Record<OmrKind, string> = { preview: "Evaluated", raw: "Original" };
-
-const DEFAULT_ZOOM = 1; // 100%
-const ZOOM_MIN = 0.5;
-const ZOOM_MAX = 4;
-const ZOOM_STEP = 0.25;
-
-function clampZoom(value: number) {
-  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(value / ZOOM_STEP) * ZOOM_STEP));
-}
 
 function omrSubjectLabel(scan: ClassScan) {
   const name = scan.studentName?.trim();
@@ -117,7 +99,6 @@ export function OmrCell({
 }) {
   const [kind, setKind] = useState<OmrKind>("preview");
   const [open, setOpen] = useState(false);
-  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const [detail, setDetail] = useState<OmScan | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -154,11 +135,9 @@ export function OmrCell({
           setOpen(next);
           if (next) {
             setKind("preview");
-            setZoom(DEFAULT_ZOOM);
           } else {
             setDetail(null);
             setError(null);
-            setZoom(DEFAULT_ZOOM);
           }
         }}
       >
@@ -216,68 +195,19 @@ export function OmrCell({
             </header>
             <div className="grid min-h-0 flex-1 gap-3 overflow-hidden p-3 lg:grid-cols-2">
               {/* OMR sheet — zoom/scroll only here; Read vs key stays fixed on the right. */}
-              <div className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50">
-                <div className="flex shrink-0 items-center justify-between gap-2 border-b border-neutral-200 bg-white px-2 py-1.5">
-                  <p className="px-1 text-xs font-semibold text-neutral-600">{KIND_LABEL[kind]} OMR</p>
-                  <div className="flex items-center rounded-lg border border-neutral-200">
-                    <button
-                      type="button"
-                      title="Zoom out"
-                      aria-label="Zoom out"
-                      disabled={zoom <= ZOOM_MIN}
-                      onClick={() => setZoom((value) => clampZoom(value - ZOOM_STEP))}
-                      className="inline-flex size-8 items-center justify-center text-neutral-700 hover:bg-neutral-50 disabled:opacity-40"
-                    >
-                      <Minus className="size-3.5" />
-                    </button>
-                    <span className="min-w-12 px-1 text-center text-xs font-semibold tabular-nums text-neutral-700">
-                      {Math.round(zoom * 100)}%
-                    </span>
-                    <button
-                      type="button"
-                      title="Zoom in"
-                      aria-label="Zoom in"
-                      disabled={zoom >= ZOOM_MAX}
-                      onClick={() => setZoom((value) => clampZoom(value + ZOOM_STEP))}
-                      className="inline-flex size-8 items-center justify-center text-neutral-700 hover:bg-neutral-50 disabled:opacity-40"
-                    >
-                      <Plus className="size-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      title="Reset to 100%"
-                      aria-label="Reset to 100%"
-                      disabled={zoom === DEFAULT_ZOOM}
-                      onClick={() => setZoom(DEFAULT_ZOOM)}
-                      className="inline-flex size-8 items-center justify-center border-l border-neutral-200 text-neutral-700 hover:bg-neutral-50 disabled:opacity-40"
-                    >
-                      <RotateCcw className="size-3.5" />
-                    </button>
-                  </div>
-                </div>
-                <div
-                  className="min-h-0 flex-1 overflow-auto p-2"
-                  onWheel={(event) => {
-                    if (!(event.ctrlKey || event.metaKey)) return;
-                    event.preventDefault();
-                    const direction = event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP;
-                    setZoom((value) => clampZoom(value + direction));
-                  }}
-                >
-                  <div
-                    className="mx-auto origin-top transition-[width] duration-150"
-                    style={{ width: `${zoom * 100}%` }}
-                  >
-                    <img
-                      key={kind}
-                      src={omrImageHref(scan.id, kind, false, basePath)}
-                      alt={`${KIND_LABEL[kind]} OMR · ${omrSubjectLabel(scan)}`}
-                      className="mx-auto block h-auto w-full object-contain"
-                      draggable={false}
-                    />
-                  </div>
-                </div>
-              </div>
+              <ImageZoomPane
+                className="rounded-xl border border-neutral-200 bg-neutral-50"
+                toolbarLeft={`${KIND_LABEL[kind]} OMR`}
+                resetKey={kind}
+              >
+                <img
+                  key={kind}
+                  src={omrImageHref(scan.id, kind, false, basePath)}
+                  alt={`${KIND_LABEL[kind]} OMR · ${omrSubjectLabel(scan)}`}
+                  className="mx-auto block h-auto w-full object-contain"
+                  draggable={false}
+                />
+              </ImageZoomPane>
               <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white">
                 {loading ? (
                   <div className="flex flex-1 items-center justify-center text-neutral-500">
