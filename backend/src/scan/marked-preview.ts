@@ -22,6 +22,9 @@ const YELLOW = "#ca8a04";
 
 type TableRow = {
   subject: string;
+  /** Question band — omitted subjects (not taken) are not marked on the sheet. */
+  from?: number;
+  to?: number;
   correct: number;
   partial?: number;
   wrong: number;
@@ -54,10 +57,20 @@ export async function markedSheetPreview(
 ): Promise<Buffer> {
   const key = asAnswers(keyAnswers);
   const keyTypeRanges = asKeyTypeRanges(keyTypeRangesInput);
+  // Only colour bubbles for subjects the student took (>15 blanks → band omitted).
+  const takenQuestions = new Set<number>();
+  for (const row of subjects) {
+    if (row.from == null || row.to == null || row.to < row.from) continue;
+    for (let question = row.from; question <= row.to; question += 1) {
+      takenQuestions.add(question);
+    }
+  }
+  const limitToTaken = subjects.some((row) => row.from != null && row.to != null);
   const r = bubbles.radius * 1.15;
   const stroke = Math.max(2, bubbles.radius * 0.28);
   const shapes: string[] = [];
   for (const point of bubbles.points) {
+    if (limitToTaken && !takenQuestions.has(point.question)) continue;
     const question = String(point.question);
     const expected = key[question];
     const mode = keyTypeForQuestion(keyTypeRanges, point.question);
