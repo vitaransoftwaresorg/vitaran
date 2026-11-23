@@ -481,6 +481,11 @@ export async function recordOmrResult(entry: OmrResultEntry) {
     });
     if (value !== undefined) row[index] = value;
   });
+  // Clear subject cells first so a dropped subject (e.g. >15 blanks → not taken)
+  // is removed from the sheet instead of keeping a stale mark.
+  for (let index = 0; index < roles.length; index += 1) {
+    if (roles[index] === "subject") row[index] = null;
+  }
   let matchedSubjects = 0;
   for (const subject of entry.subjects) {
     const index = subjectColumn(columns, subject.subject);

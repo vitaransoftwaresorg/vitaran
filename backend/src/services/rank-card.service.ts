@@ -5,12 +5,14 @@ import type { ResultSheetParams } from "../schemas/result.schema.js";
 import { AppError } from "../utils/app-error.js";
 import { downloadFileName } from "../utils/download-file-name.js";
 import type { CellValue } from "../utils/excel.js";
+import { SUBJECT_NOT_TAKEN_BLANK_THRESHOLD } from "../scan/score.js";
 import {
   columnRole,
   foldRoll,
   maxFromLabel,
   numberCell,
   recomputeSheet,
+  SUBJECT_PAPER_MAX,
   subjectColumn,
 } from "../utils/result-columns.js";
 import { renderClassResultPdf } from "./class-result.pdf.js";
@@ -63,9 +65,14 @@ async function classCards(params: ResultSheetParams, viewer?: Viewer) {
   const at = (role: NonNullable<ReturnType<typeof columnRole>>) => roles.indexOf(role);
   const subjectCols = roles.flatMap((role, index) => (role === "subject" ? [index] : []));
   const totalCol = at("total");
-  const totalMax =
+  const paperSubjects = subjectCols.map((index) => ({
+    index,
+    label: columns[index]!.replace(/\s*\(.*\)\s*$/, "").trim(),
+    max: maxFromLabel(columns[index]!) ?? SUBJECT_PAPER_MAX,
+  }));
+  const classTotalMax =
     (totalCol >= 0 ? maxFromLabel(columns[totalCol]!) : null) ??
-    (subjectCols.reduce((sum, index) => sum + (maxFromLabel(columns[index]!) ?? 0), 0) || null);
+    (paperSubjects.reduce((sum, row) => sum + (row.max ?? 0), 0) || null);
   const programName =
     resultSet.programName ||
     (resultSet.programCode ? (await programRepository.findProgramByCode(resultSet.programCode))?.name : null) ||
@@ -93,6 +100,31 @@ async function classCards(params: ResultSheetParams, viewer?: Viewer) {
     const counts = omr.byRoll.get(foldRoll(roll));
     const classCell = cellText(row[at("class")]);
     const sectionCell = cellText(row[at("section")]);
+    const subjects = paperSubjects
+      .map((paper) => {
+        const omr = counts?.get(paper.index);
+        return {
+          label: paper.label,
+          marks: numberCell(row[paper.index]),
+          max: paper.max,
+          ...omr,
+        };
+      })
+      // Not taken: null sheet cell, or OMR left more than 15 questions blank.
+      .filter((subject) => {
+        if (subject.blank != null && subject.blank > SUBJECT_NOT_TAKEN_BLANK_THRESHOLD) return false;
+        return subject.marks != null;
+      });
+    const totalMax =
+      subjects.reduce((sum, subject) => sum + (subject.max ?? SUBJECT_PAPER_MAX), 0) || null;
+    const total =
+      subjects.length > 0
+        ? subjects.reduce((sum, subject) => sum + (subject.marks ?? 0), 0)
+        : numberCell(row[totalCol]);
+    const percentage =
+      total != null && totalMax && totalMax > 0
+        ? Math.round((total / totalMax) * 10000) / 100
+        : numberCell(row[at("percentage")]);
     return {
       schoolName: resultSet.school.name,
       programName: programName === resultSet.school.name ? `Class ${params.classLevel}` : programName,
@@ -103,15 +135,15 @@ async function classCards(params: ResultSheetParams, viewer?: Viewer) {
         rollNo: roll,
         classLabel: classCell || `${params.classLevel}${sectionCell}`,
       },
-      subjects: subjectCols.map((index) => ({
-        label: columns[index]!.replace(/\s*\(.*\)\s*$/, "").trim(),
-        marks: numberCell(row[index]),
-        max: maxFromLabel(columns[index]!),
-        ...counts?.get(index),
-      })),
-      total: numberCell(row[totalCol]),
+      subjects,
+      paperMarks: paperSubjects.map((paper) => {
+        const omr = counts?.get(paper.index);
+        if (omr?.blank != null && omr.blank > SUBJECT_NOT_TAKEN_BLANK_THRESHOLD) return null;
+        return numberCell(row[paper.index]);
+      }),
+      total,
       totalMax,
-      percentage: numberCell(row[at("percentage")]),
+      percentage,
       classRank: numberCell(row[at("classRank")]),
       sectionRank: numberCell(row[at("sectionRank")]),
     };
@@ -120,7 +152,7 @@ async function classCards(params: ResultSheetParams, viewer?: Viewer) {
     vitaran,
     school: logo?.logoData ? await getObject(logo.logoData) : null,
   };
-  return { cards, logos, resultSet };
+  return { cards, logos, resultSet, paperSubjects, classTotalMax };
 }
 
 /** One student's card (by roll number) or the whole class in rank order; portals only see their own sheet. */
@@ -179,7 +211,10 @@ export async function getRankCards(
 
 /** The class result in rank order as one printable PDF, for the school notice board. */
 export async function getClassResultPdf(params: ResultSheetParams, viewer?: Viewer) {
-  const [{ cards, logos, resultSet }, titleFont] = await Promise.all([classCards(params, viewer), loadTitleFont()]);
+  const [{ cards, logos, resultSet, paperSubjects, classTotalMax }, titleFont] = await Promise.all([
+    classCards(params, viewer),
+    loadTitleFont(),
+  ]);
   const withMarks = cards.filter((card) => card.total != null || card.subjects.some((row) => row.marks != null));
   if (!withMarks.length) throw new AppError(404, "No results saved for this class yet");
   const first = withMarks[0]!;
@@ -190,16 +225,18 @@ export async function getClassResultPdf(params: ResultSheetParams, viewer?: View
       classLevel: params.classLevel,
       testNumber: first.testNumber,
       testId: first.testId,
-      subjects: first.subjects.map((subject) => ({ label: subject.label, max: subject.max })),
-      totalMax: first.totalMax,
+      // Class sheet keeps every paper subject; per-student gaps show as "-".
+      subjects: paperSubjects.map((subject) => ({ label: subject.label, max: subject.max })),
+      totalMax: classTotalMax,
       rows: withMarks.map((card) => ({
         rank: card.classRank,
         sectionRank: card.sectionRank,
         rollNo: card.student.rollNo,
         name: card.student.name,
         classLabel: card.student.classLabel,
-        marks: card.subjects.map((subject) => subject.marks),
+        marks: card.paperMarks ?? paperSubjects.map(() => null),
         total: card.total,
+        totalMax: card.totalMax,
         percentage: card.percentage,
       })),
     },

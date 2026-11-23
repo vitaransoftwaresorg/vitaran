@@ -58,6 +58,7 @@ export function TeachersDrive({
         showSchool={false}
         editHrefBase={TEACHERS_PATH}
         onToggleStatus={setAdminTeacherStatusAction}
+        scopeKey={`admin-teachers:${school.id}`}
         pagination={
           pagination ? (
             <ListPagination

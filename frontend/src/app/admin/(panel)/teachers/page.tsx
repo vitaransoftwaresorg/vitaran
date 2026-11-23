@@ -43,6 +43,7 @@ export default async function AdminTeachersPage({
       <PageHeader
         description={school ? undefined : "Open a school to view and manage its teachers"}
         count={school ? teachersPage?.pagination.total : schools.length}
+        countNoun={school ? "teachers" : "schools"}
         actions={
           school ? (
             <Link

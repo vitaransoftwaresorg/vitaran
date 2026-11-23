@@ -13,6 +13,7 @@ import { deleteAdminStudentInPlaceAction } from "@/features/students/admin-stude
 import { subjectsForClassLevel } from "@/features/schools/constants";
 import { StudentReportCardLinks } from "@/features/students/student-report-downloads";
 import { PROFILE_LINK_CLASS, ProfileLink, schoolProfileHref } from "@/components/shared/profile-link";
+import { useResetOnScopeChange } from "@/hooks/use-reset-on-scope-change";
 import { cn } from "@/lib/utils";
 import type { Student } from "@/types/student";
 
@@ -37,6 +38,11 @@ type StudentsTableProps = {
   onDeleted?: () => void;
   /** Server pagination footer (when the parent page loads by page/pageSize). */
   pagination?: ReactNode;
+  /**
+   * Soft-nav scope (school/class/section). When this changes, local search clears
+   * so a previous filter cannot empty the next roster until a hard refresh.
+   */
+  scopeKey?: string;
 };
 
 export function StudentsTable({
@@ -51,11 +57,20 @@ export function StudentsTable({
   onEdit,
   onDeleted,
   pagination,
+  scopeKey,
 }: StudentsTableProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  const rosterScope =
+    scopeKey ??
+    `${mode}:${baseHref ?? ""}:${students[0]?.schoolId ?? ""}:${students[0]?.classLevel ?? ""}:${students[0]?.sectionId ?? ""}:${students.length}`;
+  useResetOnScopeChange(rosterScope, () => {
+    setQuery("");
+    setPendingId(null);
+  });
 
   const filtered = useMemo(
     () =>

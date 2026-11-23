@@ -19,6 +19,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { matchesSearch, TableSearch } from "@/components/shared/table-search";
 import { documentAnswersHref } from "@/features/documents/constants";
 import { capitalizeWords } from "@/features/schools/schema";
+import { useResetOnScopeChange } from "@/hooks/use-reset-on-scope-change";
 import { cn } from "@/lib/utils";
 import {
   ProfileLink,
@@ -47,6 +48,10 @@ export function AdminObjectionsBoard({ initialItems }: AdminObjectionsBoardProps
   const [syncedItems, setSyncedItems] = useState(initialItems);
   const [filter, setFilter] = useState<AnswerKeyObjectionStatus | "ALL">("OPEN");
   const [query, setQuery] = useState("");
+  // Soft-nav back into objections must not keep a leftover school/name filter.
+  useResetOnScopeChange(`objections:${initialItems.length}:${initialItems[0]?.id ?? ""}`, () =>
+    setQuery(""),
+  );
   const [reviewing, setReviewing] = useState<AnswerKeyObjection | null>(null);
   const [decision, setDecision] = useState<"RESOLVED" | "REJECTED">("RESOLVED");
   const [note, setNote] = useState("");

@@ -21,6 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { matchesSearch, TableSearch } from "@/components/shared/table-search";
+import { useResetOnScopeChange } from "@/hooks/use-reset-on-scope-change";
 import { cn } from "@/lib/utils";
 import { programLabel } from "@/features/schools/constants";
 import { ProfileLink, schoolProfileHref } from "@/components/shared/profile-link";
@@ -83,6 +84,9 @@ export function DocumentTable({
   deleteAction,
 }: DocumentTableProps) {
   const [query, setQuery] = useState("");
+  useResetOnScopeChange(`${basePath}:${items.length}:${items[0]?.id ?? ""}`, () =>
+    setQuery(""),
+  );
   const visible = useMemo(
     () =>
       items.filter((item) =>

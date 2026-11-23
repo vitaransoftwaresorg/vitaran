@@ -16,6 +16,7 @@ import {
 import { ProfileLink, schoolProfileHref } from "@/components/shared/profile-link";
 import { silenceLive } from "@/features/live/silence";
 import { subjectLabel } from "@/features/schools/constants";
+import { useResetOnScopeChange } from "@/hooks/use-reset-on-scope-change";
 import { cn } from "@/lib/utils";
 import type { Teacher, TeacherStatus } from "@/types/teacher";
 import { TEACHER_STATUS_LABELS } from "./constants";
@@ -27,6 +28,8 @@ type TeachersTableProps = {
   onToggleStatus: (id: string, status: TeacherStatus) => Promise<{ ok: boolean; message?: string }>;
   showSchool?: boolean;
   pagination?: ReactNode;
+  /** Soft-nav school scope — clears local search when the school changes. */
+  scopeKey?: string;
 };
 
 function StatusSwitch({
@@ -96,8 +99,12 @@ export function TeachersTable({
   onToggleStatus,
   showSchool,
   pagination,
+  scopeKey,
 }: TeachersTableProps) {
   const [query, setQuery] = useState("");
+  const teachersScope =
+    scopeKey ?? `${editHrefBase}:${teachers[0]?.school?.id ?? "all"}:${teachers.length}`;
+  useResetOnScopeChange(teachersScope, () => setQuery(""));
 
   const filtered = useMemo(
     () =>

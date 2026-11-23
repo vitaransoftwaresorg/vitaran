@@ -87,6 +87,7 @@ export function SchoolKeysDrive({
   if (schoolId && school && testNumber === undefined) {
     return (
       <DriveBrowser
+        key={`school-keys:${school.id}`}
         breadcrumbs={[
           { label: "School Keys", href: SCHOOL_KEYS_PATH },
           { label: school.name, href: schoolHref(school.id) },
@@ -235,6 +236,7 @@ export function SchoolKeysDrive({
 
     return (
       <DriveBrowser
+        key={`school-keys:${school.id}:test:${testNumber}`}
         breadcrumbs={[
           { label: "School Keys", href: SCHOOL_KEYS_PATH },
           { label: school.name, href: schoolHref(school.id) },
@@ -249,6 +251,7 @@ export function SchoolKeysDrive({
 
   return (
     <DriveBrowser
+      key="school-keys:schools"
       breadcrumbs={[{ label: "School Keys", href: SCHOOL_KEYS_PATH }]}
       items={schools
         .slice()

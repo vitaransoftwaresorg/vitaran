@@ -342,8 +342,15 @@ export function AnswerKeysDrive({
     ];
   });
 
+  const driveKey = [
+    path.program ?? "root",
+    path.schoolId ?? "",
+    path.testNumber != null ? `t${path.testNumber}` : "",
+  ].join(":");
+
   return (
     <DriveBrowser
+      key={driveKey}
       breadcrumbs={breadcrumbs}
       items={driveItems}
       searchItems={searchItems}

@@ -36,7 +36,10 @@ export type RankCardData = {
   /** Shown on the class result PDF, not on the rank card. */
   testId: string;
   student: { name: string; rollNo: string; classLabel: string };
+  /** Subjects the student took — omitted subjects are not printed on the card. */
   subjects: RankCardSubject[];
+  /** Marks aligned to the class paper subject list (null = not taken); class result PDF. */
+  paperMarks?: Array<number | null>;
   total: number | null;
   totalMax: number | null;
   percentage: number | null;

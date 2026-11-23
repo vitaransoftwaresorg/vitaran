@@ -24,6 +24,16 @@ export type SubjectScore = {
   maxTotal: number;
 };
 
+/**
+ * More than this many unfilled questions in a subject → student did not take
+ * that subject (omit from scores, rank card, and total max e.g. 400 → 300).
+ */
+export const SUBJECT_NOT_TAKEN_BLANK_THRESHOLD = 15;
+
+export function subjectTaken(score: Pick<SubjectScore, "blank">) {
+  return score.blank <= SUBJECT_NOT_TAKEN_BLANK_THRESHOLD;
+}
+
 export type SheetScore = {
   subjectScores: SubjectScore[];
   unattempted: number[];
@@ -133,9 +143,14 @@ export function scoreSheet(
   const keyTypeRanges = asKeyTypeRanges(keyTypeRangesInput);
   const keyedLast = Math.max(0, ...Object.keys(key).map(Number).filter(Number.isFinite));
   const fallbackTo = keyedLast || 100;
-  const bands: SubjectRange[] =
+  const allBands: SubjectRange[] =
     ranges.length > 0 ? ranges : [{ subject: "TOTAL", from: 1, to: fallbackTo, maxMarks: fallbackTo * marks.correctMarks }];
-  const subjectScores = bands.map((range) => {
+  // maxMarks 0 = reserved empty band (e.g. no Maths) — Q numbers stay on the key as "—",
+  // but those bubbles are not scored.
+  const bands =
+    allBands.filter((range) => range.maxMarks > 0 && range.to >= range.from);
+  const scoredBands = bands.length > 0 ? bands : allBands.filter((range) => range.to >= range.from);
+  const rawScores = scoredBands.map((range) => {
     let correct = 0;
     let partial = 0;
     let wrong = 0;
@@ -170,13 +185,16 @@ export function scoreSheet(
     };
   });
 
-  const first = Math.min(...bands.map((range) => range.from));
-  const last = Math.max(...bands.map((range) => range.to));
+  // Drop subjects the student left mostly blank — not taken for this test.
+  const subjectScores = rawScores.filter(subjectTaken);
+
   const unattempted: number[] = [];
-  for (let question = first; question <= last; question += 1) {
-    // ADD questions always score; never flag as un-attempted.
-    if (isBonusKey(key[String(question)])) continue;
-    if (markedList(marked[String(question)]).length === 0) unattempted.push(question);
+  for (const range of subjectScores) {
+    for (let question = range.from; question <= range.to; question += 1) {
+      // ADD questions always score; never flag as un-attempted.
+      if (isBonusKey(key[String(question)])) continue;
+      if (markedList(marked[String(question)]).length === 0) unattempted.push(question);
+    }
   }
 
   return {

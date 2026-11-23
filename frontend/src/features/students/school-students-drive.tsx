@@ -176,6 +176,7 @@ export function SchoolStudentsDrive({
       });
       return (
         <DriveBrowser
+          key={`class:${classLevel}`}
           breadcrumbs={breadcrumbs}
           items={items}
           emptyText="No sections set up for this class"
@@ -198,6 +199,7 @@ export function SchoolStudentsDrive({
         seats={seats}
         subjects={subjectsForSchoolClass(schoolPrograms, classLevel, roster[0]?.programId)}
         emptyMessage={emptyRosterMessage(section, seats, classCount)}
+        scopeKey={`school:${classLevel}:${section ?? ""}`}
         pagination={
           pagination ? (
             <ListPagination
@@ -237,6 +239,7 @@ export function SchoolStudentsDrive({
 
   return (
     <DriveBrowser
+      key="classes"
       breadcrumbs={breadcrumbs}
       items={items}
       emptyText="No classes set up yet"

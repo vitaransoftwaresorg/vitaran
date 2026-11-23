@@ -43,6 +43,7 @@ import {
   rosterCountLabel,
   STUDENTS_PATH,
 } from "@/features/students/school-roster";
+import { useResetOnScopeChange } from "@/hooks/use-reset-on-scope-change";
 import { cn } from "@/lib/utils";
 import { formatNumber } from "@/utils/format";
 import type { SchoolProgramOffering } from "@/types/program";
@@ -212,6 +213,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
   }
 
   const [query, setQuery] = useState("");
+  useResetOnScopeChange(schoolId ?? "new-school", () => setQuery(""));
 
   const classRows: ClassRow[] = useMemo(() => {
     // When a class has sections, section seats are the count — hide whole-class rows for that level.

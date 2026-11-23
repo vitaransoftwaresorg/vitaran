@@ -17,6 +17,7 @@ import {
 import { subjectLabel, TYPE_LABELS } from "@/features/schools/constants";
 import { SchoolTypeBadge } from "@/features/schools/school-type-badge";
 import { capitalizeWords } from "@/features/schools/schema";
+import { useResetOnScopeChange } from "@/hooks/use-reset-on-scope-change";
 import type { LearningProgram } from "@/types/program";
 import { deleteProgramAction } from "./actions";
 
@@ -30,6 +31,9 @@ export function ProgramsTable({ programs }: { programs: LearningProgram[] }) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
+  useResetOnScopeChange(`programs:${programs.length}:${programs[0]?.id ?? ""}`, () =>
+    setQuery(""),
+  );
 
   const filtered = useMemo(
     () =>

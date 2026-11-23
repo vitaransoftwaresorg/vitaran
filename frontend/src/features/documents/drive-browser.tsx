@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { useResetOnScopeChange } from "@/hooks/use-reset-on-scope-change";
 import { cn } from "@/lib/utils";
 import type { DeleteResult } from "@/types/document";
 import { DeleteDocumentButton } from "./delete-document-button";
@@ -157,6 +158,8 @@ export function DriveBrowser({
     .slice(1)
     .map((crumb) => `${crumb.href}\0${crumb.label}`)
     .join("\n");
+  /** Root drive + folder path — Students / Results / Keys must not share sticky search. */
+  const scopeKey = `${breadcrumbs[0]?.href ?? ""}\n${folderCrumbsKey}`;
   const folderCrumbs = useMemo(() => {
     // Drop the section root (Answer keys / Results / …) — already in route breadcrumbs.
     return breadcrumbs.length > 1 ? breadcrumbs.slice(1) : [];
@@ -168,6 +171,13 @@ export function DriveBrowser({
     if (!setDrivePath) return;
     setDrivePath(folderCrumbs);
   }, [folderCrumbs, setDrivePath]);
+
+  // Soft-nav reuses this instance across folders. Reset ephemeral UI so a school-name
+  // search cannot hide class/test folders until a hard refresh.
+  useResetOnScopeChange(scopeKey, () => {
+    setQuery("");
+    setPublishedById({});
+  });
 
   return (
     <section className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">

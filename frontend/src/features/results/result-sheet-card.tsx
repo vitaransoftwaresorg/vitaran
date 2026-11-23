@@ -14,6 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ProfileLink } from "@/components/shared/profile-link";
+import { useResetOnScopeChange } from "@/hooks/use-reset-on-scope-change";
 import { cn } from "@/lib/utils";
 import type { ResultCell, ResultSheet } from "@/types/result";
 import { studentCount } from "./constants";
@@ -146,6 +147,10 @@ export function ResultSheetCard({
     return () => onStudentClick(roll);
   };
   const [query, setQuery] = useState("");
+  useResetOnScopeChange(
+    `${files?.resultSetId ?? ""}:${sheet.classLevel}:${sheet.rowCount}`,
+    () => setQuery(""),
+  );
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
   const { shown, tags, numeric } = splitColumns(sheet);
   // The sheet's last title line is the specific one, e.g. "TEST-3 9-SEP-2026 (Max. Marks: 300)".

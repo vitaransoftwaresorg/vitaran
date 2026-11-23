@@ -26,6 +26,7 @@ import {
 import { matchesSearch, TableSearch } from "@/components/shared/table-search";
 import type { DriveCrumb } from "@/features/documents/drive-browser";
 import { ProfileLink, studentProfileHref } from "@/components/shared/profile-link";
+import { useResetOnScopeChange } from "@/hooks/use-reset-on-scope-change";
 import { cn } from "@/lib/utils";
 import type { LearningProgram } from "@/types/program";
 import type { ResultCell, ResultSet, ResultSheet } from "@/types/result";
@@ -201,6 +202,12 @@ export function ClassResultsBoard({
   );
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
+
+  // Soft-nav between classes must not keep a previous student search.
+  useResetOnScopeChange(
+    `${path.schoolId}:${path.classLevel}:${path.testNumber}:${path.program}`,
+    () => setQuery(""),
+  );
 
   // When another device saves an OMR, LiveRefresh reloads props — pull marks into the table.
   useEffect(() => {

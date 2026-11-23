@@ -242,12 +242,21 @@ export function ResultsDrive({
       ? "No classes for this school"
       : "No tests yet";
 
+  const driveKey = atRoot
+    ? "results:root"
+    : inTest
+      ? `results:${schoolId}:test:${path.testNumber}`
+      : `results:${schoolId}`;
+
   return (
     <DriveBrowser
+      key={driveKey}
       breadcrumbs={breadcrumbs}
       items={driveItems}
       emptyText={emptyText}
-      searchPlaceholder="Search in this folder"
+      searchPlaceholder={
+        atRoot ? "Search schools" : inTest ? "Search classes" : "Search tests"
+      }
     />
   );
 }

@@ -31,7 +31,6 @@ import { TestIdStatus, useTestIdCheck } from "./test-id-status";
 
 const OPTIONS: AnswerOption[] = ["A", "B", "C", "D"];
 const DEFAULT_CORRECT_MARKS = 4;
-const MAX_SUBJECT_QUESTIONS = 100;
 const MAX_MARK_VALUE = 100;
 
 /** Drafts with no answers yet: treat legacy stored 1 as the new default 4. */
@@ -102,11 +101,19 @@ type AnswerKeyAnswersEditorProps = {
   readOnly?: boolean;
 };
 
+const SUBJECT_BLOCK = 25;
+
 function questionsIn(range: SubjectRange) {
   return Array.from({ length: Math.max(0, range.to - range.from + 1) }, (_, index) => range.from + index);
 }
 
+/** maxMarks 0 = reserved empty band (no Maths) — still show Q numbers as "—". */
+function isEmptyBand(range: SubjectRange) {
+  return range.maxMarks === 0;
+}
+
 function countOf(range: SubjectRange) {
+  if (isEmptyBand(range)) return 0;
   return Math.max(0, range.to - range.from + 1);
 }
 
@@ -130,37 +137,43 @@ function snapshot(
   });
 }
 
+/**
+ * Fixed 25-wide slots (Maths 1–25, Physics 26–50, …). Setting a subject to 0 keeps
+ * its band as empty "—" placeholders — never renumbers later subjects down to Q1.
+ */
 function rangesFromCounts(
   rows: Array<{ subject: string; count: number }>,
   correctMarks: number,
 ): SubjectRange[] {
-  let from = 1;
-  return rows
-    .filter((row) => row.count > 0)
-    .map((row) => {
-      const to = from + row.count - 1;
-      const range = { subject: row.subject, from, to, maxMarks: row.count * correctMarks };
-      from = to + 1;
-      return range;
-    });
+  return rows.map((row, index) => {
+    const from = index * SUBJECT_BLOCK + 1;
+    const count = Math.min(SUBJECT_BLOCK, Math.max(0, row.count));
+    if (count === 0) {
+      return { subject: row.subject, from, to: from + SUBJECT_BLOCK - 1, maxMarks: 0 };
+    }
+    return {
+      subject: row.subject,
+      from,
+      to: from + count - 1,
+      maxMarks: count * correctMarks,
+    };
+  });
 }
 
-function remapBySubject<T>(
+/** Drop answers outside a subject's active window; other subjects keep their Q numbers. */
+function trimBandAnswers<T>(
   previous: Record<string, T>,
-  fromRanges: SubjectRange[],
-  toRanges: SubjectRange[],
+  subjectIndex: number,
+  nextRange: SubjectRange | undefined,
 ) {
-  const next: Record<string, T> = {};
-  for (const oldRange of fromRanges) {
-    const newRange = toRanges.find((range) => range.subject === oldRange.subject);
-    if (!newRange) continue;
-    const oldQuestions = questionsIn(oldRange);
-    const newQuestions = questionsIn(newRange);
-    oldQuestions.forEach((oldQuestion, index) => {
-      const value = previous[String(oldQuestion)];
-      if (value === undefined || index >= newQuestions.length) return;
-      next[String(newQuestions[index]!)] = value;
-    });
+  const slotFrom = subjectIndex * SUBJECT_BLOCK + 1;
+  const slotTo = slotFrom + SUBJECT_BLOCK - 1;
+  const next: Record<string, T> = { ...previous };
+  for (let question = slotFrom; question <= slotTo; question += 1) {
+    const key = String(question);
+    if (!nextRange || isEmptyBand(nextRange) || question < nextRange.from || question > nextRange.to) {
+      delete next[key];
+    }
   }
   return next;
 }
@@ -169,10 +182,29 @@ const FALLBACK_RANGES: SubjectRange[] = [
   { subject: "MATHEMATICS", from: 1, to: 100, maxMarks: 400 },
 ];
 
+const SCIENCE_ORDER = ["MATHEMATICS", "PHYSICS", "CHEMISTRY", "BIOLOGY"] as const;
+
+/** When Physics starts at 26 with no Maths row, reserve Q1–25 as empty "—". */
+function padLeadingEmptyBands(ranges: SubjectRange[]): SubjectRange[] {
+  if (ranges.length === 0) return ranges;
+  const first = ranges[0]!;
+  const expectedIndex = SCIENCE_ORDER.indexOf(first.subject as (typeof SCIENCE_ORDER)[number]);
+  if (expectedIndex <= 0) return ranges;
+  if (first.from !== expectedIndex * SUBJECT_BLOCK + 1) return ranges;
+  const leading = SCIENCE_ORDER.slice(0, expectedIndex).map((subject, index) => ({
+    subject,
+    from: index * SUBJECT_BLOCK + 1,
+    to: index * SUBJECT_BLOCK + SUBJECT_BLOCK,
+    maxMarks: 0,
+  }));
+  return [...leading, ...ranges];
+}
+
 export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }: AnswerKeyAnswersEditorProps) {
   const [saving, startSaving] = useTransition();
-  const initialRanges =
-    answerKey.subjectRanges.length > 0 ? answerKey.subjectRanges : FALLBACK_RANGES;
+  const initialRanges = padLeadingEmptyBands(
+    answerKey.subjectRanges.length > 0 ? answerKey.subjectRanges : FALLBACK_RANGES,
+  );
   const [answers, setAnswers] = useState<Record<string, KeyAnswer>>(() => answerKey.answers);
   const [explanations, setExplanations] = useState<Record<string, string>>(() => answerKey.explanations);
   const [correctMarks, setCorrectMarks] = useState(() => initialCorrectMarks(answerKey));
@@ -242,18 +274,31 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
       ) !== baseline,
     [answers, explanations, ranges, keyTypeRanges, testId, correctMarks, wrongMarks, baseline],
   );
-  const totalQuestions = ranges.reduce((sum, range) => sum + countOf(range), 0);
-  const incomplete = ranges.flatMap((range) => questionsIn(range).filter((question) => !answers[String(question)]));
+  // Empty bands still count toward the paper (100 Q) so numbers never collapse.
+  const totalQuestions = ranges.reduce(
+    (sum, range) => sum + Math.max(0, range.to - range.from + 1),
+    0,
+  );
+  const incomplete = ranges
+    .filter((range) => !isEmptyBand(range))
+    .flatMap((range) => questionsIn(range).filter((question) => !answers[String(question)]));
   const pending = saving;
 
   function setSubjectCount(subject: string, count: number) {
-    const nextCount = Math.min(MAX_SUBJECT_QUESTIONS, Math.max(0, Number.isFinite(count) ? count : 0));
+    const nextCount = Math.min(
+      SUBJECT_BLOCK,
+      Math.max(0, Number.isFinite(count) ? count : 0),
+    );
+    const subjectIndex = counts.findIndex((row) => row.subject === subject);
     const nextCounts = counts.map((row) =>
       row.subject === subject ? { ...row, count: nextCount } : row,
     );
     const nextRanges = rangesFromCounts(nextCounts, correctMarks);
-    setAnswers((current) => remapBySubject(current, ranges, nextRanges));
-    setExplanations((current) => remapBySubject(current, ranges, nextRanges));
+    const nextRange = nextRanges[subjectIndex];
+    if (subjectIndex >= 0) {
+      setAnswers((current) => trimBandAnswers(current, subjectIndex, nextRange));
+      setExplanations((current) => trimBandAnswers(current, subjectIndex, nextRange));
+    }
     setCounts(nextCounts);
   }
 
@@ -301,7 +346,11 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
     imported: Array<{ question: number; answer: KeyAnswer }>,
     sourceName: string,
   ) {
-    const allowed = new Set(ranges.flatMap((range) => questionsIn(range).map(String)));
+    const allowed = new Set(
+      ranges
+        .filter((range) => !isEmptyBand(range))
+        .flatMap((range) => questionsIn(range).map(String)),
+    );
     const next: Record<string, KeyAnswer> = { ...answers };
     let applied = 0;
     let skipped = 0;
@@ -595,10 +644,11 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
               <Input
                 type="number"
                 min={0}
-                max={MAX_SUBJECT_QUESTIONS}
+                max={SUBJECT_BLOCK}
                 value={row.count}
                 disabled={pending}
                 aria-label={`${subjectLabel(row.subject)} questions`}
+                title="0 keeps this subject’s question numbers empty (—); other subjects stay in place"
                 className="h-9 w-20 bg-white tabular-nums"
                 onChange={(event) => setSubjectCount(row.subject, Number.parseInt(event.currentTarget.value, 10))}
               />
@@ -629,13 +679,17 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
           >
             <header className="border-b border-neutral-200 bg-neutral-50 px-4 py-3">
               <h2 className="text-sm font-bold text-neutral-900">
-                {subjectLabel(range.subject)} · {countOf(range)} questions
+                {subjectLabel(range.subject)} ·{" "}
+                {isEmptyBand(range)
+                  ? `Q${range.from}–${range.to} empty`
+                  : `${countOf(range)} questions`}
               </h2>
             </header>
             <ol className="divide-y divide-neutral-100">
               {questionsIn(range).map((question) => {
                 const key = String(question);
-                const missing = !answers[key];
+                const emptyBand = isEmptyBand(range);
+                const missing = !emptyBand && !answers[key];
                 const questionMarks = marksForQuestion(keyTypeRanges, question, {
                   correctMarks,
                   wrongMarks,
@@ -650,11 +704,14 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
                     className={cn(
                       "grid gap-3 px-4 py-3 scroll-mt-24 md:grid-cols-[4.5rem_auto_minmax(0,1fr)] md:items-start",
                       missing && "bg-red-50",
+                      emptyBand && "bg-neutral-50/80",
                     )}
                   >
                     <div>
                       <p className="text-sm font-bold text-neutral-700 tabular-nums">Q{question}</p>
-                      {isBonus ? (
+                      {emptyBand ? (
+                        <p className="mt-0.5 text-[11px] font-semibold text-neutral-500">—</p>
+                      ) : isBonus ? (
                         <p className="mt-0.5 text-[11px] font-semibold text-sky-700">
                           ADD +{questionMarks.correctMarks}
                         </p>
@@ -666,64 +723,73 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
                       ) : null}
                     </div>
                     <div className="flex flex-wrap items-center gap-1">
-                      {OPTIONS.map((option) => {
-                        const selected = keyOptions(answers[key]).includes(option);
-                        return (
-                          <button
-                            key={option}
-                            type="button"
-                            disabled={pending || locked}
-                            onClick={() => toggleOption(key, option)}
-                            className={cn(
-                              "size-8 rounded-md text-xs font-bold",
-                              selected
-                                ? "bg-brand-900 text-white"
-                                : "border border-neutral-200 bg-white text-neutral-700",
-                              !locked && !selected && "hover:bg-neutral-50",
-                              locked && "cursor-default",
-                            )}
-                          >
-                            {option}
-                          </button>
-                        );
-                      })}
-                      <button
-                        type="button"
-                        disabled={pending || locked}
-                        onClick={() => {
-                          if (locked) return;
-                          setAnswers((current) =>
-                            isBonusKey(current[key])
-                              ? (() => {
-                                  const next = { ...current };
-                                  delete next[key];
-                                  return next;
-                                })()
-                              : { ...current, [key]: "ADD" },
-                          );
-                        }}
-                        title={`ADD: +${questionMarks.correctMarks} whether attempted or not (config marks win when set)`}
-                        className={cn(
-                          "h-8 rounded-md px-2 text-[11px] font-bold",
-                          isBonus
-                            ? "bg-sky-700 text-white"
-                            : "border border-neutral-200 bg-white text-neutral-700",
-                          !locked && !isBonus && "hover:bg-neutral-50",
-                          locked && "cursor-default",
-                        )}
-                      >
-                        ADD
-                        {isBonus ? (
-                          <span className="ml-1 tabular-nums">+{questionMarks.correctMarks}</span>
-                        ) : null}
-                      </button>
-                      {keyOptions(answers[key]).length > 1 ? (
+                      {emptyBand ? (
+                        <span className="text-sm font-bold text-neutral-400">—</span>
+                      ) : null}
+                      {!emptyBand
+                        ? OPTIONS.map((option) => {
+                            const selected = keyOptions(answers[key]).includes(option);
+                            return (
+                              <button
+                                key={option}
+                                type="button"
+                                disabled={pending || locked}
+                                onClick={() => toggleOption(key, option)}
+                                className={cn(
+                                  "size-8 rounded-md text-xs font-bold",
+                                  selected
+                                    ? "bg-brand-900 text-white"
+                                    : "border border-neutral-200 bg-white text-neutral-700",
+                                  !locked && !selected && "hover:bg-neutral-50",
+                                  locked && "cursor-default",
+                                )}
+                              >
+                                {option}
+                              </button>
+                            );
+                          })
+                        : null}
+                      {!emptyBand ? (
+                        <button
+                          type="button"
+                          disabled={pending || locked}
+                          onClick={() => {
+                            if (locked) return;
+                            setAnswers((current) =>
+                              isBonusKey(current[key])
+                                ? (() => {
+                                    const next = { ...current };
+                                    delete next[key];
+                                    return next;
+                                  })()
+                                : { ...current, [key]: "ADD" },
+                            );
+                          }}
+                          title={`ADD: +${questionMarks.correctMarks} whether attempted or not (config marks win when set)`}
+                          className={cn(
+                            "h-8 rounded-md px-2 text-[11px] font-bold",
+                            isBonus
+                              ? "bg-sky-700 text-white"
+                              : "border border-neutral-200 bg-white text-neutral-700",
+                            !locked && !isBonus && "hover:bg-neutral-50",
+                            locked && "cursor-default",
+                          )}
+                        >
+                          ADD
+                          {isBonus ? (
+                            <span className="ml-1 tabular-nums">+{questionMarks.correctMarks}</span>
+                          ) : null}
+                        </button>
+                      ) : null}
+                      {!emptyBand && keyOptions(answers[key]).length > 1 ? (
                         <span className="ml-1 text-[11px] font-semibold text-brand-800">
                           {answers[key]}
                         </span>
                       ) : null}
                     </div>
-                    {locked ? (
+                    {emptyBand ? (
+                      <p className="w-full min-w-0 text-sm text-neutral-400">—</p>
+                    ) : locked ? (
                       <p className="w-full min-w-0 whitespace-pre-wrap text-sm text-neutral-700">
                         {explanations[key] || <span className="text-neutral-400">No explanation</span>}
                       </p>

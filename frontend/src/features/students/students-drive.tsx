@@ -203,6 +203,7 @@ export function StudentsDrive({
       });
       return (
         <DriveBrowser
+          key={`school:${school.id}:class:${classLevel}`}
           breadcrumbs={breadcrumbs}
           items={items}
           emptyText="No sections set up for this class"
@@ -225,6 +226,7 @@ export function StudentsDrive({
         seats={seats}
         subjects={subjectsForClassLevel(classLevel)}
         emptyMessage={emptyRosterMessage(section, seats, classCount)}
+        scopeKey={`admin:${school.id}:${classLevel}:${section ?? ""}`}
         pagination={
           pagination ? (
             <ListPagination
@@ -275,6 +277,7 @@ export function StudentsDrive({
 
     return (
       <DriveBrowser
+        key={`school:${school.id}`}
         breadcrumbs={breadcrumbs}
         items={items}
         emptyText="No classes set up yet"
@@ -297,6 +300,7 @@ export function StudentsDrive({
 
   return (
     <DriveBrowser
+      key="schools"
       breadcrumbs={[{ label: "Students", href: STUDENTS_PATH }]}
       items={items}
       emptyText="No schools yet"

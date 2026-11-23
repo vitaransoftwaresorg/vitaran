@@ -6,12 +6,21 @@ type PageHeaderProps = {
   description?: ReactNode;
   /** Shown beside the title, e.g. how many items are listed. Hidden on small screens. */
   count?: number;
+  /** Noun after a standalone count, e.g. "schools" → "12 schools". */
+  countNoun?: string;
   /** Controls between the title and the actions, e.g. list filters. */
   toolbar?: ReactNode;
   actions?: ReactNode;
 };
 
-export function PageHeader({ title, description, count, toolbar, actions }: PageHeaderProps) {
+export function PageHeader({
+  title,
+  description,
+  count,
+  countNoun = "items",
+  toolbar,
+  actions,
+}: PageHeaderProps) {
   if (!title && !description && !toolbar && !actions && count === undefined) return null;
 
   const showCountAlone = !title && count !== undefined;
@@ -31,7 +40,9 @@ export function PageHeader({ title, description, count, toolbar, actions }: Page
             </h1>
           ) : null}
           {showCountAlone ? (
-            <p className="text-sm font-semibold text-neutral-500 tabular-nums">{count} items</p>
+            <p className="text-sm font-semibold text-neutral-500 tabular-nums">
+              {count} {countNoun}
+            </p>
           ) : null}
           {description ? (
             <p

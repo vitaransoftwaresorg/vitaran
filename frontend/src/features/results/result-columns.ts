@@ -99,12 +99,15 @@ export function computeRows(columns: string[], rows: ResultCell[][], classLevel:
     if (serialCol >= 0) row[serialCol] = position + 1;
     if (totalCol < 0) return row;
     const marks = subjectCols.map((index) => numberCell(row[index]));
+    const takenCount = marks.filter((mark) => mark != null).length;
+    // Null subject = not taken — percentage out of 100 × attempted subjects only.
+    const rowMax = takenCount > 0 ? takenCount * SUBJECT_PAPER_MAX : totalMax;
     if (marks.some((mark) => mark != null)) {
       row[totalCol] = roundMarks(marks.reduce<number>((sum, mark) => sum + (mark ?? 0), 0));
     }
     const total = numberCell(row[totalCol]);
     if (percentCol >= 0) {
-      row[percentCol] = total != null && totalMax > 0 ? Math.round((total / totalMax) * 10000) / 100 : null;
+      row[percentCol] = total != null && rowMax > 0 ? Math.round((total / rowMax) * 10000) / 100 : null;
     }
     return row;
   });

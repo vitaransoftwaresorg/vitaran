@@ -103,9 +103,31 @@ export function markedMatchesKey(marked: AnswerOption[], expected: KeyAnswer) {
   return wanted.includes(marked[0]!);
 }
 
-/** 100 questions split across the program's subjects, 4 marks each. */
+/**
+ * Science papers use fixed 25-question bands so question numbers never shift:
+ * Maths 1–25, Physics 26–50, Chemistry 51–75, Biology 76–100.
+ * A subject missing from the program (e.g. no Maths) still keeps its band with
+ * maxMarks 0 — answers show as "—" and OMR ignores that band.
+ */
 export function defaultSubjectRanges(subjects: readonly string[]): SubjectRange[] {
   const list = subjects.length > 0 ? [...subjects] : ["MATHEMATICS"];
+  const set = new Set(list);
+  const science = MPCB.filter((subject) => set.has(subject));
+  if (science.length >= 2) {
+    const lastIndex = Math.max(...MPCB.map((subject, index) => (set.has(subject) ? index : -1)));
+    // Keep earlier empty bands (e.g. no Maths → still reserve Q1–25).
+    return MPCB.slice(0, lastIndex + 1).map((subject, index) => {
+      const from = index * BLOCK + 1;
+      const to = from + BLOCK - 1;
+      const active = set.has(subject);
+      return {
+        subject,
+        from,
+        to,
+        maxMarks: active ? BLOCK * MARKS_PER_QUESTION : 0,
+      };
+    });
+  }
   const extra = QUESTIONS_PER_PAPER % list.length;
   const base = Math.floor(QUESTIONS_PER_PAPER / list.length);
   let from = 1;
@@ -177,25 +199,46 @@ function lastQuestion(answers: Record<string, KeyAnswer>, extras: number[]) {
   return max;
 }
 
-function rangesFor(subjects: readonly string[], last: number): SubjectRange[] {
+function bandHasAnswers(answers: Record<string, KeyAnswer>, from: number, to: number) {
+  for (let question = from; question <= to; question += 1) {
+    if (answers[String(question)]) return true;
+  }
+  return false;
+}
+
+/**
+ * Fixed 25-wide bands. A subject with no keyed answers keeps its slot (maxMarks 0)
+ * so Physics stays 26–50 when Maths is absent — never renumber from 1.
+ */
+function rangesFor(
+  subjects: readonly string[],
+  last: number,
+  answers: Record<string, KeyAnswer> = {},
+): SubjectRange[] {
   return subjects
     .map((subject, index) => {
       const from = index * BLOCK + 1;
-      const to = Math.min((index + 1) * BLOCK, last);
-      const count = Math.max(0, to - from + 1);
-      return { subject, from, to, maxMarks: count * MARKS_PER_QUESTION };
+      const to = from + BLOCK - 1;
+      const keyed = bandHasAnswers(answers, from, to);
+      if (!keyed) {
+        // Reserve the band when the paper reaches it (or earlier empty subjects).
+        if (last > 0 && last < from) return null;
+        return { subject, from, to, maxMarks: 0 };
+      }
+      const activeTo = Math.min(to, Math.max(last, from));
+      const count = Math.max(0, activeTo - from + 1);
+      return { subject, from, to: activeTo, maxMarks: count * MARKS_PER_QUESTION };
     })
-    .filter((range) => range.to >= range.from && last >= range.from);
+    .filter((range): range is SubjectRange => range != null && range.to >= range.from);
 }
 
-/** Friend’s rule: paper order is always M-P-C, plus Biology when there are 100 questions. */
+/** Paper order is always M-P-C, plus Biology when there are 100 questions — never drop Maths. */
 function subjectOrder(headings: string[], last: number) {
   const canonical = last > BLOCK * 3 ? MPCB : MPC;
-  const fromHeadings = canonical.filter((subject) => headings.includes(subject));
-  if (fromHeadings.length >= 3) return fromHeadings;
-  if (headings.includes("SCIENCE") && headings.length >= 2) {
+  if (headings.includes("SCIENCE") && headings.length >= 2 && !headings.includes("PHYSICS")) {
     return ["MATHEMATICS", "SCIENCE"].filter((subject) => headings.includes(subject));
   }
+  // Keep the full canonical list so empty leading subjects reserve their slots.
   return [...canonical];
 }
 
@@ -247,7 +290,7 @@ export function parseAnswerKeyText(text: string): ParsedAnswerKey {
   const answers = { ...fromExpl, ...fromKey };
   const last = lastQuestion(answers, [...explanationChunks(text).keys()]);
   const subjects = subjectOrder(headings, last || Object.keys(answers).length);
-  const subjectRanges = rangesFor(subjects, last || subjects.length * BLOCK);
+  const subjectRanges = rangesFor(subjects, last || subjects.length * BLOCK, answers);
 
   return { testId, answers, explanations, subjectRanges };
 }
@@ -292,7 +335,7 @@ export function parseTextKey(text: string): ParsedAnswerKey | null {
     testId: text.match(/Test\s*I[D1]\s*:?\s*([A-Z0-9-]{2,20})/i)?.[1] ?? null,
     answers,
     explanations,
-    subjectRanges: rangesFor(subjects, last),
+    subjectRanges: rangesFor(subjects, last, answers),
   };
 }
 
@@ -310,7 +353,7 @@ export async function parseAnswerKeyPdf(pdf: Buffer): Promise<ParsedAnswerKey> {
     const answers: Record<string, KeyAnswer> = { ...grid };
     const last = lastQuestion(answers, []);
     const subjects = subjectOrder([], last || Object.keys(answers).length);
-    const subjectRanges = rangesFor(subjects, last || subjects.length * BLOCK);
+    const subjectRanges = rangesFor(subjects, last || subjects.length * BLOCK, answers);
     return { testId: null, answers, explanations: {}, subjectRanges };
   } finally {
     await parser.destroy();

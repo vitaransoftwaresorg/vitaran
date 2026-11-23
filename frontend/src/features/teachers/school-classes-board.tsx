@@ -28,6 +28,7 @@ import { useLiveContent } from "@/features/live/use-live-content";
 import { loadSchoolSectionsAction } from "@/features/schools/section-actions";
 import { capitalizeWords } from "@/features/schools/schema";
 import { setClassTeacherAction } from "@/features/teachers/actions";
+import { useResetOnScopeChange } from "@/hooks/use-reset-on-scope-change";
 import { cn } from "@/lib/utils";
 import type { SchoolProgramOffering } from "@/types/program";
 import type {
@@ -91,6 +92,11 @@ export function SchoolClassesBoard({
   const [slots, setSlots] = useState(initialSlots);
   const [pending, startTransition] = useTransition();
   const [query, setQuery] = useState("");
+  // Soft-nav into Classes from another school page must not keep a leftover filter.
+  useResetOnScopeChange(
+    `school-classes:${schoolPrograms.map((row) => row.programId).join(",")}`,
+    () => setQuery(""),
+  );
 
   const [assigning, setAssigning] = useState<AssignTarget | null>(null);
   const [teacherId, setTeacherId] = useState(NONE);

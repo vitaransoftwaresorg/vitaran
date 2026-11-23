@@ -26,6 +26,9 @@ type AnswerKeyPortalViewProps = {
   allowObjections?: boolean;
 };
 
+const SUBJECT_BLOCK = 25;
+const SCIENCE_ORDER = ["MATHEMATICS", "PHYSICS", "CHEMISTRY", "BIOLOGY"] as const;
+
 function questionsIn(range: SubjectRange) {
   return Array.from(
     { length: Math.max(0, range.to - range.from + 1) },
@@ -33,8 +36,28 @@ function questionsIn(range: SubjectRange) {
   );
 }
 
+function isEmptyBand(range: SubjectRange) {
+  return range.maxMarks === 0;
+}
+
 function countOf(range: SubjectRange) {
+  if (isEmptyBand(range)) return 0;
   return Math.max(0, range.to - range.from + 1);
+}
+
+function padLeadingEmptyBands(ranges: SubjectRange[]): SubjectRange[] {
+  if (ranges.length === 0) return ranges;
+  const first = ranges[0]!;
+  const expectedIndex = SCIENCE_ORDER.indexOf(first.subject as (typeof SCIENCE_ORDER)[number]);
+  if (expectedIndex <= 0) return ranges;
+  if (first.from !== expectedIndex * SUBJECT_BLOCK + 1) return ranges;
+  const leading = SCIENCE_ORDER.slice(0, expectedIndex).map((subject, index) => ({
+    subject,
+    from: index * SUBJECT_BLOCK + 1,
+    to: index * SUBJECT_BLOCK + SUBJECT_BLOCK,
+    maxMarks: 0,
+  }));
+  return [...leading, ...ranges];
 }
 
 function allQuestions(ranges: SubjectRange[]) {
@@ -114,10 +137,11 @@ export function AnswerKeyPortalView({
   onRaiseObjection,
   allowObjections = true,
 }: AnswerKeyPortalViewProps) {
-  const ranges =
+  const ranges = padLeadingEmptyBands(
     answerKey.subjectRanges.length > 0
       ? answerKey.subjectRanges
-      : [{ subject: "MATHEMATICS", from: 1, to: 100, maxMarks: 0 }];
+      : [{ subject: "MATHEMATICS", from: 1, to: 100, maxMarks: 0 }],
+  );
 
   /** One card per question: open first, otherwise the latest review. */
   const byQuestion = new Map<number, AnswerKeyObjection>();
@@ -164,14 +188,20 @@ export function AnswerKeyPortalView({
           <section key={`${range.subject}-${range.from}`} className="space-y-2.5 sm:space-y-3">
             <header className="px-0.5">
               <h2 className="text-sm font-bold text-neutral-900">
-                {subjectLabel(range.subject)} · {countOf(range)} questions
+                {subjectLabel(range.subject)} ·{" "}
+                {isEmptyBand(range)
+                  ? `Q${range.from}–${range.to} empty`
+                  : `${countOf(range)} questions`}
               </h2>
             </header>
             <ol className="space-y-2.5 sm:space-y-3">
               {questionsIn(range).map((question) => {
                 const key = String(question);
-                const answer = answerKey.answers[key];
-                const explanation = answerKey.explanations[key]?.trim() || "";
+                const emptyBand = isEmptyBand(range);
+                const answer = emptyBand ? undefined : answerKey.answers[key];
+                const explanation = emptyBand
+                  ? ""
+                  : answerKey.explanations[key]?.trim() || "";
                 const objection = byQuestion.get(question);
                 const hasOpen = objection?.status === "OPEN";
                 const selected = keyOptions(answer);
@@ -185,63 +215,71 @@ export function AnswerKeyPortalView({
                     <div className="flex flex-wrap items-center gap-3">
                       <p className="min-w-10 text-sm font-bold text-neutral-800 tabular-nums">Q{question}</p>
                       <div className="flex flex-wrap items-center gap-1.5">
-                        {OPTIONS.map((option) => {
-                          const on = selected.includes(option);
-                          return (
-                            <span
-                              key={option}
-                              className={cn(
-                                "inline-flex size-7 items-center justify-center rounded-md text-xs font-bold sm:size-8",
-                                on
-                                  ? "bg-brand-900 text-white"
-                                  : "border border-neutral-200 bg-neutral-50 text-neutral-400",
-                              )}
-                            >
-                              {option}
-                            </span>
-                          );
-                        })}
-                        {bonus ? (
+                        {emptyBand ? (
+                          <span className="text-sm font-bold text-neutral-400">—</span>
+                        ) : (
+                          OPTIONS.map((option) => {
+                            const on = selected.includes(option);
+                            return (
+                              <span
+                                key={option}
+                                className={cn(
+                                  "inline-flex size-7 items-center justify-center rounded-md text-xs font-bold sm:size-8",
+                                  on
+                                    ? "bg-brand-900 text-white"
+                                    : "border border-neutral-200 bg-neutral-50 text-neutral-400",
+                                )}
+                              >
+                                {option}
+                              </span>
+                            );
+                          })
+                        )}
+                        {!emptyBand && bonus ? (
                           <span className="inline-flex h-7 items-center rounded-md bg-sky-700 px-2 text-[11px] font-bold text-white sm:h-8">
                             ADD
                           </span>
                         ) : null}
-                        {!answer ? (
+                        {!emptyBand && !answer ? (
                           <span className="text-xs font-semibold text-amber-700">Not set</span>
                         ) : null}
                       </div>
                     </div>
 
-                    <div className="mt-2.5 space-y-2">
-                      <div className="rounded-md border border-neutral-100 bg-neutral-50/80 px-2.5 py-2">
-                        <p className="text-[10px] font-semibold tracking-wider text-neutral-500 uppercase">
-                          Explanation
-                        </p>
-                        {explanation ? (
-                          <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed break-words text-neutral-700">
-                            {explanation}
+                    {emptyBand ? (
+                      <p className="mt-2.5 text-sm text-neutral-400">—</p>
+                    ) : (
+                      <div className="mt-2.5 space-y-2">
+                        <div className="rounded-md border border-neutral-100 bg-neutral-50/80 px-2.5 py-2">
+                          <p className="text-[10px] font-semibold tracking-wider text-neutral-500 uppercase">
+                            Explanation
                           </p>
-                        ) : (
-                          <p className="mt-1 text-sm text-neutral-400">No Explanation</p>
-                        )}
+                          {explanation ? (
+                            <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed break-words text-neutral-700">
+                              {explanation}
+                            </p>
+                          ) : (
+                            <p className="mt-1 text-sm text-neutral-400">No Explanation</p>
+                          )}
+                        </div>
+
+                        {allowObjections && objection ? (
+                          <QuestionObjectionCard objection={objection} role={role} />
+                        ) : null}
+
+                        {allowObjections && onRaiseObjection ? (
+                          <button
+                            type="button"
+                            onClick={() => onRaiseObjection(question)}
+                            disabled={hasOpen}
+                            className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-brand-200 bg-brand-50/60 px-3 py-2 text-xs font-semibold text-brand-800 hover:bg-brand-50 disabled:pointer-events-none disabled:opacity-40 sm:w-auto sm:border-0 sm:bg-transparent sm:px-2 sm:py-1.5 sm:justify-start"
+                          >
+                            <MessageSquareWarning className="size-3.5" strokeWidth={2} />
+                            {hasOpen ? "Objection open" : "Raise objection"}
+                          </button>
+                        ) : null}
                       </div>
-
-                      {allowObjections && objection ? (
-                        <QuestionObjectionCard objection={objection} role={role} />
-                      ) : null}
-
-                      {allowObjections && onRaiseObjection ? (
-                        <button
-                          type="button"
-                          onClick={() => onRaiseObjection(question)}
-                          disabled={hasOpen}
-                          className="inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-brand-200 bg-brand-50/60 px-3 py-2 text-xs font-semibold text-brand-800 hover:bg-brand-50 disabled:pointer-events-none disabled:opacity-40 sm:w-auto sm:border-0 sm:bg-transparent sm:px-2 sm:py-1.5 sm:justify-start"
-                        >
-                          <MessageSquareWarning className="size-3.5" strokeWidth={2} />
-                          {hasOpen ? "Objection open" : "Raise objection"}
-                        </button>
-                      ) : null}
-                    </div>
+                    )}
                   </li>
                 );
               })}

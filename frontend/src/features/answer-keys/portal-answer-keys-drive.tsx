@@ -161,6 +161,7 @@ export function PortalAnswerKeysDrive({
 
   return (
     <DriveBrowser
+      key={[program?.id ?? "all", testNumber ?? "tests"].join(":")}
       breadcrumbs={breadcrumbs}
       items={items}
       searchItems={searchItems}

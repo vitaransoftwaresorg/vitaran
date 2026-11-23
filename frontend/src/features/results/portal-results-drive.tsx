@@ -167,11 +167,16 @@ export function PortalResultsDrive({ resultSets, basePath, schoolCode }: PortalR
 
   return (
     <DriveBrowser
+      key={
+        openTestNumber == null
+          ? `results:${basePath}:tests`
+          : `results:${basePath}:test:${openTestNumber}`
+      }
       breadcrumbs={breadcrumbs}
       items={items}
       searchItems={searchItems}
       emptyText={emptyText}
-      searchPlaceholder="Search test or class"
+      searchPlaceholder={openTestNumber == null ? "Search tests" : "Search classes"}
     />
   );
 }

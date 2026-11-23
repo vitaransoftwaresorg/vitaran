@@ -30,6 +30,8 @@ export type ClassResultRow = {
   classLabel: string;
   marks: Array<number | null>;
   total: number | null;
+  /** Per-student max when a subject was not taken (e.g. 300 instead of 400). */
+  totalMax?: number | null;
   percentage: number | null;
 };
 
@@ -291,7 +293,8 @@ function drawToppers(ctx: Ctx, page: PDFPage, data: ClassResultPdfData, top: num
       size: 7.5,
       color: N_500,
     });
-    const score = `${fmt(row.total)}${data.totalMax ? ` / ${fmt(data.totalMax)}` : ""}`;
+    const rowMax = row.totalMax ?? data.totalMax;
+    const score = `${fmt(row.total)}${rowMax ? ` / ${fmt(rowMax)}` : ""}`;
     const scoreW = text(page, score, textX, cardsTop + 52, { font: ctx.fonts.bold, size: 14, color: BRAND_950 });
     if (row.percentage != null) {
       text(page, `${fmt(row.percentage)}%`, textX + scoreW + 8, cardsTop + 52, {
