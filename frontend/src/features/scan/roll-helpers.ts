@@ -29,11 +29,36 @@ export function isAmbiguousRollError(message: string) {
   return /matches \d+ students/i.test(message) || /ambiguous.?roll/i.test(message);
 }
 
-/** Show the enter-registration recovery panel for unread, duplicate, or ambiguous rolls. */
-export function canRecoverRoll(message: string) {
+/**
+ * Test ID / student placement mismatch (wrong class or program for this sheet).
+ * Examiner can enter a different registration for the same OMR.
+ */
+export function isStudentMismatchError(message: string) {
   return (
-    isRollUnreadError(message) || isDuplicateRollError(message) || isAmbiguousRollError(message)
+    /is for Class .+ but .+ is in Class/i.test(message) ||
+    /belongs to a different program than/i.test(message) ||
+    /check the test ID or the student's (class|program)/i.test(message)
   );
+}
+
+/** Unknown registration — do not offer enter-reg recovery (nothing to rematch). */
+export function isNoStudentRollError(message: string) {
+  return /no student with registration number/i.test(message);
+}
+
+/** Drop instructional tails from scan errors for the list UI. */
+export function displayScanError(message: string) {
+  return message
+    .replace(/\s*Fill exactly one bubble in each of the 7 columns\.?/gi, "")
+    .replace(/\s*Check the test ID or the student's (class|program)\.?/gi, "")
+    .trim();
+}
+
+/**
+ * Show enter-registration for every scan error except “No student with registration…”.
+ */
+export function canRecoverRoll(message: string) {
+  return !isNoStudentRollError(message);
 }
 
 export type AmbiguousRollDetails = {

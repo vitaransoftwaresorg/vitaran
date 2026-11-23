@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { useRegisterInPageBack } from "@/components/layout/in-page-back";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { commitScanAction, commitScansAction, previewScanAction } from "./actions";
 import {
@@ -17,9 +16,9 @@ import {
   subscribeScanBatch,
 } from "./batch-store";
 import { ScanCamera } from "./camera";
-import { FailedPages } from "./failed-pages";
 import { resumePdfJob, stopPdfJob } from "./pdf-batch";
 import type { ScanQueueItem } from "./queue-item";
+import { ScanSheetTable } from "./scan-sheet-table";
 import type { ScanPortal } from "@/services/scans";
 import { formatMarks, type ScanPreview } from "@/types/scan";
 
@@ -231,67 +230,91 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
           </div>
         ) : batch.length > 0 || job ? (
           <section className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
-            <header className="space-y-2 border-b border-neutral-100 px-4 py-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold tracking-wider text-brand-700 uppercase">
-                    PDF batch · {batch.length} sheet{batch.length === 1 ? "" : "s"} to review
-                  </p>
-                  <p className="text-sm text-neutral-600">
-                    {reading
-                      ? "Reading in the background — review or save sheets as they appear, or leave this page and come back."
-                      : "Open a sheet to check it, save sheets one by one, or save them all."}
-                  </p>
-                </div>
-                {job ? (
-                  <button
-                    type="button"
-                    onClick={clearReview}
-                    disabled={savingAll}
-                    className="shrink-0 rounded-lg border border-neutral-200 px-2.5 py-1 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
-                  >
-                    {reading ? "Stop" : "Close"}
-                  </button>
-                ) : null}
-              </div>
+            <header className="space-y-3 border-b border-neutral-100 px-5 py-4">
               {job ? (
-                <div className="space-y-1">
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-base font-bold tabular-nums text-neutral-950">
+                        Test ID {job.testId}
+                        {job.examPattern ? (
+                          <span className="font-semibold text-neutral-500"> · {job.examPattern}</span>
+                        ) : null}
+                      </p>
+                      {(job.keys?.length
+                        ? job.keys
+                        : batch[0]
+                          ? [
+                              {
+                                programName: batch[0].scan.student.programName,
+                                classLevel: batch[0].scan.student.classLevel,
+                                testNumber: batch[0].scan.testNumber,
+                                sectionName: batch[0].scan.student.sectionName,
+                              },
+                            ]
+                          : []
+                      ).map((key, index) => (
+                        <p
+                          key={`${key.programName}-${key.classLevel}-${key.testNumber}-${index}`}
+                          className="text-sm font-semibold text-neutral-800"
+                        >
+                          {key.programName}
+                          {" · "}
+                          Class {key.classLevel}
+                          {key.sectionName?.trim() ? `-${key.sectionName.trim()}` : ""}
+                          {" · "}
+                          Test No {key.testNumber}
+                        </p>
+                      ))}
+                    </div>
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 text-sm tabular-nums">
+                      {reading ? (
+                        <p className="flex items-center gap-1.5 text-neutral-500">
+                          <Loader2 className="size-3.5 animate-spin" />
+                          Reading page {Math.min(job.done + 1, job.pageCount)} of {job.pageCount}
+                        </p>
+                      ) : (
+                        <>
+                          <span className="font-semibold text-emerald-800">
+                            {Math.max(0, job.pageCount - job.failures.length)} ready
+                          </span>
+                          {job.failures.length > 0 ? (
+                            <span className="font-semibold text-red-700">
+                              {job.failures.length} failed
+                            </span>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+                  </div>
                   <div className="h-1.5 overflow-hidden rounded-full bg-neutral-100">
                     <div
                       className="h-full rounded-full bg-brand-700 transition-[width] duration-500"
                       style={{ width: `${Math.round((job.done / Math.max(1, job.pageCount)) * 100)}%` }}
                     />
                   </div>
-                  <p className="flex items-center gap-1.5 text-xs text-neutral-500 tabular-nums">
-                    {reading ? <Loader2 className="size-3 animate-spin" /> : null}
-                    {reading ? `Reading page ${Math.min(job.done + 1, job.pageCount)} of ${job.pageCount}` : `Read ${job.pageCount} pages`}
-                    {" · "}Test ID {job.testId}
-                    {job.duplicates
-                      ? ` · ${job.duplicates} duplicate sheet${job.duplicates === 1 ? "" : "s"} — enter the correct registration for each`
-                      : ""}
-                    {job.failures.length ? ` · ${job.failures.length} failed` : ""}
+                </div>
+              ) : batch[0] ? (
+                <div className="min-w-0 space-y-1">
+                  <p className="text-base font-bold tabular-nums text-neutral-950">
+                    Test ID {batch[0].scan.testId}
+                    {examPattern ? (
+                      <span className="font-semibold text-neutral-500"> · {examPattern}</span>
+                    ) : null}
                   </p>
-                  {job.failures.length ? (
-                    <FailedPages
-                      portal={portal}
-                      testId={job.testId}
-                      examPattern={job.examPattern}
-                      failures={job.failures}
-                      disabled={savingAll}
-                    />
-                  ) : null}
+                  <p className="text-sm font-semibold text-neutral-800">
+                    {batch[0].scan.student.programName}
+                    {" · "}
+                    Class {batch[0].scan.student.classLevel}
+                    {batch[0].scan.student.sectionName?.trim()
+                      ? `-${batch[0].scan.student.sectionName.trim()}`
+                      : ""}
+                    {" · "}
+                    Test No {batch[0].scan.testNumber}
+                  </p>
                 </div>
               ) : null}
             </header>
-            {batch.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm text-neutral-500">
-                {reading
-                  ? "Sheets appear here as soon as they are read."
-                  : job?.failures.length
-                    ? "Every sheet that was read is saved. Scan the failed pages again above, or close."
-                    : "Every sheet from this PDF is saved."}
-              </p>
-            ) : null}
             {savingAll ? (
               <div className="space-y-2 border-b border-brand-100 bg-brand-50/60 px-4 py-4" role="status" aria-live="polite">
                 <div className="flex items-center gap-2.5">
@@ -309,77 +332,20 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
                 <p className="text-xs text-neutral-500">Keep this page open until saving finishes.</p>
               </div>
             ) : null}
-            {batch.length > 0 ? (
-              <div className="flex items-center justify-between gap-3 border-b border-neutral-100 bg-neutral-50/60 px-4 py-2">
-                <p className="text-xs text-neutral-500">
-                  {savingAll
-                    ? `Saving ${saveProgress.done} of ${saveProgress.total}…`
-                    : `${batch.length} sheet${batch.length === 1 ? "" : "s"} ready to save`}
-                </p>
-                <Button type="button" size="sm" onClick={() => void saveAll()} disabled={savingAll || saving.size > 0}>
-                  {savingAll ? <Loader2 className="animate-spin" /> : null}
-                  Save all ({batch.length})
-                </Button>
-              </div>
+            {batch.length > 0 || (job?.failures.length ?? 0) > 0 ? (
+              <ScanSheetTable
+                portal={portal}
+                testId={job?.testId ?? batch[0]?.scan.testId ?? testId}
+                examPattern={job?.examPattern ?? examPattern}
+                batch={batch}
+                failures={job?.failures ?? []}
+                saving={saving}
+                savingAll={savingAll}
+                onSaveOne={(item) => void saveOne(item)}
+                onSaveAll={() => void saveAll()}
+                onOpenReview={openReview}
+              />
             ) : null}
-            <ul className="max-h-[36rem] divide-y divide-neutral-100 overflow-y-auto">
-              {batch.map((item, index) => {
-                const row = item.scan;
-                const busy = savingAll || saving.has(item.previewId);
-                return (
-                  <li key={item.previewId} className="flex items-center gap-2 pr-3 transition-colors hover:bg-neutral-50">
-                    <button
-                      type="button"
-                      onClick={() => openReview(index)}
-                      disabled={savingAll}
-                      className="flex min-w-0 flex-1 items-center gap-3 py-3 pl-4 text-left disabled:cursor-wait"
-                    >
-                      {row.sheetImage ? (
-                        <img
-                          src={row.sheetImage}
-                          alt=""
-                          className="h-14 w-10 shrink-0 rounded border border-neutral-200 bg-neutral-50 object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-14 w-10 shrink-0 items-center justify-center rounded border border-dashed border-neutral-200 bg-neutral-50 text-[9px] font-medium text-neutral-400">
-                          OMR
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-neutral-950">{row.student.name}</p>
-                        <p className="truncate text-xs text-neutral-500">
-                          #{index + 1} · Reg {row.student.rollNo} · Class {row.student.classLevel}-
-                          {row.student.sectionName?.trim() || "A"} · Test No {row.testNumber}
-                        </p>
-                      </div>
-                      <p className="shrink-0 text-sm font-bold tabular-nums text-brand-900">
-                        {formatMarks(row.total)}/{formatMarks(row.maxTotal)}
-                      </p>
-                    </button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => openReview(index)}
-                      disabled={savingAll}
-                      aria-label={`View ${row.student.name}`}
-                    >
-                      View
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() => void saveOne(item)}
-                      aria-label={`Save ${row.student.name}`}
-                    >
-                      {saving.has(item.previewId) ? <Loader2 className="animate-spin" /> : null}
-                      Save
-                    </Button>
-                  </li>
-                );
-              })}
-            </ul>
           </section>
         ) : (
           <p

@@ -34,12 +34,23 @@ export function clearScanBatch() {
   emit();
 }
 
+export type PdfJobKeyInfo = {
+  programName: string;
+  classLevel: number;
+  testNumber: number;
+  sectionName?: string | null;
+};
+
 /** PDF being read on the server; its sheets are appended to the batch as they finish. */
 export type PdfJob = {
   batchId: string;
   fileName: string;
   testId: string;
   examPattern: string;
+  /** Portal that started this job — used to refresh upload auth after a reload. */
+  portal: "admin" | "school" | "teacher";
+  /** Answer-key lines for this test ID (program / class) shown while reading. */
+  keys: PdfJobKeyInfo[];
   pageCount: number;
   done: number;
   finished: boolean;

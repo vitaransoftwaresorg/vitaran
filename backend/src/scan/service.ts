@@ -134,15 +134,16 @@ async function dropBatchFiles(batch: PdfBatch) {
   await removeBatchDir(batch.id);
 }
 
-/** Batches belong to the session that uploaded them (one school, one teacher, or admin). */
+/** Batches belong to the session that uploaded them (one school, one teacher, or admin operator). */
 function ownerOf(context: ScanContext) {
   if (context.kind === "school") return `school:${context.school.id}`;
   if (context.kind === "teacher") return `teacher:${context.teacher.id}`;
-  return "admin";
+  // Root + each employee get their own OMR PDF queue so devices can scan in parallel.
+  return `admin:${context.adminId}`;
 }
 
 export type ScanContext =
-  | { kind: "admin" }
+  | { kind: "admin"; adminId: string }
   | { kind: "school"; school: SchoolAccountDto }
   | { kind: "teacher"; teacher: TeacherAccountDto };
 
@@ -338,7 +339,7 @@ async function resolveKey(school: ScanSchool | null, tests: string[], student: S
         const classes = [...new Set(visible.map((key) => key.classLevel))].sort((a, b) => a - b);
         throw new AppError(
           422,
-          `Test ID ${testId} is for Class ${classes.join(", ")}, but ${who} is in Class ${student.classLevel}. Check the test ID or the student's class.`,
+          `Test ID ${testId} is for Class ${classes.join(", ")}, but ${who} is in Class ${student.classLevel}.`,
         );
       }
       const match = student.programCode
@@ -347,7 +348,7 @@ async function resolveKey(school: ScanSchool | null, tests: string[], student: S
       if (match.length === 0) {
         throw new AppError(
           422,
-          `Test ID ${testId} belongs to a different program than ${who}. Check the test ID or the student's program.`,
+          `Test ID ${testId} belongs to a different program than ${who}.`,
         );
       }
       return { key: match[0]!, school };
@@ -431,7 +432,7 @@ async function resolveStudent(
         422,
         typed
           ? `No student with registration number ${typed} in this school.`
-          : "Unable to read the registration number. Fill exactly one bubble in each of the 7 columns.",
+          : "Unable to read the registration number.",
       );
     }
     const enrolled = await studentRepository.findActiveStudentInSchool(school.id, rollNo);
@@ -454,7 +455,7 @@ async function resolveStudent(
   if (!rollNo && !digits.length) {
     throw new AppError(
       422,
-      "Unable to read the registration number. Fill exactly one bubble in each of the 7 columns.",
+      "Unable to read the registration number.",
     );
   }
   throw new AppError(422, `No student with registration number ${rollNo || digits[0] || ""}.`);
@@ -1055,7 +1056,9 @@ async function rebindPendingRoll(context: ScanContext, previewId: string, rollNo
     pending.delete(previewId);
     throw new AppError(410, "Scan expired. Scan again.");
   }
-  if (row.context.kind !== context.kind) throw new AppError(403, "This preview belongs to another session");
+  if (ownerOf(row.context) !== ownerOf(context)) {
+    throw new AppError(403, "This preview belongs to another session");
+  }
   const clean = rollNo.replace(/\D/g, "");
   if (!/^\d{7}$/.test(clean)) {
     throw new AppError(422, "Registration number must be 7 digits");
@@ -1143,7 +1146,9 @@ async function saveScan(context: ScanContext, previewId: string) {
     pending.delete(previewId);
     throw new AppError(410, "Scan expired. Scan again.");
   }
-  if (row.context.kind !== context.kind) throw new AppError(403, "This preview belongs to another session");
+  if (ownerOf(row.context) !== ownerOf(context)) {
+    throw new AppError(403, "This preview belongs to another session");
+  }
   await useCurrentKey(row);
   const testId = row.identity.testId;
   const folder = `omr/${row.school.id}/${testId}/${row.identity.rollNo}`;

@@ -137,10 +137,17 @@ export function ScanReviewPage({ portal }: { portal: ScanPortal }) {
             <p className="text-xs font-semibold tracking-wider text-brand-700 uppercase">Check then save</p>
             <p className="mt-1 text-[11px] font-semibold tracking-wider text-neutral-400 uppercase">Student Name</p>
             <h1 className="text-2xl font-bold text-neutral-950">{scan.student.name}</h1>
-            <p className="mt-1 text-sm text-neutral-600">
-              Registration no {scan.student.rollNo} · {scan.student.schoolName} · {scan.student.programName} ·
-              Class {scan.student.classLevel}-{scan.student.sectionName?.trim() || "A"} · Test No{" "}
-              {scan.testNumber} · Test ID {scan.testId}
+            <p className="mt-1 text-sm font-semibold text-neutral-800">
+              {scan.student.programName}
+              {" · "}
+              Class {scan.student.classLevel}-{scan.student.sectionName?.trim() || "A"}
+              {" · "}
+              Test No {scan.testNumber}
+              {" · "}
+              Test ID {scan.testId}
+            </p>
+            <p className="mt-0.5 text-sm text-neutral-600">
+              Registration no {scan.student.rollNo} · {scan.student.schoolName}
               {scan.examDate ? ` · ${scan.examDate}` : ""}
             </p>
           </div>
@@ -325,9 +332,9 @@ function SheetImage({ portal, previewId, marked }: { portal: ScanPortal; preview
         </div>
       ) : src ? (
         <ImageZoomPane
-          className="h-[min(70vh,40rem)]"
+          className="h-[min(80vh,48rem)]"
           toolbarLeft={view === "original" ? "Original OMR" : "Evaluated OMR"}
-          resetKey={view}
+          resetKey={`${previewId}:${view}`}
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- blob / data URL from scan API */}
           <img

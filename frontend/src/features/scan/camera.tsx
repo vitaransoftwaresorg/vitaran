@@ -178,8 +178,8 @@ export function ScanCamera({
     };
   }, [portal, enteredTest, testComplete]);
 
-  /** Every scan and upload needs a 6-digit test ID that has an answer key for this school. */
-  async function verifyTestId() {
+  /** Every scan and upload needs a 6–7 digit test ID that has an answer key. Returns keys when ok. */
+  async function verifyTestId(): Promise<false | TestIdCheck["keys"]> {
     if (!testComplete) {
       toast.error("Enter the 6-digit test ID from the answer key first.");
       return false;
@@ -189,14 +189,20 @@ export function ScanCamera({
       return false;
     }
     if (checked) {
-      if (!checked.ok) toast.error(checked.message);
-      return checked.ok;
+      if (!checked.ok) {
+        toast.error(checked.message);
+        return false;
+      }
+      return checked.keys;
     }
     const result = await checkTestIdAction(portal, enteredTest);
     const state = toCheckState(enteredTest, result);
     setTestCheck(state);
-    if (!state.ok) toast.error(state.message);
-    return state.ok;
+    if (!state.ok) {
+      toast.error(state.message);
+      return false;
+    }
+    return state.keys;
   }
 
   function patternField(id: string) {
@@ -373,7 +379,8 @@ export function ScanCamera({
       toast.error("Enter the test ID from the answer key before uploading the PDF.");
       return;
     }
-    if (!(await verifyTestId())) return;
+    const keys = await verifyTestId();
+    if (!keys) return;
     setBusy(true);
     setStatus("Uploading PDF…");
     try {
@@ -397,15 +404,24 @@ export function ScanCamera({
         `Reading ${pageCount} student sheet${pageCount === 1 ? "" : "s"} · Test ID ${forcedTestId}`,
         { description: "Reading carries on in the background. Review sheets as they appear." },
       );
-      await startPdfJob(portal, {
-        batchId,
-        fileName: file.name,
-        testId: forcedTestId,
-        examPattern,
-        pageCount,
-        done: 0,
-        finished: false,
-      });
+      await startPdfJob(
+        portal,
+        {
+          batchId,
+          fileName: file.name,
+          testId: forcedTestId,
+          examPattern,
+          pageCount,
+          done: 0,
+          finished: false,
+        },
+        keys.map((key) => ({
+          programName: key.programName,
+          classLevel: key.classLevel,
+          testNumber: key.testNumber,
+          sectionName: key.sectionName,
+        })),
+      );
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not read this PDF.");
     } finally {

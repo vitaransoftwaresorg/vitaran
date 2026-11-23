@@ -2,8 +2,11 @@ import type { SchoolAccount } from "./school";
 import type { TeacherAccount } from "./teacher";
 
 export type AdminProfile = {
+  id: string;
   email: string;
+  name: string;
   role: "admin";
+  isRoot: boolean;
 };
 
 export type AdminLoginResult = {

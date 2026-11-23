@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Loader2, Mail, Plus, Settings2, Trash2 } from "lucide-react";
+import { Loader2, Mail, Plus, Settings2, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
@@ -18,8 +18,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { silenceLive } from "@/features/live/silence";
 import { subjectLabel } from "@/features/schools/constants";
 import { cn } from "@/lib/utils";
+import type { AdminOperator } from "@/types/admin-operator";
 import type { AppSettings, SmeContact } from "@/types/settings";
 import { saveAdminSettingsAction } from "./actions";
+import { AdminEmployeesPanel } from "./admin-employees-panel";
 
 type ToggleKey = "maintenance" | "resources" | "keys" | "results";
 
@@ -36,6 +38,7 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type AdminSettingsFormProps = {
   initial: AppSettings;
+  operators: AdminOperator[];
 };
 
 function emptySme(): SmeContact {
@@ -48,7 +51,7 @@ function subjectItems(subject: string) {
   return options.map((value) => ({ value, label: subjectLabel(value) }));
 }
 
-export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
+export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps) {
   const [maintenanceMode, setMaintenanceMode] = useState(initial.maintenanceMode);
   const [teacherResourcesPublic, setTeacherResourcesPublic] = useState(
     initial.teacherResourcesPublic,
@@ -300,12 +303,20 @@ export function AdminSettingsForm({ initial }: AdminSettingsFormProps) {
             <Settings2 />
             General
           </TabsTrigger>
+          <TabsTrigger value="employees" className="px-1">
+            <Users />
+            Employees
+          </TabsTrigger>
           <TabsTrigger value="emails" className="px-1">
             <Mail />
             Objection emails
           </TabsTrigger>
         </TabsList>
       </div>
+
+      <TabsContent value="employees" className="space-y-6">
+        <AdminEmployeesPanel initial={operators} />
+      </TabsContent>
 
       <TabsContent value="general" className="space-y-6">
         <section className="rounded-xl border border-brand-200 bg-white p-5 shadow-[0_4px_16px_-8px_rgb(25_28_95/0.12)]">

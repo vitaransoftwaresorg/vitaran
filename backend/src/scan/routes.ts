@@ -221,7 +221,12 @@ function sendFile(res: Response, file: { data: Buffer; fileName: string }, type:
 
 export const adminOmScanRouter = Router();
 adminOmScanRouter.use(requireAdmin);
-adminOmScanRouter.use(omrRouter(() => ({ kind: "admin" })));
+adminOmScanRouter.use(
+  omrRouter((res) => {
+    const admin = res.locals.admin as { id: string };
+    return { kind: "admin", adminId: admin.id };
+  }),
+);
 
 export const schoolOmScanRouter = Router();
 schoolOmScanRouter.use(requireSchool);

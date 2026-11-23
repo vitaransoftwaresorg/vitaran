@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { Minus, Plus, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -13,7 +13,7 @@ function clampZoom(value: number) {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(value / ZOOM_STEP) * ZOOM_STEP));
 }
 
-/** ± / % / reset toolbar + ctrl/meta+wheel zoom around a sheet or card image. */
+/** ± / % / reset toolbar + wheel zoom + drag to pan around a sheet or card image. */
 export function ImageZoomPane({
   children,
   className,
@@ -28,10 +28,61 @@ export function ImageZoomPane({
   resetKey?: string | number;
 }) {
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
   const [prevKey, setPrevKey] = useState(resetKey);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+  } | null>(null);
+
   if (resetKey !== prevKey) {
     setPrevKey(resetKey);
     setZoom(DEFAULT_ZOOM);
+    setPan({ x: 0, y: 0 });
+  }
+
+  function setZoomAndMaybeResetPan(next: number) {
+    const value = clampZoom(next);
+    setZoom(value);
+    if (value === DEFAULT_ZOOM) setPan({ x: 0, y: 0 });
+  }
+
+  function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    // Let buttons / links inside the pane work normally.
+    if ((event.target as HTMLElement).closest("button, a, input, textarea, select")) return;
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: pan.x,
+      originY: pan.y,
+    };
+    setDragging(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  function onPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    setPan({
+      x: drag.originX + (event.clientX - drag.startX),
+      y: drag.originY + (event.clientY - drag.startY),
+    });
+  }
+
+  function endDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    setDragging(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
   }
 
   return (
@@ -44,7 +95,7 @@ export function ImageZoomPane({
             title="Zoom out"
             aria-label="Zoom out"
             disabled={zoom <= ZOOM_MIN}
-            onClick={() => setZoom((value) => clampZoom(value - ZOOM_STEP))}
+            onClick={() => setZoomAndMaybeResetPan(zoom - ZOOM_STEP)}
             className="inline-flex size-8 items-center justify-center text-neutral-700 hover:bg-neutral-50 disabled:opacity-40"
           >
             <Minus className="size-3.5" />
@@ -57,7 +108,7 @@ export function ImageZoomPane({
             title="Zoom in"
             aria-label="Zoom in"
             disabled={zoom >= ZOOM_MAX}
-            onClick={() => setZoom((value) => clampZoom(value + ZOOM_STEP))}
+            onClick={() => setZoomAndMaybeResetPan(zoom + ZOOM_STEP)}
             className="inline-flex size-8 items-center justify-center text-neutral-700 hover:bg-neutral-50 disabled:opacity-40"
           >
             <Plus className="size-3.5" />
@@ -66,8 +117,11 @@ export function ImageZoomPane({
             type="button"
             title="Reset to 100%"
             aria-label="Reset to 100%"
-            disabled={zoom === DEFAULT_ZOOM}
-            onClick={() => setZoom(DEFAULT_ZOOM)}
+            disabled={zoom === DEFAULT_ZOOM && pan.x === 0 && pan.y === 0}
+            onClick={() => {
+              setZoom(DEFAULT_ZOOM);
+              setPan({ x: 0, y: 0 });
+            }}
             className="inline-flex size-8 items-center justify-center border-l border-neutral-200 text-neutral-700 hover:bg-neutral-50 disabled:opacity-40"
           >
             <RotateCcw className="size-3.5" />
@@ -75,17 +129,36 @@ export function ImageZoomPane({
         </div>
       </div>
       <div
-        className="min-h-0 flex-1 overflow-auto p-2"
+        className={cn(
+          "min-h-0 flex-1 overflow-hidden p-2 touch-none",
+          dragging ? "cursor-grabbing" : "cursor-grab",
+        )}
         onWheel={(event) => {
-          if (!(event.ctrlKey || event.metaKey)) return;
+          if (!(event.ctrlKey || event.metaKey)) {
+            // Trackpad / mouse wheel pans when zoomed.
+            if (zoom === DEFAULT_ZOOM) return;
+            event.preventDefault();
+            setPan((current) => ({
+              x: current.x - event.deltaX,
+              y: current.y - event.deltaY,
+            }));
+            return;
+          }
           event.preventDefault();
           const direction = event.deltaY < 0 ? ZOOM_STEP : -ZOOM_STEP;
-          setZoom((value) => clampZoom(value + direction));
+          setZoomAndMaybeResetPan(zoom + direction);
         }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
       >
         <div
-          className="mx-auto origin-top transition-[width] duration-150"
-          style={{ width: `${zoom * 100}%` }}
+          className="mx-auto will-change-transform"
+          style={{
+            width: `${zoom * 100}%`,
+            transform: `translate(${pan.x}px, ${pan.y}px)`,
+          }}
         >
           {children}
         </div>

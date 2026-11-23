@@ -12,6 +12,7 @@ import {
   canRecoverRoll,
   isAmbiguousRollError,
   isDuplicateRollError,
+  isStudentMismatchError,
   ROLL_LENGTH,
   rollInput,
 } from "./roll-helpers";
@@ -50,12 +51,13 @@ export function OmrRollRecovery({
 }: OmrRollRecoveryProps) {
   const recoverable = canRecoverRoll(message);
   const duplicate = isDuplicateRollError(message);
+  const mismatch = isStudentMismatchError(message);
   const duplicateRoll =
     message.match(/duplicate registration number\s+(\d+)/i)?.[1] ??
     (initialRollNo.trim() ? rollInput(initialRollNo) : "");
   const ambiguous = isAmbiguousRollError(message) || initialMatches.length > 1;
-  // Duplicates: leave the field empty so the examiner types the correct reg (not the colliding one).
-  const seedRoll = duplicate ? "" : initialRollNo;
+  // Duplicate / class-program mismatch: leave empty so they type a different reg.
+  const seedRoll = duplicate || mismatch ? "" : initialRollNo;
   const [rollNo, setRollNo] = useState(() => rollInput(seedRoll));
   const [matches, setMatches] = useState<OmrStudentMatch[]>(initialMatches);
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -68,11 +70,13 @@ export function OmrRollRecovery({
 
   useEffect(() => {
     setRollNo(rollInput(seedRoll));
-    setMatches(duplicate ? [] : initialMatches);
-    setSelectedId(!duplicate && initialMatches.length === 1 ? initialMatches[0]!.id : null);
+    setMatches(duplicate || mismatch ? [] : initialMatches);
+    setSelectedId(
+      !duplicate && !mismatch && initialMatches.length === 1 ? initialMatches[0]!.id : null,
+    );
     setLookupError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset when the scan error / seed list changes
-  }, [message, initialKey, duplicate]);
+  }, [message, initialKey, duplicate, mismatch]);
 
   useEffect(() => {
     const roll = rollInput(rollNo);
@@ -145,18 +149,22 @@ export function OmrRollRecovery({
     await onSaveWithRoll(pick.rollNo, pick.schoolId);
   }
 
+  const prompt = ambiguous
+    ? `Same reg at ${matches.length || "several"} schools — pick or enter another`
+    : duplicate
+      ? duplicateRoll
+        ? `Duplicate ${duplicateRoll} — enter correct reg`
+        : "Duplicate — enter correct reg"
+      : mismatch
+        ? "Wrong student — enter correct reg"
+        : "Enter registration number";
+
   return (
-    <div className="space-y-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-sm text-amber-950">
-      <p className="text-xs font-medium text-amber-900/90">
-        {ambiguous
-          ? `Same registration at ${matches.length || "several"} schools — pick the student or enter another reg:`
-          : duplicate
-            ? duplicateRoll
-              ? `Duplicate registration number ${duplicateRoll} — please enter the correct registration number:`
-              : "Duplicate registration number — please enter the correct registration number:"
-            : "Couldn’t read registration — enter it:"}
-      </p>
-      <div className="flex gap-2">
+    <div className="space-y-1 text-amber-950">
+      <div className="flex w-full items-center gap-2">
+        <label htmlFor={inputId} className="sr-only">
+          {prompt}
+        </label>
         <Input
           id={inputId}
           inputMode="numeric"
@@ -164,26 +172,26 @@ export function OmrRollRecovery({
           maxLength={ROLL_LENGTH}
           value={rollNo}
           disabled={busy}
-          placeholder="Enter correct 7-digit reg"
-          aria-label="Correct registration number"
-          className="h-9 flex-1 rounded-lg border-amber-200 bg-white px-2.5 text-sm tracking-widest tabular-nums"
+          placeholder="Enter Reg Number"
+          aria-label={prompt}
+          className="h-7 w-[40%] max-w-[40%] min-w-0 shrink-0 rounded-md border border-amber-200 bg-white px-2 text-xs tracking-widest tabular-nums"
           onChange={(event) => setRollNo(rollInput(event.currentTarget.value))}
         />
         <Button
           type="button"
           size="sm"
-          className="h-9 shrink-0"
+          className="h-7 shrink-0 px-2.5 text-xs"
           disabled={busy || !canSave || lookingUp}
           onClick={() => void save()}
         >
-          {busy || lookingUp ? <Loader2 className="size-3.5 animate-spin" /> : null}
+          {busy || lookingUp ? <Loader2 className="size-3 animate-spin" /> : null}
           Save
         </Button>
       </div>
       {lookingUp && rollComplete ? (
         <p className="text-[11px] text-amber-900/60">Looking up…</p>
       ) : matches.length > 1 ? (
-        <ul className="max-h-40 space-y-1 overflow-y-auto rounded-md border border-amber-200/80 bg-white/80 p-1">
+        <ul className="max-h-28 space-y-0.5 overflow-y-auto rounded-md border border-amber-200/80 bg-white/80 p-0.5">
           {matches.map((student) => {
             const active = student.id === selectedId;
             return (
@@ -196,7 +204,7 @@ export function OmrRollRecovery({
                     setRollNo(rollInput(student.rollNo));
                   }}
                   className={cn(
-                    "w-full rounded-md px-2 py-1.5 text-left text-xs transition",
+                    "w-full rounded-md px-2 py-1 text-left text-xs transition",
                     active
                       ? "bg-emerald-100 font-medium text-emerald-950 ring-1 ring-emerald-300"
                       : "text-amber-950 hover:bg-amber-100/80",
@@ -209,9 +217,7 @@ export function OmrRollRecovery({
           })}
         </ul>
       ) : matches.length === 1 ? (
-        <p className="truncate text-xs font-medium text-emerald-900">
-          {matchLabel(matches[0]!)}
-        </p>
+        <p className="truncate text-[11px] font-medium text-emerald-900">{matchLabel(matches[0]!)}</p>
       ) : lookupError && rollComplete ? (
         <p className="text-[11px] text-amber-900/80">{shortLookupError(lookupError)}</p>
       ) : null}

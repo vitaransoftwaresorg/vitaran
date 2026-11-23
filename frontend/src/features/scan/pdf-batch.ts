@@ -3,7 +3,15 @@
 import { toast } from "sonner";
 import type { ScanPortal } from "@/services/scans";
 import type { PdfBatchSummary } from "@/types/scan";
-import { getPdfJob, getScanBatch, setPdfJob, setScanBatch, type PdfFailure, type PdfJob } from "./batch-store";
+import {
+  getPdfJob,
+  getScanBatch,
+  setPdfJob,
+  setScanBatch,
+  type PdfFailure,
+  type PdfJob,
+  type PdfJobKeyInfo,
+} from "./batch-store";
 import {
   dismissPdfBatchDirect,
   fetchActivePdfBatchDirect,
@@ -35,40 +43,23 @@ function schedule(delay: number) {
   timer = setTimeout(() => void poll(), delay);
 }
 
-function summarize(job: PdfJob) {
-  const parts = [`${job.read} sheet${job.read === 1 ? "" : "s"} read`];
-  if (job.duplicates) {
-    parts.push(
-      `${job.duplicates} duplicate sheet${job.duplicates === 1 ? "" : "s"} — enter the correct registration for each`,
-    );
-  }
-  const otherFailures = Math.max(0, job.failures.length - job.duplicates);
-  if (otherFailures) parts.push(`${otherFailures} failed`);
-  return parts.join(" · ");
-}
-
-const failureLine = (failure: PdfFailure) => `Page ${failure.page}: ${failure.message}`;
-
 function onFinished() {
   const job = getPdfJob();
   if (!job) return;
   if (!getScanBatch().length && !job.failures.length) {
     // Every sheet was saved already; a PDF picked up again after a reload has nothing left to say.
-    if (!resumedFinished) toast.success(`PDF done · ${summarize(job)}`);
+    if (!resumedFinished) toast.success(`${job.pageCount} ready`);
     void stopPdfJob();
     return;
   }
   if (resumedFinished) return;
-  if (job.failures.length) {
-    toast.warning(`PDF read · ${summarize(job)}`, {
-      description:
-        job.failures.slice(0, 6).map(failureLine).join("\n") +
-        (job.failures.length > 6 ? `\n+${job.failures.length - 6} more` : "") +
-        "\nEnter registration or scan again under “Pages that could not be read”.",
-      duration: 15000,
-      classNames: { description: "whitespace-pre-line" },
-    });
-  } else toast.success(`PDF read · ${summarize(job)}`);
+  const ready = Math.max(0, job.pageCount - job.failures.length);
+  const failed = job.failures.length;
+  if (failed) {
+    toast.error(`${ready} ready · ${failed} failed`);
+  } else {
+    toast.success(`${ready} ready — tap Save (${ready})`);
+  }
 }
 
 /** A failed page was scanned again and read: it leaves the failed list. */
@@ -79,10 +70,27 @@ export function resolvePdfFailure(page: number) {
 }
 
 /** Object URL of a failed PDF page, as rendered on the server. */
-export async function fetchFailedPageImage(page: number) {
+export async function fetchFailedPageImage(page: number, portal: ScanPortal) {
   const job = getPdfJob();
-  if (!job || !auth) throw new Error("This PDF is no longer open.");
-  return fetchPdfPageImageDirect(auth.batchesUrl, auth.token, job.batchId, page);
+  if (!job) throw new Error("This PDF is no longer open. Upload the PDF again.");
+  // Always refresh auth for this portal — module auth is lost on remount / HMR.
+  const load = async () => {
+    const session = await getAuth(portal);
+    return fetchPdfPageImageDirect(session.batchesUrl, session.token, job.batchId, page);
+  };
+  try {
+    return await load();
+  } catch (error) {
+    // Stale token or owner mismatch after login switch — one retry with a fresh session.
+    auth = null;
+    try {
+      return await load();
+    } catch {
+      throw error instanceof Error
+        ? error
+        : new Error("Could not load this page. Upload the PDF again.");
+    }
+  }
 }
 
 function failureFromItem(item: {
@@ -123,7 +131,9 @@ async function poll() {
       );
     }
 
-    const previews = status.items.flatMap((item) => (item.preview ? [item.preview] : []));
+    const previews = status.items.flatMap((item) =>
+      item.preview ? [{ ...item.preview, pdfPage: item.page }] : [],
+    );
     if (previews.length) {
       setScanBatch([
         ...getScanBatch().filter((preview) => !collideRolls.has(preview.scan.student.rollNo.trim())),
@@ -140,7 +150,22 @@ async function poll() {
       // Prefer the latest message (e.g. “appears on 2 sheets” → “appears on 3 sheets”).
       byPage.set(row.page, row);
     }
-    const mergedFailures = [...byPage.values()].sort((a, b) => a.page - b.page);
+    // Keep same-registration duplicates consecutive (by roll, then page) — not mixed.
+    const mergedFailures = [...byPage.values()].sort((a, b) => {
+      const aDup =
+        /duplicate registration number/i.test(a.message) ||
+        /same registration number as page/i.test(a.message);
+      const bDup =
+        /duplicate registration number/i.test(b.message) ||
+        /same registration number as page/i.test(b.message);
+      if (aDup !== bDup) return aDup ? -1 : 1;
+      if (aDup && bDup) {
+        const aRoll = a.rollNo?.trim() || "";
+        const bRoll = b.rollNo?.trim() || "";
+        if (aRoll && bRoll && aRoll !== bRoll) return aRoll.localeCompare(bRoll);
+      }
+      return a.page - b.page;
+    });
     const duplicatePages = mergedFailures.filter(
       (row) =>
         /duplicate registration number/i.test(row.message) ||
@@ -172,12 +197,14 @@ async function poll() {
   schedule(POLL_MS);
 }
 
-function begin(summary: PdfBatchSummary) {
+function begin(portal: ScanPortal, summary: PdfBatchSummary, keys: PdfJobKeyInfo[] = []) {
   setPdfJob({
     batchId: summary.batchId,
     fileName: summary.fileName,
     testId: summary.testId,
     examPattern: summary.examPattern ?? "MPCB",
+    portal,
+    keys,
     pageCount: summary.pageCount,
     done: summary.done,
     finished: false,
@@ -191,21 +218,36 @@ function begin(summary: PdfBatchSummary) {
 }
 
 /** Right after upload: the server is already reading; pull sheets in as they finish. */
-export async function startPdfJob(portal: ScanPortal, summary: PdfBatchSummary) {
+export async function startPdfJob(
+  portal: ScanPortal,
+  summary: PdfBatchSummary,
+  keys: PdfJobKeyInfo[] = [],
+) {
   await getAuth(portal);
   resumedFinished = false;
-  begin(summary);
+  begin(portal, summary, keys);
 }
 
 /** Back on the scan page after a reload or another tab: carry on with the PDF still on the server. */
 export async function resumePdfJob(portal: ScanPortal) {
-  if (getPdfJob()) return;
+  const existing = getPdfJob();
+  if (existing) {
+    // Job survived a remount — refresh auth so View / Save still work.
+    try {
+      await getAuth(portal);
+      if (existing.portal !== portal) setPdfJob({ ...existing, portal });
+      if (!existing.finished) schedule(0);
+    } catch {
+      // Keep the job; image fetch will retry auth.
+    }
+    return;
+  }
   try {
     const { token, batchesUrl } = await getAuth(portal);
     const active = await fetchActivePdfBatchDirect(batchesUrl, token);
     if (!active || getPdfJob() || getScanBatch().length) return;
     resumedFinished = active.finished;
-    begin(active);
+    begin(portal, active);
   } catch {
     // Nothing to resume.
   }

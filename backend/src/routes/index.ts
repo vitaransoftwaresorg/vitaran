@@ -40,6 +40,7 @@ import {
 } from "./student.routes.js";
 import { adminOmScanRouter, schoolOmScanRouter, teacherOmScanRouter } from "../scan/routes.js";
 import { schoolTeacherRouter, teacherRouter } from "./teacher.routes.js";
+import { adminOperatorRouter } from "./admin-operator.routes.js";
 import { adminSettingsRouter, publicSettingsRouter } from "./settings.routes.js";
 import { blockIfMaintenance } from "../middleware/maintenance.js";
 
@@ -50,6 +51,7 @@ apiRouter.use("/auth", authRouter);
 apiRouter.use("/settings", publicSettingsRouter);
 apiRouter.use("/public/events", publicEventsRouter);
 apiRouter.use("/admin/settings", adminSettingsRouter);
+apiRouter.use("/admin/operators", adminOperatorRouter);
 apiRouter.get("/dashboard", requireAdmin, getAdminDashboard);
 apiRouter.use("/schools", schoolRouter);
 apiRouter.use("/schools/:id/student-resources", adminSchoolStudentResourceRouter);

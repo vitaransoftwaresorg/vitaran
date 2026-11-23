@@ -85,7 +85,12 @@ export type OmScan = {
   createdAt: string;
 };
 
-export type ScanPreview = { previewId: string; scan: OmScan };
+export type ScanPreview = {
+  previewId: string;
+  scan: OmScan;
+  /** PDF page this sheet came from (1-based); omitted for camera / single uploads. */
+  pdfPage?: number;
+};
 
 /** A PDF being read on the server, one student sheet per page. */
 export type PdfBatchSummary = {

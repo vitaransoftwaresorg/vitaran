@@ -156,7 +156,7 @@ export async function readSheet(image: Buffer, identity: SheetIdentity = {}): Pr
     logger.warn({ rollCandidates, markCount: bubbles.markCount }, "registration bubbles missed");
     throw new AppError(
       422,
-      "Unable to read the registration number. Fill exactly one bubble in each of the 7 columns.",
+      "Unable to read the registration number.",
     );
   }
   const testCandidates = givenTest
