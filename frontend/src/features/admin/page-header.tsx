@@ -27,7 +27,7 @@ export function PageHeader({
   const hasLead = Boolean(title || description || count !== undefined);
 
   return (
-    <div className="mb-6 flex flex-col gap-3 sm:gap-4">
+    <div className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2">
       {hasLead ? (
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
           {title ? (
@@ -49,7 +49,7 @@ export function PageHeader({
             <p
               className={
                 title
-                  ? "basis-full text-sm text-muted-foreground"
+                  ? "text-sm text-muted-foreground"
                   : "text-sm font-medium text-neutral-600 tabular-nums"
               }
             >
@@ -59,14 +59,10 @@ export function PageHeader({
         </div>
       ) : null}
 
-      {toolbar || actions ? (
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-          {toolbar ? <div className="min-w-0 shrink-0">{toolbar}</div> : null}
-          {actions ? (
-            <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">
-              {actions}
-            </div>
-          ) : null}
+      {toolbar ? <div className="min-w-0 shrink-0">{toolbar}</div> : null}
+      {actions ? (
+        <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">
+          {actions}
         </div>
       ) : null}
     </div>

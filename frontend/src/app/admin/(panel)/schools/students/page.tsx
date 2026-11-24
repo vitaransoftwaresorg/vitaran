@@ -92,50 +92,52 @@ export default async function AdminAllStudentsPage({
         title={school ? undefined : "Students"}
         description={description}
         count={school ? undefined : schools.length}
-        toolbar={<AdminStudentRollSearch schoolId={school?.id} />}
         actions={
-          school && inClass && classLevel != null ? (
-            <div className="flex flex-wrap items-center gap-2">
-              {classScopeLabel ? (
-                <ClassProfilesPdfActions
-                  portal="admin"
-                  studentIds={roster.map((student) => student.id)}
-                  scopeLabel={classScopeLabel}
-                  schoolName={school.name}
-                  subjects={subjectsForClassLevel(classLevel)}
-                />
-              ) : null}
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            <AdminStudentRollSearch schoolId={school?.id} />
+            {school && inClass && classLevel != null ? (
+              <>
+                {classScopeLabel ? (
+                  <ClassProfilesPdfActions
+                    portal="admin"
+                    studentIds={roster.map((student) => student.id)}
+                    scopeLabel={classScopeLabel}
+                    schoolName={school.name}
+                    subjects={subjectsForClassLevel(classLevel)}
+                  />
+                ) : null}
+                <Link
+                  href={
+                    section
+                      ? `/admin/schools/${school.id}/students/new?class=${classLevel}&section=${encodeURIComponent(section)}`
+                      : `/admin/schools/${school.id}/students/new?class=${classLevel}`
+                  }
+                  className={cn(buttonVariants({ size: "sm" }), "h-8 gap-1.5 rounded-lg")}
+                >
+                  <Plus className="size-4" />
+                  Add students
+                </Link>
+                {section || !(organization?.sections ?? []).some((row) => row.classLevel === classLevel) ? (
+                  <DeleteRosterStudentsButton
+                    mode="admin"
+                    schoolId={school.id}
+                    classLevel={classLevel}
+                    sectionId={sectionIds?.length === 1 ? sectionIds[0] : null}
+                    sectionLabel={section}
+                    studentCount={showRosterTable ? (studentsPage?.pagination.total ?? roster.length) : roster.length}
+                  />
+                ) : null}
+              </>
+            ) : school && !inClass ? (
               <Link
-                href={
-                  section
-                    ? `/admin/schools/${school.id}/students/new?class=${classLevel}&section=${encodeURIComponent(section)}`
-                    : `/admin/schools/${school.id}/students/new?class=${classLevel}`
-                }
-                className={cn(buttonVariants({ size: "sm" }), "h-8 gap-1.5 rounded-lg")}
+                href={`/admin/schools/${school.id}/students/import`}
+                className={cn(buttonVariants({ size: "sm", variant: "outline" }), "h-8 gap-1.5 rounded-lg")}
               >
-                <Plus className="size-4" />
-                Add students
+                <FileSpreadsheet className="size-4" />
+                Import all students
               </Link>
-              {section || !(organization?.sections ?? []).some((row) => row.classLevel === classLevel) ? (
-                <DeleteRosterStudentsButton
-                  mode="admin"
-                  schoolId={school.id}
-                  classLevel={classLevel}
-                  sectionId={sectionIds?.length === 1 ? sectionIds[0] : null}
-                  sectionLabel={section}
-                  studentCount={showRosterTable ? (studentsPage?.pagination.total ?? roster.length) : roster.length}
-                />
-              ) : null}
-            </div>
-          ) : school && !inClass ? (
-            <Link
-              href={`/admin/schools/${school.id}/students/import`}
-              className={cn(buttonVariants({ size: "sm", variant: "outline" }), "h-8 gap-1.5 rounded-lg")}
-            >
-              <FileSpreadsheet className="size-4" />
-              Import all students
-            </Link>
-          ) : undefined
+            ) : null}
+          </div>
         }
       />
       <StudentsDrive

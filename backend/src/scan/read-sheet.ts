@@ -1,3 +1,4 @@
+import sharp from "sharp";
 import { ZodError } from "zod";
 import { AppError } from "../utils/app-error.js";
 import { logger } from "../utils/logger.js";
@@ -123,49 +124,63 @@ function cleanTest(value?: string) {
   return (value ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
-/**
- * Phone camera and laptop upload both run this pipeline:
- * 1. sharp – orient, quality gate, warp
- * 2. Vitaran OMR template – 100 A/B/C/D answers
- * 3. Typed registration / test ID on phone; otherwise bubbles + Tesseract
- * 4. zod – validate extracted answers
- * BullMQ runs this job for a batch of sheets (see queue.ts).
- */
-export async function readSheet(image: Buffer, identity: SheetIdentity = {}): Promise<SheetRead> {
-  const prepared = await prepareSheet(image, { flat: identity.flat, corners: identity.corners });
-  const bubbles = readAnswerBubbles(prepared.rgba);
-  // On photos the template guess misreads shadows and creases as answers; PDF pages are flat and keep it.
-  if (!identity.flat && !bubbles.gridFound) {
-    logger.warn({ markCount: bubbles.markCount, flags: bubbles.flags.length }, "answer grid not found in photo");
-    throw new AppError(
-      422,
-      "The answer bubbles aren't clear in this photo. Scan again with the whole sheet flat, sharp and in good light.",
-    );
-  }
-  const givenRoll = cleanRoll(identity.rollNo);
-  const givenTest = cleanTest(identity.testId);
-  // When the examiner typed the test ID, skip header OCR entirely (bubbles only).
-  const printed = givenTest
-    ? { name: "", testId: givenTest, testCandidates: [givenTest], examDate: "" }
-    : await readPrintedDetails(prepared.rgba);
-  const rollCandidates = givenRoll
-    ? [givenRoll]
-    : readRollBubbleCandidates(prepared.rgba).filter(isPlausibleRoll);
-  const rollNo = givenRoll || rollCandidates[0] || "";
-  if (!rollNo) {
-    logger.warn({ rollCandidates, markCount: bubbles.markCount }, "registration bubbles missed");
-    throw new AppError(
-      422,
-      "Unable to read the registration number.",
-    );
-  }
-  const testCandidates = givenTest
-    ? [givenTest]
-    : unique([printed.testId, ...printed.testCandidates]);
-  if (!testCandidates.length) {
-    throw new AppError(422, "Enter the test ID from the answer key, then scan again.");
-  }
+type OrientedAttempt =
+  | { ok: true; read: SheetRead; score: number; gridFound: boolean }
+  | { ok: false; error: unknown; score: number };
+
+function scoreRead(gridFound: boolean, rollNo: string, markCount: number, flagCount: number) {
+  return (gridFound ? 1000 : 0) + (isPlausibleRoll(rollNo) ? 200 : 0) + markCount * 2 - flagCount;
+}
+
+async function rotate180(image: Buffer) {
+  return sharp(image).rotate(180).jpeg({ quality: 92, mozjpeg: true }).toBuffer();
+}
+
+/** One orientation pass — no auto-flip. */
+async function readSheetOriented(image: Buffer, identity: SheetIdentity = {}): Promise<OrientedAttempt> {
   try {
+    const prepared = await prepareSheet(image, { flat: identity.flat, corners: identity.corners });
+    const bubbles = readAnswerBubbles(prepared.rgba);
+    // On photos the template guess misreads shadows and creases as answers; PDF pages are flat and keep it.
+    if (!identity.flat && !bubbles.gridFound) {
+      logger.warn({ markCount: bubbles.markCount, flags: bubbles.flags.length }, "answer grid not found in photo");
+      return {
+        ok: false,
+        score: scoreRead(false, "", bubbles.markCount, bubbles.flags.length),
+        error: new AppError(
+          422,
+          "The answer bubbles aren't clear in this photo. Scan again with the whole sheet flat, sharp and in good light.",
+        ),
+      };
+    }
+    const givenRoll = cleanRoll(identity.rollNo);
+    const givenTest = cleanTest(identity.testId);
+    // When the examiner typed the test ID, skip header OCR entirely (bubbles only).
+    const printed = givenTest
+      ? { name: "", testId: givenTest, testCandidates: [givenTest], examDate: "" }
+      : await readPrintedDetails(prepared.rgba);
+    const rollCandidates = givenRoll
+      ? [givenRoll]
+      : readRollBubbleCandidates(prepared.rgba).filter(isPlausibleRoll);
+    const rollNo = givenRoll || rollCandidates[0] || "";
+    if (!rollNo) {
+      logger.warn({ rollCandidates, markCount: bubbles.markCount }, "registration bubbles missed");
+      return {
+        ok: false,
+        score: scoreRead(Boolean(bubbles.gridFound), "", bubbles.markCount, bubbles.flags.length),
+        error: new AppError(422, "Unable to read the registration number."),
+      };
+    }
+    const testCandidates = givenTest
+      ? [givenTest]
+      : unique([printed.testId, ...printed.testCandidates]);
+    if (!testCandidates.length) {
+      return {
+        ok: false,
+        score: scoreRead(Boolean(bubbles.gridFound), rollNo, bubbles.markCount, bubbles.flags.length),
+        error: new AppError(422, "Enter the test ID from the answer key, then scan again."),
+      };
+    }
     const parsed = parseExtractedSheet({
       rollNo,
       rollCandidates: unique(rollCandidates),
@@ -179,9 +194,71 @@ export async function readSheet(image: Buffer, identity: SheetIdentity = {}): Pr
       confidence: Math.max(0.2, Math.min(1, bubbles.markCount / 100)),
       bubbles: bubbles.bubbles,
     });
-    return { ...parsed, jpeg: prepared.jpeg };
+    const read: SheetRead = { ...parsed, jpeg: prepared.jpeg };
+    return {
+      ok: true,
+      read,
+      gridFound: Boolean(bubbles.gridFound),
+      score: scoreRead(Boolean(bubbles.gridFound), rollNo, bubbles.markCount, bubbles.flags.length),
+    };
   } catch (error) {
-    if (error instanceof ZodError) throw new AppError(422, "Could not validate the extracted answers.");
-    throw error;
+    if (error instanceof ZodError) {
+      return { ok: false, score: 0, error: new AppError(422, "Could not validate the extracted answers.") };
+    }
+    return { ok: false, score: 0, error };
   }
+}
+
+/** Strong upright signal — skip the 180° retry to keep large PDF batches fast. */
+function looksUpright(attempt: OrientedAttempt) {
+  return attempt.ok === true && attempt.gridFound && isPlausibleRoll(attempt.read.rollNo);
+}
+
+function throwAttempt(error: unknown): never {
+  if (error instanceof Error) throw error;
+  throw new AppError(422, "Could not read this OMR sheet.");
+}
+
+/**
+ * Phone camera and laptop upload both run this pipeline:
+ * 1. sharp – orient, quality gate, warp
+ * 2. If the sheet is upside down, rotate 180° and keep the better read
+ * 3. Vitaran OMR template – 100 A/B/C/D answers
+ * 4. Typed registration / test ID on phone; otherwise bubbles + Tesseract
+ * 5. zod – validate extracted answers
+ * BullMQ runs this job for a batch of sheets (see queue.ts).
+ */
+export async function readSheet(image: Buffer, identity: SheetIdentity = {}): Promise<SheetRead> {
+  // Phone crop corners already define orientation — do not flip under the user.
+  if (identity.corners?.length === 4) {
+    const attempt = await readSheetOriented(image, identity);
+    if (attempt.ok) return attempt.read;
+    throwAttempt(attempt.error);
+  }
+
+  const first = await readSheetOriented(image, identity);
+  if (looksUpright(first) && first.ok) return first.read;
+
+  let flipped: Buffer;
+  try {
+    flipped = await rotate180(image);
+  } catch (error) {
+    if (first.ok) return first.read;
+    throwAttempt(first.error instanceof Error ? first.error : error);
+  }
+
+  const second = await readSheetOriented(flipped, identity);
+  if (second.ok && (!first.ok || second.score > first.score)) {
+    logger.info(
+      {
+        firstScore: first.score,
+        secondScore: second.score,
+        flat: Boolean(identity.flat),
+      },
+      "OMR sheet was upside down — used 180° rotation",
+    );
+    return second.read;
+  }
+  if (first.ok) return first.read;
+  throwAttempt(first.error);
 }
