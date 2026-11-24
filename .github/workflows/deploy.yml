@@ -60,9 +60,8 @@ jobs:
              # from manual edits/rsync so pull never fails on dirty trees.
              git fetch origin main
              git reset --hard origin/main
+             # backend/data holds durable OMR batches (gitignored); exclude so git clean keeps them.
              git clean -fd -e backend/.env -e frontend/.env.production -e frontend/.env.local -e backend/data
-             # Durable OMR batch/preview store (survives PM2 reload; kept by git-clean -e).
-             mkdir -p backend/data/omr
              cd backend
              npm ci
              npx prisma generate
