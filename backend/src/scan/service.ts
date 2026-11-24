@@ -62,9 +62,10 @@ async function keepSample(bytes: Buffer, fileName: string) {
 
 const IMAGE_MAX = 8 * 1024 * 1024;
 const PDF_MAX = 500 * 1024 * 1024;
-const PREVIEW_TTL_MS = 60 * 60 * 1000;
+/** Keep scanned sheets available long enough to review, fix, and save. */
+const PREVIEW_TTL_MS = 3 * 60 * 60 * 1000;
 /** Idle TTL from the last finished page (refreshed as each page completes). */
-const PDF_BATCH_TTL_MS = 60 * 60 * 1000;
+const PDF_BATCH_TTL_MS = 3 * 60 * 60 * 1000;
 
 type PdfBatchItem = {
   page: number;

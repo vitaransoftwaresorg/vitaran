@@ -95,7 +95,8 @@ function logoFieldError(file: File): string | null {
 }
 
 function studentResourcesFromForm(formData: FormData) {
-  const files: Array<{ classLevel: number; subject: string; file: File }> = [];
+  const files: Array<{ programCode: string; classLevel: number; subject: string; file: File }> =
+    [];
   for (const [name, value] of formData.entries()) {
     if (!(value instanceof File) || value.size <= 0) continue;
     const slot = parseResourceFieldName(name);

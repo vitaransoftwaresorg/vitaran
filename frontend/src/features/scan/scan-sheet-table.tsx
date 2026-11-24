@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Eye, Loader2 } from "lucide-react";
+import { Download, Eye, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { ImageZoomPane } from "@/components/shared/image-zoom-pane";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,38 @@ import {
 import { getOmrUploadAuthAction } from "./upload-auth";
 
 const NO_MATCHES: OmrStudentMatch[] = [];
+
+function triggerDownload(url: string, filename: string, revoke = false) {
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.rel = "noopener";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  if (revoke) URL.revokeObjectURL(url);
+}
+
+async function downloadReadyOmr(portal: ScanPortal, item: ScanPreview) {
+  const roll = item.scan.student.rollNo || "sheet";
+  const page = item.pdfPage != null ? `-p${item.pdfPage}` : "";
+  const filename = `OMR-${roll}${page}.jpg`;
+  if (item.scan.sheetImage) {
+    triggerDownload(item.scan.sheetImage, filename);
+    return;
+  }
+  const auth = await getOmrUploadAuthAction(portal);
+  if (!auth.ok) throw new Error(auth.message);
+  const url = await fetchPreviewSheetDirect(auth.previewsUrl, auth.token, item.previewId, "preview");
+  triggerDownload(url, filename, true);
+}
+
+async function downloadFailedOmr(portal: ScanPortal, failure: PdfFailure) {
+  const roll = failure.rollNo?.trim() || "page";
+  const filename = `OMR-${roll}-p${failure.page}.jpg`;
+  const url = await fetchFailedPageImage(failure.page, portal);
+  triggerDownload(url, filename, true);
+}
 
 type ReadyView = { kind: "ready"; item: ScanPreview };
 type FailedView = { kind: "failed"; failure: PdfFailure };
@@ -80,8 +112,33 @@ export function ScanSheetTable({
   const rows = useMemo(() => buildRows(batch, failures), [batch, failures]);
   const [viewing, setViewing] = useState<Viewing | null>(null);
   const [savingPage, setSavingPage] = useState<number | null>(null);
+  const [downloading, setDownloading] = useState<string | null>(null);
   const [pageMatches, setPageMatches] = useState<Record<number, OmrStudentMatch[]>>({});
   const [pageRollHints, setPageRollHints] = useState<Record<number, string>>({});
+
+  async function handleDownloadReady(item: ScanPreview) {
+    const key = item.previewId;
+    setDownloading(key);
+    try {
+      await downloadReadyOmr(portal, item);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not download this OMR.");
+    } finally {
+      setDownloading((current) => (current === key ? null : current));
+    }
+  }
+
+  async function handleDownloadFailed(failure: PdfFailure) {
+    const key = `failed-${failure.page}`;
+    setDownloading(key);
+    try {
+      await downloadFailedOmr(portal, failure);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not download this OMR.");
+    } finally {
+      setDownloading((current) => (current === key ? null : current));
+    }
+  }
 
   async function saveFailedWithRoll(failure: PdfFailure, typedRoll: string, schoolId?: string) {
     if (!failure.hasImage) {
@@ -235,6 +292,21 @@ export function ScanSheetTable({
                         </Button>
                         <Button
                           type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 gap-1 border-emerald-300 px-2 text-xs text-emerald-900"
+                          disabled={savingAll || downloading === item.previewId}
+                          onClick={() => void handleDownloadReady(item)}
+                        >
+                          {downloading === item.previewId ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : (
+                            <Download className="size-3.5" />
+                          )}
+                          Download
+                        </Button>
+                        <Button
+                          type="button"
                           size="sm"
                           className="h-7 bg-emerald-700 px-2.5 text-xs hover:bg-emerald-800"
                           disabled={busy}
@@ -293,16 +365,33 @@ export function ScanSheetTable({
                   <td className="px-3 py-1.5">
                     <div className="flex items-center justify-end gap-1.5">
                       {failure.hasImage ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-7 gap-1 border-red-300 px-2 text-xs text-red-900"
-                          onClick={() => setViewing({ kind: "failed", failure })}
-                        >
-                          <Eye className="size-3.5" />
-                          View OMR
-                        </Button>
+                        <>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 gap-1 border-red-300 px-2 text-xs text-red-900"
+                            onClick={() => setViewing({ kind: "failed", failure })}
+                          >
+                            <Eye className="size-3.5" />
+                            View OMR
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 gap-1 border-red-300 px-2 text-xs text-red-900"
+                            disabled={downloading === `failed-${failure.page}`}
+                            onClick={() => void handleDownloadFailed(failure)}
+                          >
+                            {downloading === `failed-${failure.page}` ? (
+                              <Loader2 className="size-3.5 animate-spin" />
+                            ) : (
+                              <Download className="size-3.5" />
+                            )}
+                            Download
+                          </Button>
+                        </>
                       ) : null}
                     </div>
                   </td>
@@ -362,6 +451,20 @@ export function ScanSheetTable({
                   }}
                 >
                   View details
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1 gap-1.5"
+                  disabled={savingAll || downloading === viewing.item.previewId}
+                  onClick={() => void handleDownloadReady(viewing.item)}
+                >
+                  {downloading === viewing.item.previewId ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Download className="size-4" />
+                  )}
+                  Download
                 </Button>
                 <Button
                   type="button"

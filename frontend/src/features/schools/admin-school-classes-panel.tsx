@@ -640,7 +640,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
         fromProgramId: editing.programId,
         // Only this section/class moves — siblings at the same classLevel keep their program.
         excludeSectionId: editing.kind === "section" ? editing.id : undefined,
-        excludeWholeClassId: editing.kind === "class" ? editing.id : undefined,
+        excludeWholeClassId: editing.kind === "whole" ? editing.id : undefined,
       });
       if (!subjectResult.ok) {
         setEditErrors({ subjects: subjectResult.message });

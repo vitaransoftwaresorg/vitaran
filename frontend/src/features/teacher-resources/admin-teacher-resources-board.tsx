@@ -521,7 +521,7 @@ function CustomizedResourcesPanel({ schools }: { schools: SchoolOption[] }) {
         </div>
       ) : (
         <CustomizedUploadTable
-          schoolId={school.id}
+          schoolId={schoolId}
           program={selectedProgram}
           resources={resources}
           onChange={setResources}
