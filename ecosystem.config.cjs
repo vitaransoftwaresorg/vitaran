@@ -17,8 +17,8 @@ module.exports = {
         NODE_ENV: "production",
         // PDF bytes + page render peaks; sheet images spill to disk so 500-page batches fit.
         NODE_OPTIONS: "--max-old-space-size=4096",
-        // Outside the git checkout so deploy `git clean` / PM2 reload keep PDF batches alive.
-        OMR_DATA_DIR: "/srv/apps/vitaranlearning-data/omr",
+        // Under the API cwd (gitignored + git-clean excluded) so PM2 reload keeps PDF batches.
+        OMR_DATA_DIR: "/srv/apps/vitaranlearning/backend/data/omr",
       },
       max_memory_restart: "5G",
       time: true,
