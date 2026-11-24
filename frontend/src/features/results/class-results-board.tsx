@@ -426,9 +426,9 @@ export function ClassResultsBoard({
                                 )
                               }
                               className={cn(
-                                "mx-auto h-8 w-16 text-center tabular-nums",
+                                "mx-auto h-8 w-[4.4rem] text-center tabular-nums",
                                 role === "total" &&
-                                  "w-20 font-bold text-brand-900",
+                                  "w-[5.5rem] font-bold text-brand-900",
                               )}
                               aria-label={`${label} for ${cellText(row.cells[roles.indexOf("name")])}`}
                             />

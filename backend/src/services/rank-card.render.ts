@@ -456,7 +456,15 @@ function buildCardSvg(data: RankCardData, schoolBadge: boolean, titleFont: Font 
       parts.push(text(W / 2, name.top + index * (name.size + 6), line, name.size, { color: NAVY, weight: 800, anchor: "middle", spacing: 1.5 }));
     });
   }
-  parts.push(text(W / 2, 176, fit(data.programName, 44), 23, { color: MUTED, weight: 600, anchor: "middle", spacing: 1 }));
+  // e.g. "New advanced Test -1" — program + test number in the header.
+  const programLabel = data.programName.trim();
+  const testLabel =
+    data.testNumber > 0
+      ? programLabel
+        ? `${fit(programLabel, 36)} Test -${data.testNumber}`
+        : `Test ${data.testNumber}`
+      : fit(programLabel, 44);
+  parts.push(text(W / 2, 176, testLabel, 23, { color: MUTED, weight: 600, anchor: "middle", spacing: 1 }));
   if (schoolBadge) {
     const cx = W - 140;
     parts.push(`<circle cx="${cx}" cy="122" r="62" fill="url(#navy)" stroke="url(#gold)" stroke-width="4"/>`);

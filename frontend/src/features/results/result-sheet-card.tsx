@@ -18,7 +18,7 @@ import { useResetOnScopeChange } from "@/hooks/use-reset-on-scope-change";
 import { cn } from "@/lib/utils";
 import type { ResultCell, ResultSheet } from "@/types/result";
 import { studentCount } from "./constants";
-import type { ClassScan } from "@/types/scan";
+import { formatMarks, type ClassScan } from "@/types/scan";
 import { ClassOmrDownload, OmrCell } from "./omr-files";
 import { ClassRankCardsDownload, ClassResultPdfDownload, RankCardCell } from "./rank-card-files";
 import {
@@ -33,9 +33,23 @@ import {
 function formatCell(value: ResultCell, role?: ColumnRole) {
   if (value === null) return "—";
   if (typeof value === "boolean") return value ? "Yes" : "No";
+  // Drop float residue (19.999000000000002 → 19.999) for school/teacher tables.
+  if (typeof value === "number") {
+    const text = formatMarks(value);
+    return role === "percentage" ? `${text}%` : text;
+  }
   if (role === "percentage" && value !== "") {
-    const text = String(value).trim();
-    return text.endsWith("%") ? text : `${text}%`;
+    const raw = String(value).trim();
+    const numeric = Number(raw.replace(/%$/, "").trim());
+    if (Number.isFinite(numeric)) {
+      const text = formatMarks(numeric);
+      return raw.endsWith("%") ? `${text}%` : `${text}%`;
+    }
+    return raw.endsWith("%") ? raw : `${raw}%`;
+  }
+  if (typeof value === "string" && /^-?\d+\.\d+$/.test(value.trim())) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) return formatMarks(numeric);
   }
   return String(value);
 }
