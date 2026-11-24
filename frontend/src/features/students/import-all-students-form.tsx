@@ -22,8 +22,10 @@ import {
 } from "@/features/students/actions";
 import {
   groupImportRows,
+  mergeImportApiErrors,
   refreshImportRows,
   resolveSchoolImportRows,
+  type ImportFieldErrors,
   type ResolvedImportRow,
 } from "@/features/students/import-placement";
 import { navigateFresh } from "@/features/students/navigate-fresh";
@@ -48,17 +50,12 @@ type ImportAllStudentsFormProps = {
   }) => Promise<SchoolImportFormState>;
 };
 
-function fieldError(
+function rowFieldErrors(
   row: ResolvedImportRow,
   importRowErrors: Record<number, Record<string, string>> | undefined,
-) {
-  const api = importRowErrors?.[row.index];
-  if (api?.rollNo) return api.rollNo;
-  if (api?.name) return api.name;
-  if (api?.parentName) return api.parentName;
-  if (api?.parentPhone) return api.parentPhone;
-  if (api?.sectionId) return api.sectionId;
-  return row.error;
+): ImportFieldErrors {
+  const merged = mergeImportApiErrors([row], importRowErrors)[0]!;
+  return merged.fieldErrors;
 }
 
 export function ImportAllStudentsForm({
@@ -76,12 +73,18 @@ export function ImportAllStudentsForm({
   const [rows, setRows] = useState<ResolvedImportRow[]>([]);
   const [state, setState] = useState<SchoolImportFormState>({});
 
-  const groups = useMemo(() => groupImportRows(rows), [rows]);
-  const errorCount = rows.filter(
-    (row) => Boolean(fieldError(row, state.importRowErrors)),
-  ).length;
-  const readyCount = rows.length - errorCount;
-  const canSubmit = rows.length > 0 && errorCount === 0 && !pending;
+  const displayRows = useMemo(
+    () => mergeImportApiErrors(rows, state.importRowErrors),
+    [rows, state.importRowErrors],
+  );
+  const groups = useMemo(() => groupImportRows(displayRows), [displayRows]);
+  const errorCount = displayRows.filter((row) => Boolean(row.error)).length;
+  const errorIssueCount = displayRows.reduce(
+    (sum, row) => sum + Object.keys(row.fieldErrors).length,
+    0,
+  );
+  const readyCount = displayRows.length - errorCount;
+  const canSubmit = displayRows.length > 0 && errorCount === 0 && !pending;
 
   function applyRows(next: ResolvedImportRow[]) {
     setRows(refreshImportRows(organization, next));
@@ -167,8 +170,31 @@ export function ImportAllStudentsForm({
   }
 
   function submit() {
-    if (!canSubmit) return;
-    const payload: SchoolImportGroupInput[] = groups.map((group) => ({
+    if (pending || rows.length === 0) return;
+
+    // Re-check every draft row before calling the server so all errors show at once.
+    const refreshed = refreshImportRows(organization, rows);
+    setRows(refreshed);
+    const blocked = refreshed.filter((row) => Boolean(row.error));
+    const issueCount = blocked.reduce(
+      (sum, row) => sum + Object.keys(row.fieldErrors).length,
+      0,
+    );
+    if (blocked.length > 0) {
+      setState({
+        message: `Resolve all ${issueCount} error${issueCount === 1 ? "" : "s"} in ${blocked.length} row${blocked.length === 1 ? "" : "s"} before saving`,
+        importRowErrors: undefined,
+      });
+      return;
+    }
+
+    const nextGroups = groupImportRows(refreshed);
+    if (nextGroups.length === 0) {
+      setState({ message: "Enter at least one student with a valid class and section" });
+      return;
+    }
+
+    const payload: SchoolImportGroupInput[] = nextGroups.map((group) => ({
       programId: group.programId,
       classLevel: group.classLevel,
       sectionId: group.sectionId,
@@ -263,9 +289,8 @@ export function ImportAllStudentsForm({
               <p className="text-sm text-neutral-600">
                 {groups.length} class group{groups.length === 1 ? "" : "s"}
                 {errorCount > 0
-                  ? ` · ${errorCount} row${errorCount === 1 ? "" : "s"} need fixing`
+                  ? ` · ${errorCount} row${errorCount === 1 ? "" : "s"} · ${errorIssueCount} error${errorIssueCount === 1 ? "" : "s"} — resolve all before save`
                   : ` · ${readyCount} ready to save`}
-                {" · edit below before saving"}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -283,9 +308,23 @@ export function ImportAllStudentsForm({
                 <Trash2 className="size-4" />
                 Clear draft
               </Button>
-              <Button type="button" size="sm" disabled={!canSubmit} onClick={submit}>
+              <Button
+                type="button"
+                size="sm"
+                disabled={!canSubmit}
+                title={
+                  errorCount > 0
+                    ? `Resolve all ${errorIssueCount} error${errorIssueCount === 1 ? "" : "s"} before saving`
+                    : undefined
+                }
+                onClick={submit}
+              >
                 {pending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                {readyCount > 1 ? `Save ${readyCount} students` : "Save students"}
+                {errorCount > 0
+                  ? `Resolve ${errorIssueCount} error${errorIssueCount === 1 ? "" : "s"} to save`
+                  : readyCount > 1
+                    ? `Save ${readyCount} students`
+                    : "Save students"}
               </Button>
             </div>
           </div>
@@ -334,13 +373,14 @@ export function ImportAllStudentsForm({
                     </thead>
                     <tbody>
                       {group.rows.map((row) => {
-                        const error = fieldError(row, state.importRowErrors);
+                        const errors = rowFieldErrors(row, state.importRowErrors);
+                        const hasError = Object.keys(errors).length > 0;
                         return (
                           <tr
                             key={row.index}
                             className={cn(
                               "border-t border-neutral-100",
-                              error && "bg-red-50/70",
+                              hasError && "bg-red-50/70",
                             )}
                           >
                             <td className="px-3 py-2 align-top text-neutral-500">
@@ -352,6 +392,7 @@ export function ImportAllStudentsForm({
                                 inputMode="numeric"
                                 maxLength={2}
                                 className="h-9 w-14"
+                                aria-invalid={errors.classLevel ? true : undefined}
                                 onChange={(e) => {
                                   const digits = e.currentTarget.value.replace(/\D/g, "").slice(0, 2);
                                   const level = digits ? Number(digits) : null;
@@ -361,18 +402,21 @@ export function ImportAllStudentsForm({
                                   });
                                 }}
                               />
+                              {errors.classLevel ? <FieldError>{errors.classLevel}</FieldError> : null}
                             </td>
                             <td className="px-2 py-1.5 align-top">
                               <Input
                                 value={row.student.section}
                                 className="h-9 w-16 uppercase"
                                 maxLength={8}
+                                aria-invalid={errors.section ? true : undefined}
                                 onChange={(e) =>
                                   updateStudent(row.index, {
                                     section: e.currentTarget.value.toUpperCase(),
                                   })
                                 }
                               />
+                              {errors.section ? <FieldError>{errors.section}</FieldError> : null}
                             </td>
                             <td className="px-2 py-1.5 align-top">
                               <Input
@@ -380,12 +424,14 @@ export function ImportAllStudentsForm({
                                 inputMode="numeric"
                                 maxLength={7}
                                 className="h-9 w-24"
+                                aria-invalid={errors.rollNo ? true : undefined}
                                 onChange={(e) =>
                                   updateStudent(row.index, {
                                     rollNo: e.currentTarget.value.replace(/\D/g, "").slice(0, 7),
                                   })
                                 }
                               />
+                              {errors.rollNo ? <FieldError>{errors.rollNo}</FieldError> : null}
                             </td>
                             <td className="px-2 py-1.5 align-top">
                               <Input
@@ -393,12 +439,14 @@ export function ImportAllStudentsForm({
                                 className="h-9 min-w-36"
                                 placeholder="optional"
                                 autoCapitalize="words"
+                                aria-invalid={errors.name ? true : undefined}
                                 onChange={(e) =>
                                   updateStudent(row.index, {
                                     name: capitalizeInput(e.currentTarget),
                                   })
                                 }
                               />
+                              {errors.name ? <FieldError>{errors.name}</FieldError> : null}
                             </td>
                             <td className="px-2 py-1.5 align-top">
                               <Input
@@ -406,12 +454,14 @@ export function ImportAllStudentsForm({
                                 className="h-9 min-w-36"
                                 placeholder="optional"
                                 autoCapitalize="words"
+                                aria-invalid={errors.parentName ? true : undefined}
                                 onChange={(e) =>
                                   updateStudent(row.index, {
                                     parentName: capitalizeInput(e.currentTarget),
                                   })
                                 }
                               />
+                              {errors.parentName ? <FieldError>{errors.parentName}</FieldError> : null}
                             </td>
                             <td className="px-2 py-1.5 align-top">
                               <Input
@@ -420,19 +470,24 @@ export function ImportAllStudentsForm({
                                 maxLength={10}
                                 className="h-9 w-28"
                                 placeholder="optional"
+                                aria-invalid={errors.parentPhone ? true : undefined}
                                 onChange={(e) =>
                                   updateStudent(row.index, {
                                     parentPhone: e.currentTarget.value.replace(/\D/g, "").slice(0, 10),
                                   })
                                 }
                               />
+                              {errors.parentPhone ? (
+                                <FieldError>{errors.parentPhone}</FieldError>
+                              ) : null}
                             </td>
                             <td className="px-3 py-2 align-top">
-                              {error ? (
-                                <span className="text-xs text-red-700">
-                                  {error}
-                                  <FieldError className="sr-only">{error}</FieldError>
-                                </span>
+                              {hasError ? (
+                                <ul className="list-disc space-y-0.5 pl-3 text-xs text-red-700">
+                                  {Object.values(errors).map((message) => (
+                                    <li key={message}>{message}</li>
+                                  ))}
+                                </ul>
                               ) : (
                                 <span className="text-xs text-emerald-700">Ready</span>
                               )}
@@ -456,11 +511,18 @@ export function ImportAllStudentsForm({
               </div>
             ))}
 
-            {/* Rows that could not be placed in any class still need to be visible. */}
-            {rows.some((row) => !row.placement || row.error) ? (
+            {/* Rows with errors that are not already listed in a ready class group. */}
+            {displayRows.some(
+              (row) =>
+                Boolean(row.error) &&
+                !groups.some((group) => group.rows.some((item) => item.index === row.index)),
+            ) ? (
               <div className="overflow-hidden rounded-xl border border-red-200 bg-white">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-red-100 bg-red-50/70 px-4 py-2">
-                  <p className="text-sm font-semibold text-red-900">Needs a valid class / section</p>
+                  <p className="text-sm font-semibold text-red-900">
+                    Needs fixing before save · {errorIssueCount} error
+                    {errorIssueCount === 1 ? "" : "s"}
+                  </p>
                   <Button
                     type="button"
                     variant="ghost"
@@ -468,9 +530,7 @@ export function ImportAllStudentsForm({
                     className="h-8 text-red-700 hover:bg-red-100"
                     onClick={() =>
                       clearGroup(
-                        rows
-                          .filter((row) => !row.placement || Boolean(row.error))
-                          .map((row) => row.index),
+                        displayRows.filter((row) => Boolean(row.error)).map((row) => row.index),
                       )
                     }
                   >
@@ -487,23 +547,23 @@ export function ImportAllStudentsForm({
                         <th className="px-3 py-2">Section</th>
                         <th className="px-3 py-2">Reg No *</th>
                         <th className="px-3 py-2">Student (optional)</th>
-                        <th className="px-3 py-2">Status</th>
+                        <th className="px-3 py-2">Parent (optional)</th>
+                        <th className="px-3 py-2">Mobile (optional)</th>
+                        <th className="px-3 py-2">All errors</th>
                         <th className="w-12 px-2 py-2" />
                       </tr>
                     </thead>
                     <tbody>
-                      {rows
+                      {displayRows
                         .filter(
                           (row) =>
-                            !row.placement ||
-                            Boolean(row.error) ||
-                            Boolean(fieldError(row, state.importRowErrors)),
-                        )
-                        .filter(
-                          (row) => !groups.some((group) => group.rows.some((r) => r.index === row.index)),
+                            Boolean(row.error) &&
+                            !groups.some((group) =>
+                              group.rows.some((item) => item.index === row.index),
+                            ),
                         )
                         .map((row) => {
-                          const error = fieldError(row, state.importRowErrors);
+                          const errors = row.fieldErrors;
                           return (
                             <tr key={row.index} className="border-t border-neutral-100 bg-red-50/70">
                               <td className="px-3 py-2 align-top text-neutral-500">
@@ -515,6 +575,7 @@ export function ImportAllStudentsForm({
                                   inputMode="numeric"
                                   maxLength={2}
                                   className="h-9 w-14"
+                                  aria-invalid={errors.classLevel ? true : undefined}
                                   onChange={(e) => {
                                     const digits = e.currentTarget.value.replace(/\D/g, "").slice(0, 2);
                                     const level = digits ? Number(digits) : null;
@@ -524,18 +585,23 @@ export function ImportAllStudentsForm({
                                     });
                                   }}
                                 />
+                                {errors.classLevel ? (
+                                  <FieldError>{errors.classLevel}</FieldError>
+                                ) : null}
                               </td>
                               <td className="px-2 py-1.5 align-top">
                                 <Input
                                   value={row.student.section}
                                   className="h-9 w-16 uppercase"
                                   maxLength={8}
+                                  aria-invalid={errors.section ? true : undefined}
                                   onChange={(e) =>
                                     updateStudent(row.index, {
                                       section: e.currentTarget.value.toUpperCase(),
                                     })
                                   }
                                 />
+                                {errors.section ? <FieldError>{errors.section}</FieldError> : null}
                               </td>
                               <td className="px-2 py-1.5 align-top">
                                 <Input
@@ -543,12 +609,14 @@ export function ImportAllStudentsForm({
                                   inputMode="numeric"
                                   maxLength={7}
                                   className="h-9 w-24"
+                                  aria-invalid={errors.rollNo ? true : undefined}
                                   onChange={(e) =>
                                     updateStudent(row.index, {
                                       rollNo: e.currentTarget.value.replace(/\D/g, "").slice(0, 7),
                                     })
                                   }
                                 />
+                                {errors.rollNo ? <FieldError>{errors.rollNo}</FieldError> : null}
                               </td>
                               <td className="px-2 py-1.5 align-top">
                                 <Input
@@ -556,15 +624,58 @@ export function ImportAllStudentsForm({
                                   className="h-9 min-w-36"
                                   placeholder="optional"
                                   autoCapitalize="words"
+                                  aria-invalid={errors.name ? true : undefined}
                                   onChange={(e) =>
                                     updateStudent(row.index, {
                                       name: capitalizeInput(e.currentTarget),
                                     })
                                   }
                                 />
+                                {errors.name ? <FieldError>{errors.name}</FieldError> : null}
                               </td>
-                              <td className="px-3 py-2 align-top text-red-700">
-                                {error ?? "Could not place"}
+                              <td className="px-2 py-1.5 align-top">
+                                <Input
+                                  value={row.student.parentName}
+                                  className="h-9 min-w-36"
+                                  placeholder="optional"
+                                  autoCapitalize="words"
+                                  aria-invalid={errors.parentName ? true : undefined}
+                                  onChange={(e) =>
+                                    updateStudent(row.index, {
+                                      parentName: capitalizeInput(e.currentTarget),
+                                    })
+                                  }
+                                />
+                                {errors.parentName ? (
+                                  <FieldError>{errors.parentName}</FieldError>
+                                ) : null}
+                              </td>
+                              <td className="px-2 py-1.5 align-top">
+                                <Input
+                                  value={row.student.parentPhone}
+                                  inputMode="numeric"
+                                  maxLength={10}
+                                  className="h-9 w-28"
+                                  placeholder="optional"
+                                  aria-invalid={errors.parentPhone ? true : undefined}
+                                  onChange={(e) =>
+                                    updateStudent(row.index, {
+                                      parentPhone: e.currentTarget.value
+                                        .replace(/\D/g, "")
+                                        .slice(0, 10),
+                                    })
+                                  }
+                                />
+                                {errors.parentPhone ? (
+                                  <FieldError>{errors.parentPhone}</FieldError>
+                                ) : null}
+                              </td>
+                              <td className="px-3 py-2 align-top">
+                                <ul className="list-disc space-y-0.5 pl-3 text-xs text-red-700">
+                                  {Object.values(errors).map((message) => (
+                                    <li key={message}>{message}</li>
+                                  ))}
+                                </ul>
                               </td>
                               <td className="px-2 py-1.5 align-top">
                                 <button

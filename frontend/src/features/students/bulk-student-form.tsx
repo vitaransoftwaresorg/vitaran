@@ -102,6 +102,49 @@ const isFilled = (row: Row) =>
     row.name.trim() || row.rollNo.trim() || row.parentName.trim() || row.parentPhone.trim(),
   );
 
+function validateBulkRows(
+  rows: Row[],
+  options: { requireSection: boolean },
+): Record<number, Record<string, string>> {
+  const rowErrors: Record<number, Record<string, string>> = {};
+  const seenRolls = new Map<string, number>();
+  rows.forEach((row, index) => {
+    if (!isFilled(row)) return;
+    const errors: Record<string, string> = {};
+    const roll = row.rollNo.replace(/\D/g, "").slice(0, 7);
+    if (!/^\d{7}$/.test(roll)) {
+      errors.rollNo = "Enter the 7-digit registration number";
+    } else {
+      const earlier = seenRolls.get(roll);
+      if (earlier != null) {
+        errors.rollNo = `Duplicate Reg No (also on row ${earlier + 1})`;
+        const prior = rowErrors[earlier] ?? {};
+        prior.rollNo = `Duplicate Reg No (also on row ${index + 1})`;
+        rowErrors[earlier] = prior;
+      } else {
+        seenRolls.set(roll, index);
+      }
+    }
+    const phone = row.parentPhone.replace(/\D/g, "").slice(0, 10);
+    if (phone && !/^\d{10}$/.test(phone)) {
+      errors.parentPhone = "Enter a 10-digit mobile number";
+    }
+    const name = row.name.trim();
+    if (name && name.length < 2) errors.name = "Enter at least 2 characters";
+    const parentName = row.parentName.trim();
+    if (parentName && parentName.length < 2) {
+      errors.parentName = "Enter a parent / guardian name (at least 2 characters)";
+    }
+    if (options.requireSection && (!row.sectionId || row.sectionId === NONE)) {
+      errors.sectionId = "Pick a section";
+    }
+    if (Object.keys(errors).length > 0) {
+      rowErrors[index] = { ...(rowErrors[index] ?? {}), ...errors };
+    }
+  });
+  return rowErrors;
+}
+
 export function BulkStudentForm({
   schoolPrograms,
   sections,
@@ -355,18 +398,19 @@ export function BulkStudentForm({
       setState({ message: "Pick a program and class" });
       return;
     }
-    if (perRowSection) {
-      const missing: Record<number, Record<string, string>> = {};
-      rows.forEach((row, index) => {
-        if (!isFilled(row)) return;
-        if (!row.sectionId || row.sectionId === NONE) {
-          missing[index] = { sectionId: "Pick a section" };
-        }
+
+    // Validate every filled row up front — Save only continues when every error is resolved.
+    const rowErrors = validateBulkRows(rows, { requireSection: perRowSection });
+    if (Object.keys(rowErrors).length > 0) {
+      const issueCount = Object.values(rowErrors).reduce(
+        (sum, errors) => sum + Object.keys(errors).length,
+        0,
+      );
+      setState({
+        message: `Resolve all ${issueCount} error${issueCount === 1 ? "" : "s"} before saving`,
+        rowErrors,
       });
-      if (Object.keys(missing).length > 0) {
-        setState({ message: "Pick a section for each student", rowErrors: missing });
-        return;
-      }
+      return;
     }
 
     const action = submitAction ?? createSchoolStudentsBulkAction;
@@ -404,6 +448,23 @@ export function BulkStudentForm({
   }
 
   const filledCount = rows.filter(isFilled).length;
+  const liveRowErrors = useMemo(
+    () => validateBulkRows(rows, { requireSection: perRowSection }),
+    [rows, perRowSection],
+  );
+  const displayRowErrors = useMemo(() => {
+    const merged: Record<number, Record<string, string>> = { ...liveRowErrors };
+    for (const [index, errors] of Object.entries(state.rowErrors ?? {})) {
+      const key = Number(index);
+      merged[key] = { ...(merged[key] ?? {}), ...errors };
+    }
+    return merged;
+  }, [liveRowErrors, state.rowErrors]);
+  const liveErrorCount = Object.keys(liveRowErrors).length;
+  const liveIssueCount = Object.values(liveRowErrors).reduce(
+    (sum, errors) => sum + Object.keys(errors).length,
+    0,
+  );
 
   // Keep the rows on this device as they are typed, so a refresh or browser Back loses nothing.
   useEffect(() => {
@@ -527,7 +588,7 @@ export function BulkStudentForm({
             </thead>
             <tbody>
               {rows.map((row, index) => {
-                const errors = state.rowErrors?.[index] ?? {};
+                const errors = displayRowErrors[index] ?? {};
                 return (
                   <tr
                     key={row.key}
@@ -672,15 +733,26 @@ export function BulkStudentForm({
         ) : null}
         <Button
           type="button"
-          disabled={pending || filledCount === 0}
+          disabled={pending || filledCount === 0 || liveErrorCount > 0}
           className="gap-1.5"
+          title={
+            liveErrorCount > 0
+              ? `Resolve all ${liveIssueCount} error${liveIssueCount === 1 ? "" : "s"} before saving`
+              : undefined
+          }
           onClick={() => submit()}
         >
           {pending ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-          {filledCount > 1 ? `Save ${filledCount} students` : "Save student"}
+          {liveErrorCount > 0
+            ? `Resolve ${liveIssueCount} error${liveIssueCount === 1 ? "" : "s"} to save`
+            : filledCount > 1
+              ? `Save ${filledCount} students`
+              : "Save student"}
         </Button>
         <p className="text-xs text-neutral-500">
-          Excel loads a draft only — students are stored when you click Save. Blank rows are skipped.
+          {liveErrorCount > 0
+            ? `Fix every highlighted field (${liveIssueCount} error${liveIssueCount === 1 ? "" : "s"}) — nothing is saved until then.`
+            : "Excel loads a draft only — students are stored when you click Save. Blank rows are skipped."}
         </p>
       </div>
     </div>

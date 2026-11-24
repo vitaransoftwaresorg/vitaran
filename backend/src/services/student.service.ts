@@ -1,3 +1,4 @@
+import { prisma } from "../config/database.js";
 import { StudentStatus } from "../generated/prisma/enums.js";
 import { classWithSectionLabel, displaySectionName } from "../utils/section-label.js";
 import * as schoolClassRepository from "../repositories/school-class.repository.js";
@@ -310,46 +311,62 @@ export async function createStudentsBulk(schoolId: string, input: CreateStudents
   }
   await assertSchoolStrengthAllows(schoolId, rows.length);
 
-  const seen = new Set<string>();
+  const issues: { path: string[]; message: string }[] = [];
+  const seen = new Map<string, number>();
   for (const [index, row] of rows.entries()) {
     const key = row.rollNo.trim().toLowerCase();
-    if (seen.has(key)) {
-      throw new AppError(400, `Duplicate registration number in row ${index + 1}`, [
-        { path: ["students", String(index), "rollNo"], message: "Duplicate registration number" },
-      ]);
+    const earlier = seen.get(key);
+    if (earlier != null) {
+      issues.push({
+        path: ["students", String(index), "rollNo"],
+        message: "Duplicate registration number",
+      });
+    } else {
+      seen.set(key, index);
     }
-    seen.add(key);
   }
 
+  const existing = await studentRepository.listSchoolRolls(schoolId);
+  const taken = new Set(existing.map((row) => row.rollNo.trim().toLowerCase()));
   for (const [index, row] of rows.entries()) {
-    const taken = await studentRepository.isRollTaken(schoolId, row.rollNo);
-    if (taken) {
-      throw new AppError(409, `Registration number already exists (row ${index + 1})`, [
-        {
-          path: ["students", String(index), "rollNo"],
-          message: "Registration number already exists",
-        },
-      ]);
+    if (taken.has(row.rollNo.trim().toLowerCase())) {
+      issues.push({
+        path: ["students", String(index), "rollNo"],
+        message: "Registration number already exists",
+      });
     }
   }
 
-  const created: StudentDetailDto[] = [];
-
-  for (const row of rows) {
-    const student = await studentRepository.createStudent({
-      schoolId,
-      name: row.name,
-      rollNo: row.rollNo.trim(),
-      email: row.email?.trim().toLowerCase() || null,
-      parentName: row.parentName?.trim() || null,
-      parentPhone: row.parentPhone ?? null,
-      programId: input.programId,
-      classLevel: input.classLevel,
-      sectionId: row.sectionId ?? null,
-      status: StudentStatus.ACTIVE,
-    });
-    created.push(toStudentDetailDto(student));
+  if (issues.length > 0) {
+    throw new AppError(
+      issues.some((issue) => issue.message.includes("already exists")) ? 409 : 400,
+      "Fix the highlighted rows before saving",
+      issues,
+    );
   }
+
+  const created = await prisma.$transaction(async (tx) => {
+    const items: StudentDetailDto[] = [];
+    for (const row of rows) {
+      const student = await tx.student.create({
+        data: {
+          schoolId,
+          name: row.name,
+          rollNo: row.rollNo.trim(),
+          email: row.email?.trim().toLowerCase() || null,
+          parentName: row.parentName?.trim() || null,
+          parentPhone: row.parentPhone ?? null,
+          programId: input.programId,
+          classLevel: input.classLevel,
+          sectionId: row.sectionId ?? null,
+          status: StudentStatus.ACTIVE,
+        },
+        include: studentRepository.studentInclude,
+      });
+      items.push(toStudentDetailDto(student));
+    }
+    return items;
+  });
 
   notifyContentChanged({ kind: KIND, schoolId });
   return { items: created, count: created.length };

@@ -11,10 +11,23 @@ export type ImportPlacement = {
   sectionLabel: string;
 };
 
+export type ImportFieldKey =
+  | "classLevel"
+  | "section"
+  | "rollNo"
+  | "name"
+  | "parentName"
+  | "parentPhone";
+
+export type ImportFieldErrors = Partial<Record<ImportFieldKey, string>>;
+
 export type ResolvedImportRow = {
   index: number;
   student: ImportedStudent;
   placement: ImportPlacement | null;
+  /** Every field issue on this row (shown together under each cell). */
+  fieldErrors: ImportFieldErrors;
+  /** Joined summary for filters / counts — null when the row is clean. */
   error: string | null;
 };
 
@@ -28,14 +41,20 @@ export type ImportClassGroup = {
   rows: ResolvedImportRow[];
 };
 
+function summarizeErrors(fieldErrors: ImportFieldErrors): string | null {
+  const messages = Object.values(fieldErrors).filter(Boolean);
+  return messages.length > 0 ? messages.join(" · ") : null;
+}
+
 /** Map Class + Section from Excel onto the school's class organization. */
 export function resolveImportPlacement(
   organization: ClassOrganization,
   classLevel: number | null,
   sectionName: string,
-): { placement: ImportPlacement | null; error: string | null } {
+): { placement: ImportPlacement | null; fieldErrors: ImportFieldErrors } {
+  const fieldErrors: ImportFieldErrors = {};
   if (classLevel == null) {
-    return { placement: null, error: "Class is required" };
+    return { placement: null, fieldErrors: { classLevel: "Class is required" } };
   }
 
   const classSections = organization.sections.filter(
@@ -48,7 +67,7 @@ export function resolveImportPlacement(
   if (classSections.length === 0 && classWholes.length === 0) {
     return {
       placement: null,
-      error: `Class ${classLevel} is not set up for this school`,
+      fieldErrors: { classLevel: `Class ${classLevel} is not set up for this school` },
     };
   }
 
@@ -63,7 +82,9 @@ export function resolveImportPlacement(
       ].join(", ");
       return {
         placement: null,
-        error: `Section ${wanted} is not set up for Class ${classLevel} (use ${available})`,
+        fieldErrors: {
+          section: `Section ${wanted} is not set up for Class ${classLevel} (use ${available})`,
+        },
       };
     }
     const section = matches[0]!;
@@ -75,7 +96,7 @@ export function resolveImportPlacement(
         sectionId: section.id,
         sectionLabel: displaySectionName(section.name),
       },
-      error: null,
+      fieldErrors,
     };
   }
 
@@ -89,7 +110,7 @@ export function resolveImportPlacement(
       sectionId: null,
       sectionLabel: "A",
     },
-    error: null,
+    fieldErrors,
   };
 }
 
@@ -97,14 +118,16 @@ export function resolveSchoolImportRows(
   organization: ClassOrganization,
   students: ImportedStudent[],
 ): ResolvedImportRow[] {
-  return students.map((student, index) => {
-    const { placement, error } = resolveImportPlacement(
-      organization,
-      student.classLevel,
-      student.section,
-    );
-    return { index, student, placement, error };
-  });
+  return refreshImportRows(
+    organization,
+    students.map((student, index) => ({
+      index,
+      student,
+      placement: null,
+      fieldErrors: {},
+      error: null,
+    })),
+  );
 }
 
 /** Re-place and re-check rows after the user edits the import preview (still not saved). */
@@ -119,31 +142,88 @@ export function refreshImportRows(
       parentName: row.student.parentName.trim(),
       rollNo: row.student.rollNo.replace(/\D/g, "").slice(0, 7),
       section: row.student.section.trim().toUpperCase(),
+      parentPhone: row.student.parentPhone.replace(/\D/g, "").slice(0, 10),
     };
-    const { placement, error: placeError } = resolveImportPlacement(
+
+    const { placement, fieldErrors: placeErrors } = resolveImportPlacement(
       organization,
       student.classLevel,
       student.section,
     );
-    let error = placeError;
-    if (!error && !/^\d{7}$/.test(student.rollNo)) {
-      error = "Reg No must be 7 digits";
+    const fieldErrors: ImportFieldErrors = { ...placeErrors };
+
+    if (!/^\d{7}$/.test(student.rollNo)) {
+      fieldErrors.rollNo = "Reg No must be 7 digits";
     }
-    return { index, student, placement, error };
+    if (student.parentPhone && !/^\d{10}$/.test(student.parentPhone)) {
+      fieldErrors.parentPhone = "Enter a 10-digit mobile number";
+    }
+    if (student.name && student.name.length < 2) {
+      fieldErrors.name = "Enter at least 2 characters";
+    }
+    if (student.parentName && student.parentName.length < 2) {
+      fieldErrors.parentName = "Enter at least 2 characters";
+    }
+
+    return {
+      index,
+      student,
+      placement,
+      fieldErrors,
+      error: summarizeErrors(fieldErrors),
+    };
   });
 
-  const seen = new Map<string, number>();
+  // Flag every duplicate Reg No (not only the later row).
+  const byRoll = new Map<string, number[]>();
   for (const row of next) {
     const key = row.student.rollNo;
-    if (!key || row.error) continue;
-    const earlier = seen.get(key);
-    if (earlier != null) {
-      row.error = `Duplicate Reg No (also on row ${earlier + 1})`;
-    } else {
-      seen.set(key, row.index);
+    if (!/^\d{7}$/.test(key)) continue;
+    const list = byRoll.get(key) ?? [];
+    list.push(row.index);
+    byRoll.set(key, list);
+  }
+  for (const [, indexes] of byRoll) {
+    if (indexes.length < 2) continue;
+    for (const index of indexes) {
+      const row = next.find((item) => item.index === index);
+      if (!row) continue;
+      const others = indexes.filter((i) => i !== index).map((i) => i + 1);
+      row.fieldErrors.rollNo = `Duplicate Reg No (also on row ${others.join(", ")})`;
+      row.error = summarizeErrors(row.fieldErrors);
     }
   }
+
   return next;
+}
+
+/** Merge server/API field errors onto draft rows (does not clear client checks). */
+export function mergeImportApiErrors(
+  rows: ResolvedImportRow[],
+  importRowErrors: Record<number, Record<string, string>> | undefined,
+): ResolvedImportRow[] {
+  if (!importRowErrors) return rows;
+  return rows.map((row) => {
+    const api = importRowErrors[row.index];
+    if (!api) return row;
+    const fieldErrors: ImportFieldErrors = { ...row.fieldErrors };
+    for (const [key, message] of Object.entries(api)) {
+      if (!message) continue;
+      if (
+        key === "classLevel" ||
+        key === "section" ||
+        key === "rollNo" ||
+        key === "name" ||
+        key === "parentName" ||
+        key === "parentPhone" ||
+        key === "sectionId"
+      ) {
+        const mapped = key === "sectionId" ? "section" : (key as ImportFieldKey);
+        fieldErrors[mapped] = message;
+      }
+    }
+    return { ...row, fieldErrors, error: summarizeErrors(fieldErrors) };
+  });
 }
 
 /** Group resolved rows by program + class + section for bulk create. */

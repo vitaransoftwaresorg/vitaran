@@ -281,7 +281,7 @@ function mapApiStudentErrors(
   }
 }
 
-/** Import many students across classes — one bulk call per class/section group. */
+/** Import many students across classes — validate every row first; save only when all are clean. */
 export async function importSchoolStudentsAllAction(input: {
   groups: SchoolImportGroupInput[];
   returnTo?: string;
@@ -289,31 +289,45 @@ export async function importSchoolStudentsAllAction(input: {
 }): Promise<SchoolImportFormState> {
   if (!input.groups.length) return { message: "Import at least one student" };
 
-  let total = 0;
   const importRowErrors: Record<number, Record<string, string>> = {};
+  const ready: Array<{
+    group: SchoolImportGroupInput;
+    validRows: BulkStudentRowInput[];
+    sourceByPayload: number[];
+  }> = [];
 
+  for (const group of input.groups) {
+    if (!group.programId || group.classLevel == null) {
+      return { message: "Each student needs a class that is set up for this school" };
+    }
+    const validated = validateImportGroupStudents(group.students);
+    Object.assign(importRowErrors, validated.importRowErrors);
+    if (validated.validRows.length > 0) {
+      ready.push({
+        group,
+        validRows: validated.validRows,
+        sourceByPayload: validated.sourceByPayload,
+      });
+    }
+  }
+
+  if (Object.keys(importRowErrors).length > 0) {
+    return { message: "Fix the highlighted rows before saving", importRowErrors };
+  }
+  if (ready.length === 0) return { message: "Enter at least one student" };
+
+  let total = 0;
   try {
-    for (const group of input.groups) {
-      if (!group.programId || group.classLevel == null) {
-        return { message: "Each student needs a class that is set up for this school" };
-      }
-
-      const validated = validateImportGroupStudents(group.students);
-      Object.assign(importRowErrors, validated.importRowErrors);
-      if (Object.keys(validated.importRowErrors).length > 0) {
-        return { message: "Fix the highlighted rows", importRowErrors };
-      }
-      if (validated.validRows.length === 0) continue;
-
+    for (const item of ready) {
       // API max is 300 per request — chunk large class groups.
-      for (let offset = 0; offset < validated.validRows.length; offset += 300) {
-        const chunk = validated.validRows.slice(offset, offset + 300);
-        const chunkSources = validated.sourceByPayload.slice(offset, offset + 300);
+      for (let offset = 0; offset < item.validRows.length; offset += 300) {
+        const chunk = item.validRows.slice(offset, offset + 300);
+        const chunkSources = item.sourceByPayload.slice(offset, offset + 300);
         try {
           const result = await createSchoolStudentsBulk({
-            programId: group.programId,
-            classLevel: group.classLevel,
-            sectionId: group.sectionId ?? null,
+            programId: item.group.programId,
+            classLevel: item.group.classLevel,
+            sectionId: item.group.sectionId ?? null,
             students: chunk,
           });
           total += result.count;
@@ -325,8 +339,8 @@ export async function importSchoolStudentsAllAction(input: {
               message:
                 Object.keys(importRowErrors).length > 0
                   ? total > 0
-                    ? `Saved ${total} student${total === 1 ? "" : "s"}, then hit an error — fix the highlighted rows`
-                    : "Fix the highlighted rows"
+                    ? `Saved ${total} student${total === 1 ? "" : "s"}, then hit an error — fix the highlighted rows and import the rest again`
+                    : "Fix the highlighted rows before saving"
                   : total > 0
                     ? `Saved ${total} student${total === 1 ? "" : "s"}, then: ${error.message}`
                     : error.message,
@@ -399,7 +413,7 @@ export async function createSchoolStudentsBulkAction(input: {
   });
 
   if (Object.keys(rowErrors).length > 0) {
-    return { message: "Fix the highlighted rows", rowErrors };
+    return { message: "Fix the highlighted rows before saving", rowErrors };
   }
   if (validRows.length === 0) {
     return { message: "Enter at least one student" };

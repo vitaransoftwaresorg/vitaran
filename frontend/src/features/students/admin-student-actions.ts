@@ -178,7 +178,7 @@ export async function createAdminStudentAction(
   }
 }
 
-/** Import many students across classes for one school — one bulk call per class/section group. */
+/** Import many students across classes — validate every row first; save only when all are clean. */
 export async function importAdminStudentsAllAction(
   schoolId: string,
   input: {
@@ -189,65 +189,76 @@ export async function importAdminStudentsAllAction(
 ): Promise<SchoolImportFormState> {
   if (!input.groups.length) return { message: "Import at least one student" };
 
-  let total = 0;
   const importRowErrors: Record<number, Record<string, string>> = {};
+  const ready: Array<{
+    group: SchoolImportGroupInput;
+    validRows: BulkStudentRowInput[];
+    sourceByPayload: number[];
+  }> = [];
 
+  for (const group of input.groups) {
+    if (!group.programId || group.classLevel == null) {
+      return { message: "Each student needs a class that is set up for this school" };
+    }
+
+    const validRows: BulkStudentRowInput[] = [];
+    const sourceByPayload: number[] = [];
+
+    for (const row of group.students) {
+      const blank =
+        !(row.name ?? "").trim() &&
+        !(row.rollNo ?? "").trim() &&
+        !(row.parentName ?? "").trim() &&
+        !(row.parentPhone ?? "").trim();
+      if (blank) continue;
+
+      const parsed = bulkRowSchema.safeParse({
+        name: row.name ?? "",
+        rollNo: row.rollNo ?? "",
+        email: "",
+        parentName: row.parentName ?? "",
+        parentPhone: row.parentPhone ?? "",
+        sectionId: row.sectionId ?? "",
+      });
+      if (!parsed.success) {
+        const flat = z.flattenError(parsed.error).fieldErrors;
+        importRowErrors[row.sourceIndex] = Object.fromEntries(
+          Object.entries(flat).map(([key, value]) => [key, value?.[0] ?? "Invalid"]),
+        );
+        continue;
+      }
+      sourceByPayload.push(row.sourceIndex);
+      validRows.push({
+        name: String(parsed.data.name ?? ""),
+        rollNo: parsed.data.rollNo,
+        email: null,
+        parentName: parsed.data.parentName || null,
+        parentPhone: parsed.data.parentPhone || null,
+        sectionId: parsed.data.sectionId || row.sectionId || null,
+      });
+    }
+
+    if (validRows.length > 0) {
+      ready.push({ group, validRows, sourceByPayload });
+    }
+  }
+
+  if (Object.keys(importRowErrors).length > 0) {
+    return { message: "Fix the highlighted rows before saving", importRowErrors };
+  }
+  if (ready.length === 0) return { message: "Enter at least one student" };
+
+  let total = 0;
   try {
-    for (const group of input.groups) {
-      if (!group.programId || group.classLevel == null) {
-        return { message: "Each student needs a class that is set up for this school" };
-      }
-
-      const validRows: BulkStudentRowInput[] = [];
-      const sourceByPayload: number[] = [];
-
-      for (const row of group.students) {
-        const blank =
-          !(row.name ?? "").trim() &&
-          !(row.rollNo ?? "").trim() &&
-          !(row.parentName ?? "").trim() &&
-          !(row.parentPhone ?? "").trim();
-        if (blank) continue;
-
-        const parsed = bulkRowSchema.safeParse({
-          name: row.name ?? "",
-          rollNo: row.rollNo ?? "",
-          email: "",
-          parentName: row.parentName ?? "",
-          parentPhone: row.parentPhone ?? "",
-          sectionId: row.sectionId ?? "",
-        });
-        if (!parsed.success) {
-          const flat = z.flattenError(parsed.error).fieldErrors;
-          importRowErrors[row.sourceIndex] = Object.fromEntries(
-            Object.entries(flat).map(([key, value]) => [key, value?.[0] ?? "Invalid"]),
-          );
-          continue;
-        }
-        sourceByPayload.push(row.sourceIndex);
-        validRows.push({
-          name: String(parsed.data.name ?? ""),
-          rollNo: parsed.data.rollNo,
-          email: null,
-          parentName: parsed.data.parentName || null,
-          parentPhone: parsed.data.parentPhone || null,
-          sectionId: parsed.data.sectionId || row.sectionId || null,
-        });
-      }
-
-      if (Object.keys(importRowErrors).length > 0) {
-        return { message: "Fix the highlighted rows", importRowErrors };
-      }
-      if (validRows.length === 0) continue;
-
-      for (let offset = 0; offset < validRows.length; offset += 300) {
-        const chunk = validRows.slice(offset, offset + 300);
-        const chunkSources = sourceByPayload.slice(offset, offset + 300);
+    for (const item of ready) {
+      for (let offset = 0; offset < item.validRows.length; offset += 300) {
+        const chunk = item.validRows.slice(offset, offset + 300);
+        const chunkSources = item.sourceByPayload.slice(offset, offset + 300);
         try {
           const result = await createAdminSchoolStudentsBulk(schoolId, {
-            programId: group.programId,
-            classLevel: group.classLevel,
-            sectionId: group.sectionId ?? null,
+            programId: item.group.programId,
+            classLevel: item.group.classLevel,
+            sectionId: item.group.sectionId ?? null,
             students: chunk,
           });
           total += result.count;
@@ -255,23 +266,24 @@ export async function importAdminStudentsAllAction(
           unstable_rethrow(error);
           if (error instanceof ApiError) {
             if (Array.isArray(error.details)) {
-              for (const item of error.details) {
+              for (const detail of error.details) {
                 if (
-                  item &&
-                  typeof item === "object" &&
-                  "path" in item &&
-                  "message" in item &&
-                  Array.isArray((item as { path: unknown }).path)
+                  !detail ||
+                  typeof detail !== "object" ||
+                  !("path" in detail) ||
+                  !("message" in detail) ||
+                  !Array.isArray((detail as { path: unknown }).path)
                 ) {
-                  const path = (item as { path: string[]; message: string }).path;
-                  if (path[0] === "students" && path[1] != null && path[2]) {
-                    const sourceIndex = chunkSources[Number(path[1])];
-                    if (sourceIndex != null) {
-                      importRowErrors[sourceIndex] = {
-                        ...(importRowErrors[sourceIndex] ?? {}),
-                        [path[2]]: (item as { message: string }).message,
-                      };
-                    }
+                  continue;
+                }
+                const path = (detail as { path: string[]; message: string }).path;
+                if (path[0] === "students" && path[1] != null && path[2]) {
+                  const sourceIndex = chunkSources[Number(path[1])];
+                  if (sourceIndex != null) {
+                    importRowErrors[sourceIndex] = {
+                      ...(importRowErrors[sourceIndex] ?? {}),
+                      [path[2]]: (detail as { message: string }).message,
+                    };
                   }
                 }
               }
@@ -280,8 +292,8 @@ export async function importAdminStudentsAllAction(
               message:
                 Object.keys(importRowErrors).length > 0
                   ? total > 0
-                    ? `Saved ${total} student${total === 1 ? "" : "s"}, then hit an error — fix the highlighted rows`
-                    : "Fix the highlighted rows"
+                    ? `Saved ${total} student${total === 1 ? "" : "s"}, then hit an error — fix the highlighted rows and import the rest again`
+                    : "Fix the highlighted rows before saving"
                   : total > 0
                     ? `Saved ${total} student${total === 1 ? "" : "s"}, then: ${error.message}`
                     : error.message,
@@ -360,7 +372,7 @@ export async function createAdminStudentsBulkAction(
   });
 
   if (Object.keys(rowErrors).length > 0) {
-    return { message: "Fix the highlighted rows", rowErrors };
+    return { message: "Fix the highlighted rows before saving", rowErrors };
   }
   if (validRows.length === 0) {
     return { message: "Enter at least one student" };
