@@ -127,15 +127,6 @@ export function RankCardCell({
                 <Download className="size-3.5" />
                 Download PDF
               </a>
-              <SharePdfButton
-                href={downloadHref}
-                fileName={reportCardName}
-                title={`report card of ${name}`}
-                preload
-                className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-neutral-200 px-2.5 text-xs font-semibold text-neutral-700 hover:bg-neutral-50 disabled:opacity-60 [&_svg]:size-3.5"
-              >
-                Share
-              </SharePdfButton>
               <Dialog.Close
                 aria-label="Close"
                 className="inline-flex size-8 items-center justify-center rounded-full text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900"
@@ -168,12 +159,6 @@ export function RankCardCell({
       >
         <Download className="size-4" />
       </a>
-      <SharePdfButton
-        href={downloadHref}
-        fileName={reportCardName}
-        title={`report card of ${name}`}
-        className="inline-flex size-8 items-center justify-center rounded-md text-violet-700 hover:bg-violet-50 disabled:opacity-60 [&_svg]:size-4"
-      />
     </div>
   );
 }

@@ -205,7 +205,7 @@ export function SchoolClassesWorkspace({
           description={description}
           count={enrolled}
           actions={
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-end gap-2">
               <ClassProfilesPdfActions
                 portal="school"
                 studentIds={rosterStudents.map((student) => student.id)}
@@ -213,22 +213,24 @@ export function SchoolClassesWorkspace({
                 schoolName={rosterStudents[0]?.schoolName}
                 subjects={classSubjects}
               />
-              <DeleteRosterStudentsButton
-                mode="school"
-                classLevel={focus.row.classLevel}
-                sectionId={focus.kind === "section" ? focus.row.id : null}
-                sectionLabel={
-                  focus.kind === "section" ? displaySectionName(focus.row.name) : undefined
-                }
-                studentCount={rosterStudents.length}
-              />
-              <Link
-                href={addStudentsHref(focus)}
-                className={cn(buttonVariants(), "gap-1.5")}
-              >
-                <Plus className="size-4" />
-                Add students
-              </Link>
+              <div className="flex flex-col items-stretch gap-1.5">
+                <DeleteRosterStudentsButton
+                  mode="school"
+                  classLevel={focus.row.classLevel}
+                  sectionId={focus.kind === "section" ? focus.row.id : null}
+                  sectionLabel={
+                    focus.kind === "section" ? displaySectionName(focus.row.name) : undefined
+                  }
+                  studentCount={rosterStudents.length}
+                />
+                <Link
+                  href={addStudentsHref(focus)}
+                  className={cn(buttonVariants({ size: "sm" }), "h-8 gap-1.5 rounded-lg")}
+                >
+                  <Plus className="size-4" />
+                  Add students
+                </Link>
+              </div>
             </div>
           }
         />

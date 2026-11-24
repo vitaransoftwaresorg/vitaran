@@ -98,7 +98,7 @@ export default async function SchoolStudentsPage({
         count={headerCount}
         actions={
           inClass && classLevel != null ? (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-end gap-2">
               <ClassProfilesPdfActions
                 portal="school"
                 studentIds={roster.map((student) => student.id)}
@@ -106,26 +106,28 @@ export default async function SchoolStudentsPage({
                 schoolName={school.name}
                 subjects={classSubjects}
               />
-              {section || !(organization.sections ?? []).some((row) => row.classLevel === classLevel) ? (
-                <DeleteRosterStudentsButton
-                  mode="school"
-                  classLevel={classLevel}
-                  sectionId={sectionIds?.length === 1 ? sectionIds[0] : null}
-                  sectionLabel={section}
-                  studentCount={showRosterTable ? studentsPage.pagination.total : roster.length}
-                />
-              ) : null}
-              <Link
-                href={
-                  section
-                    ? `/school/students/new?class=${classLevel}&section=${encodeURIComponent(section)}`
-                    : `/school/students/new?class=${classLevel}`
-                }
-                className={cn(buttonVariants({ size: "sm" }), "h-8 gap-1.5 rounded-lg")}
-              >
-                <Plus className="size-4" />
-                Add students
-              </Link>
+              <div className="flex flex-col items-stretch gap-1.5">
+                {section || !(organization.sections ?? []).some((row) => row.classLevel === classLevel) ? (
+                  <DeleteRosterStudentsButton
+                    mode="school"
+                    classLevel={classLevel}
+                    sectionId={sectionIds?.length === 1 ? sectionIds[0] : null}
+                    sectionLabel={section}
+                    studentCount={showRosterTable ? studentsPage.pagination.total : roster.length}
+                  />
+                ) : null}
+                <Link
+                  href={
+                    section
+                      ? `/school/students/new?class=${classLevel}&section=${encodeURIComponent(section)}`
+                      : `/school/students/new?class=${classLevel}`
+                  }
+                  className={cn(buttonVariants({ size: "sm" }), "h-8 gap-1.5 rounded-lg")}
+                >
+                  <Plus className="size-4" />
+                  Add students
+                </Link>
+              </div>
             </div>
           ) : (
             <Link

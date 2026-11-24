@@ -95,7 +95,7 @@ export default async function AdminAllStudentsPage({
         toolbar={<AdminStudentRollSearch schoolId={school?.id} />}
         actions={
           school && inClass && classLevel != null ? (
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-end gap-2">
               {classScopeLabel ? (
                 <ClassProfilesPdfActions
                   portal="admin"
@@ -105,27 +105,29 @@ export default async function AdminAllStudentsPage({
                   subjects={subjectsForClassLevel(classLevel)}
                 />
               ) : null}
-              {section || !(organization?.sections ?? []).some((row) => row.classLevel === classLevel) ? (
-                <DeleteRosterStudentsButton
-                  mode="admin"
-                  schoolId={school.id}
-                  classLevel={classLevel}
-                  sectionId={sectionIds?.length === 1 ? sectionIds[0] : null}
-                  sectionLabel={section}
-                  studentCount={showRosterTable ? (studentsPage?.pagination.total ?? roster.length) : roster.length}
-                />
-              ) : null}
-              <Link
-                href={
-                  section
-                    ? `/admin/schools/${school.id}/students/new?class=${classLevel}&section=${encodeURIComponent(section)}`
-                    : `/admin/schools/${school.id}/students/new?class=${classLevel}`
-                }
-                className={cn(buttonVariants({ size: "sm" }), "h-8 gap-1.5 rounded-lg")}
-              >
-                <Plus className="size-4" />
-                Add students
-              </Link>
+              <div className="flex flex-col items-stretch gap-1.5">
+                {section || !(organization?.sections ?? []).some((row) => row.classLevel === classLevel) ? (
+                  <DeleteRosterStudentsButton
+                    mode="admin"
+                    schoolId={school.id}
+                    classLevel={classLevel}
+                    sectionId={sectionIds?.length === 1 ? sectionIds[0] : null}
+                    sectionLabel={section}
+                    studentCount={showRosterTable ? (studentsPage?.pagination.total ?? roster.length) : roster.length}
+                  />
+                ) : null}
+                <Link
+                  href={
+                    section
+                      ? `/admin/schools/${school.id}/students/new?class=${classLevel}&section=${encodeURIComponent(section)}`
+                      : `/admin/schools/${school.id}/students/new?class=${classLevel}`
+                  }
+                  className={cn(buttonVariants({ size: "sm" }), "h-8 gap-1.5 rounded-lg")}
+                >
+                  <Plus className="size-4" />
+                  Add students
+                </Link>
+              </div>
             </div>
           ) : school && !inClass ? (
             <Link

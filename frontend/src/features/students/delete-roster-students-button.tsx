@@ -1,10 +1,20 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   deleteClassStudentsAction,
   deleteSectionStudentsAction,
@@ -24,6 +34,8 @@ type DeleteRosterStudentsButtonProps = {
   studentCount: number;
 };
 
+const CONFIRM_WORD = "delete";
+
 /**
  * Delete all students in a section (or whole class) without removing the class/section setup.
  */
@@ -36,6 +48,8 @@ export function DeleteRosterStudentsButton({
   studentCount,
 }: DeleteRosterStudentsButtonProps) {
   const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
   const [pending, startTransition] = useTransition();
 
   if (studentCount <= 0) return null;
@@ -44,15 +58,16 @@ export function DeleteRosterStudentsButton({
   const scopeLabel = sectionId
     ? `Class ${classLevel}-${sectionLabel || "A"}`
     : `Class ${classLevel}`;
+  const canConfirm = typed.trim().toLowerCase() === CONFIRM_WORD;
 
-  function onClick() {
-    const confirmed = window.confirm(
-      sectionId
-        ? `Delete all ${studentCount} student${studentCount === 1 ? "" : "s"} in ${scopeLabel}? The class and section stay. Results and OMR for these rolls are removed too.`
-        : `Delete all ${studentCount} student${studentCount === 1 ? "" : "s"} in ${scopeLabel}? Class and sections stay. Results and OMR for these rolls are removed too.`,
-    );
-    if (!confirmed) return;
+  function closeDialog() {
+    if (pending) return;
+    setOpen(false);
+    setTyped("");
+  }
 
+  function onConfirm() {
+    if (!canConfirm || pending) return;
     startTransition(async () => {
       const result =
         mode === "admin" && schoolId
@@ -72,21 +87,70 @@ export function DeleteRosterStudentsButton({
           ? `Deleted 1 student from ${scopeLabel}`
           : `Deleted ${result.deleted} students from ${scopeLabel}`,
       );
+      setOpen(false);
+      setTyped("");
       router.refresh();
     });
   }
 
   return (
-    <Button
-      type="button"
-      variant="outline"
-      size="sm"
-      className="h-8 gap-1.5 rounded-lg border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
-      disabled={pending}
-      onClick={onClick}
-    >
-      {pending ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-      {sectionId ? "Delete section students" : "Delete class students"}
-    </Button>
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="h-7 gap-1 rounded-md border-red-200 px-2 text-xs font-medium text-red-700 hover:bg-red-50 hover:text-red-800"
+        disabled={pending}
+        onClick={() => {
+          setTyped("");
+          setOpen(true);
+        }}
+      >
+        {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+        {sectionId ? "Delete section" : "Delete class"}
+      </Button>
+
+      <AlertDialog open={open} onOpenChange={(next) => (next ? setOpen(true) : closeDialog())}>
+        <AlertDialogContent size="sm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {sectionId ? "Delete section students?" : "Delete class students?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Permanently remove {studentCount} student{studentCount === 1 ? "" : "s"} from{" "}
+              <span className="font-medium text-foreground">{scopeLabel}</span>. Results and OMR for
+              these rolls are removed too. Type <span className="font-semibold text-foreground">delete</span>{" "}
+              to confirm.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input
+            autoFocus
+            value={typed}
+            disabled={pending}
+            placeholder="delete"
+            aria-label="Type delete to confirm"
+            onChange={(event) => setTyped(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                onConfirm();
+              }
+            }}
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={!canConfirm || pending}
+              onClick={onConfirm}
+            >
+              {pending ? <Loader2 className="size-4 animate-spin" /> : null}
+              Delete
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
