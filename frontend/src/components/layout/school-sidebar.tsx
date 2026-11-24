@@ -4,6 +4,7 @@ import { useTransition } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronsUpDown, LogOut } from "lucide-react";
+import { RememberedNavLink } from "@/components/layout/remembered-nav-link";
 import { BrandBars } from "@/components/shared/logo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -76,7 +77,7 @@ export function SchoolSidebar({ school }: { school: SchoolAccount }) {
                       tooltip={item.title}
                       isActive={isSchoolNavActive(item.href, pathname)}
                       onClick={() => isMobile && setOpenMobile(false)}
-                      render={<Link href={item.href} />}
+                      render={<RememberedNavLink rootHref={item.href} />}
                       className="transition-colors duration-150 data-active:bg-white data-active:font-semibold data-active:text-brand-900"
                     >
                       <item.icon />

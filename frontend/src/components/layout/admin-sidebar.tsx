@@ -29,6 +29,7 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { RememberedNavLink } from "@/components/layout/remembered-nav-link";
 import { ADMIN_LOGOUT_PATH } from "@/constants/auth";
 import { broadcastAdminLogout } from "@/features/admin-auth/admin-session-guard";
 import { adminNavGroups, isNavItemActive } from "@/features/admin/navigation";
@@ -82,7 +83,7 @@ export function AdminSidebar({ admin }: { admin: AdminProfile }) {
                       tooltip={item.title}
                       isActive={isNavItemActive(item.href, pathname)}
                       onClick={() => isMobile && setOpenMobile(false)}
-                      render={<Link href={item.href} />}
+                      render={<RememberedNavLink rootHref={item.href} />}
                       className="transition-colors duration-150 data-active:bg-white data-active:font-semibold data-active:text-brand-900"
                     >
                       <item.icon />

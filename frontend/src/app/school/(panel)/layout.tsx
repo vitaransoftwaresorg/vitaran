@@ -9,9 +9,13 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { LiveRefresh } from "@/features/live/live-refresh";
+import { PortalNavMemory } from "@/features/portal-nav/portal-nav-memory";
 import { verifySchoolSession } from "@/features/school-auth/session";
+import { schoolNavGroups } from "@/features/school-portal/navigation";
 import { PortalMaintenanceGate } from "@/features/settings/portal-maintenance-gate";
 import { getPublicSettings } from "@/services/settings";
+
+const SCHOOL_NAV_ROOTS = schoolNavGroups.flatMap((group) => group.items.map((item) => item.href));
 
 const SIDEBAR_STATE_COOKIE = "school_sidebar_state";
 
@@ -48,6 +52,9 @@ export default async function SchoolPanelLayout({
               <div className="w-full flex-1 p-4 sm:p-5 lg:px-6 lg:py-6">
                 <PortalMaintenanceGate initialMaintenance={settings.maintenanceMode}>
                   <SchoolPageBack />
+                  <Suspense fallback={null}>
+                    <PortalNavMemory roots={SCHOOL_NAV_ROOTS} />
+                  </Suspense>
                   {/* null fallback: keep the current table visible during soft refresh (toggles/publish). */}
                   <Suspense fallback={null}>{children}</Suspense>
                 </PortalMaintenanceGate>

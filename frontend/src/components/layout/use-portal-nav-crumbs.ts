@@ -8,6 +8,7 @@ import {
   isAnswerKeyEditorPath,
   readAnswerKeysReturnHref,
 } from "@/features/answer-keys/drive-path";
+import { rememberedSectionHref } from "@/features/portal-nav/nav-memory";
 import { readResultsReturnHref } from "@/features/results/portal-drive-path";
 
 /** false during SSR + hydration; true after mount so sessionStorage reads can't mismatch HTML. */
@@ -35,9 +36,16 @@ function isSectionRootLabel(label: string) {
     value === "results" ||
     value === "results and ranks" ||
     value === "answer keys" ||
+    value === "school keys" ||
+    value === "key objections" ||
     value === "teachers" ||
     value === "programs" ||
-    value === "schools"
+    value === "schools" ||
+    value === "students" ||
+    value === "resources" ||
+    value === "teacher resources" ||
+    value === "omr scan" ||
+    value === "classes"
   );
 }
 
@@ -45,9 +53,21 @@ function isClassLeafLabel(label: string) {
   return /^class\s+\d+/i.test(label.trim());
 }
 
+function withRememberedSectionHomes(crumbs: PortalNavCrumb[]) {
+  return crumbs.map((crumb) => {
+    const pathOnly = crumb.href.split("?")[0] ?? crumb.href;
+    // Only plain section homes (Schools, Answer Keys, Results, …) — not deep links.
+    if (crumb.href !== pathOnly) return crumb;
+    if (!isSectionRootLabel(crumb.label) && !/\/(schools|teachers|programs|students|answer-keys|school-keys|results|omr-scan|resources|objections|teacher-resources)$/.test(pathOnly)) {
+      return crumb;
+    }
+    return { ...crumb, href: rememberedSectionHref(pathOnly) };
+  });
+}
+
 function dedupeCrumbs(crumbs: PortalNavCrumb[]) {
   const out: PortalNavCrumb[] = [];
-  for (const crumb of crumbs) {
+  for (const crumb of withRememberedSectionHomes(crumbs)) {
     const prev = out[out.length - 1];
     if (prev && prev.href === crumb.href && prev.label === crumb.label) continue;
     // Drop a repeated school/test block if the section root leaked back in.

@@ -4,6 +4,7 @@ import { useTransition } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronsUpDown, LogOut } from "lucide-react";
+import { RememberedNavLink } from "@/components/layout/remembered-nav-link";
 import { BrandBars } from "@/components/shared/logo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
@@ -82,7 +83,7 @@ export function TeacherSidebar({ teacher }: { teacher: TeacherAccount }) {
                       tooltip={item.title}
                       isActive={isTeacherNavActive(item.href, pathname)}
                       onClick={() => isMobile && setOpenMobile(false)}
-                      render={<Link href={item.href} />}
+                      render={<RememberedNavLink rootHref={item.href} />}
                       className="h-9 gap-2 px-2 text-[13px] transition-colors duration-150 data-active:bg-white data-active:font-bold data-active:text-brand-900"
                     >
                       <item.icon className="!size-3.5" />

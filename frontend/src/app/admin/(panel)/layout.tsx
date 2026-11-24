@@ -9,7 +9,11 @@ import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { verifyAdminSession } from "@/features/admin-auth/session";
+import { adminNavGroups } from "@/features/admin/navigation";
 import { LiveRefresh } from "@/features/live/live-refresh";
+import { PortalNavMemory } from "@/features/portal-nav/portal-nav-memory";
+
+const ADMIN_NAV_ROOTS = adminNavGroups.flatMap((group) => group.items.map((item) => item.href));
 
 const SIDEBAR_STATE_COOKIE = "sidebar_state";
 
@@ -38,6 +42,9 @@ export default async function AdminPanelLayout({
               <AdminHeader />
               <div className="w-full flex-1 p-4 sm:p-5 lg:px-6 lg:py-6">
                 <AdminPageBack />
+                <Suspense fallback={null}>
+                  <PortalNavMemory roots={ADMIN_NAV_ROOTS} />
+                </Suspense>
                 {/* null fallback: keep the current table visible during soft refresh (toggles/publish). */}
                 <Suspense fallback={null}>{children}</Suspense>
               </div>
