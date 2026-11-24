@@ -122,7 +122,7 @@ export function StudentsTable({
           value={query}
           onChange={setQuery}
           placeholder="Search students"
-          className="min-w-0 flex-1 sm:flex-none"
+          className="w-[12.8rem] shrink-0 sm:w-[12.8rem]"
         />
       </div>
       {filtered.length === 0 ? (

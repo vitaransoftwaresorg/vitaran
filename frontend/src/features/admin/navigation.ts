@@ -195,12 +195,16 @@ export function getAdminParentHref(pathname: string, search = ""): string | null
     const query = params.toString();
     return query ? `/admin/results?${query}` : "/admin/results";
   }
-  // Students drive: class → school folder → Students list (or school profile if from=school).
+  // Students drive: section → class → school folder → Students list (or school profile if from=school).
   if (pathname === "/admin/schools/students") {
     const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
-    if (params.has("class") || params.has("section")) {
-      params.delete("class");
+    if (params.has("section")) {
       params.delete("section");
+      const query = params.toString();
+      return query ? `/admin/schools/students?${query}` : "/admin/schools/students";
+    }
+    if (params.has("class")) {
+      params.delete("class");
       const query = params.toString();
       return query ? `/admin/schools/students?${query}` : "/admin/schools/students";
     }

@@ -1,8 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { AlertCircle, Download, FileSpreadsheet, Loader2, Minus, Plus, Save, Settings2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { AlertCircle, Download, FileSpreadsheet, Loader2, Minus, Plus, Save, Settings2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,6 +28,7 @@ import {
   normalizeKeyTypeRanges,
 } from "@/types/answer-key";
 import {
+  deleteAnswerKeyAction,
   getAnswerKeyOmrStatusAction,
   parseAnswerKeyPdfAction,
   saveAnswerKeyAnswersAction,
@@ -26,6 +38,7 @@ import { downloadAnswerKeyTemplate, readAnswerKeyExcel } from "./answer-key-exce
 import { AnswerKeyOptionsTable } from "./answer-key-options-table";
 import { AnswerKeyPdfActions } from "./answer-key-pdf-actions";
 import { ANSWER_KEYS_PATH } from "./constants";
+import { readAnswerKeysReturnHref } from "./drive-path";
 import { enteredTestId, TEST_ID_LENGTH, TEST_ID_MESSAGE, TEST_ID_PATTERN, testIdDigits } from "./test-id";
 import { TestIdStatus, useTestIdCheck } from "./test-id-status";
 
@@ -201,7 +214,11 @@ function padLeadingEmptyBands(ranges: SubjectRange[]): SubjectRange[] {
 }
 
 export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }: AnswerKeyAnswersEditorProps) {
+  const router = useRouter();
   const [saving, startSaving] = useTransition();
+  const [deleting, startDeleting] = useTransition();
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const pending = saving || deleting;
   const initialRanges = padLeadingEmptyBands(
     answerKey.subjectRanges.length > 0 ? answerKey.subjectRanges : FALLBACK_RANGES,
   );
@@ -282,7 +299,21 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
   const incomplete = ranges
     .filter((range) => !isEmptyBand(range))
     .flatMap((range) => questionsIn(range).filter((question) => !answers[String(question)]));
-  const pending = saving;
+
+  function deleteKey() {
+    if (readOnly || deleting) return;
+    startDeleting(async () => {
+      const result = await deleteAnswerKeyAction(answerKey.id);
+      if (!result.ok) {
+        toast.error(result.message);
+        return;
+      }
+      toast.success("Answer key deleted");
+      setDeleteOpen(false);
+      router.push(readAnswerKeysReturnHref() ?? ANSWER_KEYS_PATH);
+      router.refresh();
+    });
+  }
 
   function setSubjectCount(subject: string, count: number) {
     const nextCount = Math.min(
@@ -583,8 +614,44 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
           ) : Object.keys(answers).length === 0 ? (
             <span className="text-xs font-medium text-neutral-400">Answers not published yet</span>
           ) : null}
+          {!readOnly ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={pending || omrLocked}
+              title={omrLocked ? (omrLockMessage ?? "OMR evaluation is ongoing") : "Delete this answer key"}
+              className="border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+              onClick={() => setDeleteOpen(true)}
+            >
+              {deleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+              Delete
+            </Button>
+          ) : null}
         </div>
       </div>
+
+      <AlertDialog open={deleteOpen} onOpenChange={(next) => !deleting && setDeleteOpen(next)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogMedia className="bg-destructive/10 text-destructive">
+              <Trash2 />
+            </AlertDialogMedia>
+            <AlertDialogTitle>Delete this answer key?</AlertDialogTitle>
+            <AlertDialogDescription>
+              <span className="font-medium text-foreground">{heading || "This key"}</span> will be
+              permanently removed. This can&apos;t be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <Button type="button" variant="destructive" disabled={deleting} onClick={deleteKey}>
+              {deleting ? <Loader2 className="size-4 animate-spin" /> : null}
+              Delete
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="overflow-x-auto rounded-2xl border border-brand-100 bg-white">
         <table className="w-full text-sm">

@@ -158,7 +158,6 @@ export function ClassProfilesPdfActions({
   tests?: number[];
   className?: string;
 }) {
-  const [printing, setPrinting] = useState(false);
   const [pending, startTransition] = useTransition();
   if (studentIds.length === 0) return null;
   const title = `${studentIds.length} student profile ${studentIds.length === 1 ? "card" : "cards"}`;
@@ -183,22 +182,6 @@ export function ClassProfilesPdfActions({
 
   return (
     <div className={cn("flex flex-wrap gap-2", className)}>
-      <button
-        type="button"
-        title={`Print ${title}`}
-        disabled={printing || pending}
-        onClick={() => {
-          setPrinting(true);
-          printPdf(classProfilesPdfHref(portal, studentIds), () => setPrinting(false), fileName);
-        }}
-        className={cn(
-          MENU_TRIGGER,
-          "border border-brand-200 bg-white text-brand-900 hover:border-brand-900 hover:bg-brand-50 disabled:opacity-60",
-        )}
-      >
-        {printing ? <Loader2 className="animate-spin" /> : <Printer />}
-        Print {label}
-      </button>
       <a
         href={classProfilesPdfHref(portal, studentIds, true)}
         title={`Download ${title}`}

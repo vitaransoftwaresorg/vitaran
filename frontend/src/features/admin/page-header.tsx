@@ -24,11 +24,12 @@ export function PageHeader({
   if (!title && !description && !toolbar && !actions && count === undefined) return null;
 
   const showCountAlone = !title && count !== undefined;
+  const hasLead = Boolean(title || description || count !== undefined);
 
   return (
-    <div className="mb-6 flex flex-col gap-3 sm:gap-4 lg:flex-row lg:items-center lg:gap-4">
-      {(title || description || count !== undefined) && (
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 lg:mr-auto">
+    <div className="mb-6 flex flex-col gap-3 sm:gap-4">
+      {hasLead ? (
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
           {title ? (
             <h1 className="flex items-center gap-2.5 text-xl font-bold text-brand-900 sm:text-2xl">
               {title}
@@ -56,9 +57,18 @@ export function PageHeader({
             </p>
           ) : null}
         </div>
-      )}
-      {toolbar ? <div className="min-w-0 w-full lg:w-auto lg:shrink-0">{toolbar}</div> : null}
-      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+      ) : null}
+
+      {toolbar || actions ? (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          {toolbar ? <div className="min-w-0 shrink-0">{toolbar}</div> : null}
+          {actions ? (
+            <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-2">
+              {actions}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

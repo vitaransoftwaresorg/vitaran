@@ -1094,7 +1094,12 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                 ? `${classRows.length} class${classRows.length === 1 ? "" : "es"}`
                 : `${filteredRows.length} of ${classRows.length} classes`}
             </p>
-            <TableSearch value={query} onChange={setQuery} placeholder="Search classes" />
+            <TableSearch
+              value={query}
+              onChange={setQuery}
+              placeholder="Search classes"
+              className="w-[12.8rem] shrink-0 sm:w-[12.8rem]"
+            />
           </div>
           {filteredRows.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-neutral-500">No matching classes.</p>

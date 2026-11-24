@@ -41,14 +41,15 @@ export function AdminStudentRollSearch({ schoolId, className }: AdminStudentRoll
 
   return (
     <form
-      className={cn("flex w-full max-w-sm flex-col gap-1", className)}
+      className={cn("flex w-fit max-w-full flex-col gap-1", className)}
       onSubmit={(event) => {
         event.preventDefault();
         submit();
       }}
     >
       <div className="flex gap-2">
-        <InputGroup className="h-9 min-w-0 flex-1 bg-white">
+        {/* 7-digit Reg No — keep the field compact (no flex grow). */}
+        <InputGroup className="h-9 w-[9.6rem] shrink-0 bg-white sm:w-[10.24rem]">
           <InputGroupAddon>
             <Search />
           </InputGroupAddon>

@@ -183,9 +183,15 @@ export function StudentsDrive({
         : [{ label: school.name, href: schoolStudentsHref }];
       if (classLevel != null) {
         crumbs.push({
-          label: section ? `Class ${classLevel}-${section}` : `Class ${classLevel}`,
+          label: `Class ${classLevel}`,
           href: classHref(school.id, classLevel, fromSchool),
         });
+        if (section) {
+          crumbs.push({
+            label: `Section ${displaySectionName(section)}`,
+            href: sectionHref(school.id, classLevel, section, fromSchool),
+          });
+        }
       }
       setDrivePath(crumbs);
       return () => setDrivePath([]);
