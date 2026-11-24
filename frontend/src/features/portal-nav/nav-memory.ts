@@ -72,11 +72,3 @@ export function readPortalNavPath(rootHref: string): string | null {
     return null;
   }
 }
-
-/** Rewrite a section-home crumb so it returns to the last page in that section. */
-export function rememberedSectionHref(sectionHomeHref: string): string {
-  const pathOnly = sectionHomeHref.split("?")[0] ?? sectionHomeHref;
-  // Only rewrite plain section roots (not already-deep links).
-  if (sectionHomeHref !== pathOnly) return sectionHomeHref;
-  return readPortalNavPath(pathOnly) ?? sectionHomeHref;
-}
