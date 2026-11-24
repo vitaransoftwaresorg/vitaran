@@ -19,15 +19,21 @@ import { logger } from "../utils/logger.js";
 import { displaySectionName } from "../utils/section-label.js";
 import { omrPdfPageCount, openOmrPdf } from "./pdf-pages.js";
 import {
+  batchMetaPath,
+  listBatchMetaFilesSync,
+  listPendingMetaFilesSync,
   loadBatchPageImage,
   loadPendingImage,
+  pendingMetaPath,
   purgeStaleOmrTemp,
+  readJsonFileSync,
   removeBatchDir,
   removeOmrPath,
   removePendingDir,
   replacePendingPreview,
   storeBatchPageImage,
   storePendingImages,
+  writeJsonFile,
 } from "./pending-store.js";
 import { readQueued } from "./queue.js";
 import type { BubbleMap } from "./detect.js";
@@ -62,10 +68,13 @@ async function keepSample(bytes: Buffer, fileName: string) {
 
 const IMAGE_MAX = 8 * 1024 * 1024;
 const PDF_MAX = 500 * 1024 * 1024;
-/** Keep scanned sheets available long enough to review, fix, and save. */
-const PREVIEW_TTL_MS = 3 * 60 * 60 * 1000;
-/** Idle TTL from the last finished page (refreshed as each page completes). */
-const PDF_BATCH_TTL_MS = 3 * 60 * 60 * 1000;
+/**
+ * Production: keep unsaved OMR sheets available across review and deploys.
+ * Metadata is also written under OMR_DATA_DIR so PM2 reload does not wipe batches.
+ */
+const PREVIEW_TTL_MS = 12 * 60 * 60 * 1000;
+/** Idle TTL refreshed on every poll / page finish / preview view. */
+const PDF_BATCH_TTL_MS = 12 * 60 * 60 * 1000;
 
 type PdfBatchItem = {
   page: number;
@@ -104,6 +113,60 @@ type PdfBatch = {
 
 const pdfBatches = new Map<string, PdfBatch>();
 
+function persistBatch(batch: PdfBatch) {
+  void writeJsonFile(batchMetaPath(batch.id), batch).catch((error) => {
+    logger.warn({ err: error, batchId: batch.id }, "Could not persist OMR PDF batch");
+  });
+}
+
+function persistPending(previewId: string, row: Pending) {
+  void writeJsonFile(pendingMetaPath(previewId), {
+    expires: row.expires,
+    context: row.context,
+    school: row.school,
+    key: row.key,
+    identity: row.identity,
+    answers: row.answers,
+    flags: row.flags,
+    score: row.score,
+    examPattern: row.examPattern,
+    confidence: row.confidence,
+    diskDir: row.diskDir,
+    sheetBytes: row.sheetBytes,
+    bubbles: row.bubbles,
+    fileName: row.fileName,
+    studentId: row.studentId,
+  }).catch((error) => {
+    logger.warn({ err: error, previewId }, "Could not persist OMR preview");
+  });
+}
+
+function touchBatch(batch: PdfBatch) {
+  batch.expires = Date.now() + PDF_BATCH_TTL_MS;
+  persistBatch(batch);
+}
+
+function touchPending(previewId: string, row: Pending) {
+  row.expires = Date.now() + PREVIEW_TTL_MS;
+  persistPending(previewId, row);
+}
+
+function loadBatchFromDisk(batchId: string): PdfBatch | null {
+  const stored = readJsonFileSync<PdfBatch>(batchMetaPath(batchId));
+  if (!stored?.id || stored.cancelled) return null;
+  // Mid-read process death: keep finished pages, stop pretending the reader is still alive.
+  if (!stored.finished) {
+    stored.finished = true;
+    stored.pdfPath = null;
+  }
+  pdfBatches.set(stored.id, stored);
+  return stored;
+}
+
+function getPdfBatch(batchId: string) {
+  return pdfBatches.get(batchId) ?? loadBatchFromDisk(batchId);
+}
+
 function purgeExpiredPdfBatches() {
   const now = Date.now();
   for (const [id, batch] of pdfBatches) {
@@ -122,7 +185,7 @@ function purgeExpiredPdfBatches() {
 function dropBatchPreviews(batch: PdfBatch) {
   for (const item of batch.items) {
     if (!item.previewId) continue;
-    const row = pending.get(item.previewId);
+    const row = getPending(item.previewId);
     if (row) void removePendingDir(row.diskDir);
     pending.delete(item.previewId);
   }
@@ -220,6 +283,55 @@ type Pending = {
 };
 
 const pending = new Map<string, Pending>();
+
+function loadPendingFromDisk(previewId: string): Pending | null {
+  const stored = readJsonFileSync<Pending>(pendingMetaPath(previewId));
+  if (!stored?.diskDir || !stored.expires) return null;
+  if (stored.expires < Date.now()) {
+    void removePendingDir(stored.diskDir);
+    return null;
+  }
+  pending.set(previewId, stored);
+  return stored;
+}
+
+function getPending(previewId: string) {
+  return pending.get(previewId) ?? loadPendingFromDisk(previewId);
+}
+
+function hydrateOmrState() {
+  try {
+    const now = Date.now();
+    for (const { id, filePath } of listBatchMetaFilesSync()) {
+      const stored = readJsonFileSync<PdfBatch>(filePath);
+      if (!stored?.id || stored.cancelled || stored.expires < now) {
+        if (stored?.expires != null && stored.expires < now) void removeBatchDir(id);
+        continue;
+      }
+      if (!stored.finished) {
+        stored.finished = true;
+        stored.pdfPath = null;
+      }
+      pdfBatches.set(stored.id, stored);
+    }
+    for (const { id, filePath } of listPendingMetaFilesSync()) {
+      const stored = readJsonFileSync<Pending>(filePath);
+      if (!stored?.diskDir || stored.expires < now) {
+        if (stored?.diskDir) void removePendingDir(stored.diskDir);
+        continue;
+      }
+      pending.set(id, stored);
+    }
+    logger.info(
+      { batches: pdfBatches.size, previews: pending.size },
+      "Restored OMR batches/previews from disk",
+    );
+  } catch (error) {
+    logger.warn({ err: error }, "OMR disk hydrate failed");
+  }
+}
+
+hydrateOmrState();
 
 async function previewImage(
   image: Buffer,
@@ -662,6 +774,7 @@ export async function registerOmrPdf(
       cancelled: false,
     };
     pdfBatches.set(batch.id, batch);
+    persistBatch(batch);
     accepted = true;
     void readPdfBatch(context, batch);
     return { batchId: batch.id, pageCount, testId, examPattern };
@@ -693,7 +806,7 @@ const duplicateRollMessage = (rollNo: string, pages: number[]) => {
 /** Drop pending preview and keep a page image so the examiner can enter a reg. */
 async function stripPdfPreviewKeepImage(batch: PdfBatch, item: PdfBatchItem) {
   if (item.previewId) {
-    const row = pending.get(item.previewId);
+    const row = getPending(item.previewId);
     if (row) {
       if (!item.imagePath) {
         const sheetBuf =
@@ -771,7 +884,7 @@ async function readPdfBatch(context: ScanContext, batch: PdfBatch) {
         if (priorPages.length > 0) {
           // Collision: this sheet is a failure, and every earlier copy becomes one too.
           const imagePath = await storePdfPageThumb(batch.id, page, sheet.jpeg);
-          const dup = pending.get(previewId);
+          const dup = getPending(previewId);
           if (dup) void removePendingDir(dup.diskDir);
           pending.delete(previewId);
           batch.items.push({
@@ -784,8 +897,8 @@ async function readPdfBatch(context: ScanContext, batch: PdfBatch) {
           });
           await markRollGroupDuplicates(batch, rollNo, allPages);
         } else {
-          const row = pending.get(previewId);
-          if (row) row.expires = Date.now() + PDF_BATCH_TTL_MS;
+          const row = getPending(previewId);
+          if (row) touchPending(previewId, row);
           batch.items.push({ page, previewId, rollNo });
         }
       } catch (error) {
@@ -797,7 +910,7 @@ async function readPdfBatch(context: ScanContext, batch: PdfBatch) {
           error: error instanceof AppError ? error.message : "Could not read this page",
         });
       }
-      batch.expires = Date.now() + PDF_BATCH_TTL_MS;
+      touchBatch(batch);
     }
     if (!batch.cancelled) await finalizeDuplicateRolls(batch);
   } finally {
@@ -806,20 +919,22 @@ async function readPdfBatch(context: ScanContext, batch: PdfBatch) {
     await removeOmrPath(batch.pdfPath);
     batch.pdfPath = null;
     if (batch.cancelled) await dropBatchFiles(batch);
+    else persistBatch(batch);
   }
 }
 
 function ownPdfBatch(context: ScanContext, batchId: string) {
   purgeExpiredPdfBatches();
-  const batch = pdfBatches.get(batchId);
+  const batch = getPdfBatch(batchId);
   if (!batch || batch.cancelled || batch.owner !== ownerOf(context)) {
     throw new AppError(410, "PDF batch expired. Upload the PDF again.");
   }
+  touchBatch(batch);
   return batch;
 }
 
 function pdfBatchItemDto(item: PdfBatchItem) {
-  const row = item.previewId ? pending.get(item.previewId) : undefined;
+  const row = item.previewId ? getPending(item.previewId) : undefined;
   return {
     page: item.page,
     error: item.error,
@@ -890,6 +1005,7 @@ export function activePdfBatch(context: ScanContext) {
 export function dismissPdfBatch(context: ScanContext, batchId: string) {
   const batch = ownPdfBatch(context, batchId);
   batch.cancelled = true;
+  persistBatch(batch);
   // Unfinished batches are cleaned in readPdfBatch's finally (PDF still needed until the reader closes).
   if (batch.finished) void dropBatchFiles(batch);
   pdfBatches.delete(batch.id);
@@ -1019,15 +1135,17 @@ export async function previewScan(
     studentId: enrolled.schoolId === school.id ? enrolled.id : null,
   };
   pending.set(previewId, row);
+  persistPending(previewId, row);
   return { previewId, scan: unsavedDto(previewId, row, !identity.lean) };
 }
 
 /** The uploaded photo / PDF page, or the marked copy, of a sheet that is not saved yet. */
 export async function getPreviewImage(context: ScanContext, previewId: string, kind: ScanImageKind) {
-  const row = pending.get(previewId);
+  const row = getPending(previewId);
   if (!row || row.expires < Date.now() || ownerOf(row.context) !== ownerOf(context)) {
     throw new AppError(404, "Scan expired. Scan again.");
   }
+  touchPending(previewId, row);
   const data = await loadPendingImage(row.diskDir, kind === "raw" ? "raw" : "preview");
   return {
     data,
@@ -1051,7 +1169,7 @@ export async function commitScan(
 
 /** Point a pending preview at another enrolled student (manual registration on review). */
 async function rebindPendingRoll(context: ScanContext, previewId: string, rollNo: string) {
-  const row = pending.get(previewId);
+  const row = getPending(previewId);
   if (!row || row.expires < Date.now()) {
     if (row) void removePendingDir(row.diskDir);
     pending.delete(previewId);
@@ -1064,7 +1182,10 @@ async function rebindPendingRoll(context: ScanContext, previewId: string, rollNo
   if (!/^\d{7}$/.test(clean)) {
     throw new AppError(422, "Registration number must be 7 digits");
   }
-  if (clean === row.identity.rollNo && row.studentId) return;
+  if (clean === row.identity.rollNo && row.studentId) {
+    touchPending(previewId, row);
+    return;
+  }
   const enrolled = await resolveStudent(row.school, [clean]);
   const { key } = await resolveKey(row.school, [row.identity.testId], {
     name: enrolled.name,
@@ -1097,6 +1218,7 @@ async function rebindPendingRoll(context: ScanContext, previewId: string, rollNo
     programName: enrolled.program?.name || row.identity.programName,
   };
   row.studentId = enrolled.schoolId === row.school.id ? enrolled.id : null;
+  touchPending(previewId, row);
 }
 
 /** Most sheets "Save all" sends in one request; the page sends a big batch in chunks for progress. */
@@ -1141,7 +1263,7 @@ async function useCurrentKey(row: Pending) {
 }
 
 async function saveScan(context: ScanContext, previewId: string) {
-  const row = pending.get(previewId);
+  const row = getPending(previewId);
   if (!row || row.expires < Date.now()) {
     if (row) void removePendingDir(row.diskDir);
     pending.delete(previewId);

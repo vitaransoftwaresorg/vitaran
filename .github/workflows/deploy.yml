@@ -60,7 +60,9 @@ jobs:
              # from manual edits/rsync so pull never fails on dirty trees.
              git fetch origin main
              git reset --hard origin/main
-             git clean -fd -e backend/.env -e frontend/.env.production -e frontend/.env.local
+             git clean -fd -e backend/.env -e frontend/.env.production -e frontend/.env.local -e backend/data
+             # Durable OMR batch/preview store (survives PM2 reload + git clean).
+             mkdir -p /srv/apps/vitaranlearning-data/omr
              cd backend
              npm ci
              npx prisma generate
