@@ -4,7 +4,7 @@ import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNod
 import { Minus, Plus, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const DEFAULT_ZOOM = 1;
+const DEFAULT_ZOOM = 0.75;
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 4;
 const ZOOM_STEP = 0.25;
@@ -24,7 +24,7 @@ export function ImageZoomPane({
   className?: string;
   /** Label or extra controls on the left of the zoom bar. */
   toolbarLeft?: ReactNode;
-  /** Changing this resets zoom to 100% (e.g. Evaluated ↔ Original). */
+  /** Changing this resets zoom to the default (e.g. Evaluated ↔ Original). */
   resetKey?: string | number;
 }) {
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
@@ -115,8 +115,8 @@ export function ImageZoomPane({
           </button>
           <button
             type="button"
-            title="Reset to 100%"
-            aria-label="Reset to 100%"
+            title={`Reset to ${Math.round(DEFAULT_ZOOM * 100)}%`}
+            aria-label={`Reset to ${Math.round(DEFAULT_ZOOM * 100)}%`}
             disabled={zoom === DEFAULT_ZOOM && pan.x === 0 && pan.y === 0}
             onClick={() => {
               setZoom(DEFAULT_ZOOM);
