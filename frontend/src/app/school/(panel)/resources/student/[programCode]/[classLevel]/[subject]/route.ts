@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
 import { schoolFetch } from "@/services/school-api";
 
-type Params = { classLevel: string; subject: string };
+type Params = { programCode: string; classLevel: string; subject: string };
 
 /** Proxies a school student-resource PDF for the signed-in school portal. */
 export async function GET(
   _request: Request,
   context: { params: Promise<Params> },
 ) {
-  const { classLevel, subject } = await context.params;
+  const { programCode, classLevel, subject } = await context.params;
   const response = await schoolFetch(
-    `/school/student-resources/${encodeURIComponent(classLevel)}/${encodeURIComponent(subject)}`,
+    `/school/student-resources/${encodeURIComponent(programCode)}/${encodeURIComponent(classLevel)}/${encodeURIComponent(subject)}`,
   );
   if (!response.ok) {
     return NextResponse.json(

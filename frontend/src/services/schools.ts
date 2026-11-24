@@ -101,6 +101,7 @@ export function uploadSchoolLogo(id: string, file: File) {
 export type SchoolStudentResource = {
   id: string;
   schoolId: string;
+  programCode: string;
   classLevel: number;
   subject: string;
   fileName: string;
@@ -118,12 +119,14 @@ export function listSchoolStudentResources(schoolId: string) {
 
 export function uploadSchoolStudentResource(
   schoolId: string,
+  programCode: string,
   classLevel: number,
   subject: string,
   file: File,
 ) {
   const body = new FormData();
   body.append("file", file);
+  body.append("programCode", programCode);
   body.append("classLevel", String(classLevel));
   body.append("subject", subject);
   return adminApi<SchoolStudentResource>(
@@ -134,11 +137,24 @@ export function uploadSchoolStudentResource(
 
 export function fetchSchoolStudentResource(
   schoolId: string,
+  programCode: string,
   classLevel: number,
   subject: string,
 ) {
   return adminFetch(
-    `/schools/${encodeURIComponent(schoolId)}/student-resources/${classLevel}/${encodeURIComponent(subject)}`,
+    `/schools/${encodeURIComponent(schoolId)}/student-resources/${encodeURIComponent(programCode)}/${classLevel}/${encodeURIComponent(subject)}`,
+  );
+}
+
+export function deleteSchoolStudentResource(
+  schoolId: string,
+  programCode: string,
+  classLevel: number,
+  subject: string,
+) {
+  return adminApi<void>(
+    `/schools/${encodeURIComponent(schoolId)}/student-resources/${encodeURIComponent(programCode)}/${classLevel}/${encodeURIComponent(subject)}`,
+    { method: "DELETE" },
   );
 }
 

@@ -4,6 +4,7 @@ import type { Prisma } from "../generated/prisma/client.js";
 const metaSelect = {
   id: true,
   schoolId: true,
+  programCode: true,
   classLevel: true,
   subject: true,
   fileName: true,
@@ -21,29 +22,50 @@ export function listBySchool(schoolId: string) {
   return prisma.schoolStudentResource.findMany({
     where: { schoolId },
     select: metaSelect,
-    orderBy: [{ classLevel: "asc" }, { subject: "asc" }],
+    orderBy: [{ programCode: "asc" }, { classLevel: "asc" }, { subject: "asc" }],
   });
 }
 
-export function findMeta(schoolId: string, classLevel: number, subject: string) {
+export function findMeta(
+  schoolId: string,
+  programCode: string,
+  classLevel: number,
+  subject: string,
+) {
   return prisma.schoolStudentResource.findUnique({
     where: {
-      schoolId_classLevel_subject: { schoolId, classLevel, subject },
+      schoolId_programCode_classLevel_subject: {
+        schoolId,
+        programCode,
+        classLevel,
+        subject,
+      },
     },
     select: metaSelect,
   });
 }
 
-export function findWithData(schoolId: string, classLevel: number, subject: string) {
+export function findWithData(
+  schoolId: string,
+  programCode: string,
+  classLevel: number,
+  subject: string,
+) {
   return prisma.schoolStudentResource.findUnique({
     where: {
-      schoolId_classLevel_subject: { schoolId, classLevel, subject },
+      schoolId_programCode_classLevel_subject: {
+        schoolId,
+        programCode,
+        classLevel,
+        subject,
+      },
     },
   });
 }
 
 export function upsertResource(
   schoolId: string,
+  programCode: string,
   classLevel: number,
   subject: string,
   data: {
@@ -55,10 +77,16 @@ export function upsertResource(
 ) {
   return prisma.schoolStudentResource.upsert({
     where: {
-      schoolId_classLevel_subject: { schoolId, classLevel, subject },
+      schoolId_programCode_classLevel_subject: {
+        schoolId,
+        programCode,
+        classLevel,
+        subject,
+      },
     },
     create: {
       schoolId,
+      programCode,
       classLevel,
       subject,
       fileName: data.fileName,
@@ -76,10 +104,45 @@ export function upsertResource(
   });
 }
 
-export function deleteResource(schoolId: string, classLevel: number, subject: string) {
+export function deleteResource(
+  schoolId: string,
+  programCode: string,
+  classLevel: number,
+  subject: string,
+) {
   return prisma.schoolStudentResource.delete({
     where: {
-      schoolId_classLevel_subject: { schoolId, classLevel, subject },
+      schoolId_programCode_classLevel_subject: {
+        schoolId,
+        programCode,
+        classLevel,
+        subject,
+      },
     },
+  });
+}
+
+export function listWithDataBySchool(schoolId: string) {
+  return prisma.schoolStudentResource.findMany({
+    where: { schoolId },
+    orderBy: [{ programCode: "asc" }, { classLevel: "asc" }, { subject: "asc" }],
+  });
+}
+
+export function deleteManyByIds(ids: string[]) {
+  if (ids.length === 0) return Promise.resolve({ count: 0 });
+  return prisma.schoolStudentResource.deleteMany({
+    where: { id: { in: ids } },
+  });
+}
+
+export function updateProgramCode(
+  schoolId: string,
+  fromProgramCode: string,
+  toProgramCode: string,
+) {
+  return prisma.schoolStudentResource.updateMany({
+    where: { schoolId, programCode: fromProgramCode },
+    data: { programCode: toProgramCode },
   });
 }

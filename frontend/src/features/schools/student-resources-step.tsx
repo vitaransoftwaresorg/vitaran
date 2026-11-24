@@ -3,51 +3,74 @@
 import { useState } from "react";
 import { Check, FileText, Upload, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { capitalizeWords } from "./schema";
 import { subjectLabel, subjectsForClassLevel } from "./constants";
-import { resourceFieldName } from "./student-resource-fields";
+import { CUSTOM_PROGRAM_TOKEN, resourceFieldName } from "./student-resource-fields";
 
-const CLASS_LEVELS = Array.from({ length: 10 }, (_, index) => index + 1);
-
-type StudentResourcesStepProps = {
-  /** When set, only these classes are shown; otherwise classes 1–10. */
-  classLevels?: number[];
+type ProgramSlot = {
+  /** Catalog/custom code, or CUSTOM for draft customized program. */
+  programCode: string;
+  programName: string;
+  classLevels: number[];
 };
 
-/** Optional PDF upload grid for customized school registration (classes 1–10). */
-export function StudentResourcesStep({ classLevels }: StudentResourcesStepProps) {
-  const levels =
-    classLevels && classLevels.length > 0
-      ? [...new Set(classLevels.filter((level) => level >= 1 && level <= 10))].sort((a, b) => a - b)
-      : CLASS_LEVELS;
+type StudentResourcesStepProps = {
+  programs: ProgramSlot[];
+};
+
+/** Optional PDF upload grid for customized school registration (by program → class → subject). */
+export function StudentResourcesStep({ programs }: StudentResourcesStepProps) {
+  if (programs.length === 0) {
+    return (
+      <div className="rounded-xl border border-dashed border-neutral-300 bg-white px-4 py-8 text-center text-sm text-neutral-500">
+        Add at least one program with classes before uploading teacher resources.
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-base font-semibold text-neutral-950">Student resources</h2>
+        <h2 className="text-base font-semibold text-neutral-950">Teacher resources</h2>
         <p className="mt-1 text-sm text-neutral-500">
-          Upload a PDF for each class and subject (optional). You can add or replace these later.
+          Upload a PDF for each program, class, and subject (optional). Schools only see a
+          program&apos;s resources after at least one class is registered for that program.
+          Manage these later under Admin → Teacher Resources → Customized.
         </p>
       </div>
 
-      {levels.map((classLevel) => {
-        const subjects = subjectsForClassLevel(classLevel);
+      {programs.map((program) => {
+        const levels = [...new Set(program.classLevels.filter((level) => level >= 1 && level <= 10))]
+          .sort((a, b) => a - b);
+        if (levels.length === 0) return null;
         return (
-          <section
-            key={classLevel}
-            className="overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50/60"
-          >
-            <header className="border-b border-neutral-200 bg-white px-4 py-2.5">
-              <h3 className="text-sm font-semibold text-neutral-950">Class {classLevel}</h3>
-            </header>
-            <div className="grid gap-3 p-4 sm:grid-cols-2">
-              {subjects.map((subject) => (
-                <ResourceUploadCell
-                  key={`${classLevel}-${subject}`}
-                  classLevel={classLevel}
-                  subject={subject}
-                />
-              ))}
-            </div>
+          <section key={program.programCode} className="space-y-3">
+            <h3 className="text-sm font-semibold text-brand-900">
+              {capitalizeWords(program.programName) || program.programCode}
+            </h3>
+            {levels.map((classLevel) => {
+              const subjects = subjectsForClassLevel(classLevel);
+              return (
+                <section
+                  key={`${program.programCode}-${classLevel}`}
+                  className="overflow-hidden rounded-xl border border-neutral-200 bg-neutral-50/60"
+                >
+                  <header className="border-b border-neutral-200 bg-white px-4 py-2.5">
+                    <h4 className="text-sm font-semibold text-neutral-950">Class {classLevel}</h4>
+                  </header>
+                  <div className="grid gap-3 p-4 sm:grid-cols-2">
+                    {subjects.map((subject) => (
+                      <ResourceUploadCell
+                        key={`${program.programCode}-${classLevel}-${subject}`}
+                        programCode={program.programCode}
+                        classLevel={classLevel}
+                        subject={subject}
+                      />
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
           </section>
         );
       })}
@@ -55,8 +78,16 @@ export function StudentResourcesStep({ classLevels }: StudentResourcesStepProps)
   );
 }
 
-function ResourceUploadCell({ classLevel, subject }: { classLevel: number; subject: string }) {
-  const name = resourceFieldName(classLevel, subject);
+function ResourceUploadCell({
+  programCode,
+  classLevel,
+  subject,
+}: {
+  programCode: string;
+  classLevel: number;
+  subject: string;
+}) {
+  const name = resourceFieldName(programCode || CUSTOM_PROGRAM_TOKEN, classLevel, subject);
   const [fileName, setFileName] = useState<string | null>(null);
   const uploaded = Boolean(fileName);
 
@@ -97,29 +128,32 @@ function ResourceUploadCell({ classLevel, subject }: { classLevel: number; subje
       <span
         className={cn(
           "flex min-w-0 items-center gap-1.5 truncate text-xs",
-          uploaded ? "font-medium text-emerald-700" : "text-neutral-500",
+          uploaded ? "text-emerald-800" : "text-neutral-500",
         )}
       >
-        <FileText className="size-3.5 shrink-0" />
-        {fileName ?? "Choose PDF"}
+        {uploaded ? (
+          <>
+            <FileText className="size-3.5 shrink-0" />
+            <span className="truncate">{fileName}</span>
+            <button
+              type="button"
+              className="ml-auto rounded p-0.5 text-emerald-700 hover:bg-emerald-100"
+              onClick={(event) => {
+                event.preventDefault();
+                const input = event.currentTarget
+                  .closest("label")
+                  ?.querySelector<HTMLInputElement>('input[type="file"]');
+                if (input) input.value = "";
+                setFileName(null);
+              }}
+            >
+              <X className="size-3.5" />
+            </button>
+          </>
+        ) : (
+          "PDF optional"
+        )}
       </span>
-      {uploaded ? (
-        <button
-          type="button"
-          className="absolute top-2 right-2 rounded p-0.5 text-emerald-600 hover:bg-emerald-100 hover:text-emerald-800"
-          aria-label={`Clear ${subjectLabel(subject)} PDF`}
-          onClick={(event) => {
-            event.preventDefault();
-            const input = event.currentTarget.parentElement?.querySelector(
-              'input[type="file"]',
-            ) as HTMLInputElement | null;
-            if (input) input.value = "";
-            setFileName(null);
-          }}
-        >
-          <X className="size-3.5" />
-        </button>
-      ) : null}
     </label>
   );
 }

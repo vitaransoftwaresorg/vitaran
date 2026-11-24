@@ -40,6 +40,7 @@ import { resultProgramFields } from "./school-program";
 import {
   columnRole,
   computeRows,
+  ensureSerialColumn,
   foldRoll,
   identityCell,
   maxFromLabel,
@@ -166,7 +167,7 @@ type ClassResultsBoardProps = {
 
 export function ClassResultsBoard({
   students,
-  columns,
+  columns: columnsProp,
   sheet,
   resultSet,
   school,
@@ -176,6 +177,10 @@ export function ClassResultsBoard({
   breadcrumbs,
   scans,
 }: ClassResultsBoardProps) {
+  const columns = useMemo(
+    () => ensureSerialColumn(columnsProp, []).columns,
+    [columnsProp],
+  );
   const scanByRoll = useMemo(
     () => new Map(scans.map((scan) => [foldRoll(scan.rollNo), scan])),
     [scans],

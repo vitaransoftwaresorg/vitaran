@@ -1,6 +1,7 @@
 import { prisma } from "../config/database.js";
 import * as scanRepository from "../scan/repository.js";
 import { notifyContentChanged } from "../utils/content-events.js";
+import { deleteObject } from "./object-storage.js";
 import * as resultService from "./result.service.js";
 
 /**
@@ -269,6 +270,37 @@ export async function realignSchoolRosterToOfferings(
         where: { schoolId, programCode: oldCode },
         data: { programCode: newCode },
       });
+    }
+
+    // Customized teacher resources — remap program code when catalog swap is unambiguous.
+    for (const [oldCode, newCode] of remap.programCodeByOldCode) {
+      if (oldCode === newCode) continue;
+      const rows = await tx.schoolStudentResource.findMany({
+        where: { schoolId, programCode: oldCode },
+        select: { id: true, classLevel: true, subject: true, data: true },
+      });
+      for (const row of rows) {
+        const clash = await tx.schoolStudentResource.findFirst({
+          where: {
+            schoolId,
+            programCode: newCode,
+            classLevel: row.classLevel,
+            subject: row.subject,
+            NOT: { id: row.id },
+          },
+          select: { id: true },
+        });
+        if (clash) {
+          // Target slot already has a PDF — drop the old program's copy.
+          await deleteObject(row.data);
+          await tx.schoolStudentResource.delete({ where: { id: row.id } });
+          continue;
+        }
+        await tx.schoolStudentResource.update({
+          where: { id: row.id },
+          data: { programCode: newCode },
+        });
+      }
     }
   });
 

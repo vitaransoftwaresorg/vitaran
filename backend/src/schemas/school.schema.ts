@@ -99,11 +99,12 @@ export const createSchoolSchema = z
     password,
   })
   .superRefine((data, ctx) => {
-    if (data.type === SchoolType.CUSTOMIZED && !data.customProgram) {
+    // Customized schools enrol in regular catalog programs only — no per-school catalog program.
+    if (data.type === SchoolType.CUSTOMIZED && (!data.programs || data.programs.length === 0)) {
       ctx.addIssue({
         code: "custom",
-        path: ["customProgram"],
-        message: "Enter a program name and select classes",
+        path: ["programs"],
+        message: "Select at least one regular program and class",
       });
     }
   });

@@ -114,24 +114,49 @@ model School {
   @@map("schools")
 }
 
-/// Per-class / subject PDF for customized schools (uploaded at registration or later).
+/// Per school × program × class × subject PDF for customized schools.
 model SchoolStudentResource {
-  id         String   @id @default(uuid()) @db.Uuid
-  schoolId   String   @map("school_id") @db.Uuid
-  school     School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
-  classLevel Int      @map("class_level") @db.SmallInt
-  subject    String   @db.VarChar(64)
-  fileName   String   @map("file_name") @db.VarChar(255)
-  fileSize   Int      @map("file_size")
-  mimeType   String   @map("mime_type") @db.VarChar(64)
+  id          String   @id @default(uuid()) @db.Uuid
+  schoolId    String   @map("school_id") @db.Uuid
+  school      School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  /// LearningProgram.code for the school's enrolled program.
+  programCode String   @map("program_code") @db.VarChar(64)
+  classLevel  Int      @map("class_level") @db.SmallInt
+  subject     String   @db.VarChar(64)
+  fileName    String   @map("file_name") @db.VarChar(255)
+  fileSize    Int      @map("file_size")
+  mimeType    String   @map("mime_type") @db.VarChar(64)
   /// PDF bytes or object-storage ref; omitted from list queries.
-  data       Bytes
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  data        Bytes
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  @@unique([schoolId, classLevel, subject])
+  @@unique([schoolId, programCode, classLevel, subject])
   @@index([schoolId])
+  @@index([schoolId, programCode])
   @@map("school_student_resources")
+}
+
+/// Shared regular teacher solution books (program × class × subject × volume).
+model RegularTeacherResource {
+  id          String   @id @default(uuid()) @db.Uuid
+  /// Matches frontend program id (e.g. INTEGRATED, ADVANCED_CLASSIC).
+  programCode String   @map("program_code") @db.VarChar(64)
+  classLevel  Int      @map("class_level") @db.SmallInt
+  subject     String   @db.VarChar(64)
+  /// 0 = no volume; 1+ for multi-volume books (e.g. Olympiad).
+  volume      Int      @default(0) @db.SmallInt
+  fileName    String   @map("file_name") @db.VarChar(255)
+  fileSize    Int      @map("file_size")
+  mimeType    String   @map("mime_type") @db.VarChar(64)
+  /// PDF bytes or object-storage ref; omitted from list queries.
+  data        Bytes
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([programCode, classLevel, subject, volume])
+  @@index([programCode])
+  @@map("regular_teacher_resources")
 }
 
 /// A school enrolled in a catalog program, with per-class subject selections.

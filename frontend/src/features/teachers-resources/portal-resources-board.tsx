@@ -9,7 +9,6 @@ import {
   type PortalResourcesPayload,
 } from "./portal-resources-action";
 import { ResourcePage } from "./resource-page";
-import { solutionBooks } from "./solution-books";
 
 type PortalResourcesBoardProps = {
   role: "school" | "teacher";
@@ -44,6 +43,7 @@ export function PortalResourcesBoard({
   useLiveContent("teachers", reload);
   useLiveContent("programs", reload);
   useLiveContent("schools", reload);
+  useLiveContent("teacher-resources", reload);
 
   const cacheKey = payload.assignments
     .map((row) => `${row.programCode}:${row.classLevel}:${row.subject}`)
@@ -58,7 +58,7 @@ export function PortalResourcesBoard({
           key={cacheKey}
           title="Teachers"
           highlight="Resources"
-          books={solutionBooks}
+          books={payload.books}
           programIds={payload.programIds}
           catalogIds={payload.catalogIds}
           programNames={payload.programNames}

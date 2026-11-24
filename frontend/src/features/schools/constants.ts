@@ -42,8 +42,41 @@ function titleCaseWords(value: string) {
   );
 }
 
+/** Longest-first tokens so NEWADVANCED → "NEW ADVANCED", not a single glued word. */
+const PROGRAM_CODE_TOKENS = [
+  "REVISED",
+  "OLYMPIAD",
+  "INTEGRATED",
+  "ADVANCED",
+  "PRIMARY",
+  "CLASSIC",
+  "NEW",
+] as const;
+
+/** Display program codes with spaces (NEWADVANCED → NEW ADVANCED; ADVANCED_CLASSIC → ADVANCED CLASSIC). */
+export function formatProgramCode(code: string) {
+  const normalized = code.trim().toUpperCase().replaceAll("_", " ");
+  if (!normalized) return "";
+  if (normalized.includes(" ")) return normalized;
+
+  const parts: string[] = [];
+  let rest = normalized;
+  while (rest) {
+    const match = PROGRAM_CODE_TOKENS.filter((token) => rest.startsWith(token)).sort(
+      (a, b) => b.length - a.length,
+    )[0];
+    if (!match) {
+      parts.push(rest);
+      break;
+    }
+    parts.push(match);
+    rest = rest.slice(match.length);
+  }
+  return parts.join(" ");
+}
+
 export function programLabel(code: string, name?: string | null) {
-  const raw = name?.trim() || PROGRAM_LABELS[code] || code.replaceAll("_", " ");
+  const raw = name?.trim() || PROGRAM_LABELS[code] || formatProgramCode(code);
   return titleCaseWords(raw);
 }
 
@@ -59,7 +92,25 @@ export function customizedProgramCode(
   return school.programs?.find((code) => custom.has(code));
 }
 
-/** Customized keys show the school / custom program, not Advanced / Integrated / etc. */
+/**
+ * Program label for UI — never repeat the school name as the program name.
+ * Legacy customized programs were often named after the school.
+ */
+export function programDisplayName(
+  program: { code?: string; name?: string | null },
+  schoolName?: string | null,
+) {
+  const name = program.name?.trim() || "";
+  const school = schoolName?.trim() || "";
+  if (name && school && name.toLowerCase() === school.toLowerCase()) {
+    return "Custom program";
+  }
+  if (name) return programLabel(program.code ?? name, name);
+  if (program.code) return programLabel(program.code);
+  return "Custom program";
+}
+
+/** Customized keys show the custom program name — never the school name as a stand-in. */
 export function customizedOwnerLabel(
   owner: {
     type?: string;
@@ -71,10 +122,10 @@ export function customizedOwnerLabel(
   if ((owner.type ?? "REGULAR") !== "CUSTOMIZED") {
     return programLabel(owner.program, catalog?.name);
   }
-  if (catalog && (catalog.type ?? "REGULAR") === "CUSTOMIZED") {
-    return programLabel(owner.program, catalog.name);
-  }
-  return owner.school?.name?.trim() || programLabel(owner.program, catalog?.name);
+  return programDisplayName(
+    { code: owner.program, name: catalog?.name },
+    owner.school?.name,
+  );
 }
 
 /** One customized catalog program is created per customized school, so skip the extra school folder. */

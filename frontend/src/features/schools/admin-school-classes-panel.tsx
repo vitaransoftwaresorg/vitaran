@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  programDisplayName,
   subjectLabel,
   subjectsForClassLevel,
 } from "@/features/schools/constants";
@@ -83,6 +84,8 @@ export type DeferredClassChanges = {
 
 type AdminSchoolClassesPanelProps = {
   schoolId?: string;
+  /** Used so customized programs named after the school show as "Custom program". */
+  schoolName?: string;
   schoolPrograms: SchoolProgramOffering[];
   organization: ClassOrganization;
   classTeacherSlots: ClassTeacherSlot[];
@@ -114,6 +117,7 @@ type AdminSchoolClassesPanelProps = {
 
 export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
   schoolId,
+  schoolName = "",
   schoolPrograms,
   organization,
   classTeacherSlots,
@@ -318,9 +322,12 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     () =>
       programsForEdit.map((row) => ({
         value: row.programId,
-        label: capitalizeWords(row.programName || row.programCode) || "Program",
+        label: programDisplayName(
+          { code: row.programCode, name: row.programName },
+          schoolName,
+        ),
       })),
-    [programsForEdit],
+    [programsForEdit, schoolName],
   );
 
   // After Customized → Regular, drop stale custom program ids so Select never shows a UUID.
@@ -631,6 +638,9 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
         classLevel: editing.classLevel,
         subjects,
         fromProgramId: editing.programId,
+        // Only this section/class moves — siblings at the same classLevel keep their program.
+        excludeSectionId: editing.kind === "section" ? editing.id : undefined,
+        excludeWholeClassId: editing.kind === "class" ? editing.id : undefined,
       });
       if (!subjectResult.ok) {
         setEditErrors({ subjects: subjectResult.message });
@@ -689,9 +699,12 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     () =>
       programsForClass.map((row) => ({
         value: row.programId,
-        label: capitalizeWords(row.programName || row.programCode) || "Program",
+        label: programDisplayName(
+          { code: row.programCode, name: row.programName },
+          schoolName,
+        ),
       })),
-    [programsForClass],
+    [programsForClass, schoolName],
   );
 
   const openAddClass = () => {
@@ -769,7 +782,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
             <AlertDialogTitle>Edit class</AlertDialogTitle>
             <AlertDialogDescription>
               {editing
-                ? `Class ${editing.classLevel}-${editing.kind === "section" ? editName || editing.section : "A"} · ${capitalizeWords(editing.programName)}`
+                ? `Class ${editing.classLevel}-${editing.kind === "section" ? editName || editing.section : "A"} · ${programDisplayName({ name: editing.programName }, schoolName)}`
                 : null}
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -811,7 +824,10 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                 <SelectContent alignItemWithTrigger={false}>
                   {programsForEdit.map((row) => (
                     <SelectItem key={row.programId} value={row.programId}>
-                      {capitalizeWords(row.programName || row.programCode) || "Program"}
+                      {programDisplayName(
+                        { code: row.programCode, name: row.programName },
+                        schoolName,
+                      )}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -969,7 +985,10 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                 <SelectContent alignItemWithTrigger={false}>
                   {programsForClass.map((row) => (
                     <SelectItem key={row.programId} value={row.programId}>
-                      {capitalizeWords(row.programName || row.programCode) || "Program"}
+                      {programDisplayName(
+                        { code: row.programCode, name: row.programName },
+                        schoolName,
+                      )}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1112,7 +1131,10 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                     </td>
                     <td className="px-4 py-3 text-neutral-700">{row.section}</td>
                     <td className="px-4 py-3 text-neutral-700">
-                      {capitalizeWords(row.programName) || "—"}
+                      {programDisplayName(
+                        { code: row.programId, name: row.programName },
+                        schoolName,
+                      ) || "—"}
                     </td>
                     <td className="px-4 py-3 text-neutral-700">
                       {row.subjects.length > 0 ? (

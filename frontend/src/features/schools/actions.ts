@@ -11,7 +11,6 @@ import * as sectionService from "@/services/sections";
 import type { SchoolInput, SchoolType, Subject } from "@/types/school";
 import type { SchoolProgramOffering } from "@/types/program";
 import type { SectionInput } from "@/types/section";
-import { subjectsForClassLevel } from "./constants";
 import { CUSTOM_DRAFT_PROGRAM_ID, seedRegularProgramsInput } from "./offerings";
 import {
   getSchoolFormSchema,
@@ -109,19 +108,37 @@ function studentResourcesFromForm(formData: FormData) {
 function studentResourceFieldError(file: File): string | null {
   const isPdf =
     file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
-  if (!isPdf) return "Student resources must be PDF files.";
+  if (!isPdf) return "Teacher resources must be PDF files.";
   if (file.size > RESOURCE_PDF_MAX_BYTES) return "Each student resource PDF must be under 20 MB.";
   return null;
 }
 
-async function uploadStudentResourcesFromForm(schoolId: string, formData: FormData) {
+async function uploadStudentResourcesFromForm(
+  schoolId: string,
+  formData: FormData,
+  schoolPrograms: SchoolProgramOffering[],
+) {
   const files = studentResourcesFromForm(formData);
   for (const row of files) {
     const error = studentResourceFieldError(row.file);
     if (error) throw new ApiError(error, 400);
   }
+  const customCode =
+    schoolPrograms.find((row) => row.type === "CUSTOMIZED")?.programCode ??
+    schoolPrograms[0]?.programCode;
   for (const row of files) {
-    await schoolService.uploadSchoolStudentResource(schoolId, row.classLevel, row.subject, row.file);
+    const programCode =
+      row.programCode === "CUSTOM" || row.programCode === "__CUSTOM__"
+        ? customCode
+        : row.programCode;
+    if (!programCode) continue;
+    await schoolService.uploadSchoolStudentResource(
+      schoolId,
+      programCode,
+      row.classLevel,
+      row.subject,
+      row.file,
+    );
   }
 }
 
@@ -166,7 +183,7 @@ async function saveSchool(
     }
     await applyPendingClassChanges(school.id, school.schoolPrograms, formData);
     if (mode === "create" && parsed.data.type === "CUSTOMIZED") {
-      await uploadStudentResourcesFromForm(school.id, formData);
+      await uploadStudentResourcesFromForm(school.id, formData, school.schoolPrograms);
     }
     revalidateSchoolPortalViews();
     return { status: "success", schoolId: school.id, submittedAt: Date.now() };
@@ -229,15 +246,6 @@ export async function updateSchoolTypeAction(
         organization = null;
       }
 
-      const subjectsByClass = new Map<number, Subject[]>();
-      for (const program of school.schoolPrograms) {
-        for (const row of program.classes) {
-          if (!subjectsByClass.has(row.classLevel) && row.subjects.length > 0) {
-            subjectsByClass.set(row.classLevel, [...row.subjects]);
-          }
-        }
-      }
-
       const levels = [
         ...new Set([
           ...school.schoolPrograms.flatMap((program) =>
@@ -257,22 +265,27 @@ export async function updateSchoolTypeAction(
         };
       }
 
-      const programName = school.name.trim();
-      if (programName.length < 2) {
-        return { ok: false, message: "Enter a school name before switching to Customized." };
+      // Keep existing regular programs only — do not create a customized LearningProgram.
+      const regularPrograms = school.schoolPrograms
+        .filter((program) => (program.type ?? "REGULAR") === "REGULAR")
+        .map((program) => ({
+          programId: program.programId,
+          classes: program.classes
+            .filter((row) => row.subjects.length > 0)
+            .map((row) => ({ classLevel: row.classLevel, subjects: row.subjects as Subject[] })),
+        }))
+        .filter((row) => row.classes.length > 0);
+
+      if (regularPrograms.length === 0) {
+        return {
+          ok: false,
+          message: "Add at least one regular program with classes before switching to Customized.",
+        };
       }
 
       await schoolService.updateSchool(schoolId, {
         type: "CUSTOMIZED",
-        customProgram: {
-          name: programName,
-          classes: levels.map((classLevel) => ({
-            classLevel,
-            subjects: subjectsByClass.get(classLevel)?.length
-              ? subjectsByClass.get(classLevel)!
-              : (subjectsForClassLevel(classLevel) as Subject[]),
-          })),
-        },
+        programs: regularPrograms,
       } as SchoolInput);
     } else {
       // Customized schools only have a custom program — map each class onto Regular catalog programs.
@@ -366,9 +379,9 @@ async function applyPendingClassChanges(
     return;
   }
 
-  const customProgramId =
-    schoolPrograms.find((row) => row.type === "CUSTOMIZED")?.programId ??
-    schoolPrograms[0]?.programId;
+  const fallbackProgramId = schoolPrograms.find(
+    (row) => (row.type ?? "REGULAR") === "REGULAR",
+  )?.programId;
 
   for (const id of deletes) {
     if (!id || id.startsWith("draft-")) continue;
@@ -378,7 +391,7 @@ async function applyPendingClassChanges(
   for (const row of creates) {
     const programId =
       !row.programId || row.programId === CUSTOM_DRAFT_PROGRAM_ID
-        ? customProgramId
+        ? fallbackProgramId
         : row.programId;
     if (!programId) continue;
     await sectionService.createAdminSchoolSection(schoolId, {

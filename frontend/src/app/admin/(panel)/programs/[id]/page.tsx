@@ -6,7 +6,7 @@ import { BookOpen, Clock, Pencil } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { ProgramNavTrail } from "@/features/programs/program-nav-trail";
-import { subjectLabel } from "@/features/schools/constants";
+import { formatProgramCode, subjectLabel } from "@/features/schools/constants";
 import { SchoolTypeBadge } from "@/features/schools/school-type-badge";
 import { capitalizeWords } from "@/features/schools/schema";
 import { getProgram } from "@/services/programs";
@@ -64,7 +64,7 @@ export default async function ProgramDetailsPage({
       <div className="grid items-start gap-3 lg:grid-cols-2">
         <Panel title="Program details" icon={<BookOpen />}>
           <Field label="Name">{capitalizeWords(program.name)}</Field>
-          <Field label="Code">{program.code}</Field>
+          <Field label="Code">{formatProgramCode(program.code)}</Field>
           <Field label="Type">
             <SchoolTypeBadge type={program.type ?? "REGULAR"} size="sm" />
           </Field>

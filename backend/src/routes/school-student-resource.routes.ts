@@ -5,20 +5,24 @@ import {
   deleteAdminSchoolStudentResource,
   getAdminSchoolStudentResourceFile,
   getSchoolPortalStudentResourceFile,
+  getTeacherPortalStudentResourceFile,
   listAdminSchoolStudentResources,
   listSchoolPortalStudentResources,
+  listTeacherPortalStudentResources,
   uploadAdminSchoolStudentResource,
 } from "../controllers/school-student-resource.controller.js";
-import { requireAdmin, requireSchool } from "../middleware/authenticate.js";
+import { requireAdmin, requireSchool, requireTeacher } from "../middleware/authenticate.js";
 import { validate } from "../middleware/validate.js";
 
 const schoolIdParams = z.object({ id: z.uuid() });
 const slotParams = z.object({
   id: z.uuid(),
+  programCode: z.string().trim().min(2).max(64),
   classLevel: z.coerce.number().int().min(1).max(10),
   subject: z.string().trim().min(2).max(64),
 });
 const portalSlotParams = z.object({
+  programCode: z.string().trim().min(2).max(64),
   classLevel: z.coerce.number().int().min(1).max(10),
   subject: z.string().trim().min(2).max(64),
 });
@@ -43,12 +47,12 @@ adminSchoolStudentResourceRouter.put(
   uploadAdminSchoolStudentResource,
 );
 adminSchoolStudentResourceRouter.get(
-  "/:classLevel/:subject",
+  "/:programCode/:classLevel/:subject",
   validate(slotParams, "params"),
   getAdminSchoolStudentResourceFile,
 );
 adminSchoolStudentResourceRouter.delete(
-  "/:classLevel/:subject",
+  "/:programCode/:classLevel/:subject",
   validate(slotParams, "params"),
   deleteAdminSchoolStudentResource,
 );
@@ -58,7 +62,17 @@ export const schoolStudentResourceRouter = Router();
 schoolStudentResourceRouter.use(requireSchool);
 schoolStudentResourceRouter.get("/", listSchoolPortalStudentResources);
 schoolStudentResourceRouter.get(
-  "/:classLevel/:subject",
+  "/:programCode/:classLevel/:subject",
   validate(portalSlotParams, "params"),
   getSchoolPortalStudentResourceFile,
+);
+
+/** Teacher portal: /teacher/student-resources (customized school PDFs) */
+export const teacherStudentResourceRouter = Router();
+teacherStudentResourceRouter.use(requireTeacher);
+teacherStudentResourceRouter.get("/", listTeacherPortalStudentResources);
+teacherStudentResourceRouter.get(
+  "/:programCode/:classLevel/:subject",
+  validate(portalSlotParams, "params"),
+  getTeacherPortalStudentResourceFile,
 );

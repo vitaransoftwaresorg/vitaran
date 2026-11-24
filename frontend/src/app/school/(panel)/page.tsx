@@ -3,7 +3,8 @@ import { BookOpen, GraduationCap, KeyRound, ScanLine, School2, Trophy, Users } f
 import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/features/admin/page-header";
 import { ActionBanner, Panel, STAT_GRID, StatCard } from "@/features/admin/dashboard-parts";
-import { programLabel, subjectLabel } from "@/features/schools/constants";
+import { verifySchoolSession } from "@/features/school-auth/session";
+import { programDisplayName, subjectLabel } from "@/features/schools/constants";
 import { capitalizeWords } from "@/features/schools/schema";
 import {
   booksForPortalProgram,
@@ -11,32 +12,47 @@ import {
   portalPrograms,
   regularCatalogIds,
 } from "@/features/teachers-resources/portal-programs";
-import { solutionBooks } from "@/features/teachers-resources/solution-books";
+import { loadSolutionBooksFromDb } from "@/features/teachers-resources/load-solution-books";
+import type { SolutionBook } from "@/features/teachers-resources/solution-books";
+import { listSchoolPortalStudentResources } from "@/services/school-student-resources";
 import { getSchoolStudentCounts } from "@/services/students";
 import { getSchoolDashboard } from "@/services/teachers";
 import { cn } from "@/lib/utils";
 
-function countResources(programCodes: string[], subjectIds: string[], names?: Record<string, string>) {
+function countResources(
+  programCodes: string[],
+  subjectIds: string[],
+  books: Record<string, SolutionBook[]>,
+  names?: Record<string, string>,
+) {
   const subjects = new Set(subjectIds.map((id) => subjectLabel(id)));
   const catalogIds = regularCatalogIds(programCodes);
   return portalPrograms(portalProgramIds(programCodes), names).reduce((total, program) => {
-    const books = booksForPortalProgram(program, solutionBooks, undefined, catalogIds);
-    return total + books.filter((book) => subjects.has(book.subject)).length;
+    const programBooks = booksForPortalProgram(program, books, undefined, catalogIds);
+    return total + programBooks.filter((book) => subjects.has(book.subject)).length;
   }, 0);
 }
 
 export default async function SchoolDashboardPage() {
-  const [stats, studentCounts] = await Promise.all([
+  const school = await verifySchoolSession();
+  const isCustomized = (school.type ?? "REGULAR") === "CUSTOMIZED";
+  const [stats, studentCounts, booksOrCustom] = await Promise.all([
     getSchoolDashboard(),
     getSchoolStudentCounts(),
+    isCustomized
+      ? listSchoolPortalStudentResources().catch(() => [])
+      : loadSolutionBooksFromDb(),
   ]);
   const programNames = Object.fromEntries(stats.programLabels.map((row) => [row.code, row.name]));
   const ownPrograms = stats.programLabels;
-  const resources = countResources(
-    stats.programLabels.map((row) => row.code),
-    stats.subjectIds,
-    programNames,
-  );
+  const resources = isCustomized
+    ? (booksOrCustom as Awaited<ReturnType<typeof listSchoolPortalStudentResources>>).length
+    : countResources(
+        stats.programLabels.map((row) => row.code),
+        stats.subjectIds,
+        booksOrCustom as Record<string, SolutionBook[]>,
+        programNames,
+      );
   const studentTotal = Object.values(studentCounts.byProgram).reduce((sum, n) => sum + n, 0);
 
   return (
@@ -76,14 +92,18 @@ export default async function SchoolDashboardPage() {
         <StatCard
           label="Resources"
           value={resources}
-          hint={`${stats.programs} programs · ${stats.subjects} subjects`}
+          hint={
+            isCustomized
+              ? "Customized PDFs for this school"
+              : `${stats.programs} programs · ${stats.subjects} subjects`
+          }
           icon={BookOpen}
           href="/school/resources"
         />
         <StatCard
           label="Answer keys"
           value={stats.answerKeys}
-          hint="Published for your school"
+          hint={isCustomized ? "Only keys for this school" : "Published for your school"}
           icon={KeyRound}
           href="/school/answer-keys"
         />
@@ -115,7 +135,10 @@ export default async function SchoolDashboardPage() {
                   key={program.code}
                   className="rounded-full border border-brand-100 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-800"
                 >
-                  {capitalizeWords(programLabel(program.code, program.name))}
+                  {programDisplayName(
+                    { code: program.code, name: program.name },
+                    stats.schoolName,
+                  )}
                 </li>
               ))
             ) : (

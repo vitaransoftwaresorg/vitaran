@@ -12,6 +12,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:title-case-names": "tsx --env-file=.env src/scripts/title-case-names.ts",
+    "db:import-teacher-resources": "tsx --env-file=.env src/scripts/import-regular-teacher-resources.ts --dir ../frontend/public/solution-books",
     "start": "node dist/server.js",
     "start:prod": "prisma migrate deploy && node dist/server.js",
     "lint": "eslint .",

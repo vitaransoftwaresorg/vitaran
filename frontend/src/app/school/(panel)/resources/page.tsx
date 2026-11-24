@@ -7,31 +7,40 @@ import { listSchoolPortalStudentResources } from "@/services/school-student-reso
 
 export default async function SchoolResourcesPage() {
   const school = await verifySchoolSession();
-  const initialPayload = await loadSchoolPortalResourcesAction();
   const isCustomized = (school.type ?? "REGULAR") === "CUSTOMIZED";
-  const studentResources = isCustomized
-    ? await listSchoolPortalStudentResources().catch(() => [])
-    : [];
 
+  if (isCustomized) {
+    const regularPrograms = school.schoolPrograms.filter(
+      (row) => (row.type ?? "REGULAR") === "REGULAR",
+    );
+    const regularCodes = new Set(regularPrograms.map((row) => row.programCode));
+    const studentResources = (await listSchoolPortalStudentResources().catch(() => [])).filter(
+      (row) => regularCodes.has(row.programCode),
+    );
+    const programNames = Object.fromEntries(
+      regularPrograms.map((row) => [row.programCode, row.programName]),
+    );
+    return (
+      <>
+        <PageHeader
+          title="Teacher resources"
+          description="PDFs for your school's regular catalog programs. Register at least one class to see them here."
+        />
+        <SchoolStudentResourcesPanel
+          resources={studentResources}
+          viewBase="/school/resources/student"
+          programNames={programNames}
+        />
+      </>
+    );
+  }
+
+  const initialPayload = await loadSchoolPortalResourcesAction();
   return (
-    <>
-      <PortalResourcesBoard
-        role="school"
-        description="Solution books for programs that have at least one class at your school."
-        initialPayload={initialPayload}
-      />
-      {isCustomized ? (
-        <section className="mt-8 space-y-3">
-          <PageHeader
-            title="Student resources"
-            description="PDFs uploaded for your customized classes and subjects."
-          />
-          <SchoolStudentResourcesPanel
-            resources={studentResources}
-            viewBase="/school/resources/student"
-          />
-        </section>
-      ) : null}
-    </>
+    <PortalResourcesBoard
+      role="school"
+      description="Solution books for programs that have at least one class at your school."
+      initialPayload={initialPayload}
+    />
   );
 }

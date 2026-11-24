@@ -41,6 +41,17 @@ export function subjectMaxMarks(columns: string[], column: number) {
   return SUBJECT_PAPER_MAX;
 }
 
+/** Prepend S.No when a sheet/template has no serial column. */
+export function ensureSerialColumn(columns: string[], rows: ResultCell[][]) {
+  if (columns.some((label) => columnRole(label) === "serial")) {
+    return { columns, rows };
+  }
+  return {
+    columns: ["S.No", ...columns],
+    rows: rows.map((row, position) => [position + 1, ...row]),
+  };
+}
+
 export function columnRole(label: string): ColumnRole {
   const text = foldLabel(label);
   if (/^((s|sl|sr)\.?\s*no\.?|serial(\s*(no\.?|number))?|#)$/.test(text)) return "serial";

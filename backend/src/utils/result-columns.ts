@@ -9,6 +9,7 @@ function roundMarks(value: number) {
 }
 
 export type ColumnRole =
+  | "serial"
   | "roll"
   | "name"
   | "class"
@@ -39,6 +40,7 @@ export function maxFromLabel(label: string) {
 
 export function columnRole(label: string): ColumnRole {
   const text = foldLabel(label);
+  if (/^((s|sl|sr)\.?\s*no\.?|serial(\s*(no\.?|number))?|#)$/.test(text)) return "serial";
   if (/section\s*rank/.test(text)) return "sectionRank";
   if (/class\s*rank|overall\s*rank|^rank$/.test(text)) return "classRank";
   if (/^(roll|regd?\.?\s*no|registration)/.test(text)) return "roll";
@@ -82,11 +84,12 @@ export function forceSubjectPaperMaxes(columns: string[], subjectMax = SUBJECT_P
   );
 }
 
-/** Reg No · CandidateName · CLASS · one column per subject · Total · Percentage · ranks. */
+/** S.No · Reg No · CandidateName · CLASS · subjects · Total · Percentage · ranks. */
 export function standardColumns(subjects: Array<{ subject: string; maxMarks: number }>) {
   const normalized = subjects.map((row) => ({ ...row, maxMarks: SUBJECT_PAPER_MAX }));
   const max = normalized.reduce((sum, row) => sum + row.maxMarks, 0);
   return [
+    "S.No",
     "Reg No",
     "CandidateName",
     "CLASS",
@@ -158,19 +161,38 @@ export function recomputeSheet(columns: string[], rows: CellValue[][], classLeve
     return row;
   });
 
-  return rankRows(columns, filled, classLevel);
+  const ranked = rankRows(columns, filled, classLevel);
+  const serialCol = roles.indexOf("serial");
+  if (serialCol < 0) return ranked;
+  return ranked.map((row, position) => {
+    const next = [...row];
+    next[serialCol] = position + 1;
+    return next;
+  });
 }
 
-/** Sheets uploaded without rank columns still show Section Rank and Class Rank, from the totals. */
+/** Sheets uploaded without S.No / rank columns still show them. */
 export function withRankColumns(columns: string[], rows: CellValue[][], classLevel: number) {
   const roles = columns.map(columnRole);
-  const added = [
-    ...(roles.includes("sectionRank") ? [] : ["Section Rank"]),
-    ...(roles.includes("classRank") ? [] : ["Class Rank"]),
+  let next = [...columns];
+  let padded = rows.map((row) => columns.map((_, index) => row[index] ?? null));
+
+  if (!roles.includes("serial")) {
+    next = ["S.No", ...next];
+    padded = padded.map((row, position) => [position + 1, ...row]);
+  }
+
+  const nextRoles = next.map(columnRole);
+  const suffix = [
+    ...(nextRoles.includes("sectionRank") ? [] : ["Section Rank"]),
+    ...(nextRoles.includes("classRank") ? [] : ["Class Rank"]),
   ];
-  if (!roles.includes("total") || added.length === 0) return { columns, rows };
-  const next = [...columns, ...added];
-  const padded = rows.map((row) => [...columns.map((_, index) => row[index] ?? null), ...added.map(() => null)]);
+  if (suffix.length === 0 || !nextRoles.includes("total")) {
+    return { columns: next, rows: padded };
+  }
+
+  next = [...next, ...suffix];
+  padded = padded.map((row) => [...row, ...suffix.map(() => null)]);
   return { columns: next, rows: rankRows(next, padded, classLevel) };
 }
 

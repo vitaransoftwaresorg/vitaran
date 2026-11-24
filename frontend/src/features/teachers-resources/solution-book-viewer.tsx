@@ -10,6 +10,9 @@ import type { SolutionBook } from "./solution-books";
 function apiSrc(href: string) {
   const parts = solutionBookPartsFromHref(href);
   if (!parts) return null;
+  if (href.startsWith("/teacher-resources/")) {
+    return `/api/teacher-resources/${parts.map(encodeURIComponent).join("/")}`;
+  }
   return `/api/solution-books/${parts.map(encodeURIComponent).join("/")}`;
 }
 

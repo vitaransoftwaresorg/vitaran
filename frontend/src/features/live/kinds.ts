@@ -7,4 +7,5 @@ export type LiveContentKind =
   | "sections"
   | "objections"
   | "programs"
+  | "teacher-resources"
   | "settings";

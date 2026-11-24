@@ -41,7 +41,7 @@ export function isStudentMismatchError(message: string) {
   );
 }
 
-/** Unknown registration — do not offer enter-reg recovery (nothing to rematch). */
+/** Unknown registration on the sheet — examiner can enter a different one. */
 export function isNoStudentRollError(message: string) {
   return /no student with registration number/i.test(message);
 }
@@ -54,11 +54,9 @@ export function displayScanError(message: string) {
     .trim();
 }
 
-/**
- * Show enter-registration for every scan error except “No student with registration…”.
- */
-export function canRecoverRoll(message: string) {
-  return !isNoStudentRollError(message);
+/** Show enter-registration + Save for every failed sheet that can be rematched. */
+export function canRecoverRoll(_message: string) {
+  return true;
 }
 
 export type AmbiguousRollDetails = {

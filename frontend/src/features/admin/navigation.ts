@@ -1,5 +1,6 @@
 import {
   BookMarked,
+  BookOpen,
   CirclePlus,
   GraduationCap,
   KeyRound,
@@ -44,6 +45,7 @@ export const adminNavGroups: AdminNavGroup[] = [
   {
     label: "Content",
     items: [
+      { title: "Teacher Resources", href: "/admin/teacher-resources", icon: BookOpen },
       { title: "Answer Keys", href: "/admin/answer-keys", icon: KeyRound },
       { title: "School Keys", href: "/admin/school-keys", icon: KeySquare },
       { title: "Key Objections", href: "/admin/objections", icon: MessageSquareWarning },
@@ -100,6 +102,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   edit: "Edit",
   answers: "Enter answers",
   enter: "Enter marks",
+  "teacher-resources": "Teacher Resources",
   "answer-keys": "Answer Keys",
   "school-keys": "School Keys",
   objections: "Key Objections",

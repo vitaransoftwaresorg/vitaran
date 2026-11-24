@@ -47,14 +47,14 @@ export const SCHOOL_FORM_STEPS = [
   {
     id: "programs",
     title: "Programs & classes",
-    fields: ["offerings", "customProgramName", "customClasses"],
+    fields: ["offerings", "customClasses"],
   },
 ] as const satisfies readonly SchoolFormStep[];
 
 /** Customized registration only — upload PDFs for classes 1–10. */
 export const SCHOOL_FORM_RESOURCES_STEP = {
   id: "resources",
-  title: "Student resources",
+  title: "Teacher resources",
   fields: [] as const satisfies readonly SchoolFormField[],
 } as const satisfies SchoolFormStep;
 

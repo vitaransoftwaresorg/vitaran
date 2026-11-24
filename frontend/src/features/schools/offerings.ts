@@ -162,8 +162,6 @@ export function catalogProgramsForForm(
 export function customizedProgramForForm(input: {
   offerings: string[];
   customProgramName: string;
-  /** Prefer school name so Add class shows the same label as Programs. */
-  schoolName?: string;
   savedPrograms: SchoolProgramOffering[];
 }): SchoolProgramOffering[] {
   const year = new Date().getFullYear();
@@ -171,7 +169,6 @@ export function customizedProgramForForm(input: {
     input.savedPrograms.find((row) => row.type === "CUSTOMIZED") ?? input.savedPrograms[0];
   const programId = saved?.programId ?? CUSTOM_DRAFT_PROGRAM_ID;
   const programName =
-    input.schoolName?.trim() ||
     input.customProgramName.trim() ||
     saved?.programName ||
     "Custom Program";
@@ -260,56 +257,21 @@ export function liveOfferingsFromForm(input: {
   offerings: string[];
   customClasses: string[];
   customProgramName: string;
-  schoolName?: string;
   catalog: LearningProgram[];
   savedPrograms: SchoolProgramOffering[];
 }): SchoolProgramOffering[] {
   const year = new Date().getFullYear();
-
-  if (input.schoolType === "CUSTOMIZED") {
-    const saved =
-      input.savedPrograms.find((row) => row.type === "CUSTOMIZED") ?? input.savedPrograms[0];
-    const levels = [...new Set(input.customClasses.map(Number))]
-      .filter((level) => Number.isInteger(level) && level >= 1 && level <= 12)
-      .sort((a, b) => a - b);
-    if (levels.length === 0) return [];
-    const programId = saved?.programId ?? CUSTOM_DRAFT_PROGRAM_ID;
-    const programName =
-      input.schoolName?.trim() ||
-      input.customProgramName.trim() ||
-      saved?.programName ||
-      "Custom Program";
-    const subjectsByClass = new Map(
-      offeringsToPrograms(input.offerings)
-        .filter((row) => row.programId === programId || row.programId === CUSTOM_DRAFT_PROGRAM_ID)
-        .flatMap((row) => row.classes.map((cls) => [cls.classLevel, cls.subjects] as const)),
-    );
-    return [
-      {
-        programId,
-        programCode: saved?.programCode ?? "CUSTOM",
-        programName,
-        type: "CUSTOMIZED" as const,
-        year: saved?.year ?? year,
-        classFrom: levels[0],
-        classTo: levels[levels.length - 1],
-        catalogSubjects: saved?.catalogSubjects ?? [],
-        classes: levels.map((classLevel) => ({
-          classLevel,
-          subjects: subjectsByClass.get(classLevel)?.length
-            ? subjectsByClass.get(classLevel)!
-            : subjectsForClassLevel(classLevel),
-        })),
-      },
-    ];
-  }
-
   const programs = offeringsToPrograms(input.offerings);
-  return programs.flatMap((program) => {
+
+  const regularRows = programs.flatMap((program) => {
+    if (program.programId === CUSTOM_DRAFT_PROGRAM_ID) return [];
     const catalog = input.catalog.find((row) => row.id === program.programId);
     const saved = input.savedPrograms.find((row) => row.programId === program.programId);
+    if (saved?.type === "CUSTOMIZED") return [];
     if (!catalog && !saved) return [];
+    if ((catalog?.type ?? saved?.type ?? "REGULAR") === "CUSTOMIZED") return [];
     const classLevels = program.classes.map((row) => row.classLevel);
+    if (classLevels.length === 0) return [];
     return [
       {
         programId: program.programId,
@@ -324,4 +286,7 @@ export function liveOfferingsFromForm(input: {
       },
     ];
   });
+
+  // Customized schools enrol in regular catalog programs only — no draft custom program row.
+  return regularRows;
 }

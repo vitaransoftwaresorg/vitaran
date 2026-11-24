@@ -4,8 +4,8 @@ import { SCHOOL_LOGIN_PATH } from "@/constants/auth";
 import { SUBJECT_LABELS } from "@/features/schools/constants";
 import { PublicAccessGuard } from "@/features/settings/public-access-guard";
 import { programs } from "@/features/teachers-resources/content";
+import { loadSolutionBooksFromDb } from "@/features/teachers-resources/load-solution-books";
 import { ResourcePage } from "@/features/teachers-resources/resource-page";
-import { solutionBooks } from "@/features/teachers-resources/solution-books";
 import { getPublicSettings } from "@/services/settings";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +21,7 @@ export default async function TeachersResourcesPage() {
   if (!teacherResourcesPublic) {
     redirect(SCHOOL_LOGIN_PATH);
   }
+  const books = await loadSolutionBooksFromDb();
 
   return (
     <>
@@ -28,7 +29,7 @@ export default async function TeachersResourcesPage() {
       <ResourcePage
         title="Teachers"
         highlight="Resources"
-        books={solutionBooks}
+        books={books}
         programIds={programs.map((program) => program.id)}
         subjectIds={Object.keys(SUBJECT_LABELS)}
         label="Solution Books"

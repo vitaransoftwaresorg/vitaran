@@ -64,15 +64,12 @@ import {
 import {
   CUSTOM_DRAFT_PROGRAM_ID,
   catalogProgramsForForm,
-  customizedProgramForForm,
   liveOfferingsFromForm,
   parseOfferingToken,
   pickRegularProgramForClass,
-  remapOfferingsToProgram,
   replaceClassSubjectOfferings,
   schoolProgramsToTokens,
   seedRegularOfferingTokens,
-  syncCustomSubjectOfferings,
 } from "./offerings";
 import {
   SCHOOL_FORM_STEPS,
@@ -200,7 +197,11 @@ function toFormValues(school?: SchoolDetail): SchoolFormValues {
     offerings: schoolProgramsToTokens(
       school.schoolPrograms.filter((program) => (program.type ?? "REGULAR") === school.type),
     ),
-    customProgramName: custom?.programName ?? (school.type === "CUSTOMIZED" ? school.name : ""),
+    customProgramName:
+      custom?.programName &&
+      custom.programName.trim().toLowerCase() !== school.name.trim().toLowerCase()
+        ? custom.programName
+        : "",
     customClasses: custom?.classes.map((row) => String(row.classLevel)) ?? [],
     principalName: school.principalName ?? "",
     contactName: school.contactName,
@@ -328,18 +329,23 @@ function SchoolFormWizard({
   const [schoolType, setSchoolType] = useState<SchoolType>(
     initialValues.type === "CUSTOMIZED" ? "CUSTOMIZED" : "REGULAR",
   );
-  /** Customized program label always follows the school name. */
-  const [schoolName, setSchoolName] = useState(() => (initialValues.name ?? "").trim());
-  const customProgramName = schoolName || (values.customProgramName ?? "").trim();
+  const [customProgramName, setCustomProgramName] = useState(
+    () => (initialValues.customProgramName ?? "").trim(),
+  );
+  const customProgramId =
+    schoolPrograms.find((row) => row.type === "CUSTOMIZED")?.programId ??
+    CUSTOM_DRAFT_PROGRAM_ID;
   const [customClasses, setCustomClasses] = useState(initialValues.customClasses ?? []);
   const [offerings, setOfferings] = useState(() => {
     const initial = initialValues.offerings ?? [];
     if (initialValues.type !== "CUSTOMIZED") return initial;
-    const programId =
-      schoolPrograms.find((row) => row.type === "CUSTOMIZED")?.programId ??
-      schoolPrograms[0]?.programId ??
-      CUSTOM_DRAFT_PROGRAM_ID;
-    return syncCustomSubjectOfferings(initial, initialValues.customClasses ?? [], programId);
+    // Customized schools keep regular catalog tokens only.
+    return initial.filter((token) => {
+      const parsed = parseOfferingToken(token);
+      if (!parsed || parsed.programId === CUSTOM_DRAFT_PROGRAM_ID) return false;
+      const enrolled = schoolPrograms.find((row) => row.programId === parsed.programId);
+      return (enrolled?.type ?? "REGULAR") !== "CUSTOMIZED";
+    });
   });
   const [classDrafts, setClassDrafts] = useState<DeferredClassChanges>({
     creates: initialClassCreates,
@@ -349,7 +355,9 @@ function SchoolFormWizard({
   classDraftsRef.current = classDrafts;
   const classDraftsDirty =
     classDrafts.creates.length > 0 || classDrafts.deleteSectionIds.length > 0;
-  const typeCatalog = catalog.filter((program) => (program.type ?? "REGULAR") === schoolType);
+  /** Regular catalog is always available; customized schools also get their own program. */
+  const regularCatalog = catalog.filter((program) => (program.type ?? "REGULAR") === "REGULAR");
+  const typeCatalog = schoolType === "CUSTOMIZED" ? regularCatalog : regularCatalog;
   const liveSchoolPrograms = useMemo(
     () =>
       liveOfferingsFromForm({
@@ -357,32 +365,16 @@ function SchoolFormWizard({
         offerings,
         customClasses,
         customProgramName,
-        schoolName,
         catalog: typeCatalog,
         savedPrograms: schoolPrograms,
       }),
-    [schoolType, offerings, customClasses, customProgramName, schoolName, typeCatalog, schoolPrograms],
+    [schoolType, offerings, customClasses, customProgramName, typeCatalog, schoolPrograms],
   );
-  /** Catalog (or custom 1–12) for Add class — not limited to already-granted offerings. */
-  const panelSchoolPrograms = useMemo(() => {
-    if (schoolType === "CUSTOMIZED") {
-      return customizedProgramForForm({
-        offerings,
-        customProgramName,
-        schoolName,
-        savedPrograms: schoolPrograms,
-      });
-    }
-    return catalogProgramsForForm(typeCatalog, liveSchoolPrograms);
-  }, [
-    schoolType,
-    offerings,
-    customProgramName,
-    schoolName,
-    schoolPrograms,
-    typeCatalog,
-    liveSchoolPrograms,
-  ]);
+  /** Regular catalog only — customized schools do not get a per-school LearningProgram. */
+  const panelSchoolPrograms = useMemo(
+    () => catalogProgramsForForm(typeCatalog, liveSchoolPrograms),
+    [typeCatalog, liveSchoolPrograms],
+  );
   const [step, setStep] = useState(() =>
     resolveInitialStep(searchParams.get(STEP_SEARCH_PARAM), values, serverErrors, mode),
   );
@@ -408,25 +400,6 @@ function SchoolFormWizard({
    */
   const panelOrganization = useMemo(() => {
     const org = classesPanel?.organization ?? emptyOrganization;
-    if (schoolType === "CUSTOMIZED") {
-      const custom = panelSchoolPrograms[0];
-      if (!custom) return org;
-      return {
-        wholeClasses: org.wholeClasses.map((row) => ({
-          ...row,
-          programId: custom.programId,
-          programCode: custom.programCode,
-          programName: custom.programName,
-        })),
-        sections: org.sections.map((row) => ({
-          ...row,
-          programId: custom.programId,
-          programCode: custom.programCode,
-          programName: custom.programName,
-        })),
-      };
-    }
-
     const byId = new Map(panelSchoolPrograms.map((row) => [row.programId, row]));
     function remapRow<T extends {
       programId: string;
@@ -441,6 +414,18 @@ function SchoolFormWizard({
           programCode: exact.programCode,
           programName: exact.programName || row.programName,
         };
+      }
+      // Stale custom draft id → live customized program.
+      if (row.programId === CUSTOM_DRAFT_PROGRAM_ID) {
+        const custom = panelSchoolPrograms.find((program) => program.type === "CUSTOMIZED");
+        if (custom) {
+          return {
+            ...row,
+            programId: custom.programId,
+            programCode: custom.programCode,
+            programName: custom.programName,
+          };
+        }
       }
       const covering = panelSchoolPrograms
         .filter(
@@ -466,7 +451,7 @@ function SchoolFormWizard({
       wholeClasses: org.wholeClasses.map(remapRow),
       sections: org.sections.map(remapRow),
     };
-  }, [schoolType, classesPanel?.organization, emptyOrganization, panelSchoolPrograms]);
+  }, [classesPanel?.organization, emptyOrganization, panelSchoolPrograms]);
 
   // If type is already Customized but class picks are empty, seed from existing roster rows.
   useEffect(() => {
@@ -483,23 +468,18 @@ function SchoolFormWizard({
       .filter((level) => Number.isInteger(level) && level >= 1 && level <= 12)
       .sort((a, b) => a - b);
     if (levels.length === 0) return;
-    const levelStrings = levels.map(String);
-    const programId =
-      schoolPrograms.find((row) => row.type === "CUSTOMIZED")?.programId ??
-      panelSchoolPrograms[0]?.programId ??
-      CUSTOM_DRAFT_PROGRAM_ID;
     const sourceTokens =
       offerings.length > 0
         ? offerings
-        : schoolProgramsToTokens(schoolPrograms);
-    setCustomClasses(levelStrings);
-    setOfferings(
-      syncCustomSubjectOfferings(
-        remapOfferingsToProgram(sourceTokens, programId),
-        levelStrings,
-        programId,
-      ),
-    );
+        : schoolProgramsToTokens(
+            schoolPrograms.filter((row) => (row.type ?? "REGULAR") === "REGULAR"),
+          );
+    const regularTokens = sourceTokens.filter((token) => {
+      const parsed = parseOfferingToken(token);
+      return parsed != null && parsed.programId !== CUSTOM_DRAFT_PROGRAM_ID;
+    });
+    setCustomClasses(levels.map(String));
+    setOfferings(regularTokens);
     // Run once when Customized + empty class picks; avoid looping on offerings.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolType]);
@@ -797,7 +777,6 @@ function SchoolFormWizard({
                         input.value = next;
                         input.setSelectionRange(selectionStart, selectionEnd);
                       }
-                      setSchoolName(input.value.trim());
                       saveDraftSoon();
                     }}
                   />
@@ -854,11 +833,21 @@ function SchoolFormWizard({
                       const applyLocalType = (nextType: SchoolType) => {
                         setSchoolType(nextType);
                         if (nextType === "CUSTOMIZED") {
-                          const nameInput = formRef.current?.elements.namedItem(
-                            "name",
-                          ) as HTMLInputElement | null;
-                          const nextName = (nameInput?.value ?? values.name ?? "").trim();
-                          if (nextName) setSchoolName(nextName);
+                          // Keep regular catalog offerings only — no per-school LearningProgram.
+                          const regularTokens =
+                            offerings.length > 0
+                              ? offerings.filter((token) => {
+                                  const parsed = parseOfferingToken(token);
+                                  return (
+                                    parsed != null &&
+                                    parsed.programId !== CUSTOM_DRAFT_PROGRAM_ID
+                                  );
+                                })
+                              : schoolProgramsToTokens(
+                                  schoolPrograms.filter(
+                                    (row) => (row.type ?? "REGULAR") === "REGULAR",
+                                  ),
+                                );
                           const org = classesPanel?.organization ?? emptyOrganization;
                           const levels = [
                             ...new Set([
@@ -869,33 +858,20 @@ function SchoolFormWizard({
                           ]
                             .filter((level) => Number.isInteger(level) && level >= 1 && level <= 12)
                             .sort((a, b) => a - b);
-                          const levelStrings = levels.map(String);
-                          const programId =
-                            schoolPrograms.find((row) => row.type === "CUSTOMIZED")?.programId ??
-                            CUSTOM_DRAFT_PROGRAM_ID;
-                          const sourceTokens =
-                            offerings.length > 0
-                              ? offerings
-                              : schoolProgramsToTokens(
-                                  schoolPrograms.filter(
-                                    (row) => (row.type ?? "REGULAR") === "REGULAR",
-                                  ),
-                                );
-                          setCustomClasses(levelStrings);
-                          setOfferings(
-                            syncCustomSubjectOfferings(
-                              remapOfferingsToProgram(sourceTokens, programId),
-                              levelStrings,
-                              programId,
-                            ),
-                          );
+                          setCustomClasses(levels.map(String));
+                          setOfferings(regularTokens);
                           setClassDrafts((prev) => ({
                             ...prev,
-                            creates: prev.creates.map((row) => ({
-                              ...row,
-                              programId,
-                              programName: nextName || schoolName || row.programName,
-                            })),
+                            creates: prev.creates.map((row) => {
+                              if (row.programId !== CUSTOM_DRAFT_PROGRAM_ID) return row;
+                              const pick = pickRegularProgramForClass(regularCatalog, row.classLevel);
+                              if (!pick) return row;
+                              return {
+                                ...row,
+                                programId: pick.id,
+                                programName: pick.name,
+                              };
+                            }),
                           }));
                         } else {
                           // Customized → Regular: seed Regular catalog offerings from current classes.
@@ -1152,18 +1128,10 @@ function SchoolFormWizard({
                   Add classes and sections, choose the program, and set subject access.
                 </p>
                 {schoolType === "CUSTOMIZED" ? (
-                  <div className="rounded-xl border border-brand-100 bg-brand-50/50 px-3 py-2.5 text-sm">
-                    <p className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
-                      Program name
-                    </p>
-                    <p className="mt-0.5 font-semibold text-brand-950">
-                      {customProgramName || "Enter the school name above"}
-                    </p>
-                    <p className="mt-1 text-xs text-neutral-500">
-                      Customized schools use the school name as the program in Add class and Programs.
-                    </p>
-                    <input type="hidden" name="customProgramName" value={customProgramName} />
-                  </div>
+                  <>
+                    <input type="hidden" name="customProgramName" value={customProgramName || "Custom Program"} />
+                    <input type="hidden" name="customProgramId" value={customProgramId} />
+                  </>
                 ) : null}
                 {errors.customClasses?.[0] ? (
                   <FieldError>{errors.customClasses[0]}</FieldError>
@@ -1172,6 +1140,7 @@ function SchoolFormWizard({
 
                 <AdminSchoolClassesPanel
                   schoolId={schoolId}
+                  schoolName={values.name ?? ""}
                   schoolPrograms={panelSchoolPrograms}
                   organization={panelOrganization}
                   classTeacherSlots={classesPanel?.classTeacherSlots ?? []}
@@ -1250,7 +1219,56 @@ function SchoolFormWizard({
 
             {!isEdit && schoolType === "CUSTOMIZED" ? (
               <div {...panel(3)}>
-                <StudentResourcesStep />
+                <StudentResourcesStep
+                  programs={(() => {
+                    // Resources use regular catalog program names only — not the school's own custom program.
+                    const byProgram = new Map<string, { programName: string; levels: Set<number> }>();
+                    const remember = (
+                      programId: string,
+                      programCode: string,
+                      programName: string,
+                      classLevel: number,
+                    ) => {
+                      if (!Number.isInteger(classLevel) || classLevel < 1 || classLevel > 10) return;
+                      const catalog = regularCatalog.find((row) => row.id === programId);
+                      if (!catalog && (programId === CUSTOM_DRAFT_PROGRAM_ID || !programCode)) {
+                        return;
+                      }
+                      if (catalog && (catalog.type ?? "REGULAR") !== "REGULAR") return;
+                      const code = catalog?.code ?? programCode;
+                      const name = catalog?.name ?? programName;
+                      if (!code) return;
+                      const entry = byProgram.get(code) ?? {
+                        programName: name,
+                        levels: new Set<number>(),
+                      };
+                      entry.levels.add(classLevel);
+                      byProgram.set(code, entry);
+                    };
+                    for (const row of classDrafts.creates) {
+                      remember(row.programId, "", row.programName, row.classLevel);
+                    }
+                    for (const token of offerings) {
+                      const parsed = parseOfferingToken(token);
+                      if (!parsed) continue;
+                      const catalog = regularCatalog.find((row) => row.id === parsed.programId);
+                      if (!catalog) continue;
+                      remember(
+                        catalog.id,
+                        catalog.code,
+                        catalog.name,
+                        parsed.classLevel,
+                      );
+                    }
+                    return [...byProgram.entries()]
+                      .map(([programCode, row]) => ({
+                        programCode,
+                        programName: row.programName,
+                        classLevels: [...row.levels].sort((a, b) => a - b),
+                      }))
+                      .filter((row) => row.classLevels.length > 0);
+                  })()}
+                />
               </div>
             ) : null}
 

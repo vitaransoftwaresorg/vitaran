@@ -4,10 +4,13 @@ import {
   SCHOOL_STATUSES,
   SCHOOL_TYPES,
   type SchoolInput,
-  type Subject,
 } from "@/types/school";
-import { SCHOOLS_PAGE_SIZE, subjectsForClassLevel } from "./constants";
-import { offeringsToPrograms, parseOfferingToken } from "./offerings";
+import { SCHOOLS_PAGE_SIZE } from "./constants";
+import {
+  CUSTOM_DRAFT_PROGRAM_ID,
+  offeringsToPrograms,
+  parseOfferingToken,
+} from "./offerings";
 
 const emptyToNull = (value: string) => (value === "" ? null : value);
 
@@ -59,6 +62,8 @@ const schoolFields = z.object({
   status: z.enum(SCHOOL_STATUSES, { error: "Select a status." }),
   offerings: z.array(offeringToken).default([]),
   customProgramName: z.string().trim().max(120).optional().default(""),
+  /** Saved customized catalog program id (or draft) — separates custom vs regular offerings. */
+  customProgramId: z.string().trim().optional().default(""),
   customClasses: z.array(z.string()).optional().default([]),
   principalName: z
     .string()
@@ -108,25 +113,7 @@ const schoolFields = z.object({
 function withCustomProgramRules<T extends z.ZodType>(schema: T) {
   return schema.superRefine((value, ctx) => {
     const data = value as z.output<typeof schoolFields>;
-    if (data.type === "CUSTOMIZED") {
-      const programName = (data.customProgramName || data.name || "").trim();
-      if (programName.length < 2) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["name"],
-          message: "Enter the school name (used as the program name).",
-        });
-      }
-      if (!data.customClasses?.length) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["customClasses"],
-          message: "Select at least one class.",
-        });
-      }
-      return;
-    }
-
+    // Customized and regular both enrol in catalog programs via offerings — no per-school program.
     if (!data.offerings?.length) {
       ctx.addIssue({
         code: "custom",
@@ -154,39 +141,18 @@ export type SchoolFormField = keyof z.input<typeof schoolFields> | "logo";
 export function toSchoolInput({
   password,
   offerings,
-  customProgramName,
-  customClasses,
+  customProgramName: _customProgramName,
+  customProgramId: _customProgramId,
+  customClasses: _customClasses,
   ...input
 }: z.output<typeof schoolFields>): SchoolInput {
-  if (input.type === "CUSTOMIZED") {
-    const subjectsByClass = new Map<number, Subject[]>();
-    for (const token of offerings) {
+  // Customized schools use regular catalog programs only — never send customProgram.
+  const programs = offeringsToPrograms(
+    offerings.filter((token) => {
       const parsed = parseOfferingToken(token);
-      if (!parsed) continue;
-      const list = subjectsByClass.get(parsed.classLevel) ?? [];
-      list.push(parsed.subject);
-      subjectsByClass.set(parsed.classLevel, list);
-    }
-    const classes = [...new Set(customClasses)]
-      .map(Number)
-      .filter((level) => Number.isInteger(level) && level >= 1 && level <= 12)
-      .sort((a, b) => a - b)
-      .map((classLevel) => ({
-        classLevel,
-        subjects: subjectsByClass.get(classLevel)?.length
-          ? subjectsByClass.get(classLevel)!
-          : subjectsForClassLevel(classLevel),
-      }));
-    const programName = (customProgramName || input.name || "").trim();
-    const payload = {
-      ...input,
-      programs: [] as SchoolInput["programs"],
-      customProgram: { name: programName, classes },
-    };
-    return password ? { ...payload, password } : payload;
-  }
-
-  const programs = offeringsToPrograms(offerings);
+      return parsed && parsed.programId !== CUSTOM_DRAFT_PROGRAM_ID;
+    }),
+  );
   return password ? { ...input, programs, password } : { ...input, programs };
 }
 

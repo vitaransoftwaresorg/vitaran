@@ -820,7 +820,7 @@ export async function getAnswerKeyPdf(id: string, actor: ContentActor) {
   const data = await renderAnswerKeyPdf(
     {
       schoolName: school.name,
-      programName: programName === school.name ? `Class ${row.classLevel}` : programName,
+      programName,
       testNumber: row.testNumber,
       testId: testId ?? null,
       classLevel: row.classLevel,
@@ -889,7 +889,7 @@ export async function getAdminAnswerKeyPdf(id: string) {
   const data = await renderAnswerKeyPdf(
     {
       schoolName,
-      programName: programName === schoolName ? `Class ${row.classLevel}` : programName,
+      programName,
       testNumber: row.testNumber,
       testId: testId ?? null,
       classLevel: row.classLevel,

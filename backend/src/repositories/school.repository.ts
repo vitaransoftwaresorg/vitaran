@@ -55,7 +55,7 @@ export const schoolOptionSelect = {
   schoolPrograms: {
     orderBy: { program: { name: "asc" } },
     select: {
-      program: { select: { code: true, name: true } },
+      program: { select: { code: true, name: true, type: true } },
       classes: { orderBy: { classLevel: "asc" }, select: { classLevel: true } },
     },
   },
@@ -190,6 +190,10 @@ export function findSchoolByCode(code: string, excludeId?: string) {
     },
     select: { id: true, name: true, code: true },
   });
+}
+
+export function countSchoolsEnrolledInProgram(programId: string) {
+  return prisma.schoolProgram.count({ where: { programId } });
 }
 
 export function findSchoolByAccount(account: { email?: string; phone?: string }) {

@@ -3,6 +3,7 @@ import { PageHeader } from "@/features/admin/page-header";
 import { updateProgramAction } from "@/features/programs/actions";
 import { ProgramForm } from "@/features/programs/program-form";
 import { ProgramNavTrail } from "@/features/programs/program-nav-trail";
+import { formatProgramCode } from "@/features/schools/constants";
 import { capitalizeWords } from "@/features/schools/schema";
 import { getProgram } from "@/services/programs";
 
@@ -16,7 +17,7 @@ export default async function EditProgramPage({
   return (
     <>
       <ProgramNavTrail id={program.id} name={capitalizeWords(program.name)} leaf="Edit" />
-      <PageHeader description={program.code} />
+      <PageHeader description={formatProgramCode(program.code)} />
       <ProgramForm program={program} action={updateProgramAction.bind(null, program.id)} />
     </>
   );

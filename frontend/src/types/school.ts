@@ -54,7 +54,12 @@ export type SchoolOption = {
   type: SchoolType;
   programs: string[];
   programLabels: Record<string, string>;
-  offerings: { code: string; name: string; classLevels: number[] }[];
+  offerings: {
+    code: string;
+    name: string;
+    type?: SchoolType;
+    classLevels: number[];
+  }[];
   hasLogo?: boolean;
 };
 

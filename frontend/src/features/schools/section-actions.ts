@@ -62,8 +62,15 @@ export async function updateAdminClassSubjectsAction(
     programId: string;
     classLevel: number;
     subjects: Subject[];
-    /** When moving a class to another program, drop this class from the old program. */
+    /**
+     * When moving a section/class to another program, drop this classLevel from the old
+     * program only if no sibling section/whole-class still uses it.
+     */
     fromProgramId?: string;
+    /** Edited section id — excluded when checking whether the old program is still needed. */
+    excludeSectionId?: string;
+    /** Edited whole-class id — excluded when checking whether the old program is still needed. */
+    excludeWholeClassId?: string;
   },
 ) {
   try {
@@ -95,57 +102,62 @@ export async function updateAdminClassSubjectsAction(
         ? input.fromProgramId
         : undefined;
 
-    if (school.type === "CUSTOMIZED") {
-      const custom =
-        school.schoolPrograms.find((row) => row.type === "CUSTOMIZED") ??
-        school.schoolPrograms[0];
-      const byClass = new Map(
-        (custom?.classes ?? []).map((row) => [row.classLevel, row.subjects] as const),
-      );
-      byClass.set(input.classLevel, subjects);
-      const classes = [...byClass.entries()]
-        .map(([classLevel, nextSubjects]) => ({ classLevel, subjects: nextSubjects }))
-        .sort((a, b) => a.classLevel - b.classLevel);
-      // Program name = school name; creates the catalog program if missing so Programs lists it.
-      const programName = (school.name || custom?.programName || "Custom Program").trim();
-
-      await schoolService.updateSchool(schoolId, {
-        customProgram: { name: programName, classes },
-      } as SchoolInput);
-    } else {
-      // Admin Add class can grant a catalog program that is not enrolled yet.
-      const programs: SchoolInput["programs"] = school.schoolPrograms
-        .map((program) => {
-          const byClass = new Map(
-            program.classes.map((row) => [row.classLevel, row.subjects] as const),
-          );
-          if (fromProgramId && program.programId === fromProgramId) {
-            byClass.delete(input.classLevel);
-          }
-          if (program.programId === input.programId) {
-            byClass.set(input.classLevel, subjects);
-          }
-          return {
-            programId: program.programId,
-            classes: [...byClass.entries()]
-              .map(([classLevel, nextSubjects]) => ({
-                classLevel,
-                subjects: nextSubjects,
-              }))
-              .sort((a, b) => a.classLevel - b.classLevel),
-          };
-        })
-        .filter((row) => row.classes.length > 0);
-
-      if (!programs.some((row) => row.programId === input.programId)) {
-        programs.push({
-          programId: input.programId,
-          classes: [{ classLevel: input.classLevel, subjects }],
-        });
-      }
-
-      await schoolService.updateSchool(schoolId, { programs } as SchoolInput);
+    // Program is per section — keep the old program×class offering while siblings still use it.
+    let dropFromProgram = Boolean(fromProgramId);
+    if (fromProgramId) {
+      const organization = await sectionService.listAdminSchoolSections(schoolId);
+      const siblingsRemain =
+        organization.sections.some(
+          (row) =>
+            row.programId === fromProgramId &&
+            row.classLevel === input.classLevel &&
+            row.id !== input.excludeSectionId,
+        ) ||
+        organization.wholeClasses.some(
+          (row) =>
+            row.programId === fromProgramId &&
+            row.classLevel === input.classLevel &&
+            row.id !== input.excludeWholeClassId,
+        );
+      dropFromProgram = !siblingsRemain;
     }
+
+    const targetProgram = school.schoolPrograms.find((row) => row.programId === input.programId);
+    const targetIsCustom = (targetProgram?.type ?? "REGULAR") === "CUSTOMIZED";
+
+    // Customized and regular both enrol in catalog programs only — never create customProgram.
+    const programs: SchoolInput["programs"] = school.schoolPrograms
+      .filter((program) => (program.type ?? "REGULAR") !== "CUSTOMIZED")
+      .map((program) => {
+        const byClass = new Map(
+          program.classes.map((row) => [row.classLevel, row.subjects] as const),
+        );
+        if (dropFromProgram && fromProgramId && program.programId === fromProgramId) {
+          byClass.delete(input.classLevel);
+        }
+        if (program.programId === input.programId && !targetIsCustom) {
+          byClass.set(input.classLevel, subjects);
+        }
+        return {
+          programId: program.programId,
+          classes: [...byClass.entries()]
+            .map(([classLevel, nextSubjects]) => ({
+              classLevel,
+              subjects: nextSubjects,
+            }))
+            .sort((a, b) => a.classLevel - b.classLevel),
+        };
+      })
+      .filter((row) => row.classes.length > 0);
+
+    if (!targetIsCustom && !programs.some((row) => row.programId === input.programId)) {
+      programs.push({
+        programId: input.programId,
+        classes: [{ classLevel: input.classLevel, subjects }],
+      });
+    }
+
+    await schoolService.updateSchool(schoolId, { programs } as SchoolInput);
 
     revalidateSections(schoolId);
     return { ok: true as const };

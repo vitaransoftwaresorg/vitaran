@@ -21,7 +21,14 @@ import { studentCount } from "./constants";
 import type { ClassScan } from "@/types/scan";
 import { ClassOmrDownload, OmrCell } from "./omr-files";
 import { ClassRankCardsDownload, ClassResultPdfDownload, RankCardCell } from "./rank-card-files";
-import { columnRole, foldRoll, maxFromLabel, numberCell, type ColumnRole } from "./result-columns";
+import {
+  columnRole,
+  ensureSerialColumn,
+  foldRoll,
+  maxFromLabel,
+  numberCell,
+  type ColumnRole,
+} from "./result-columns";
 
 function formatCell(value: ResultCell, role?: ColumnRole) {
   if (value === null) return "—";
@@ -113,7 +120,8 @@ export function ResultSheetCard({
   onStudentClick,
   files,
 }: ResultSheetCardProps) {
-  const roles = sheet.columns.map(columnRole);
+  const numbered = ensureSerialColumn(sheet.columns, sheet.rows);
+  const roles = numbered.columns.map(columnRole);
   const rollCol = roles.indexOf("roll");
   const nameCol = roles.indexOf("name");
   const markCols = roles.flatMap((role, index) => (role === "subject" || role === "total" ? [index] : []));
@@ -152,14 +160,19 @@ export function ResultSheetCard({
     () => setQuery(""),
   );
   const deferredQuery = useDeferredValue(query.trim().toLowerCase());
-  const { shown, tags, numeric } = splitColumns(sheet);
+  const displaySheet = { ...sheet, columns: numbered.columns, rows: numbered.rows };
+  const { shown, tags, numeric } = splitColumns(displaySheet);
   // The sheet's last title line is the specific one, e.g. "TEST-3 9-SEP-2026 (Max. Marks: 300)".
   const detail = sheet.caption.at(-1);
 
-  // Rows come sorted by rank, so an uploaded serial number would read out of order.
+  // Rows come sorted by rank, so renumber S.No in display order.
   const serialCol = roles.indexOf("serial");
   const rows =
-    serialCol < 0 ? sheet.rows : sheet.rows.map((row, position) => row.map((cell, index) => (index === serialCol ? position + 1 : cell)));
+    serialCol < 0
+      ? displaySheet.rows
+      : displaySheet.rows.map((row, position) =>
+          row.map((cell, index) => (index === serialCol ? position + 1 : cell)),
+        );
   const visible = deferredQuery
     ? rows.filter((row) =>
         row.some((value) => value !== null && String(value).toLowerCase().includes(deferredQuery)),
@@ -249,9 +262,9 @@ export function ResultSheetCard({
                       !isRoll && "sm:whitespace-normal sm:wrap-anywhere",
                     )}
                   >
-                    <MobileHeading label={sheet.columns[index]!} role={role} />
+                    <MobileHeading label={numbered.columns[index]!} role={role} />
                     <span className={cn("hidden sm:inline", isRoll && "whitespace-nowrap")}>
-                      {desktopHeading(sheet.columns[index]!, role)}
+                      {desktopHeading(numbered.columns[index]!, role)}
                     </span>
                   </TableHead>
                 );

@@ -9,6 +9,7 @@ export type ContentKind =
   | "sections"
   | "objections"
   | "programs"
+  | "teacher-resources"
   | "settings";
 
 export type PublicSettingsSnapshot = {

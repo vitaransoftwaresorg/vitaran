@@ -16,7 +16,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { SUBJECT_LABELS, subjectLabel, TYPE_LABELS } from "@/features/schools/constants";
+import {
+  formatProgramCode,
+  SUBJECT_LABELS,
+  subjectLabel,
+  TYPE_LABELS,
+} from "@/features/schools/constants";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { SCHOOL_TYPES } from "@/types/school";
 import type { LearningProgram } from "@/types/program";
@@ -228,7 +233,7 @@ export function ProgramForm({ program, action }: ProgramFormProps) {
               <input type="hidden" name="code" value={program.code} />
               <Input
                 id="code"
-                value={program.code}
+                value={formatProgramCode(program.code)}
                 readOnly
                 disabled
                 spellCheck={false}

@@ -14,7 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { subjectLabel, TYPE_LABELS } from "@/features/schools/constants";
+import { formatProgramCode, subjectLabel, TYPE_LABELS } from "@/features/schools/constants";
 import { SchoolTypeBadge } from "@/features/schools/school-type-badge";
 import { capitalizeWords } from "@/features/schools/schema";
 import { useResetOnScopeChange } from "@/hooks/use-reset-on-scope-change";
@@ -71,7 +71,9 @@ export function ProgramsTable({ programs }: { programs: LearningProgram[] }) {
           <p className="font-semibold text-neutral-950 group-hover:text-brand-800 group-hover:underline">
             {capitalizeWords(program.name)}
           </p>
-          <p className="mt-0.5 font-mono text-xs text-neutral-500">{program.code}</p>
+          <p className="mt-0.5 font-mono text-xs text-neutral-500">
+            {formatProgramCode(program.code)}
+          </p>
         </Link>
       </TableCell>
       <TableCell>

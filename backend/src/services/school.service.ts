@@ -12,7 +12,6 @@ import type {
   AccountAvailabilityQuery,
   CodeAvailabilityQuery,
   CreateSchoolInput,
-  CustomProgramInput,
   ListSchoolOptionsQuery,
   ListSchoolsQuery,
   SchoolProgramInput,
@@ -20,7 +19,6 @@ import type {
 } from "../schemas/school.schema.js";
 import { AppError } from "../utils/app-error.js";
 import { notifyContentChanged } from "../utils/content-events.js";
-import { subjectsForClassLevel } from "../utils/subject.js";
 import { hashPassword, verifyPassword } from "../utils/password.js";
 import { decryptSecret, encryptSecret } from "../utils/secret-box.js";
 import { sendSchoolCredentialsEmail } from "./mail.service.js";
@@ -29,6 +27,7 @@ import {
   realignSchoolRosterToOfferings,
   type OfferingSnapshot,
 } from "./roster-lifecycle.js";
+import * as schoolStudentResourceService from "./school-student-resource.service.js";
 
 const KIND = "schools" as const;
 
@@ -71,7 +70,12 @@ export type SchoolOptionDto = {
   type: SchoolWithPrograms["type"];
   programs: string[];
   programLabels: Record<string, string>;
-  offerings: { code: string; name: string; classLevels: number[] }[];
+  offerings: {
+    code: string;
+    name: string;
+    type: SchoolWithPrograms["type"];
+    classLevels: number[];
+  }[];
   hasLogo: boolean;
 };
 
@@ -146,6 +150,7 @@ export function toSchoolOptionDto(school: SchoolOptionRow): SchoolOptionDto {
   const offerings = school.schoolPrograms.map((row) => ({
     code: row.program.code,
     name: row.program.name,
+    type: row.program.type,
     classLevels: row.classes.map((cls) => cls.classLevel),
   }));
   return {
@@ -275,64 +280,25 @@ async function assertAccountAvailable(
   }
 }
 
-function programCodeFromName(name: string) {
-  const code = name
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "_")
-    .replace(/^_|_$/g, "")
-    .replace(/^[0-9_]+/, "")
-    .slice(0, 64);
-  return code.length >= 2 ? code : "CUSTOM";
-}
-
-async function uniqueProgramCode(base: string) {
-  const root = base.replace(/_+$/, "") || "CUSTOM";
-  for (let n = 0; n < 100; n++) {
-    const suffix = n === 0 ? "" : `_${n + 1}`;
-    const code = `${root.slice(0, 64 - suffix.length)}${suffix}`;
-    if (!(await programRepository.findProgramByCode(code))) return code;
+/** Drop customized catalog programs that no school still uses (legacy per-school programs). */
+async function deleteOrphanedCustomizedPrograms(programIds: string[]) {
+  for (const programId of [...new Set(programIds)]) {
+    const catalog = await programRepository.findProgramById(programId);
+    if (!catalog || catalog.type !== SchoolType.CUSTOMIZED) continue;
+    const stillEnrolled = await schoolRepository.countSchoolsEnrolledInProgram(programId);
+    if (stillEnrolled > 0) continue;
+    try {
+      await programRepository.deleteProgram(programId);
+    } catch {
+      // Still referenced elsewhere (students/sections) — leave the catalog row.
+    }
   }
-  throw new AppError(409, "Could not generate a unique program code", [
-    { path: ["customProgramName"], message: "Pick a different program name" },
-  ]);
 }
 
-/** Create or update this school's customized catalog program, then enrol it. */
-async function attachNamedCustomProgram(
-  spec: CustomProgramInput,
-  existing: SchoolWithPrograms | null,
-) {
-  const classes = spec.classes.map((row) => ({
-    classLevel: row.classLevel,
-    subjects: subjectsForClassLevel(row.classLevel),
-  }));
-  const classLevels = classes.map((row) => row.classLevel).sort((a, b) => a - b);
-  const subjects = [...new Set(classes.flatMap((row) => row.subjects))];
-  const payload = {
-    name: spec.name.trim(),
-    year: new Date().getFullYear(),
-    classFrom: classLevels[0] ?? 1,
-    classTo: classLevels[classLevels.length - 1] ?? 12,
-    subjects: subjects.length > 0 ? subjects : ["MATHEMATICS"],
-  };
-
-  const current = existing?.schoolPrograms.find(
-    (row) => row.program.type === SchoolType.CUSTOMIZED,
-  )?.program;
-
-  const program = current
-    ? await programRepository.updateProgram(current.id, payload)
-    : await programRepository.createProgram({
-        code: await uniqueProgramCode(programCodeFromName(payload.name)),
-        type: SchoolType.CUSTOMIZED,
-        ...payload,
-      });
-
-  return [{ programId: program.id, classes }];
-}
-
-/** Regular schools take regular catalog programs; customized schools take customized ones. */
+/**
+ * Regular schools → regular catalog only.
+ * Customized schools → regular catalog enrolments only (no per-school catalog program).
+ */
 async function offeringsForSchoolType(type: SchoolType, programs: SchoolProgramInput[]) {
   const matched: SchoolProgramInput[] = [];
   for (const row of programs) {
@@ -341,6 +307,10 @@ async function offeringsForSchoolType(type: SchoolType, programs: SchoolProgramI
       throw new AppError(400, "Unknown program", [
         { path: ["programs"], message: "Select a valid program" },
       ]);
+    }
+    if (type === SchoolType.CUSTOMIZED) {
+      if (catalog.type === SchoolType.REGULAR) matched.push(row);
+      continue;
     }
     if (catalog.type === type) matched.push(row);
   }
@@ -409,15 +379,13 @@ export async function getSchool(id: string): Promise<SchoolDetailDto> {
 export async function createSchool({
   password,
   programs,
-  customProgram,
+  customProgram: _customProgram,
   code,
   ...input
 }: CreateSchoolInput) {
   await assertAccountAvailable(input);
-  const offerings =
-    input.type === SchoolType.CUSTOMIZED && customProgram
-      ? await attachNamedCustomProgram(customProgram, null)
-      : await offeringsForSchoolType(input.type, programs);
+  // Customized schools enrol in regular catalog programs only — never create a LearningProgram.
+  const offerings = await offeringsForSchoolType(input.type, programs);
   await assertProgramOfferings(offerings);
   const schoolCode = await assertSchoolCodeAvailable(code);
 
@@ -447,18 +415,16 @@ export async function createSchool({
 
 export async function updateSchool(
   id: string,
-  { password, programs, customProgram, code, ...input }: UpdateSchoolInput,
+  { password, programs, customProgram: _customProgram, code, ...input }: UpdateSchoolInput,
 ) {
   await assertAccountAvailable(input, id);
   const current = await schoolRepository.findSchoolById(id);
   if (!current) throw new AppError(404, "School not found");
 
   const nextType = input.type ?? current.type;
+  // Customized schools keep regular catalog enrolments only — never create/update a LearningProgram.
   let offerings = programs;
-  if (nextType === SchoolType.CUSTOMIZED && customProgram) {
-    offerings = await attachNamedCustomProgram(customProgram, current);
-    await assertProgramOfferings(offerings);
-  } else if (programs) {
+  if (programs) {
     offerings = await offeringsForSchoolType(nextType, programs);
     await assertProgramOfferings(offerings);
   }
@@ -474,6 +440,9 @@ export async function updateSchool(
         classLevels: row.classes.map((cls) => cls.classLevel),
       }))
     : null;
+  const previousCustomProgramIds = current.schoolPrograms
+    .filter((row) => row.program.type === SchoolType.CUSTOMIZED)
+    .map((row) => row.programId);
 
   const school = await schoolRepository.updateSchool(id, {
     ...input,
@@ -490,9 +459,18 @@ export async function updateSchool(
       classLevels: row.classes.map((cls) => cls.classLevel),
     }));
     await realignSchoolRosterToOfferings(id, previousOfferings, nextOfferings);
+    // Remove teacher-resource PDFs for dropped programs/classes.
+    await schoolStudentResourceService.pruneSchoolStudentResourcesOutsideOfferings(
+      id,
+      nextOfferings.map((row) => ({
+        programCode: row.programCode,
+        classLevels: row.classLevels,
+      })),
+    );
+    await deleteOrphanedCustomizedPrograms(previousCustomProgramIds);
   }
 
-  if (programs || customProgram) {
+  if (programs) {
     await teacherRepository.pruneAssignmentsOutsideSchoolOfferings(id);
   }
 
@@ -512,7 +490,7 @@ export async function updateSchool(
 
   notifyContentChanged({ kind: KIND, schoolId: id });
   // Catalog / class remap — school + teacher dashboards subscribe to these kinds.
-  if (programs || customProgram) {
+  if (programs) {
     notifyContentChanged({ kind: "programs", schoolId: id });
     notifyContentChanged({ kind: "sections", schoolId: id });
   }

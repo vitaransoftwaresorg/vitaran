@@ -12,6 +12,7 @@ import {
   canRecoverRoll,
   isAmbiguousRollError,
   isDuplicateRollError,
+  isNoStudentRollError,
   isStudentMismatchError,
   ROLL_LENGTH,
   rollInput,
@@ -52,12 +53,14 @@ export function OmrRollRecovery({
   const recoverable = canRecoverRoll(message);
   const duplicate = isDuplicateRollError(message);
   const mismatch = isStudentMismatchError(message);
+  const noStudent = isNoStudentRollError(message);
+  const clearSeed = duplicate || mismatch || noStudent;
   const duplicateRoll =
     message.match(/duplicate registration number\s+(\d+)/i)?.[1] ??
     (initialRollNo.trim() ? rollInput(initialRollNo) : "");
   const ambiguous = isAmbiguousRollError(message) || initialMatches.length > 1;
-  // Duplicate / class-program mismatch: leave empty so they type a different reg.
-  const seedRoll = duplicate || mismatch ? "" : initialRollNo;
+  // Duplicate / mismatch / unknown student: leave empty so they type the correct reg.
+  const seedRoll = clearSeed ? "" : initialRollNo;
   const [rollNo, setRollNo] = useState(() => rollInput(seedRoll));
   const [matches, setMatches] = useState<OmrStudentMatch[]>(initialMatches);
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -70,13 +73,11 @@ export function OmrRollRecovery({
 
   useEffect(() => {
     setRollNo(rollInput(seedRoll));
-    setMatches(duplicate || mismatch ? [] : initialMatches);
-    setSelectedId(
-      !duplicate && !mismatch && initialMatches.length === 1 ? initialMatches[0]!.id : null,
-    );
+    setMatches(clearSeed ? [] : initialMatches);
+    setSelectedId(!clearSeed && initialMatches.length === 1 ? initialMatches[0]!.id : null);
     setLookupError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset when the scan error / seed list changes
-  }, [message, initialKey, duplicate, mismatch]);
+  }, [message, initialKey, clearSeed]);
 
   useEffect(() => {
     const roll = rollInput(rollNo);

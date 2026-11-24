@@ -10,6 +10,11 @@ export type SolutionBook = {
   external?: boolean;
 };
 
+/**
+ * Legacy static catalog (paths under public/solution-books).
+ * Runtime UI loads from the DB via `loadSolutionBooksFromDb` — keep this only as a
+ * reference map of the original frontend files that were imported.
+ */
 export const solutionBooks: Record<string, SolutionBook[]> = {
   "Olympiad Program": [],
   "Advanced Program": [

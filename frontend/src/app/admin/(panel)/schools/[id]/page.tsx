@@ -196,6 +196,7 @@ export default async function SchoolDetailsPage({ params }: PageProps<"/admin/sc
 
       <AdminSchoolClassesPanel
         schoolId={school.id}
+        schoolName={school.name}
         schoolPrograms={school.schoolPrograms}
         organization={organization}
         classTeacherSlots={classTeacherSlots}

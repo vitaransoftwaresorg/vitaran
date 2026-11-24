@@ -12,7 +12,9 @@ import {
 } from "@/services/sections";
 import type { Subject } from "@/types/school";
 import type { TeacherAssignment } from "@/types/teacher";
+import { loadSolutionBooksFromDb } from "./load-solution-books";
 import { portalProgramIds, regularCatalogIds } from "./portal-programs";
+import type { SolutionBook } from "./solution-books";
 
 export type PortalResourcesPayload = {
   programIds: string[];
@@ -20,6 +22,7 @@ export type PortalResourcesPayload = {
   programNames: Record<string, string>;
   subjectIds: Subject[];
   assignments: TeacherAssignment[];
+  books: Record<string, SolutionBook[]>;
 };
 
 function namesFrom(
@@ -46,13 +49,17 @@ export async function loadSchoolPortalResourcesAction(): Promise<PortalResources
     })),
   );
   const programCodes = programCodesFromSlots(slots);
+  // Customized schools use school-uploaded PDFs only — never shared regular solution books.
+  const isCustomized = (school.type ?? "REGULAR") === "CUSTOMIZED";
+  const books = isCustomized ? {} : await loadSolutionBooksFromDb();
 
   return {
-    programIds: portalProgramIds(programCodes),
-    catalogIds: regularCatalogIds(programCodes),
+    programIds: isCustomized ? [] : portalProgramIds(programCodes),
+    catalogIds: isCustomized ? [] : regularCatalogIds(programCodes),
     programNames: namesFrom(slots),
     subjectIds: [...new Set(assignments.map((row) => row.subject))],
     assignments,
+    books,
   };
 }
 
@@ -74,12 +81,16 @@ export async function loadTeacherPortalResourcesAction(): Promise<PortalResource
     ),
   );
   const programCodes = programCodesFromSlots(slots);
+  // Customized schools use school-uploaded PDFs only — never shared regular solution books.
+  const isCustomized = (teacher.school.type ?? "REGULAR") === "CUSTOMIZED";
+  const books = isCustomized ? {} : await loadSolutionBooksFromDb();
 
   return {
-    programIds: portalProgramIds(programCodes),
-    catalogIds: regularCatalogIds(programCodes),
+    programIds: isCustomized ? [] : portalProgramIds(programCodes),
+    catalogIds: isCustomized ? [] : regularCatalogIds(programCodes),
     programNames: namesFrom([...slots, ...assignments]),
     subjectIds: [...new Set(assignments.map((row) => row.subject))],
     assignments,
+    books,
   };
 }

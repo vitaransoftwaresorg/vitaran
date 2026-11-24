@@ -132,6 +132,7 @@ export function StudentsTable({
         <table className="w-full min-w-[640px] text-left text-sm">
           <thead className="border-b border-brand-100 bg-brand-50/60 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">
             <tr>
+              <th className="w-12 px-3 py-2.5 text-center">#</th>
               {showSchool ? <th className="px-4 py-2.5">School</th> : null}
               <th className="px-4 py-2.5">Reg No</th>
               <th className="px-4 py-2.5">Name</th>
@@ -144,12 +145,15 @@ export function StudentsTable({
             </tr>
           </thead>
           <tbody>
-            {filtered.map((student) => {
+            {filtered.map((student, index) => {
               const detail = detailHref(student);
               const edit = editHref(student);
               const sectionLabel = displaySectionName(student.sectionName);
               return (
                 <tr key={student.id} className="border-b border-neutral-100 last:border-0">
+                  <td className="px-3 py-2.5 text-center text-neutral-500 tabular-nums">
+                    {index + 1}
+                  </td>
                   {showSchool ? (
                     <td className="px-4 py-2.5 text-neutral-700">
                       {student.schoolName ? (
