@@ -23,6 +23,7 @@ import { DocumentScanner } from "./document-scanner";
 import { OmrRollRecovery } from "./omr-roll-recovery";
 import type { OmrStudentMatch } from "./omr-student-actions";
 import { requestTiltPermission } from "./phone-tilt";
+import { majorityWalkInFromBatch } from "./batch-store";
 import { canRecoverRoll, normalizeRollNo, ROLL_LENGTH, rollInput } from "./roll-helpers";
 import { FULL_PAGE_QUAD, type SheetQuad } from "./sheet-detect";
 import { getOmrUploadAuthAction } from "./upload-auth";
@@ -276,6 +277,8 @@ export function ScanCamera({
     forcedRoll?: string,
     forcedSchoolId?: string,
     forcedName?: string,
+    forcedSectionId?: string,
+    placement?: { classLevel?: number; programCode?: string },
   ) {
     const file = await asJpegFile(source);
     const form = new FormData();
@@ -290,6 +293,9 @@ export function ScanCamera({
       form.append("rollNo", roll);
     }
     if (forcedSchoolId) form.append("schoolId", forcedSchoolId);
+    if (forcedSectionId) form.append("sectionId", forcedSectionId);
+    if (placement?.classLevel) form.append("classLevel", String(placement.classLevel));
+    if (placement?.programCode) form.append("programCode", placement.programCode);
     if (corners) form.append("corners", JSON.stringify(corners.map((p) => [p.x, p.y])));
     return scanAction(form);
   }
@@ -333,7 +339,13 @@ export function ScanCamera({
     }
   }
 
-  async function saveFailedWithRoll(typedRoll: string, schoolId?: string, studentName?: string) {
+  async function saveFailedWithRoll(
+    typedRoll: string,
+    schoolId?: string,
+    studentName?: string,
+    sectionId?: string,
+    placement?: { classLevel?: number; programCode?: string },
+  ) {
     const pending = retryRef.current;
     if (!pending) return;
     const typed = rollInput(typedRoll);
@@ -351,12 +363,18 @@ export function ScanCamera({
     setStatus(studentName?.trim() ? "Saving walk-in…" : "Saving with registration…");
     try {
       // Omit corners on recovery so the reader can auto-upright a reverse sheet (0° vs 180°).
+      const batchPlace = majorityWalkInFromBatch();
       const result = await readPhoto(
         pending.source,
         undefined,
         typed,
-        schoolId,
+        schoolId || batchPlace.schoolId,
         studentName,
+        sectionId,
+        {
+          classLevel: placement?.classLevel ?? batchPlace.classLevel,
+          programCode: placement?.programCode ?? batchPlace.programCode,
+        },
       );
       if (!result.ok) {
         toast.error(result.message);
@@ -386,8 +404,8 @@ export function ScanCamera({
         busy={busy}
         initialMatches={rollMatches}
         initialRollNo={rollHint}
-        onSaveWithRoll={(roll, schoolId, studentName) =>
-          void saveFailedWithRoll(roll, schoolId, studentName)
+        onSaveWithRoll={(roll, schoolId, studentName, sectionId, placement) =>
+          void saveFailedWithRoll(roll, schoolId, studentName, sectionId, placement)
         }
       />
     );

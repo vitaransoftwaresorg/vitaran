@@ -47,6 +47,10 @@ export async function previewScanAction(
   const studentName = String(formData.get("studentName") ?? "").trim();
   const flat = String(formData.get("flat") ?? "").trim();
   const upright = String(formData.get("upright") ?? "").trim();
+  const sectionId = String(formData.get("sectionId") ?? "").trim();
+  const classRaw = String(formData.get("classLevel") ?? "").trim();
+  const programCode = String(formData.get("programCode") ?? "").trim();
+  const classLevel = /^\d{1,2}$/.test(classRaw) ? Number(classRaw) : undefined;
   const corners = String(formData.get("corners") ?? "").trim();
   try {
     return {
@@ -57,6 +61,9 @@ export async function previewScanAction(
         examPattern: examPattern || undefined,
         schoolId: schoolId || undefined,
         studentName: studentName || undefined,
+        sectionId: sectionId || undefined,
+        classLevel,
+        programCode: programCode || undefined,
         flat: flat === "1" || flat === "true",
         upright: upright === "1" || upright === "true",
         corners,

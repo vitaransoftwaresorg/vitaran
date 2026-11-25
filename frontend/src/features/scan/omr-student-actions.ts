@@ -3,6 +3,11 @@
 import { ApiError } from "@/services/api-client";
 import type { ScanPortal } from "@/services/scans";
 import {
+  listAdminSchoolSections,
+  listSchoolClassOrganization,
+  listTeacherClassOrganization,
+} from "@/services/sections";
+import {
   findStudentsByRoll,
   getAdminStudent,
   getSchoolStudent,
@@ -46,6 +51,48 @@ function toMatch(
     schoolId: student.schoolId,
     schoolName: student.schoolName,
   };
+}
+
+export type OmrWalkInSection = { id: string; name: string };
+
+/**
+ * Sections for the PDF-majority school + class + program.
+ * Empty list → no dropdown (Section A / whole class).
+ */
+export async function listOmrWalkInSectionsAction(
+  portal: ScanPortal,
+  schoolId: string,
+  classLevel: number,
+  programCode: string,
+): Promise<{ ok: true; sections: OmrWalkInSection[] } | { ok: false; message: string }> {
+  const school = schoolId.trim();
+  const program = programCode.trim().toUpperCase();
+  if (!school || !program || !Number.isInteger(classLevel) || classLevel < 1) {
+    return { ok: true, sections: [] };
+  }
+  try {
+    const org =
+      portal === "admin"
+        ? await listAdminSchoolSections(school)
+        : portal === "teacher"
+          ? await listTeacherClassOrganization()
+          : await listSchoolClassOrganization();
+    const sections = org.sections
+      .filter(
+        (row) =>
+          row.classLevel === classLevel &&
+          row.programCode.toUpperCase() === program &&
+          (portal !== "admin" || row.schoolId === school),
+      )
+      .map((row) => ({ id: row.id, name: row.name.trim() || "A" }))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+    return { ok: true, sections };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof ApiError ? error.message : "Could not load sections",
+    };
+  }
 }
 
 /** Look up every enrolled student with this registration (all duplicates). */

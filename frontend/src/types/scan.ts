@@ -60,7 +60,9 @@ export type OmScan = {
     rollNo: string;
     classLevel: number;
     sectionName: string | null;
+    programCode?: string;
     programName: string;
+    schoolId?: string;
     schoolName: string;
   };
   flags: Array<{ question: number; reason: string }>;

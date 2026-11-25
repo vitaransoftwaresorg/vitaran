@@ -42,6 +42,11 @@ export function previewScan(
     examPattern?: string;
     schoolId?: string;
     studentName?: string;
+    /** Walk-in section — defaults to A on the server when omitted. */
+    sectionId?: string;
+    /** Walk-in class/program from PDF majority. */
+    classLevel?: number;
+    programCode?: string;
     /** PDF page / flat scan — skip photo perspective warp. */
     flat?: boolean;
     /** Failed PDF thumb already auto-rotated at scan — skip re-upright on save. */
@@ -56,6 +61,9 @@ export function previewScan(
   if (identity?.examPattern) body.append("examPattern", identity.examPattern);
   if (identity?.schoolId) body.append("schoolId", identity.schoolId);
   if (identity?.studentName) body.append("studentName", identity.studentName);
+  if (identity?.sectionId) body.append("sectionId", identity.sectionId);
+  if (identity?.classLevel) body.append("classLevel", String(identity.classLevel));
+  if (identity?.programCode) body.append("programCode", identity.programCode);
   if (identity?.flat) body.append("flat", "1");
   if (identity?.upright) body.append("upright", "1");
   /** JSON `[[x, y] ×4]` (TL, TR, BR, BL, 0–1) from the phone document scanner. */

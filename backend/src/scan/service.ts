@@ -243,7 +243,9 @@ export type ScanDto = {
     rollNo: string;
     classLevel: number;
     sectionName: string | null;
+    programCode: string;
     programName: string;
+    schoolId: string;
     schoolName: string;
   };
   flags: Array<{ question: number; reason: string }>;
@@ -396,6 +398,62 @@ function contextSchool(context: ScanContext): ScanSchool | null {
   if (context.kind === "school") return { id: context.school.id, name: context.school.name, type: context.school.type };
   if (context.kind === "teacher") return { id: context.teacher.school.id, name: context.teacher.school.name, type: context.teacher.school.type };
   return null;
+}
+
+/**
+ * For admin mixed-school PDF batches: pick the school / class / program that appear
+ * most often among ready pending sheets (walk-in inherits the PDF majority).
+ */
+function majorityPlacementFromPending(context: ScanContext): {
+  school: ScanSchool | null;
+  classLevel: number | null;
+  programCode: string | null;
+} {
+  const owner = ownerOf(context);
+  const schoolCounts = new Map<string, { school: ScanSchool; n: number }>();
+  const rows: Pending[] = [];
+  for (const row of pending.values()) {
+    if (row.expires < Date.now()) continue;
+    if (ownerOf(row.context) !== owner) continue;
+    rows.push(row);
+    const cur = schoolCounts.get(row.school.id);
+    if (cur) cur.n += 1;
+    else schoolCounts.set(row.school.id, { school: row.school, n: 1 });
+  }
+  let bestSchool: { school: ScanSchool; n: number } | null = null;
+  for (const row of schoolCounts.values()) {
+    if (!bestSchool || row.n > bestSchool.n) bestSchool = row;
+  }
+  const school = bestSchool?.school ?? null;
+  const inSchool = school ? rows.filter((row) => row.school.id === school.id) : rows;
+  const classCounts = new Map<number, number>();
+  const programCounts = new Map<string, number>();
+  for (const row of inSchool) {
+    classCounts.set(row.identity.classLevel, (classCounts.get(row.identity.classLevel) ?? 0) + 1);
+    const code = row.key.programCode?.trim();
+    if (code) programCounts.set(code, (programCounts.get(code) ?? 0) + 1);
+  }
+  let classLevel: number | null = null;
+  let classN = 0;
+  for (const [level, n] of classCounts) {
+    if (n > classN) {
+      classN = n;
+      classLevel = level;
+    }
+  }
+  let programCode: string | null = null;
+  let programN = 0;
+  for (const [code, n] of programCounts) {
+    if (n > programN) {
+      programN = n;
+      programCode = code;
+    }
+  }
+  return { school, classLevel, programCode };
+}
+
+function majoritySchoolFromPending(context: ScanContext): ScanSchool | null {
+  return majorityPlacementFromPending(context).school;
 }
 
 function programNameOf(context: ScanContext, key: ScanKey) {
@@ -641,7 +699,9 @@ function toDto(row: scanRepository.OmScanRow, previewId?: string): ScanDto {
       rollNo: row.rollNo,
       classLevel: row.classLevel,
       sectionName: row.sectionName,
+      programCode: row.answerKey.programCode,
       programName: row.programName || row.answerKey.programCode,
+      schoolId: row.school.id,
       schoolName: row.school.name,
     },
     flags: Array.isArray(row.flags) ? (row.flags as ScanDto["flags"]) : [],
@@ -684,7 +744,9 @@ function unsavedDto(previewId: string, row: Pending, _embedImage = true): ScanDt
       rollNo: row.identity.rollNo,
       classLevel: row.identity.classLevel,
       sectionName: row.identity.sectionName || null,
+      programCode: row.key.programCode,
       programName: row.identity.programName,
+      schoolId: row.school.id,
       schoolName: row.school.name,
     },
     flags: row.flags,
@@ -1130,6 +1192,11 @@ export async function previewScan(
     examPattern?: string;
     /** When set and the roll is not on the roster, save as a walk-in for the test ID's class. */
     studentName?: string;
+    /** Walk-in section; omit → Section A (or whole-class when the school has no sections). */
+    sectionId?: string;
+    /** Walk-in class/program from PDF majority (fallback: answer key). */
+    classLevel?: number;
+    programCode?: string;
     flat?: boolean;
     /** Failed PDF thumb was already rotated at scan time — skip re-upright on save. */
     upright?: boolean;
@@ -1142,6 +1209,22 @@ export async function previewScan(
   const typedRoll = (identity.rollNo ?? "").replace(/\D/g, "");
   const typedTest = (identity.testId ?? "").trim();
   const walkInName = titleCase((identity.studentName ?? "").trim()).slice(0, 120);
+  const walkInSectionId =
+    typeof identity.sectionId === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identity.sectionId.trim())
+      ? identity.sectionId.trim()
+      : undefined;
+  const walkInClassHint =
+    typeof identity.classLevel === "number" &&
+    Number.isInteger(identity.classLevel) &&
+    identity.classLevel >= 1 &&
+    identity.classLevel <= 12
+      ? identity.classLevel
+      : undefined;
+  const walkInProgramHint =
+    typeof identity.programCode === "string" && identity.programCode.trim()
+      ? identity.programCode.trim().toUpperCase()
+      : undefined;
   const examPattern = parseExamPattern(identity.examPattern);
   if (!examPattern) {
     throw new AppError(400, "Choose the exam pattern (MPCB, PCB, or MPC) before scanning");
@@ -1200,8 +1283,12 @@ export async function previewScan(
     : sessionSchool ??
       (preferredSchoolId
         ? await loadScanSchool(preferredSchoolId)
-        : (() => {
-            throw new AppError(422, "Pick a school to save an unregistered student.");
+        : majoritySchoolFromPending(context) ??
+          (() => {
+            throw new AppError(
+              422,
+              "Pick a school to save an unregistered student.",
+            );
           })());
 
   const visibleKeys = (await answerKeyRepository.findAnswerKeys({})).filter((key) => keyVisibleTo(key, school));
@@ -1282,14 +1369,19 @@ export async function previewScan(
       throw new AppError(422, "Enter the student name");
     }
     key = await resolveWalkInKey(school, testId);
-    // Same as Add student — enroll on the school roster for this key's program/class.
+    // Class/program: PDF majority (client or pending), else answer key.
+    const majority = majorityPlacementFromPending(context);
+    const walkInClass = walkInClassHint ?? majority.classLevel ?? key.classLevel;
+    const walkInProgram =
+      walkInProgramHint ?? majority.programCode ?? key.programCode;
+    // Section: examiner pick, else A (resolveWalkInSectionId). No sections → no dropdown / whole-class A.
     const createdDto = await studentService.createWalkInFromOmr({
       schoolId: school.id,
       name: walkInName,
       rollNo: walkInRoll,
-      programCode: key.programCode,
-      classLevel: key.classLevel,
-      sectionId: key.sectionId,
+      programCode: walkInProgram,
+      classLevel: walkInClass,
+      sectionId: walkInSectionId ?? null,
     });
     // Load by id — 0000000 is shared, so roll lookup is ambiguous.
     const created = await studentRepository.findStudentById(createdDto.id);

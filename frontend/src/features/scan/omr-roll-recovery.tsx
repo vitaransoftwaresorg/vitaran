@@ -7,7 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { ScanPortal } from "@/services/scans";
-import { lookupOmrStudentByRollAction, type OmrStudentMatch } from "./omr-student-actions";
+import { majorityWalkInFromBatch } from "./batch-store";
+import {
+  listOmrWalkInSectionsAction,
+  lookupOmrStudentByRollAction,
+  type OmrStudentMatch,
+  type OmrWalkInSection,
+} from "./omr-student-actions";
 import {
   canRecoverRoll,
   isAmbiguousRollError,
@@ -30,7 +36,13 @@ type OmrRollRecoveryProps = {
   /** Matches already known from the scan error (same reg at multiple schools). */
   initialMatches?: OmrStudentMatch[];
   initialRollNo?: string;
-  onSaveWithRoll: (rollNo: string, schoolId?: string, studentName?: string) => void | Promise<void>;
+  onSaveWithRoll: (
+    rollNo: string,
+    schoolId?: string,
+    studentName?: string,
+    sectionId?: string,
+    placement?: { classLevel?: number; programCode?: string },
+  ) => void | Promise<void>;
 };
 
 function matchLabel(student: OmrStudentMatch) {
@@ -39,6 +51,11 @@ function matchLabel(student: OmrStudentMatch) {
   }`;
   const program = student.programName ? ` · ${student.programName}` : "";
   return `${student.name} · ${classLabel}${program} · ${student.schoolName}`;
+}
+
+function pickDefaultSectionId(sections: OmrWalkInSection[]) {
+  const namedA = sections.find((row) => row.name.trim().toUpperCase() === "A");
+  return namedA?.id ?? sections[0]?.id ?? "";
 }
 
 /** Manual registration when bubbles could not be read or a duplicate roll was found. */
@@ -77,6 +94,8 @@ export function OmrRollRecovery({
   );
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [lookingUp, setLookingUp] = useState(false);
+  const [sections, setSections] = useState<OmrWalkInSection[]>([]);
+  const [sectionId, setSectionId] = useState("");
 
   const initialKey = `${seedRoll}:${initialMatches.map((row) => row.id).join(",")}`;
 
@@ -144,8 +163,6 @@ export function OmrRollRecovery({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initialMatches via initialKey
   }, [rollNo, portal, schoolId, initialKey]);
 
-  if (!recoverable) return null;
-
   const rollDigits = rollInput(rollNo);
   const blankOrZero = isSharedBlankRoll(rollDigits);
   const rollComplete = rollDigits.length === ROLL_LENGTH;
@@ -164,6 +181,38 @@ export function OmrRollRecovery({
     (matches.length === 1 && rollComplete && !lookingUp && !lookupError && !blankOrZero) ||
     (showNameField && nameReady && (blankOrZero || rollComplete));
 
+  const batchPlace = majorityWalkInFromBatch();
+  const walkInSchoolId = schoolId?.trim() || selected?.schoolId || batchPlace.schoolId || "";
+  const walkInClass = batchPlace.classLevel;
+  const walkInProgram = batchPlace.programCode;
+
+  useEffect(() => {
+    // Only show a section dropdown when this school+class+program actually has sections.
+    if (!showNameField || !walkInSchoolId || !walkInClass || !walkInProgram) {
+      setSections([]);
+      setSectionId("");
+      return;
+    }
+    let cancelled = false;
+    void listOmrWalkInSectionsAction(portal, walkInSchoolId, walkInClass, walkInProgram).then(
+      (result) => {
+        if (cancelled) return;
+        if (!result.ok || result.sections.length === 0) {
+          setSections([]);
+          setSectionId("");
+          return;
+        }
+        setSections(result.sections);
+        setSectionId(pickDefaultSectionId(result.sections));
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [showNameField, walkInSchoolId, walkInClass, walkInProgram, portal]);
+
+  if (!recoverable) return null;
+
   async function save() {
     const pick = selected ?? (matches.length === 1 && !blankOrZero ? matches[0]! : null);
     if (pick) {
@@ -180,7 +229,16 @@ export function OmrRollRecovery({
         toast.error("Enter the 7-digit registration number (or 0000000)");
         return;
       }
-      await onSaveWithRoll(normalizeRollNo(rollDigits), schoolId, name);
+      await onSaveWithRoll(
+        normalizeRollNo(rollDigits),
+        walkInSchoolId || schoolId,
+        name,
+        sections.length > 0 ? sectionId || undefined : undefined,
+        {
+          classLevel: walkInClass,
+          programCode: walkInProgram,
+        },
+      );
       return;
     }
     if (matches.length > 1) {
@@ -239,6 +297,22 @@ export function OmrRollRecovery({
             }}
           />
         ) : null}
+        {showNameField && sections.length > 0 ? (
+          <select
+            id={`${inputId}-section`}
+            value={sectionId}
+            disabled={busy}
+            aria-label="Section"
+            className="h-7 w-14 shrink-0 rounded-md border border-amber-200 bg-white px-1 text-xs font-medium text-amber-950"
+            onChange={(event) => setSectionId(event.currentTarget.value)}
+          >
+            {sections.map((row) => (
+              <option key={row.id} value={row.id}>
+                {row.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <Button
           type="button"
           size="sm"
@@ -283,6 +357,7 @@ export function OmrRollRecovery({
       ) : showNameField ? (
         <p className="text-[11px] text-amber-900/80">
           Not on student list — enter registration number and student name
+          {sections.length === 0 ? " · Section A" : ""}
         </p>
       ) : lookupError && rollComplete ? (
         <p className="text-[11px] text-amber-900/80">{shortLookupError(lookupError)}</p>

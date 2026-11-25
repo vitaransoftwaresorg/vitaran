@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import type { ScanPortal } from "@/services/scans";
 import { formatMarks, type ScanPreview } from "@/types/scan";
 import { previewScanAction } from "./actions";
-import { getScanBatch, setScanBatch, type PdfFailure } from "./batch-store";
+import { getScanBatch, majorityWalkInFromBatch, setScanBatch, type PdfFailure } from "./batch-store";
 import { asJpegFile } from "./camera";
 import { fetchOriginalSheetDirect, fetchPreviewSheetDirect } from "./client-upload";
 import { OmrRollRecovery } from "./omr-roll-recovery";
@@ -146,6 +146,8 @@ export function ScanSheetTable({
     typedRoll: string,
     schoolId?: string,
     studentName?: string,
+    sectionId?: string,
+    placement?: { classLevel?: number; programCode?: string },
   ) {
     if (!failure.hasImage) {
       toast.error("No page image to save.");
@@ -174,8 +176,16 @@ export function ScanSheetTable({
       // Same as PDF batch — flat page JPEG already uprighted at scan; evaluate with current test key.
       form.append("flat", "1");
       form.append("upright", "1");
-      if (schoolId) form.append("schoolId", schoolId);
+      // Walk-in: majority school / class / program from this PDF batch.
+      const batchPlace = majorityWalkInFromBatch();
+      const batchSchoolId = schoolId || batchPlace.schoolId;
+      if (batchSchoolId) form.append("schoolId", batchSchoolId);
       if (studentName?.trim()) form.append("studentName", studentName.trim());
+      if (sectionId?.trim()) form.append("sectionId", sectionId.trim());
+      const classLevel = placement?.classLevel ?? batchPlace.classLevel;
+      const programCode = placement?.programCode ?? batchPlace.programCode;
+      if (classLevel) form.append("classLevel", String(classLevel));
+      if (programCode) form.append("programCode", programCode);
       const result = await previewScanAction(portal, form);
       if (!result.ok) {
         toast.error(`Page ${failure.page}: ${result.message}`);
@@ -364,8 +374,15 @@ export function ScanSheetTable({
                         initialRollNo={
                           pageRollHints[failure.page] ?? failure.rollNo?.trim() ?? ""
                         }
-                        onSaveWithRoll={(roll, schoolId, studentName) =>
-                          void saveFailedWithRoll(failure, roll, schoolId, studentName)
+                        onSaveWithRoll={(roll, schoolId, studentName, sectionId, placement) =>
+                          void saveFailedWithRoll(
+                            failure,
+                            roll,
+                            schoolId,
+                            studentName,
+                            sectionId,
+                            placement,
+                          )
                         }
                       />
                     ) : recoverRoll && !failure.hasImage ? (
@@ -519,8 +536,15 @@ export function ScanSheetTable({
                     inputId={`omr-recovery-sheet-roll-${viewing.failure.page}`}
                     initialMatches={pageMatches[viewing.failure.page] ?? NO_MATCHES}
                     initialRollNo={pageRollHints[viewing.failure.page] ?? ""}
-                    onSaveWithRoll={(roll, schoolId, studentName) =>
-                      void saveFailedWithRoll(viewing.failure, roll, schoolId, studentName)
+                    onSaveWithRoll={(roll, schoolId, studentName, sectionId, placement) =>
+                      void saveFailedWithRoll(
+                        viewing.failure,
+                        roll,
+                        schoolId,
+                        studentName,
+                        sectionId,
+                        placement,
+                      )
                     }
                   />
                 </div>
