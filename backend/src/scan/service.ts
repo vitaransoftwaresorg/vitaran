@@ -853,30 +853,12 @@ async function storePdfPageThumb(
 }
 
 /**
- * Evaluated preview for a failed page: upright sheet + marks table on top (same as ready OMR).
- * Falls back to the prepared upright sheet when the key cannot be resolved.
+ * Upright sheet for a failed read (rotate at scan time). Marks/evaluate wait until
+ * the examiner enters registration and saves.
  */
-async function failedPageDisplayJpeg(
-  read: SheetRead,
-  school: ScanSchool | null,
-  testId: string,
-  examPattern: ExamPattern,
-): Promise<Buffer> {
-  if (!school || !testId.trim() || !read.bubbles?.points.length) {
-    return read.jpeg;
-  }
+async function failedPageDisplayJpeg(read: SheetRead): Promise<Buffer> {
   try {
-    const key = await resolveWalkInKey(school, testId);
-    const score = scoreWithKey(read.answers, key, { examPattern });
-    if (score.subjectScores.length === 0) return read.jpeg;
-    return await markedSheetPreview(
-      read.jpeg,
-      read.bubbles,
-      read.answers,
-      key.answers,
-      score.subjectScores,
-      key.keyTypeRanges,
-    );
+    return await uprightOmrJpeg(read.jpeg, { flat: true });
   } catch {
     return read.jpeg;
   }
@@ -1022,11 +1004,9 @@ async function readPdfBatch(context: ScanContext, batch: PdfBatch) {
       } catch (error) {
         if (!(error instanceof AppError)) logger.error({ err: error, page, batchId: batch.id }, "PDF page read failed");
         let imagePath: string | undefined;
-        if (error instanceof SheetDisplayError) {
-          imagePath = await storePdfPageThumb(batch.id, page, error.displayJpeg, {
-            alreadyUpright: true,
-          });
-        } else if (sheet) {
+        if (sheet) {
+          // Auto-rotate at scan time (before examiner enters reg). Do not store the
+          // evaluated SheetDisplayError preview here — evaluate only after save-with-reg.
           imagePath = await storePdfPageThumb(batch.id, page, sheet.jpeg);
         }
         batch.items.push({
@@ -1168,11 +1148,19 @@ export async function previewScan(
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identity.schoolId)
       ? identity.schoolId
       : undefined;
-  const read = await readQueued(image, fileName, {
+  // Failed-page save with typed reg: upright first (layout-aware 0/90/180/270), then evaluate.
+  const recoverySave = Boolean(identity.flat && /^\d{7}$/.test(typedRoll));
+  let sheetImage = image;
+  if (recoverySave) {
+    // `source` = rotated original so readSheet prepares cleanly (not a double-warped thumb).
+    sheetImage = await uprightOmrJpeg(image, { flat: true, mode: "source" });
+  }
+  const read = await readQueued(sheetImage, fileName, {
     rollNo: typedRoll,
     testId: typedTest,
     flat: identity.flat,
-    corners: identity.corners,
+    corners: recoverySave ? undefined : identity.corners,
+    alreadyUpright: recoverySave,
   });
   const sessionSchool = contextSchool(context);
 
@@ -1194,15 +1182,7 @@ export async function previewScan(
       if (isNoStudentError(error) && walkInName) {
         // Continue into walk-in enrollment below.
       } else {
-        const displaySchool =
-          sessionSchool ??
-          (preferredSchoolId ? await loadScanSchool(preferredSchoolId).catch(() => null) : null);
-        const display = await failedPageDisplayJpeg(
-          read,
-          displaySchool,
-          typedTest,
-          examPattern,
-        );
+        const display = await failedPageDisplayJpeg(read);
         await rethrowWithDisplay(error, display);
       }
     }
@@ -1218,11 +1198,7 @@ export async function previewScan(
       (preferredSchoolId
         ? await loadScanSchool(preferredSchoolId)
         : (() => {
-            throw new SheetDisplayError(
-              422,
-              "Pick a school to save an unregistered student.",
-              read.jpeg,
-            );
+            throw new AppError(422, "Pick a school to save an unregistered student.");
           })());
 
   const visibleKeys = (await answerKeyRepository.findAnswerKeys({})).filter((key) => keyVisibleTo(key, school));
@@ -1232,7 +1208,7 @@ export async function previewScan(
   if (typedTest) {
     testId = known.find((id) => id.toUpperCase() === typedTest.toUpperCase()) ?? "";
     if (!testId) {
-      const display = await failedPageDisplayJpeg(read, school, typedTest, examPattern);
+      const display = await failedPageDisplayJpeg(read);
       throw new SheetDisplayError(
         422,
         `No answer key for test ID ${typedTest} at ${school.name}.`,
@@ -1250,14 +1226,14 @@ export async function previewScan(
       throw new SheetDisplayError(
         422,
         "Enter the test ID from the answer key, then scan again.",
-        read.jpeg,
+        await failedPageDisplayJpeg(read),
       );
     }
   } else {
     throw new SheetDisplayError(
       422,
       "Enter the test ID from the answer key, then scan again.",
-      read.jpeg,
+      await failedPageDisplayJpeg(read),
     );
   }
 
@@ -1280,7 +1256,7 @@ export async function previewScan(
       });
       key = resolved.key;
     } catch (error) {
-      const display = await failedPageDisplayJpeg(read, school, testId, examPattern);
+      const display = await failedPageDisplayJpeg(read);
       await rethrowWithDisplay(error, display);
     }
     identityRoll = enrolled.rollNo;

@@ -350,9 +350,10 @@ export function ScanCamera({
     setBusy(true);
     setStatus(studentName?.trim() ? "Saving walk-in…" : "Saving with registration…");
     try {
+      // Omit corners on recovery so the reader can auto-upright a reverse sheet (0° vs 180°).
       const result = await readPhoto(
         pending.source,
-        pending.corners,
+        undefined,
         typed,
         schoolId,
         studentName,

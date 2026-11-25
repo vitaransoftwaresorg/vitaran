@@ -171,6 +171,8 @@ export function ScanSheetTable({
       form.append("testId", testId);
       form.append("examPattern", examPattern);
       form.append("rollNo", walkIn ? normalizeRollNo(typed) : typed);
+      // Same as PDF batch — flat page JPEG; reader will 0° vs 180° upright like a reverse sheet.
+      form.append("flat", "1");
       if (schoolId) form.append("schoolId", schoolId);
       if (studentName?.trim()) form.append("studentName", studentName.trim());
       const result = await previewScanAction(portal, form);

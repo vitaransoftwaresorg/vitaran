@@ -15,6 +15,7 @@ type ReadJob = {
   testId?: string;
   flat?: boolean;
   corners?: SheetCorners;
+  alreadyUpright?: boolean;
 };
 type ReadOk = { ok: true; jpeg: string; sheet: ExtractedSheet };
 type ReadFail = { ok: false; statusCode: number; message: string };
@@ -74,6 +75,7 @@ async function onJob(job: Job<ReadJob, ReadResult>) {
     testId: job.data.testId,
     flat: job.data.flat,
     corners: job.data.corners,
+    alreadyUpright: job.data.alreadyUpright,
   });
 }
 
@@ -118,6 +120,7 @@ export async function readQueued(image: Buffer, fileName: string, identity?: She
       testId: identity?.testId,
       flat: identity?.flat,
       corners: identity?.corners,
+      alreadyUpright: identity?.alreadyUpright,
     },
     { removeOnComplete: 40, removeOnFail: 40 },
   );

@@ -16,6 +16,8 @@ export type SheetIdentity = {
   flat?: boolean;
   /** Sheet corners confirmed in the phone scanner (TL, TR, BR, BL as 0–1 fractions of the photo). */
   corners?: SheetCorners;
+  /** Image was already auto-uprighted (failed-page save) — do not try 180° again. */
+  alreadyUpright?: boolean;
 };
 
 export type SheetCorners = [number, number][];
@@ -120,6 +122,11 @@ function cleanRoll(value?: string) {
   return isPlausibleRoll(digits) ? digits : "";
 }
 
+/** Examiner typed a 7-digit reg (incl. blank 0000000) — force 0° vs 180° upright compare. */
+function examinerTypedRoll(value?: string) {
+  return /^\d{7}$/.test((value ?? "").replace(/\D/g, ""));
+}
+
 function cleanTest(value?: string) {
   return (value ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
@@ -128,8 +135,40 @@ type OrientedAttempt =
   | { ok: true; read: SheetRead; score: number; gridFound: boolean }
   | { ok: false; error: unknown; score: number };
 
-function scoreRead(gridFound: boolean, rollNo: string, markCount: number, flagCount: number) {
-  return (gridFound ? 1000 : 0) + (isPlausibleRoll(rollNo) ? 200 : 0) + markCount * 2 - flagCount;
+/**
+ * Layout cue: on an upright Vitaran sheet the answer block sits mid-lower (below the
+ * registration header). Upside-down pages put that same lattice near the top — both
+ * orientations can "find" the grid, so markCount alone cannot tell them apart.
+ */
+function answerGridMeanY(
+  height: number,
+  points: Array<{ y: number }> | undefined,
+): number {
+  if (!points?.length || height <= 0) return 0.5;
+  return points.reduce((sum, point) => sum + point.y, 0) / points.length / height;
+}
+
+function layoutUprightBonus(meanY: number) {
+  // Typical upright mean ≈ 0.55–0.72; reverse ≈ 0.28–0.42.
+  if (meanY >= 0.48 && meanY <= 0.85) return 1200;
+  if (meanY >= 0.44) return 400;
+  return 0;
+}
+
+function scoreRead(
+  gridFound: boolean,
+  rollNo: string,
+  markCount: number,
+  flagCount: number,
+  meanY = 0.5,
+) {
+  return (
+    (gridFound ? 1000 : 0) +
+    (isPlausibleRoll(rollNo) ? 300 : 0) +
+    markCount * 2 -
+    flagCount +
+    layoutUprightBonus(meanY)
+  );
 }
 
 async function rotate180(image: Buffer) {
@@ -143,25 +182,40 @@ async function rotateBy(image: Buffer, angle: 0 | 90 | 180 | 270) {
   return sharp(image).rotate(angle).jpeg({ quality: 92, mozjpeg: true }).toBuffer();
 }
 
-/** Score how much an orientation looks like an upright OMR (grid + marks). */
+/** Score how much an orientation looks like an upright OMR (grid + layout + marks). */
 async function orientationScore(image: Buffer, flat: boolean) {
   try {
     const prepared = await prepareSheet(image, { flat });
     const bubbles = readAnswerBubbles(prepared.rgba);
+    const bubbleRoll = readRollBubbleCandidates(prepared.rgba).find(isPlausibleRoll) ?? "";
+    const meanY = answerGridMeanY(prepared.rgba.height, bubbles.bubbles?.points);
     return {
-      score: scoreRead(Boolean(bubbles.gridFound), "", bubbles.markCount, bubbles.flags.length),
+      score: scoreRead(
+        Boolean(bubbles.gridFound),
+        bubbleRoll,
+        bubbles.markCount,
+        bubbles.flags.length,
+        meanY,
+      ),
       jpeg: prepared.jpeg,
+      meanY,
     };
   } catch {
-    return { score: -1, jpeg: image };
+    return { score: -1, jpeg: image, meanY: 0.5 };
   }
 }
 
 /**
- * Auto-rotate a sheet image upright for display (failed PDF pages, etc.).
- * Tries every 90° turn and keeps the strongest bubble-grid orientation (production upright).
+ * Auto-rotate a sheet image upright for display / recovery (failed PDF pages, etc.).
+ * Tries every 90° turn and keeps the strongest upright layout (answer grid mid-lower).
+ *
+ * `mode: "source"` returns the rotated original (for a fresh read).
+ * Default returns the prepared warped JPEG (for thumbs / display).
  */
-export async function uprightOmrJpeg(image: Buffer, options: { flat?: boolean } = {}): Promise<Buffer> {
+export async function uprightOmrJpeg(
+  image: Buffer,
+  options: { flat?: boolean; mode?: "prepared" | "source" } = {},
+): Promise<Buffer> {
   const flat = options.flat !== false;
   const base = await sharp(image).rotate().jpeg({ quality: 92, mozjpeg: true }).toBuffer();
   const meta = await sharp(base).metadata();
@@ -169,7 +223,8 @@ export async function uprightOmrJpeg(image: Buffer, options: { flat?: boolean } 
 
   // Always score all four turns — PDF pages and phone shots land in every orientation.
   const angles: Array<0 | 90 | 180 | 270> = [0, 90, 180, 270];
-  let bestJpeg: Buffer = Buffer.from(base);
+  let bestPrepared: Buffer = Buffer.from(base);
+  let bestSource: Buffer = Buffer.from(base);
   let bestScore = -Infinity;
 
   for (const angle of angles) {
@@ -177,7 +232,8 @@ export async function uprightOmrJpeg(image: Buffer, options: { flat?: boolean } 
     const { score, jpeg } = await orientationScore(candidate, flat);
     if (score > bestScore) {
       bestScore = score;
-      bestJpeg = Buffer.from(jpeg);
+      bestPrepared = Buffer.from(jpeg);
+      bestSource = Buffer.from(candidate);
     }
   }
 
@@ -186,7 +242,7 @@ export async function uprightOmrJpeg(image: Buffer, options: { flat?: boolean } 
     const portrait = landscape ? await rotateBy(base, 90) : base;
     return Buffer.from(portrait);
   }
-  return bestJpeg;
+  return options.mode === "source" ? bestSource : bestPrepared;
 }
 
 /** One orientation pass — no auto-flip. */
@@ -194,12 +250,13 @@ async function readSheetOriented(image: Buffer, identity: SheetIdentity = {}): P
   try {
     const prepared = await prepareSheet(image, { flat: identity.flat, corners: identity.corners });
     const bubbles = readAnswerBubbles(prepared.rgba);
+    const meanY = answerGridMeanY(prepared.rgba.height, bubbles.bubbles?.points);
     // On photos the template guess misreads shadows and creases as answers; PDF pages are flat and keep it.
     if (!identity.flat && !bubbles.gridFound) {
       logger.warn({ markCount: bubbles.markCount, flags: bubbles.flags.length }, "answer grid not found in photo");
       return {
         ok: false,
-        score: scoreRead(false, "", bubbles.markCount, bubbles.flags.length),
+        score: scoreRead(false, "", bubbles.markCount, bubbles.flags.length, meanY),
         error: new AppError(
           422,
           "The answer bubbles aren't clear in this photo. Scan again with the whole sheet flat, sharp and in good light.",
@@ -212,15 +269,17 @@ async function readSheetOriented(image: Buffer, identity: SheetIdentity = {}): P
     const printed = givenTest
       ? { name: "", testId: givenTest, testCandidates: [givenTest], examDate: "" }
       : await readPrintedDetails(prepared.rgba);
-    const rollCandidates = givenRoll
-      ? [givenRoll]
-      : readRollBubbleCandidates(prepared.rgba).filter(isPlausibleRoll);
-    const rollNo = givenRoll || rollCandidates[0] || "";
+    // Always read bubble roll for orientation scoring — typed reg must not make an
+    // upside-down sheet score as well as the upright one (both would get +200).
+    const bubbleRollCandidates = readRollBubbleCandidates(prepared.rgba).filter(isPlausibleRoll);
+    const bubbleRoll = bubbleRollCandidates[0] || "";
+    const rollCandidates = givenRoll ? [givenRoll] : bubbleRollCandidates;
+    const rollNo = givenRoll || bubbleRoll;
     if (!rollNo) {
       logger.warn({ rollCandidates, markCount: bubbles.markCount }, "registration bubbles missed");
       return {
         ok: false,
-        score: scoreRead(Boolean(bubbles.gridFound), "", bubbles.markCount, bubbles.flags.length),
+        score: scoreRead(Boolean(bubbles.gridFound), "", bubbles.markCount, bubbles.flags.length, meanY),
         error: new AppError(422, "Unable to read the registration number."),
       };
     }
@@ -230,7 +289,13 @@ async function readSheetOriented(image: Buffer, identity: SheetIdentity = {}): P
     if (!testCandidates.length) {
       return {
         ok: false,
-        score: scoreRead(Boolean(bubbles.gridFound), rollNo, bubbles.markCount, bubbles.flags.length),
+        score: scoreRead(
+          Boolean(bubbles.gridFound),
+          bubbleRoll,
+          bubbles.markCount,
+          bubbles.flags.length,
+          meanY,
+        ),
         error: new AppError(422, "Enter the test ID from the answer key, then scan again."),
       };
     }
@@ -252,7 +317,14 @@ async function readSheetOriented(image: Buffer, identity: SheetIdentity = {}): P
       ok: true,
       read,
       gridFound: Boolean(bubbles.gridFound),
-      score: scoreRead(Boolean(bubbles.gridFound), rollNo, bubbles.markCount, bubbles.flags.length),
+      // Score orientation from layout + bubbles (answer block mid-lower when upright).
+      score: scoreRead(
+        Boolean(bubbles.gridFound),
+        bubbleRoll,
+        bubbles.markCount,
+        bubbles.flags.length,
+        meanY,
+      ),
     };
   } catch (error) {
     if (error instanceof ZodError) {
@@ -264,7 +336,14 @@ async function readSheetOriented(image: Buffer, identity: SheetIdentity = {}): P
 
 /** Strong upright signal — skip the 180° retry to keep large PDF batches fast. */
 function looksUpright(attempt: OrientedAttempt) {
-  return attempt.ok === true && attempt.gridFound && isPlausibleRoll(attempt.read.rollNo);
+  // score ≥ 2000 ⇒ gridFound (+1000) and mid-lower answer layout (+1200). Reverse pages
+  // often still "find" a grid near the top, so markCount/roll alone must not short-circuit.
+  return (
+    attempt.ok === true &&
+    attempt.gridFound &&
+    isPlausibleRoll(attempt.read.rollNo) &&
+    attempt.score >= 2000
+  );
 }
 
 function throwAttempt(error: unknown): never {
@@ -282,15 +361,30 @@ function throwAttempt(error: unknown): never {
  * BullMQ runs this job for a batch of sheets (see queue.ts).
  */
 export async function readSheet(image: Buffer, identity: SheetIdentity = {}): Promise<SheetRead> {
-  // Phone crop corners already define orientation — do not flip under the user.
-  if (identity.corners?.length === 4) {
+  const typedRoll = examinerTypedRoll(identity.rollNo);
+  // Failed-page save already ran uprightOmrJpeg — evaluate this orientation only.
+  if (identity.alreadyUpright) {
+    const attempt = await readSheetOriented(image, { ...identity, corners: undefined });
+    if (attempt.ok) return attempt.read;
+    throwAttempt(attempt.error);
+  }
+  // Phone crop corners lock the photo warp — but on failed recovery the examiner typed
+  // the reg, so still compare 0° vs 180° (corners alone leave a reverse sheet flipped).
+  if (identity.corners?.length === 4 && !typedRoll) {
     const attempt = await readSheetOriented(image, identity);
     if (attempt.ok) return attempt.read;
     throwAttempt(attempt.error);
   }
 
-  const first = await readSheetOriented(image, identity);
-  if (looksUpright(first) && first.ok) return first.read;
+  // Recovery with typed roll: ignore corners so 180° can re-prepare the full page.
+  const orientIdentity: SheetIdentity = typedRoll
+    ? { ...identity, corners: undefined }
+    : identity;
+
+  const first = await readSheetOriented(image, orientIdentity);
+  // Examiner-typed reg (failed-page recovery) makes BOTH orientations look "ok",
+  // so always compare 0° vs 180° — same auto-upright as a reverse sheet that read correctly.
+  if (looksUpright(first) && first.ok && !typedRoll) return first.read;
 
   let flipped: Buffer;
   try {
@@ -300,13 +394,14 @@ export async function readSheet(image: Buffer, identity: SheetIdentity = {}): Pr
     throwAttempt(first.error instanceof Error ? first.error : error);
   }
 
-  const second = await readSheetOriented(flipped, identity);
+  const second = await readSheetOriented(flipped, orientIdentity);
   if (second.ok && (!first.ok || second.score > first.score)) {
     logger.info(
       {
         firstScore: first.score,
         secondScore: second.score,
         flat: Boolean(identity.flat),
+        typedRoll,
       },
       "OMR sheet was upside down — used 180° rotation",
     );
