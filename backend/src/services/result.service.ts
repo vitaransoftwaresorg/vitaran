@@ -460,9 +460,9 @@ export async function recordOmrResult(entry: OmrResultEntry) {
     removeClasses: [],
   });
 
-  // Results list is roster-based — only write marks for students on the school roster.
+  // Roster student in a different class — do not write. Unknown roll = walk-in for this class.
   const onRoster = await studentRepository.findActiveStudentInSchool(entry.schoolId, entry.rollNo);
-  if (!onRoster || onRoster.classLevel !== entry.classLevel) {
+  if (onRoster && onRoster.classLevel !== entry.classLevel) {
     return null;
   }
 
@@ -474,16 +474,25 @@ export async function recordOmrResult(entry: OmrResultEntry) {
   const roles = columns.map(columnRole);
   const rows = sheet ? sheet.rows.map(({ values }) => values as CellValue[]) : [];
 
+  const who = onRoster
+    ? {
+        rollNo: onRoster.rollNo,
+        name: onRoster.name,
+        classLevel: onRoster.classLevel,
+        sectionName: onRoster.section?.name ?? entry.sectionName,
+      }
+    : {
+        rollNo: entry.rollNo,
+        name: entry.name,
+        classLevel: entry.classLevel,
+        sectionName: entry.sectionName,
+      };
+
   const rollCol = roles.indexOf("roll");
   const at = rollCol >= 0 ? rows.findIndex((row) => foldRoll(row[rollCol]) === foldRoll(entry.rollNo)) : -1;
   const row: CellValue[] = at >= 0 ? columns.map((_, index) => rows[at]![index] ?? null) : columns.map(() => null);
   roles.forEach((role, index) => {
-    const value = identityCell(role, {
-      rollNo: onRoster.rollNo,
-      name: onRoster.name,
-      classLevel: onRoster.classLevel,
-      sectionName: onRoster.section?.name ?? entry.sectionName,
-    });
+    const value = identityCell(role, who);
     if (value !== undefined) row[index] = value;
   });
   // Clear subject cells first so a narrower exam pattern (e.g. PCB) drops Maths
@@ -628,8 +637,8 @@ function byRank(columns: string[], rows: CellValue[][]) {
 }
 
 /**
- * Results student list = school roster for this class.
- * Marks from the saved sheet (OMR/manual) are applied onto matching registration numbers only.
+ * Results student list = school roster for this class, then walk-in / unregistered
+ * OMR rows (not on the roster) appended at the end.
  */
 function projectSheetOntoRoster(
   columns: string[],
@@ -644,25 +653,48 @@ function projectSheetOntoRoster(
 ): CellValue[][] {
   const roles = columns.map(columnRole);
   const rollCol = roles.indexOf("roll");
+  const classCol = roles.indexOf("class");
   const byRoll = new Map<string, CellValue[]>();
   for (const row of sheetRows) {
     const roll = rollCol >= 0 ? foldRoll(row[rollCol]) : "";
     if (roll) byRoll.set(roll, row);
   }
 
-  const rows = roster
-    .filter((student) => student.classLevel === classLevel)
-    .map((student) => {
-      const saved = byRoll.get(foldRoll(student.rollNo));
-      const row = columns.map((_, index) => (saved ? (saved[index] ?? null) : null));
-      roles.forEach((role, index) => {
-        const value = identityCell(role, student);
-        if (value !== undefined) row[index] = value;
-      });
-      return row;
-    });
+  const classRoster = roster.filter((student) => student.classLevel === classLevel);
+  const rosterRolls = new Set(classRoster.map((student) => foldRoll(student.rollNo)));
 
-  return byRank(columns, recomputeSheet(columns, rows, classLevel));
+  const rosterRows = classRoster.map((student) => {
+    const saved = byRoll.get(foldRoll(student.rollNo));
+    const row = columns.map((_, index) => (saved ? (saved[index] ?? null) : null));
+    roles.forEach((role, index) => {
+      const value = identityCell(role, student);
+      if (value !== undefined) row[index] = value;
+    });
+    return row;
+  });
+
+  const walkInRows: CellValue[][] = [];
+  for (const [roll, saved] of byRoll) {
+    if (rosterRolls.has(roll)) continue;
+    if (classCol >= 0) {
+      const text = String(saved[classCol] ?? "").trim();
+      if (text && !text.startsWith(String(classLevel))) continue;
+    }
+    walkInRows.push(columns.map((_, index) => saved[index] ?? null));
+  }
+
+  const rankedRoster = byRank(columns, recomputeSheet(columns, rosterRows, classLevel));
+  if (walkInRows.length === 0) return rankedRoster;
+
+  const rankedWalkIns = byRank(columns, recomputeSheet(columns, walkInRows, classLevel));
+  const serialCol = roles.indexOf("serial");
+  const combined = [...rankedRoster, ...rankedWalkIns];
+  if (serialCol < 0) return combined;
+  return combined.map((row, position) => {
+    const next = [...row];
+    next[serialCol] = position + 1;
+    return next;
+  });
 }
 
 async function paperRangesForTest(testId: string) {

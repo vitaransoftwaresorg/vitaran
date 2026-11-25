@@ -140,7 +140,12 @@ export function ScanSheetTable({
     }
   }
 
-  async function saveFailedWithRoll(failure: PdfFailure, typedRoll: string, schoolId?: string) {
+  async function saveFailedWithRoll(
+    failure: PdfFailure,
+    typedRoll: string,
+    schoolId?: string,
+    studentName?: string,
+  ) {
     if (!failure.hasImage) {
       toast.error("No page image to save.");
       return;
@@ -161,6 +166,7 @@ export function ScanSheetTable({
       form.append("examPattern", examPattern);
       form.append("rollNo", typed);
       if (schoolId) form.append("schoolId", schoolId);
+      if (studentName?.trim()) form.append("studentName", studentName.trim());
       const result = await previewScanAction(portal, form);
       if (!result.ok) {
         toast.error(`Page ${failure.page}: ${result.message}`);
@@ -349,8 +355,8 @@ export function ScanSheetTable({
                         initialRollNo={
                           pageRollHints[failure.page] ?? failure.rollNo?.trim() ?? ""
                         }
-                        onSaveWithRoll={(roll, schoolId) =>
-                          void saveFailedWithRoll(failure, roll, schoolId)
+                        onSaveWithRoll={(roll, schoolId, studentName) =>
+                          void saveFailedWithRoll(failure, roll, schoolId, studentName)
                         }
                       />
                     ) : recoverRoll && !failure.hasImage ? (
@@ -504,8 +510,8 @@ export function ScanSheetTable({
                     inputId={`omr-recovery-sheet-roll-${viewing.failure.page}`}
                     initialMatches={pageMatches[viewing.failure.page] ?? NO_MATCHES}
                     initialRollNo={pageRollHints[viewing.failure.page] ?? ""}
-                    onSaveWithRoll={(roll, schoolId) =>
-                      void saveFailedWithRoll(viewing.failure, roll, schoolId)
+                    onSaveWithRoll={(roll, schoolId, studentName) =>
+                      void saveFailedWithRoll(viewing.failure, roll, schoolId, studentName)
                     }
                   />
                 </div>

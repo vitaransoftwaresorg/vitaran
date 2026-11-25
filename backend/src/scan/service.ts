@@ -7,6 +7,7 @@ import { SchoolType } from "../generated/prisma/enums.js";
 import type { Prisma } from "../generated/prisma/client.js";
 import * as answerKeyRepository from "../repositories/answer-key.repository.js";
 import * as programRepository from "../repositories/program.repository.js";
+import * as schoolRepository from "../repositories/school.repository.js";
 import * as studentRepository from "../repositories/student.repository.js";
 import { recordOmrResult } from "../services/result.service.js";
 import { AppError } from "../utils/app-error.js";
@@ -17,6 +18,7 @@ import type { TeacherAccountDto } from "../services/teacher.service.js";
 import { asAnswers, asKeyTypeRanges } from "../utils/answer-key-parse.js";
 import { logger } from "../utils/logger.js";
 import { displaySectionName } from "../utils/section-label.js";
+import { titleCase } from "../utils/title-case.js";
 import { omrPdfPageCount, openOmrPdf } from "./pdf-pages.js";
 import {
   batchMetaPath,
@@ -42,6 +44,7 @@ import {
   isPlausibleRoll,
   pickRollNo,
   pickTestId,
+  uprightOmrJpeg,
   type SheetCorners,
   type SheetRead,
 } from "./read-sheet.js";
@@ -473,6 +476,32 @@ async function resolveKey(school: ScanSchool | null, tests: string[], student: S
   throw lastError ?? new AppError(404, "No published answer key for this sheet");
 }
 
+/** Answer key for an unregistered walk-in — class/program come from the key (test ID). */
+async function resolveWalkInKey(school: ScanSchool, testId: string) {
+  const keys = await answerKeyRepository.findAnswerKeys({
+    testId: { equals: testId.trim(), mode: "insensitive" },
+  });
+  const visible = keys
+    .map((key) => ({ key, rank: rankKeyForSchool(key, school, undefined) }))
+    .filter((row) => row.rank < 99)
+    .sort((a, b) => a.rank - b.rank || Number(b.key.published) - Number(a.key.published))
+    .map((row) => row.key);
+  if (visible.length === 0) {
+    throw new AppError(404, `No answer key for test ID ${testId} at ${school.name}`);
+  }
+  return visible[0]!;
+}
+
+async function loadScanSchool(id: string): Promise<ScanSchool> {
+  const school = await schoolRepository.findSchoolById(id);
+  if (!school) throw new AppError(404, "School not found");
+  return { id: school.id, name: school.name, type: school.type };
+}
+
+function isNoStudentError(error: unknown) {
+  return error instanceof AppError && /no student with registration number/i.test(error.message);
+}
+
 function ambiguousRollMatches(
   rows: Array<{
     id: string;
@@ -786,11 +815,18 @@ export async function registerOmrPdf(
 
 /** Thumbnail kept for failed / duplicate PDF pages so the examiner can enter a registration. */
 async function storePdfPageThumb(batchId: string, page: number, jpeg: Buffer) {
-  const thumb = await sharp(jpeg)
-    .resize({ width: 900, withoutEnlargement: true })
-    .jpeg({ quality: 75 })
-    .toBuffer()
-    .catch(() => undefined);
+  const thumb = await (async () => {
+    try {
+      // Same auto-upright path as ready sheets (portrait + 0°/180° by bubble grid).
+      const upright = await uprightOmrJpeg(jpeg, { flat: true });
+      return await sharp(upright)
+        .resize({ width: 900, withoutEnlargement: true })
+        .jpeg({ quality: 75 })
+        .toBuffer();
+    } catch {
+      return undefined;
+    }
+  })();
   if (!thumb) return undefined;
   return storeBatchPageImage(batchId, page, thumb).catch(() => undefined);
 }
@@ -883,8 +919,13 @@ async function readPdfBatch(context: ScanContext, batch: PdfBatch) {
 
         if (priorPages.length > 0) {
           // Collision: this sheet is a failure, and every earlier copy becomes one too.
-          const imagePath = await storePdfPageThumb(batch.id, page, sheet.jpeg);
+          // Prefer the upright sheet from the successful read (same as ready OMR view).
           const dup = getPending(previewId);
+          const uprightBuf = dup
+            ? ((await loadPendingImage(dup.diskDir, "sheet").catch(() => null)) ??
+              (await loadPendingImage(dup.diskDir, "raw").catch(() => null)))
+            : null;
+          const imagePath = await storePdfPageThumb(batch.id, page, uprightBuf ?? sheet.jpeg);
           if (dup) void removePendingDir(dup.diskDir);
           pending.delete(previewId);
           batch.items.push({
@@ -1022,6 +1063,8 @@ export async function previewScan(
     testId?: string;
     schoolId?: string;
     examPattern?: string;
+    /** When set and the roll is not on the roster, save as a walk-in for the test ID's class. */
+    studentName?: string;
     flat?: boolean;
     lean?: boolean;
     corners?: SheetCorners;
@@ -1031,6 +1074,7 @@ export async function previewScan(
   if (!identity.flat) void keepSample(image, fileName || "omr.jpg");
   const typedRoll = (identity.rollNo ?? "").replace(/\D/g, "");
   const typedTest = (identity.testId ?? "").trim();
+  const walkInName = titleCase((identity.studentName ?? "").trim()).slice(0, 120);
   const examPattern = parseExamPattern(identity.examPattern);
   if (!examPattern) {
     throw new AppError(400, "Choose the exam pattern (MPCB, PCB, or MPC) before scanning");
@@ -1047,17 +1091,33 @@ export async function previewScan(
     corners: identity.corners,
   });
   const sessionSchool = contextSchool(context);
-  // Typed registration is authoritative — do not fall back to a different bubble read.
-  const enrolled = await resolveStudent(
-    sessionSchool,
-    typedRoll ? [typedRoll] : [read.rollNo, ...read.rollCandidates],
-    preferredSchoolId,
-  );
-  const school: ScanSchool = sessionSchool ?? {
-    id: enrolled.school.id,
-    name: enrolled.school.name,
-    type: "type" in enrolled.school ? (enrolled.school.type as SchoolType) : SchoolType.REGULAR,
-  };
+
+  type Enrolled = Awaited<ReturnType<typeof resolveStudent>>;
+  let enrolled: Enrolled | null = null;
+  try {
+    // Typed registration is authoritative — do not fall back to a different bubble read.
+    enrolled = await resolveStudent(
+      sessionSchool,
+      typedRoll ? [typedRoll] : [read.rollNo, ...read.rollCandidates],
+      preferredSchoolId,
+    );
+  } catch (error) {
+    if (!isNoStudentError(error) || !walkInName) throw error;
+  }
+
+  const school: ScanSchool = enrolled
+    ? (sessionSchool ?? {
+        id: enrolled.school.id,
+        name: enrolled.school.name,
+        type: "type" in enrolled.school ? (enrolled.school.type as SchoolType) : SchoolType.REGULAR,
+      })
+    : sessionSchool ??
+      (preferredSchoolId
+        ? await loadScanSchool(preferredSchoolId)
+        : (() => {
+            throw new AppError(422, "Pick a school to save an unregistered student.");
+          })());
+
   const visibleKeys = (await answerKeyRepository.findAnswerKeys({})).filter((key) => keyVisibleTo(key, school));
   const known = visibleKeys.map((key) => key.testId?.trim() ?? "").filter(Boolean);
   // Entered test ID is authoritative — never fall back to OCR guesses.
@@ -1067,7 +1127,7 @@ export async function previewScan(
     if (!testId) {
       throw new AppError(422, `No answer key for test ID ${typedTest} at ${school.name}.`);
     }
-  } else {
+  } else if (enrolled) {
     testId = pickTestId([read.testId, ...read.testCandidates], known, [
       typedRoll,
       enrolled.rollNo,
@@ -1077,14 +1137,48 @@ export async function previewScan(
     if (!testId) {
       throw new AppError(422, "Enter the test ID from the answer key, then scan again.");
     }
+  } else {
+    throw new AppError(422, "Enter the test ID from the answer key, then scan again.");
   }
-  const { key } = await resolveKey(school, [testId], {
-    name: enrolled.name,
-    rollNo: enrolled.rollNo,
-    classLevel: enrolled.classLevel,
-    programCode: enrolled.program?.code ?? null,
-    sectionId: enrolled.sectionId ?? enrolled.section?.id ?? null,
-  });
+
+  let key: ScanKey;
+  let identityRoll: string;
+  let identityName: string;
+  let identityClass: number;
+  let identitySection: string;
+  let identityProgram: string;
+  let studentId: string | null;
+
+  if (enrolled) {
+    ({ key } = await resolveKey(school, [testId], {
+      name: enrolled.name,
+      rollNo: enrolled.rollNo,
+      classLevel: enrolled.classLevel,
+      programCode: enrolled.program?.code ?? null,
+      sectionId: enrolled.sectionId ?? enrolled.section?.id ?? null,
+    }));
+    identityRoll = enrolled.rollNo;
+    identityName = enrolled.name || read.printedName;
+    identityClass = enrolled.classLevel;
+    identitySection = displaySectionName(enrolled.section?.name);
+    identityProgram = enrolled.program?.name || programNameOf(context, key);
+    studentId = enrolled.schoolId === school.id ? enrolled.id : null;
+  } else {
+    if (!/^\d{7}$/.test(typedRoll)) {
+      throw new AppError(422, "Enter the 7-digit registration number");
+    }
+    if (walkInName.length < 2) {
+      throw new AppError(422, "Enter the student name");
+    }
+    key = await resolveWalkInKey(school, testId);
+    identityRoll = typedRoll;
+    identityName = walkInName;
+    identityClass = key.classLevel;
+    identitySection = displaySectionName(null);
+    identityProgram = programNameOf(context, key);
+    studentId = null;
+  }
+
   const score = scoreWithKey(read.answers, key, { examPattern });
   if (score.subjectScores.length === 0) {
     throw new AppError(
@@ -1114,13 +1208,13 @@ export async function previewScan(
     school,
     key,
     identity: {
-      rollNo: enrolled.rollNo,
+      rollNo: identityRoll,
       testId: key.testId ?? testId,
       examDate: validDate(read.examDate) || null,
-      studentName: enrolled.name || read.printedName,
-      classLevel: enrolled.classLevel,
-      sectionName: displaySectionName(enrolled.section?.name),
-      programName: enrolled.program?.name || programNameOf(context, key),
+      studentName: identityName,
+      classLevel: identityClass,
+      sectionName: identitySection,
+      programName: identityProgram,
     },
     answers: read.answers,
     flags: sheetFlags(score, read.flags),
@@ -1132,7 +1226,7 @@ export async function previewScan(
     // Large PDF batches skip bubble maps — re-mark isn't needed for review/save.
     bubbles: identity.lean || !read.bubbles?.points.length ? undefined : read.bubbles,
     fileName: fileName || "omr.jpg",
-    studentId: enrolled.schoolId === school.id ? enrolled.id : null,
+    studentId,
   };
   pending.set(previewId, row);
   persistPending(previewId, row);

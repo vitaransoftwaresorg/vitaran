@@ -275,6 +275,7 @@ export function ScanCamera({
     corners?: SheetQuad,
     forcedRoll?: string,
     forcedSchoolId?: string,
+    forcedName?: string,
   ) {
     const file = await asJpegFile(source);
     const form = new FormData();
@@ -284,6 +285,7 @@ export function ScanCamera({
     const roll = rollInput(forcedRoll ?? "");
     if (roll.length === ROLL_LENGTH) form.append("rollNo", roll);
     if (forcedSchoolId) form.append("schoolId", forcedSchoolId);
+    if (forcedName?.trim()) form.append("studentName", forcedName.trim());
     if (corners) form.append("corners", JSON.stringify(corners.map((p) => [p.x, p.y])));
     return scanAction(form);
   }
@@ -327,7 +329,7 @@ export function ScanCamera({
     }
   }
 
-  async function saveFailedWithRoll(typedRoll: string, schoolId?: string) {
+  async function saveFailedWithRoll(typedRoll: string, schoolId?: string, studentName?: string) {
     const pending = retryRef.current;
     if (!pending) return;
     const typed = rollInput(typedRoll);
@@ -337,9 +339,15 @@ export function ScanCamera({
     }
     if (!(await verifyTestId())) return;
     setBusy(true);
-    setStatus("Saving with registration…");
+    setStatus(studentName?.trim() ? "Saving walk-in…" : "Saving with registration…");
     try {
-      const result = await readPhoto(pending.source, pending.corners, typed, schoolId);
+      const result = await readPhoto(
+        pending.source,
+        pending.corners,
+        typed,
+        schoolId,
+        studentName,
+      );
       if (!result.ok) {
         toast.error(result.message);
         // Keep recovery open so they can pick another student or fix the number.
@@ -368,7 +376,9 @@ export function ScanCamera({
         busy={busy}
         initialMatches={rollMatches}
         initialRollNo={rollHint}
-        onSaveWithRoll={(roll, schoolId) => void saveFailedWithRoll(roll, schoolId)}
+        onSaveWithRoll={(roll, schoolId, studentName) =>
+          void saveFailedWithRoll(roll, schoolId, studentName)
+        }
       />
     );
   }

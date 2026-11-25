@@ -102,6 +102,7 @@ function buildRows(
     );
 
   // Student list is the school roster for this class — sheet/OMR marks fill matching rolls only.
+  const rosterRolls = new Set(students.map((student) => foldRoll(student.rollNo)));
   const roster = students.map((student) => {
     const cells = fromSaved(savedRows.get(foldRoll(student.rollNo)));
     roles.forEach((role, index) => {
@@ -110,7 +111,21 @@ function buildRows(
     });
     return { key: student.id, cells };
   });
-  return byRank(columns, roster, classLevel);
+  const rankedRoster = byRank(columns, roster, classLevel);
+
+  // Walk-in / unregistered OMR rows (not on the roster) sit at the end of the class list.
+  const classCol = roles.indexOf("class");
+  const walkIns: BoardRow[] = [];
+  for (const [roll, saved] of savedRows) {
+    if (rosterRolls.has(roll)) continue;
+    if (classCol >= 0) {
+      const text = String(saved[classCol] ?? "").trim();
+      if (text && !text.startsWith(String(classLevel))) continue;
+    }
+    walkIns.push({ key: `walk-in:${roll}`, cells: fromSaved(saved) });
+  }
+  if (walkIns.length === 0) return rankedRoster;
+  return [...rankedRoster, ...byRank(columns, walkIns, classLevel)];
 }
 
 /** Highest total first (class rank order); students without marks go last. */
@@ -132,6 +147,13 @@ function byRank(columns: string[], rows: BoardRow[], classLevel: number) {
     (a, b) =>
       (totals.get(b.key) ?? -Infinity) - (totals.get(a.key) ?? -Infinity),
   );
+}
+
+/** Rank roster students by marks; keep walk-in rows at the end of the class list. */
+function byRankKeepingWalkIns(columns: string[], rows: BoardRow[], classLevel: number) {
+  const roster = rows.filter((row) => !row.key.startsWith("walk-in:"));
+  const walkIns = rows.filter((row) => row.key.startsWith("walk-in:"));
+  return [...byRank(columns, roster, classLevel), ...byRank(columns, walkIns, classLevel)];
 }
 
 /** Total is always the sum of subject marks; it's typed only on sheets without subject columns. */
@@ -261,7 +283,7 @@ export function ClassResultsBoard({
     const next = event.relatedTarget as HTMLElement | null;
     if (next && event.currentTarget.contains(next)) return;
     refocus.current = next;
-    setRows((current) => byRank(columns, current, path.classLevel));
+    setRows((current) => byRankKeepingWalkIns(columns, current, path.classLevel));
   }
 
   useLayoutEffect(() => {
@@ -468,7 +490,8 @@ export function ClassResultsBoard({
                         >
                           {(role === "name" || role === "roll") &&
                           cellText(value) &&
-                          !row.key.startsWith("saved:") ? (
+                          !row.key.startsWith("saved:") &&
+                          !row.key.startsWith("walk-in:") ? (
                             <ProfileLink href={studentProfileHref("admin", row.key)}>
                               {cellText(value)}
                             </ProfileLink>

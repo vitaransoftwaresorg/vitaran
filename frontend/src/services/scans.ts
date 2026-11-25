@@ -41,6 +41,7 @@ export function previewScan(
     testId?: string;
     examPattern?: string;
     schoolId?: string;
+    studentName?: string;
     corners?: string;
   },
 ) {
@@ -50,6 +51,7 @@ export function previewScan(
   if (identity?.testId) body.append("testId", identity.testId);
   if (identity?.examPattern) body.append("examPattern", identity.examPattern);
   if (identity?.schoolId) body.append("schoolId", identity.schoolId);
+  if (identity?.studentName) body.append("studentName", identity.studentName);
   /** JSON `[[x, y] ×4]` (TL, TR, BR, BL, 0–1) from the phone document scanner. */
   if (identity?.corners) body.append("corners", identity.corners);
   const route = client(portal);

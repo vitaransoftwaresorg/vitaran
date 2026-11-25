@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { Minus, Plus, RotateCcw } from "lucide-react";
+import { Minus, Plus, RotateCcw, RotateCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const DEFAULT_ZOOM = 0.75;
@@ -13,7 +13,7 @@ function clampZoom(value: number) {
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.round(value / ZOOM_STEP) * ZOOM_STEP));
 }
 
-/** ± / % / reset toolbar + wheel zoom + drag to pan around a sheet or card image. */
+/** ± / % / rotate / reset toolbar + wheel zoom + drag to pan around a sheet or card image. */
 export function ImageZoomPane({
   children,
   className,
@@ -24,10 +24,11 @@ export function ImageZoomPane({
   className?: string;
   /** Label or extra controls on the left of the zoom bar. */
   toolbarLeft?: ReactNode;
-  /** Changing this resets zoom to the default (e.g. Evaluated ↔ Original). */
+  /** Changing this resets zoom/rotation to the default (e.g. Evaluated ↔ Original). */
   resetKey?: string | number;
 }) {
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  const [rotation, setRotation] = useState(0);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const [prevKey, setPrevKey] = useState(resetKey);
@@ -42,13 +43,28 @@ export function ImageZoomPane({
   if (resetKey !== prevKey) {
     setPrevKey(resetKey);
     setZoom(DEFAULT_ZOOM);
+    setRotation(0);
     setPan({ x: 0, y: 0 });
   }
+
+  const atDefault =
+    zoom === DEFAULT_ZOOM && rotation === 0 && pan.x === 0 && pan.y === 0;
 
   function setZoomAndMaybeResetPan(next: number) {
     const value = clampZoom(next);
     setZoom(value);
     if (value === DEFAULT_ZOOM) setPan({ x: 0, y: 0 });
+  }
+
+  function rotateClockwise() {
+    setRotation((current) => (current + 90) % 360);
+    setPan({ x: 0, y: 0 });
+  }
+
+  function resetView() {
+    setZoom(DEFAULT_ZOOM);
+    setRotation(0);
+    setPan({ x: 0, y: 0 });
   }
 
   function onPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
@@ -85,6 +101,8 @@ export function ImageZoomPane({
     }
   }
 
+  const sideways = rotation % 180 !== 0;
+
   return (
     <div className={cn("flex min-h-0 min-w-0 flex-col overflow-hidden", className)}>
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-neutral-200 bg-white px-2 py-1.5">
@@ -115,13 +133,19 @@ export function ImageZoomPane({
           </button>
           <button
             type="button"
+            title="Rotate 90°"
+            aria-label="Rotate 90 degrees"
+            onClick={rotateClockwise}
+            className="inline-flex size-8 items-center justify-center border-l border-neutral-200 text-neutral-700 hover:bg-neutral-50"
+          >
+            <RotateCw className="size-3.5" />
+          </button>
+          <button
+            type="button"
             title={`Reset to ${Math.round(DEFAULT_ZOOM * 100)}%`}
             aria-label={`Reset to ${Math.round(DEFAULT_ZOOM * 100)}%`}
-            disabled={zoom === DEFAULT_ZOOM && pan.x === 0 && pan.y === 0}
-            onClick={() => {
-              setZoom(DEFAULT_ZOOM);
-              setPan({ x: 0, y: 0 });
-            }}
+            disabled={atDefault}
+            onClick={resetView}
             className="inline-flex size-8 items-center justify-center border-l border-neutral-200 text-neutral-700 hover:bg-neutral-50 disabled:opacity-40"
           >
             <RotateCcw className="size-3.5" />
@@ -135,8 +159,8 @@ export function ImageZoomPane({
         )}
         onWheel={(event) => {
           if (!(event.ctrlKey || event.metaKey)) {
-            // Trackpad / mouse wheel pans when zoomed.
-            if (zoom === DEFAULT_ZOOM) return;
+            // Trackpad / mouse wheel pans when zoomed or rotated.
+            if (zoom === DEFAULT_ZOOM && rotation === 0) return;
             event.preventDefault();
             setPan((current) => ({
               x: current.x - event.deltaX,
@@ -153,14 +177,17 @@ export function ImageZoomPane({
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
       >
-        <div
-          className="mx-auto will-change-transform"
-          style={{
-            width: `${zoom * 100}%`,
-            transform: `translate(${pan.x}px, ${pan.y}px)`,
-          }}
-        >
-          {children}
+        <div className="flex h-full w-full items-center justify-center">
+          <div
+            className="will-change-transform"
+            style={{
+              width: sideways ? `${zoom * 100 * (3 / 4)}%` : `${zoom * 100}%`,
+              maxWidth: "100%",
+              transform: `translate(${pan.x}px, ${pan.y}px) rotate(${rotation}deg)`,
+            }}
+          >
+            {children}
+          </div>
         </div>
       </div>
     </div>

@@ -28,7 +28,7 @@ type OmrRollRecoveryProps = {
   /** Matches already known from the scan error (same reg at multiple schools). */
   initialMatches?: OmrStudentMatch[];
   initialRollNo?: string;
-  onSaveWithRoll: (rollNo: string, schoolId?: string) => void | Promise<void>;
+  onSaveWithRoll: (rollNo: string, schoolId?: string, studentName?: string) => void | Promise<void>;
 };
 
 function matchLabel(student: OmrStudentMatch) {
@@ -54,14 +54,21 @@ export function OmrRollRecovery({
   const duplicate = isDuplicateRollError(message);
   const mismatch = isStudentMismatchError(message);
   const noStudent = isNoStudentRollError(message);
-  const clearSeed = duplicate || mismatch || noStudent;
+  // Duplicate / mismatch: clear so they type the correct reg. Unknown student: keep the failed roll.
+  const clearSeed = duplicate || mismatch;
   const duplicateRoll =
     message.match(/duplicate registration number\s+(\d+)/i)?.[1] ??
     (initialRollNo.trim() ? rollInput(initialRollNo) : "");
+  const noStudentRoll =
+    message.match(/no student with registration number\s+(\d+)/i)?.[1] ?? "";
   const ambiguous = isAmbiguousRollError(message) || initialMatches.length > 1;
-  // Duplicate / mismatch / unknown student: leave empty so they type the correct reg.
-  const seedRoll = clearSeed ? "" : initialRollNo;
+  const seedRoll = clearSeed
+    ? ""
+    : noStudent
+      ? noStudentRoll || initialRollNo
+      : initialRollNo;
   const [rollNo, setRollNo] = useState(() => rollInput(seedRoll));
+  const [studentName, setStudentName] = useState("");
   const [matches, setMatches] = useState<OmrStudentMatch[]>(initialMatches);
   const [selectedId, setSelectedId] = useState<string | null>(
     initialMatches.length === 1 ? initialMatches[0]!.id : null,
@@ -73,6 +80,7 @@ export function OmrRollRecovery({
 
   useEffect(() => {
     setRollNo(rollInput(seedRoll));
+    setStudentName("");
     setMatches(clearSeed ? [] : initialMatches);
     setSelectedId(!clearSeed && initialMatches.length === 1 ? initialMatches[0]!.id : null);
     setLookupError(null);
@@ -111,6 +119,7 @@ export function OmrRollRecovery({
           setMatches(result.students);
           setSelectedId(result.students.length === 1 ? result.students[0]!.id : null);
           setLookupError(null);
+          setStudentName("");
         } else {
           setMatches([]);
           setSelectedId(null);
@@ -129,8 +138,13 @@ export function OmrRollRecovery({
 
   const rollComplete = rollInput(rollNo).length === ROLL_LENGTH;
   const selected = matches.find((row) => row.id === selectedId) ?? null;
+  const unknownRoll =
+    rollComplete && !lookingUp && matches.length === 0 && Boolean(lookupError && /no student/i.test(lookupError));
+  const nameReady = studentName.trim().length >= 2;
   const canSave =
-    Boolean(selected) || (matches.length === 1 && rollComplete && !lookingUp && !lookupError);
+    Boolean(selected) ||
+    (matches.length === 1 && rollComplete && !lookingUp && !lookupError) ||
+    (unknownRoll && nameReady);
 
   async function save() {
     const roll = rollInput(rollNo);
@@ -139,15 +153,24 @@ export function OmrRollRecovery({
       return;
     }
     const pick = selected ?? (matches.length === 1 ? matches[0]! : null);
-    if (!pick) {
-      if (matches.length > 1) {
-        toast.error(`Pick one of the ${matches.length} students with this registration`);
-        return;
-      }
-      toast.error(lookupError || "No student found");
+    if (pick) {
+      await onSaveWithRoll(pick.rollNo, pick.schoolId);
       return;
     }
-    await onSaveWithRoll(pick.rollNo, pick.schoolId);
+    if (unknownRoll) {
+      const name = studentName.trim();
+      if (name.length < 2) {
+        toast.error("Enter the student name");
+        return;
+      }
+      await onSaveWithRoll(roll, schoolId, name);
+      return;
+    }
+    if (matches.length > 1) {
+      toast.error(`Pick one of the ${matches.length} students with this registration`);
+      return;
+    }
+    toast.error(lookupError || "No student found");
   }
 
   const prompt = ambiguous
@@ -158,11 +181,13 @@ export function OmrRollRecovery({
         : "Duplicate — enter correct reg"
       : mismatch
         ? "Wrong student — enter correct reg"
-        : "Enter registration number";
+        : noStudent || unknownRoll
+          ? "Enter registration and name"
+          : "Enter registration number";
 
   return (
     <div className="space-y-1 text-amber-950">
-      <div className="flex w-full items-center gap-2">
+      <div className="flex w-full flex-wrap items-center gap-2">
         <label htmlFor={inputId} className="sr-only">
           {prompt}
         </label>
@@ -178,6 +203,25 @@ export function OmrRollRecovery({
           className="h-7 w-[40%] max-w-[40%] min-w-0 shrink-0 rounded-md border border-amber-200 bg-white px-2 text-xs tracking-widest tabular-nums"
           onChange={(event) => setRollNo(rollInput(event.currentTarget.value))}
         />
+        {unknownRoll ? (
+          <Input
+            id={`${inputId}-name`}
+            autoComplete="off"
+            maxLength={120}
+            value={studentName}
+            disabled={busy}
+            placeholder="Enter name"
+            aria-label="Student name"
+            className="h-7 min-w-0 flex-1 rounded-md border border-amber-200 bg-white px-2 text-xs"
+            onChange={(event) => setStudentName(event.currentTarget.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void save();
+              }
+            }}
+          />
+        ) : null}
         <Button
           type="button"
           size="sm"
@@ -219,6 +263,10 @@ export function OmrRollRecovery({
         </ul>
       ) : matches.length === 1 ? (
         <p className="truncate text-[11px] font-medium text-emerald-900">{matchLabel(matches[0]!)}</p>
+      ) : unknownRoll ? (
+        <p className="text-[11px] text-amber-900/80">
+          Not on roster — enter name to add at end of class list
+        </p>
       ) : lookupError && rollComplete ? (
         <p className="text-[11px] text-amber-900/80">{shortLookupError(lookupError)}</p>
       ) : null}

@@ -95,6 +95,7 @@ function omrRouter(contextOf: (res: Response) => scanService.ScanContext) {
       testId?: string;
       schoolId?: string;
       examPattern?: string;
+      studentName?: string;
       corners?: string;
     };
     sendSuccess(
@@ -104,6 +105,7 @@ function omrRouter(contextOf: (res: Response) => scanService.ScanContext) {
         testId: typeof body?.testId === "string" ? body.testId : "",
         schoolId: typeof body?.schoolId === "string" ? body.schoolId : "",
         examPattern: typeof body?.examPattern === "string" ? body.examPattern : "",
+        studentName: typeof body?.studentName === "string" ? body.studentName : "",
         corners: parseCorners(body?.corners),
       }),
     );

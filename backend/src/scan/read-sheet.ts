@@ -136,6 +136,57 @@ async function rotate180(image: Buffer) {
   return sharp(image).rotate(180).jpeg({ quality: 92, mozjpeg: true }).toBuffer();
 }
 
+async function rotateBy(image: Buffer, angle: 0 | 90 | 180 | 270) {
+  if (angle === 0) {
+    return sharp(image).jpeg({ quality: 92, mozjpeg: true }).toBuffer();
+  }
+  return sharp(image).rotate(angle).jpeg({ quality: 92, mozjpeg: true }).toBuffer();
+}
+
+/** Score how much an orientation looks like an upright OMR (grid + marks). */
+async function orientationScore(image: Buffer, flat: boolean) {
+  try {
+    const prepared = await prepareSheet(image, { flat });
+    const bubbles = readAnswerBubbles(prepared.rgba);
+    return {
+      score: scoreRead(Boolean(bubbles.gridFound), "", bubbles.markCount, bubbles.flags.length),
+      jpeg: prepared.jpeg,
+    };
+  } catch {
+    return { score: -1, jpeg: image };
+  }
+}
+
+/**
+ * Auto-rotate a sheet image upright for display (failed PDF pages, etc.).
+ * Same idea as readSheet: EXIF → portrait → pick 0° vs 180° by bubble-grid score.
+ */
+export async function uprightOmrJpeg(image: Buffer, options: { flat?: boolean } = {}): Promise<Buffer> {
+  const flat = options.flat !== false;
+  const base = await sharp(image).rotate().jpeg({ quality: 92, mozjpeg: true }).toBuffer();
+  const meta = await sharp(base).metadata();
+  const landscape = (meta.width ?? 0) > (meta.height ?? 0);
+
+  const angles: Array<0 | 90 | 180 | 270> = landscape ? [90, 270] : [0, 180];
+  let bestJpeg: Buffer = Buffer.from(base);
+  let bestScore = -Infinity;
+
+  for (const angle of angles) {
+    const candidate = await rotateBy(base, angle);
+    const { score, jpeg } = await orientationScore(candidate, flat);
+    if (score > bestScore) {
+      bestScore = score;
+      bestJpeg = Buffer.from(jpeg);
+    }
+  }
+
+  // If both orientations failed detection, at least keep portrait.
+  if (bestScore < 0 && landscape) {
+    return Buffer.from(await rotateBy(base, 90));
+  }
+  return bestJpeg;
+}
+
 /** One orientation pass — no auto-flip. */
 async function readSheetOriented(image: Buffer, identity: SheetIdentity = {}): Promise<OrientedAttempt> {
   try {
