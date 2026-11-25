@@ -32,18 +32,13 @@ import {
 } from "@/components/ui/sidebar";
 import { schoolLogout } from "@/features/school-auth/actions";
 import { isSchoolNavActive, schoolNavGroups } from "@/features/school-portal/navigation";
-import { usePublicSettings } from "@/features/settings/use-public-settings";
 import type { SchoolAccount } from "@/types/school";
 
 export function SchoolSidebar({ school }: { school: SchoolAccount }) {
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
   const [signingOut, startSignOut] = useTransition();
-  const { settings } = usePublicSettings();
   const initials = school.name.slice(0, 2).toUpperCase();
-  const omrNavVisible =
-    (isMobile && settings.schoolMobileOmrEnabled) ||
-    (!isMobile && settings.schoolDesktopOmrEnabled);
 
   return (
     <Sidebar collapsible="icon" side={isMobile ? "right" : "left"}>
@@ -76,9 +71,7 @@ export function SchoolSidebar({ school }: { school: SchoolAccount }) {
             <SidebarGroupLabel className="text-brand-400">{group.label}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {group.items
-                  .filter((item) => item.href !== "/school/omr-scan" || omrNavVisible)
-                  .map((item) => (
+                {group.items.map((item) => (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
                       tooltip={item.title}

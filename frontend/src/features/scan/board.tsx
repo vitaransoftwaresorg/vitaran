@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, ScanLine } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { commitScanAction, commitScansAction, previewScanAction } from "./actions";
@@ -221,19 +221,38 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
   const reading = job != null && !job.finished;
 
   if (settingsReady && !omrAllowed) {
-    const title =
-      portal === "teacher"
-        ? phone
-          ? "Teacher mobile scan is turned off"
-          : "Teacher desktop OMR is turned off"
-        : phone
-          ? "School mobile scan is turned off"
-          : "School desktop OMR is turned off";
+    const isTeacher = portal === "teacher";
+    const onPhone = Boolean(phone);
+    const title = onPhone
+      ? isTeacher
+        ? "Teacher mobile scan is off"
+        : "School mobile scan is off"
+      : isTeacher
+        ? "Teacher desktop OMR is off"
+        : "School desktop OMR is off";
+    const otherStillOn = onPhone
+      ? isTeacher
+        ? settings.teacherDesktopOmrEnabled
+        : settings.schoolDesktopOmrEnabled
+      : isTeacher
+        ? settings.teacherMobileOmrEnabled
+        : settings.schoolMobileOmrEnabled;
+    const detail = onPhone
+      ? otherStillOn
+        ? "Phone camera scan is disabled for now. Desktop OMR on a computer is still available."
+        : "Phone camera scan is disabled for now. Ask an admin to turn it on under Settings → OMR scan access."
+      : otherStillOn
+        ? "Desktop PDF / photo upload is disabled for now. Mobile scan on a phone is still available."
+        : "Desktop PDF / photo upload is disabled for now. Ask an admin to turn it on under Settings → OMR scan access.";
     return (
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-8 text-center shadow-sm">
-        <p className="text-base font-bold text-amber-950">{title}</p>
-        <p className="mt-2 text-sm text-amber-900/80">
-          An admin can enable this under Admin → Settings → OMR scan access.
+      <div className="mx-auto flex w-full max-w-lg flex-col items-center rounded-2xl border border-amber-200 bg-amber-50 px-6 py-10 text-center shadow-sm">
+        <span className="flex size-12 items-center justify-center rounded-full bg-amber-100 text-amber-800">
+          <ScanLine className="size-6" strokeWidth={2} />
+        </span>
+        <p className="mt-4 text-lg font-bold text-amber-950">{title}</p>
+        <p className="mt-2 text-sm leading-relaxed text-amber-900/85">{detail}</p>
+        <p className="mt-4 text-xs font-medium text-amber-800/70">
+          Admin → Settings → OMR scan access
         </p>
       </div>
     );

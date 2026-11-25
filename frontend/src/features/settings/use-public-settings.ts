@@ -16,19 +16,32 @@ const EMPTY: PublicSettings = {
   teacherMobileOmrEnabled: true,
 };
 
-function isPublicSettings(value: unknown): value is PublicSettings {
-  if (!value || typeof value !== "object") return false;
+function asPublicSettings(value: unknown): PublicSettings | null {
+  if (!value || typeof value !== "object") return null;
   const row = value as Record<string, unknown>;
-  return (
-    typeof row.maintenanceMode === "boolean" &&
-    typeof row.teacherResourcesPublic === "boolean" &&
-    typeof row.answerKeysPublic === "boolean" &&
-    typeof row.resultsPublic === "boolean" &&
-    typeof row.schoolDesktopOmrEnabled === "boolean" &&
-    typeof row.teacherDesktopOmrEnabled === "boolean" &&
-    typeof row.schoolMobileOmrEnabled === "boolean" &&
-    typeof row.teacherMobileOmrEnabled === "boolean"
-  );
+  if (
+    typeof row.maintenanceMode !== "boolean" ||
+    typeof row.teacherResourcesPublic !== "boolean" ||
+    typeof row.answerKeysPublic !== "boolean" ||
+    typeof row.resultsPublic !== "boolean"
+  ) {
+    return null;
+  }
+  // OMR flags default on when absent so a partial live event cannot wipe them.
+  return {
+    maintenanceMode: row.maintenanceMode,
+    teacherResourcesPublic: row.teacherResourcesPublic,
+    answerKeysPublic: row.answerKeysPublic,
+    resultsPublic: row.resultsPublic,
+    schoolDesktopOmrEnabled:
+      typeof row.schoolDesktopOmrEnabled === "boolean" ? row.schoolDesktopOmrEnabled : true,
+    teacherDesktopOmrEnabled:
+      typeof row.teacherDesktopOmrEnabled === "boolean" ? row.teacherDesktopOmrEnabled : true,
+    schoolMobileOmrEnabled:
+      typeof row.schoolMobileOmrEnabled === "boolean" ? row.schoolMobileOmrEnabled : true,
+    teacherMobileOmrEnabled:
+      typeof row.teacherMobileOmrEnabled === "boolean" ? row.teacherMobileOmrEnabled : true,
+  };
 }
 
 /**
@@ -57,8 +70,9 @@ export function usePublicSettings() {
   useLiveContent(
     "settings",
     (payload) => {
-      if (isPublicSettings(payload?.settings)) {
-        setSettings(payload.settings);
+      const next = asPublicSettings(payload?.settings);
+      if (next) {
+        setSettings(next);
         setReady(true);
       }
       reload();

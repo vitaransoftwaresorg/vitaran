@@ -30,6 +30,7 @@ import { FULL_PAGE_QUAD, type SheetQuad } from "./sheet-detect";
 import { getOmrUploadAuthAction } from "./upload-auth";
 import type { ScanQueueItem } from "./queue-item";
 import type { PreviewScanFailure } from "./actions";
+import { detectPhoneClient } from "./use-is-phone";
 
 type ScanFn = (
   form: FormData,
@@ -46,16 +47,16 @@ function isPdfFile(file: File) {
 function usePhone() {
   const [phone, setPhone] = useState<boolean | null>(null);
   useEffect(() => {
-    const sync = () => {
-      setPhone(
-        window.matchMedia("(hover: none) and (pointer: coarse)").matches ||
-          /iPhone|iPod|Android.+Mobile/i.test(navigator.userAgent),
-      );
-    };
+    const sync = () => setPhone(detectPhoneClient());
     sync();
-    const mq = window.matchMedia("(hover: none) and (pointer: coarse)");
-    mq.addEventListener("change", sync);
-    return () => mq.removeEventListener("change", sync);
+    const coarse = window.matchMedia("(pointer: coarse)");
+    const hover = window.matchMedia("(hover: none)");
+    coarse.addEventListener("change", sync);
+    hover.addEventListener("change", sync);
+    return () => {
+      coarse.removeEventListener("change", sync);
+      hover.removeEventListener("change", sync);
+    };
   }, []);
   return phone;
 }
