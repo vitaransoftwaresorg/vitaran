@@ -121,6 +121,10 @@ export type PdfFailure = {
   hasImage: boolean;
   /** Duplicate reg that was read — shown so the examiner enters a different one. */
   rollNo?: string;
+  /** Scored pending from scan time — bind reg without re-reading bubbles. */
+  previewId?: string;
+  total?: number;
+  maxTotal?: number;
 };
 
 let pdfJob: PdfJob | null = null;

@@ -110,7 +110,9 @@ function omrRouter(contextOf: (res: Response) => scanService.ScanContext) {
     sendSuccess(
       res,
       await scanService.previewScan(contextOf(res), file.buffer, file.originalname, {
-        rollNo: typeof body?.rollNo === "string" ? body.rollNo : "",
+        // Only forward rollNo when the client sent it — omit = read bubbles;
+        // "" = empty-reg walk-in (shared blank). Never default missing to "".
+        rollNo: typeof body?.rollNo === "string" ? body.rollNo : undefined,
         testId: typeof body?.testId === "string" ? body.testId : "",
         schoolId: typeof body?.schoolId === "string" ? body.schoolId : "",
         examPattern: typeof body?.examPattern === "string" ? body.examPattern : "",
@@ -161,6 +163,78 @@ function omrRouter(contextOf: (res: Response) => scanService.ScanContext) {
     const page = z.coerce.number().int().min(1).max(MAX_PDF_PAGES).parse(req.params.page);
     sendFile(res, await scanService.getPdfBatchPageImage(contextOf(res), batchId, page), "image/jpeg");
   });
+  /** Bind reg/name onto a page already scored at scan — no bubble re-read. */
+  router.post(
+    "/batches/:batchId/pages/:page/recover",
+    validate(
+      z.object({
+        rollNo: z.string().optional(),
+        studentName: z.string().optional(),
+        schoolId: z.uuid().optional(),
+        sectionId: z.uuid().optional(),
+        classLevel: z.number().int().min(1).max(12).optional(),
+        programCode: z.string().trim().max(32).optional(),
+      }),
+    ),
+    async (req, res) => {
+      const batchId = z.uuid().parse(req.params.batchId);
+      const page = z.coerce.number().int().min(1).max(MAX_PDF_PAGES).parse(req.params.page);
+      const body = req.body as {
+        rollNo?: string;
+        studentName?: string;
+        schoolId?: string;
+        sectionId?: string;
+        classLevel?: number;
+        programCode?: string;
+      };
+      sendSuccess(
+        res,
+        await scanService.recoverPdfPage(contextOf(res), batchId, page, {
+          rollNo: body.rollNo,
+          studentName: body.studentName,
+          schoolId: body.schoolId,
+          sectionId: body.sectionId,
+          classLevel: body.classLevel,
+          programCode: body.programCode,
+        }),
+      );
+    },
+  );
+  router.post(
+    "/previews/:previewId/bind",
+    validate(
+      z.object({
+        rollNo: z.string().optional(),
+        studentName: z.string().optional(),
+        schoolId: z.uuid().optional(),
+        sectionId: z.uuid().optional(),
+        classLevel: z.number().int().min(1).max(12).optional(),
+        programCode: z.string().trim().max(32).optional(),
+      }),
+    ),
+    async (req, res) => {
+      const previewId = z.uuid().parse(req.params.previewId);
+      const body = req.body as {
+        rollNo?: string;
+        studentName?: string;
+        schoolId?: string;
+        sectionId?: string;
+        classLevel?: number;
+        programCode?: string;
+      };
+      sendSuccess(
+        res,
+        await scanService.bindPendingIdentity(contextOf(res), previewId, {
+          rollNo: body.rollNo,
+          studentName: body.studentName,
+          schoolId: body.schoolId,
+          sectionId: body.sectionId,
+          classLevel: body.classLevel,
+          programCode: body.programCode,
+        }),
+      );
+    },
+  );
   router.delete("/batches/:batchId", (req, res) => {
     sendSuccess(res, scanService.dismissPdfBatch(contextOf(res), z.uuid().parse(req.params.batchId)));
   });

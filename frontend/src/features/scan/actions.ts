@@ -3,11 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { ApiError } from "@/services/api-client";
 import {
+  bindPendingIdentity,
   checkTestId,
   commitScan,
   commitScans,
   getOmScan,
   previewScan,
+  recoverPdfPage,
   type CommitManyResult,
   type ScanPortal,
 } from "@/services/scans";
@@ -20,6 +22,8 @@ export type PreviewScanFailure = {
   message: string;
   matches?: OmrStudentMatch[];
   rollNo?: string;
+  /** Answers already scored — bind reg/name without re-reading bubbles. */
+  previewId?: string;
 };
 
 const PATHS: Record<ScanPortal, string> = {
@@ -52,11 +56,15 @@ export async function previewScanAction(
   const programCode = String(formData.get("programCode") ?? "").trim();
   const classLevel = /^\d{1,2}$/.test(classRaw) ? Number(classRaw) : undefined;
   const corners = String(formData.get("corners") ?? "").trim();
+  // Walk-in with empty reg → send "" so the reader does not require bubbles.
+  const digits = rollNo.replace(/\D/g, "");
+  const walkInRoll =
+    studentName && (digits.length === 0 || /^0+$/.test(digits)) ? "" : rollNo;
   try {
     return {
       ok: true,
       result: await previewScan(portal, parsed.file, {
-        rollNo,
+        rollNo: walkInRoll,
         testId,
         examPattern: examPattern || undefined,
         schoolId: schoolId || undefined,
@@ -73,16 +81,102 @@ export async function previewScanAction(
     const message =
       error instanceof ApiError ? error.message : "Could not read the sheet. Try a clearer photo.";
     if (!(error instanceof ApiError)) return { ok: false, message };
+    const details =
+      error.details && typeof error.details === "object"
+        ? (error.details as { rollNo?: unknown; previewId?: unknown; code?: unknown })
+        : undefined;
     const matches = ambiguousMatchesFromDetails(error.details);
-    if (!matches?.length) return { ok: false, message };
+    const previewId =
+      typeof details?.previewId === "string" ? details.previewId : undefined;
+    if (!matches?.length && !previewId) return { ok: false, message };
+    return {
+      ok: false,
+      message,
+      previewId,
+      rollNo: typeof details?.rollNo === "string" ? details.rollNo : rollNo || undefined,
+      matches: matches?.map((row) => ({
+        id: row.id ?? `${row.schoolId}:${row.rollNo}`,
+        name: row.name,
+        rollNo: row.rollNo,
+        classLevel: row.classLevel,
+        sectionName: row.sectionName ?? null,
+        programName: row.programName ?? null,
+        schoolId: row.schoolId,
+        schoolName: row.schoolName,
+      })),
+    };
+  }
+}
+
+export async function recoverPdfPageAction(
+  portal: ScanPortal,
+  batchId: string,
+  page: number,
+  identity: {
+    rollNo?: string;
+    studentName?: string;
+    schoolId?: string;
+    sectionId?: string;
+    classLevel?: number;
+    programCode?: string;
+  },
+): Promise<{ ok: true; result: ScanPreview } | PreviewScanFailure> {
+  try {
+    return { ok: true, result: await recoverPdfPage(portal, batchId, page, identity) };
+  } catch (error) {
+    const message =
+      error instanceof ApiError ? error.message : "Could not save this page with that registration.";
+    if (!(error instanceof ApiError)) return { ok: false, message };
+    const matches = ambiguousMatchesFromDetails(error.details);
     return {
       ok: false,
       message,
       rollNo:
         typeof (error.details as { rollNo?: unknown })?.rollNo === "string"
           ? String((error.details as { rollNo: string }).rollNo)
-          : rollNo || undefined,
-      matches: matches.map((row) => ({
+          : identity.rollNo,
+      matches: matches?.map((row) => ({
+        id: row.id ?? `${row.schoolId}:${row.rollNo}`,
+        name: row.name,
+        rollNo: row.rollNo,
+        classLevel: row.classLevel,
+        sectionName: row.sectionName ?? null,
+        programName: row.programName ?? null,
+        schoolId: row.schoolId,
+        schoolName: row.schoolName,
+      })),
+    };
+  }
+}
+
+export async function bindPendingIdentityAction(
+  portal: ScanPortal,
+  previewId: string,
+  identity: {
+    rollNo?: string;
+    studentName?: string;
+    schoolId?: string;
+    sectionId?: string;
+    classLevel?: number;
+    programCode?: string;
+  },
+): Promise<{ ok: true; result: ScanPreview } | PreviewScanFailure> {
+  try {
+    return { ok: true, result: await bindPendingIdentity(portal, previewId, identity) };
+  } catch (error) {
+    const message =
+      error instanceof ApiError ? error.message : "Could not save with that registration.";
+    if (!(error instanceof ApiError)) return { ok: false, message };
+    const matches = ambiguousMatchesFromDetails(error.details);
+    return {
+      ok: false,
+      message,
+      previewId,
+      rollNo:
+        typeof (error.details as { rollNo?: unknown })?.rollNo === "string"
+          ? String((error.details as { rollNo: string }).rollNo)
+          : identity.rollNo,
+      matches: matches?.map((row) => ({
         id: row.id ?? `${row.schoolId}:${row.rollNo}`,
         name: row.name,
         rollNo: row.rollNo,

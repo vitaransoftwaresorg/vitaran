@@ -151,6 +151,7 @@ function persistPending(previewId: string, row: Pending) {
     bubbles: row.bubbles,
     fileName: row.fileName,
     studentId: row.studentId,
+    needsIdentity: row.needsIdentity ?? false,
   }).catch((error) => {
     logger.warn({ err: error, previewId }, "Could not persist OMR preview");
   });
@@ -297,6 +298,11 @@ type Pending = {
   bubbles?: BubbleMap;
   fileName: string;
   studentId: string | null;
+  /**
+   * Answers were scored at scan time, but registration / student is not bound yet.
+   * Examiner enters reg (or empty + name); bindPendingIdentity — no re-read of bubbles.
+   */
+  needsIdentity?: boolean;
 };
 
 const pending = new Map<string, Pending>();
@@ -915,16 +921,96 @@ async function storePdfPageThumb(
   return storeBatchPageImage(batchId, page, thumb).catch(() => undefined);
 }
 
-/**
- * Upright sheet for a failed read (rotate at scan time). Marks/evaluate wait until
- * the examiner enters registration and saves.
- */
+/** Upright sheet JPEG when we cannot score (no answer key / school). */
 async function failedPageDisplayJpeg(read: SheetRead): Promise<Buffer> {
   try {
     return await uprightOmrJpeg(read.jpeg, { flat: true });
   } catch {
     return read.jpeg;
   }
+}
+
+/**
+ * Score answers now (marks table on the preview) and keep a pending that only needs
+ * registration / walk-in binding — no second bubble read on save.
+ */
+async function storeNeedsIdentityPreview(input: {
+  context: ScanContext;
+  school: ScanSchool;
+  key: ScanKey;
+  read: SheetRead;
+  image: Buffer;
+  fileName: string;
+  examPattern: ExamPattern;
+  lean?: boolean;
+  flat?: boolean;
+  rollNo: string;
+  studentName: string;
+  identityError: AppError;
+  details?: unknown;
+}): Promise<never> {
+  const { context, school, key, read, image, fileName, examPattern, lean, flat } = input;
+  const score = scoreWithKey(read.answers, key, { examPattern });
+  if (score.subjectScores.length === 0) {
+    throw new SheetDisplayError(
+      422,
+      `Answer key for ${key.testId ?? "this test"} has no subjects for exam pattern ${examPattern}.`,
+      await failedPageDisplayJpeg(read),
+    );
+  }
+  const previewId = crypto.randomUUID();
+  let preview = await previewImage(image, read, key.answers, score, key.keyTypeRanges);
+  const raw = flat ? read.jpeg : await rawJpeg(image);
+  if (lean) {
+    preview = await sharp(preview)
+      .resize({ width: 900, withoutEnlargement: true })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+  }
+  const stored = await storePendingImages(previewId, {
+    sheet: read.jpeg,
+    raw,
+    preview,
+    rawSameAsSheet: flat === true,
+  });
+  const row: Pending = {
+    expires: Date.now() + PREVIEW_TTL_MS,
+    context,
+    school,
+    key,
+    identity: {
+      rollNo: input.rollNo,
+      testId: key.testId ?? "",
+      examDate: validDate(read.examDate) || null,
+      studentName: input.studentName || read.printedName || "Unknown",
+      classLevel: key.classLevel,
+      sectionName: displaySectionName(null),
+      programName: programNameOf(context, key),
+    },
+    answers: read.answers,
+    flags: sheetFlags(score, read.flags),
+    score,
+    examPattern,
+    confidence: read.confidence,
+    diskDir: stored.dir,
+    sheetBytes: stored.sheetBytes,
+    bubbles: lean || !read.bubbles?.points.length ? undefined : read.bubbles,
+    fileName: fileName || "omr.jpg",
+    studentId: null,
+    needsIdentity: true,
+  };
+  pending.set(previewId, row);
+  persistPending(previewId, row);
+  const baseDetails =
+    input.details && typeof input.details === "object" && !Array.isArray(input.details)
+      ? (input.details as Record<string, unknown>)
+      : {};
+  throw new SheetDisplayError(input.identityError.statusCode, input.identityError.message, preview, {
+    ...baseDetails,
+    code: "NEEDS_IDENTITY",
+    previewId,
+    rollNo: input.rollNo || undefined,
+  });
 }
 
 async function rethrowWithDisplay(
@@ -946,27 +1032,29 @@ const duplicateRollMessage = (rollNo: string, pages: number[]) => {
   return `Duplicate registration number ${rollNo} — appears on ${n} sheet${n === 1 ? "" : "s"} (pages ${pageList}) — please enter the correct registration number for this sheet`;
 };
 
-/** Drop pending preview and keep a page image so the examiner can enter a reg. */
-async function stripPdfPreviewKeepImage(batch: PdfBatch, item: PdfBatchItem) {
-  if (item.previewId) {
-    const row = getPending(item.previewId);
-    if (row) {
-      if (!item.imagePath) {
-        // Prefer evaluated preview (marks table on top) — already upright like ready OMR.
-        const sheetBuf =
-          (await loadPendingImage(row.diskDir, "preview").catch(() => null)) ??
-          (await loadPendingImage(row.diskDir, "sheet").catch(() => null)) ??
-          (await loadPendingImage(row.diskDir, "raw").catch(() => null));
-        if (sheetBuf) {
-          item.imagePath = await storePdfPageThumb(batch.id, item.page, sheetBuf, {
-            alreadyUpright: true,
-          });
-        }
-      }
-      void removePendingDir(row.diskDir);
-      pending.delete(item.previewId);
-    }
+/**
+ * Demote a successful preview into registration recovery — keep the scored pending
+ * (marks table + answers) so enter-reg only binds the student.
+ */
+async function demotePdfPreview(batch: PdfBatch, item: PdfBatchItem) {
+  if (!item.previewId) return;
+  const row = getPending(item.previewId);
+  if (!row) {
     item.previewId = undefined;
+    return;
+  }
+  row.needsIdentity = true;
+  touchPending(item.previewId, row);
+  if (!item.imagePath) {
+    const sheetBuf =
+      (await loadPendingImage(row.diskDir, "preview").catch(() => null)) ??
+      (await loadPendingImage(row.diskDir, "sheet").catch(() => null)) ??
+      (await loadPendingImage(row.diskDir, "raw").catch(() => null));
+    if (sheetBuf) {
+      item.imagePath = await storePdfPageThumb(batch.id, item.page, sheetBuf, {
+        alreadyUpright: true,
+      });
+    }
   }
 }
 
@@ -978,7 +1066,7 @@ async function markRollGroupDuplicates(batch: PdfBatch, rollNo: string, pages: n
   for (const page of pages) {
     const item = batch.items.find((row) => row.page === page);
     if (!item) continue;
-    await stripPdfPreviewKeepImage(batch, item);
+    await demotePdfPreview(batch, item);
     item.rollNo = rollNo;
     item.duplicateOf = page === anchor ? pages[1]! : anchor;
     item.demoted = true;
@@ -1034,30 +1122,17 @@ async function readPdfBatch(context: ScanContext, batch: PdfBatch) {
         }
 
         if (priorPages.length > 0) {
-          // Collision: this sheet is a failure, and every earlier copy becomes one too.
-          // Prefer evaluated preview (marks table on top) — same upright view as ready OMR.
-          const dup = getPending(previewId);
-          const displayBuf = dup
-            ? ((await loadPendingImage(dup.diskDir, "preview").catch(() => null)) ??
-              (await loadPendingImage(dup.diskDir, "sheet").catch(() => null)) ??
-              (await loadPendingImage(dup.diskDir, "raw").catch(() => null)))
-            : null;
-          const imagePath = await storePdfPageThumb(
-            batch.id,
+          // Collision: keep scored pending on this page; demote the whole group for re-bind.
+          const item: PdfBatchItem = {
             page,
-            displayBuf ?? sheet.jpeg,
-            { alreadyUpright: Boolean(displayBuf) },
-          );
-          if (dup) void removePendingDir(dup.diskDir);
-          pending.delete(previewId);
-          batch.items.push({
-            page,
+            previewId,
             rollNo,
-            imagePath,
             demoted: true,
             duplicateOf: priorPages[0],
             error: duplicateRollMessage(rollNo, allPages),
-          });
+          };
+          await demotePdfPreview(batch, item);
+          batch.items.push(item);
           await markRollGroupDuplicates(batch, rollNo, allPages);
         } else {
           const row = getPending(previewId);
@@ -1066,15 +1141,28 @@ async function readPdfBatch(context: ScanContext, batch: PdfBatch) {
         }
       } catch (error) {
         if (!(error instanceof AppError)) logger.error({ err: error, page, batchId: batch.id }, "PDF page read failed");
+        const details =
+          error instanceof AppError && error.details && typeof error.details === "object"
+            ? (error.details as { previewId?: string; rollNo?: string })
+            : undefined;
+        const previewId =
+          typeof details?.previewId === "string" && /^[0-9a-f-]{36}$/i.test(details.previewId)
+            ? details.previewId
+            : undefined;
         let imagePath: string | undefined;
-        if (sheet) {
-          // Auto-rotate at scan time (before examiner enters reg). Do not store the
-          // evaluated SheetDisplayError preview here — evaluate only after save-with-reg.
+        if (error instanceof SheetDisplayError) {
+          // Evaluated preview (marks table) when answers were scored before identity failed.
+          imagePath = await storePdfPageThumb(batch.id, page, error.displayJpeg, {
+            alreadyUpright: true,
+          });
+        } else if (sheet) {
           imagePath = await storePdfPageThumb(batch.id, page, sheet.jpeg);
         }
         batch.items.push({
           page,
+          previewId,
           imagePath,
+          rollNo: typeof details?.rollNo === "string" ? details.rollNo : undefined,
           error: error instanceof AppError ? error.message : "Could not read this page",
         });
       }
@@ -1234,15 +1322,21 @@ export async function previewScan(
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identity.schoolId)
       ? identity.schoolId
       : undefined;
-  // Failed-page save (typed reg or blank 0000000 walk-in): evaluate with current test key.
-  const recoverySave = Boolean(identity.flat && /^\d{7}$/.test(typedRoll));
+  // Empty reg + name is allowed — shared blank is empty string (not 0000000).
+  const blankWalkIn =
+    Boolean(walkInName) &&
+    (typedRoll.length === 0 || studentService.isSharedBlankRoll(typedRoll));
+  const effectiveRoll = blankWalkIn ? "" : typedRoll;
+  // Failed-page save (typed reg or empty-reg walk-in): evaluate with current test key.
+  const recoverySave = Boolean(identity.flat && (/^\d{7}$/.test(effectiveRoll) || blankWalkIn));
   let sheetImage = image;
   if (recoverySave && !identity.upright) {
     // Fast 0°/180° only — failed thumbs are usually already upright from scan.
     sheetImage = await ensureUprightSource(image, { flat: true });
   }
   const read = await readQueued(sheetImage, fileName, {
-    rollNo: typedRoll,
+    // "" = empty-reg walk-in (skip bubbles). 7 digits = typed. undefined = read bubbles.
+    rollNo: blankWalkIn ? "" : /^\d{7}$/.test(effectiveRoll) ? effectiveRoll : undefined,
     testId: typedTest,
     flat: identity.flat,
     corners: recoverySave ? undefined : identity.corners,
@@ -1252,10 +1346,9 @@ export async function previewScan(
 
   type Enrolled = Awaited<ReturnType<typeof resolveStudent>>;
   let enrolled: Enrolled | null = null;
-  // Blank / all-zeros + name → always create a new shared-roll student (do not match existing).
-  const forceWalkIn =
-    Boolean(walkInName) &&
-    (typedRoll.length === 0 || studentService.isSharedBlankRoll(typedRoll));
+  let identityError: AppError | null = null;
+  // Empty reg + name → always create a new shared-blank student (do not match existing).
+  const forceWalkIn = blankWalkIn;
   if (!forceWalkIn) {
     try {
       // Typed registration is authoritative — do not fall back to a different bubble read.
@@ -1267,6 +1360,8 @@ export async function previewScan(
     } catch (error) {
       if (isNoStudentError(error) && walkInName) {
         // Continue into walk-in enrollment below.
+      } else if (error instanceof AppError) {
+        identityError = error;
       } else {
         const display = await failedPageDisplayJpeg(read);
         await rethrowWithDisplay(error, display);
@@ -1274,7 +1369,7 @@ export async function previewScan(
     }
   }
 
-  const school: ScanSchool = enrolled
+  const school: ScanSchool | null = enrolled
     ? (sessionSchool ?? {
         id: enrolled.school.id,
         name: enrolled.school.name,
@@ -1283,13 +1378,16 @@ export async function previewScan(
     : sessionSchool ??
       (preferredSchoolId
         ? await loadScanSchool(preferredSchoolId)
-        : majoritySchoolFromPending(context) ??
-          (() => {
-            throw new AppError(
-              422,
-              "Pick a school to save an unregistered student.",
-            );
-          })());
+        : majoritySchoolFromPending(context));
+
+  if (!school) {
+    throw new SheetDisplayError(
+      422,
+      identityError?.message ?? "Pick a school to save an unregistered student.",
+      await failedPageDisplayJpeg(read),
+      identityError?.details,
+    );
+  }
 
   const visibleKeys = (await answerKeyRepository.findAnswerKeys({})).filter((key) => keyVisibleTo(key, school));
   const known = visibleKeys.map((key) => key.testId?.trim() ?? "").filter(Boolean);
@@ -1319,6 +1417,13 @@ export async function previewScan(
         await failedPageDisplayJpeg(read),
       );
     }
+  } else if (identityError) {
+    throw new SheetDisplayError(
+      422,
+      "Enter the test ID from the answer key, then scan again.",
+      await failedPageDisplayJpeg(read),
+      identityError.details,
+    );
   } else {
     throw new SheetDisplayError(
       422,
@@ -1346,28 +1451,34 @@ export async function previewScan(
       });
       key = resolved.key;
     } catch (error) {
-      const display = await failedPageDisplayJpeg(read);
-      await rethrowWithDisplay(error, display);
+      // Wrong class/program for this test — still score vs the test key; examiner rebinds reg later.
+      if (error instanceof AppError) {
+        identityError = error;
+        enrolled = null;
+      } else {
+        const display = await failedPageDisplayJpeg(read);
+        await rethrowWithDisplay(error, display);
+      }
     }
+  }
+
+  if (enrolled) {
     identityRoll = enrolled.rollNo;
     identityName = enrolled.name || read.printedName;
     identityClass = enrolled.classLevel;
     identitySection = displaySectionName(enrolled.section?.name);
     identityProgram = enrolled.program?.name || programNameOf(context, key);
     studentId = enrolled.schoolId === school.id ? enrolled.id : null;
-  } else {
-    // Blank / all-zeros → shared 0000000; otherwise require exactly 7 digits.
+  } else if (walkInName.length >= 2) {
+    // Empty reg allowed with name; otherwise require exactly 7 digits.
     if (
       typedRoll.length > 0 &&
       typedRoll.length !== 7 &&
       !studentService.isSharedBlankRoll(typedRoll)
     ) {
-      throw new AppError(422, "Registration number must be 7 digits (or blank / 0000000)");
+      throw new AppError(422, "Registration number must be 7 digits, or empty with a name");
     }
-    const walkInRoll = studentService.normalizeRollNo(typedRoll);
-    if (walkInName.length < 2) {
-      throw new AppError(422, "Enter the student name");
-    }
+    const walkInRoll = effectiveRoll;
     key = await resolveWalkInKey(school, testId);
     // Class/program: PDF majority (client or pending), else answer key.
     const majority = majorityPlacementFromPending(context);
@@ -1383,7 +1494,7 @@ export async function previewScan(
       classLevel: walkInClass,
       sectionId: walkInSectionId ?? null,
     });
-    // Load by id — 0000000 is shared, so roll lookup is ambiguous.
+    // Load by id — blank roll is shared, so roll lookup is ambiguous.
     const created = await studentRepository.findStudentById(createdDto.id);
     if (!created || created.status !== "ACTIVE") {
       throw new AppError(500, "Student was added but could not be loaded for this OMR.");
@@ -1402,6 +1513,30 @@ export async function previewScan(
     identitySection = displaySectionName(created.section?.name);
     identityProgram = created.program?.name || programNameOf(context, key);
     studentId = created.id;
+  } else if (identityError) {
+    // Score now with the test-ID key; bind registration later without re-reading bubbles.
+    const evalKey = await resolveWalkInKey(school, testId);
+    const bubbleRoll = [typedRoll, read.rollNo, ...read.rollCandidates].find((roll) =>
+      /^\d{7}$/.test(roll),
+    );
+    await storeNeedsIdentityPreview({
+      context,
+      school,
+      key: evalKey,
+      read,
+      image,
+      fileName,
+      examPattern,
+      lean: identity.lean,
+      flat: identity.flat,
+      rollNo: bubbleRoll || "",
+      studentName: read.printedName || "",
+      identityError,
+      details: identityError.details,
+    });
+    throw new AppError(500, "OMR identity recovery store failed");
+  } else {
+    throw new AppError(422, "Enter the student name");
   }
 
   const score = scoreWithKey(read.answers, key, { examPattern });
@@ -1537,7 +1672,189 @@ async function rebindPendingRoll(context: ScanContext, previewId: string, rollNo
     programName: enrolled.program?.name || row.identity.programName,
   };
   row.studentId = enrolled.schoolId === row.school.id ? enrolled.id : null;
+  row.needsIdentity = false;
   touchPending(previewId, row);
+}
+
+/**
+ * Bind registration / walk-in name onto an already-scored pending — does not re-read bubbles.
+ */
+export async function bindPendingIdentity(
+  context: ScanContext,
+  previewId: string,
+  identity: {
+    rollNo?: string;
+    studentName?: string;
+    schoolId?: string;
+    sectionId?: string;
+    classLevel?: number;
+    programCode?: string;
+  } = {},
+) {
+  const row = getPending(previewId);
+  if (!row || row.expires < Date.now()) {
+    if (row) void removePendingDir(row.diskDir);
+    pending.delete(previewId);
+    throw new AppError(410, "Scan expired. Scan again.");
+  }
+  if (ownerOf(row.context) !== ownerOf(context)) {
+    throw new AppError(403, "This preview belongs to another session");
+  }
+
+  const typedRoll = (identity.rollNo ?? "").replace(/\D/g, "");
+  const walkInName = titleCase((identity.studentName ?? "").trim()).slice(0, 120);
+  const blankWalkIn =
+    Boolean(walkInName) &&
+    (typedRoll.length === 0 || studentService.isSharedBlankRoll(typedRoll));
+  const preferredSchoolId =
+    typeof identity.schoolId === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identity.schoolId)
+      ? identity.schoolId
+      : undefined;
+  const walkInSectionId =
+    typeof identity.sectionId === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identity.sectionId.trim())
+      ? identity.sectionId.trim()
+      : undefined;
+  const walkInClassHint =
+    typeof identity.classLevel === "number" &&
+    Number.isInteger(identity.classLevel) &&
+    identity.classLevel >= 1 &&
+    identity.classLevel <= 12
+      ? identity.classLevel
+      : undefined;
+  const walkInProgramHint =
+    typeof identity.programCode === "string" && identity.programCode.trim()
+      ? identity.programCode.trim().toUpperCase()
+      : undefined;
+
+  if (preferredSchoolId && preferredSchoolId !== row.school.id) {
+    row.school = await loadScanSchool(preferredSchoolId);
+  }
+
+  type Enrolled = Awaited<ReturnType<typeof resolveStudent>>;
+  let enrolled: Enrolled | null = null;
+
+  if (blankWalkIn) {
+    const majority = majorityPlacementFromPending(context);
+    const walkInClass = walkInClassHint ?? majority.classLevel ?? row.key.classLevel;
+    const walkInProgram =
+      walkInProgramHint ?? majority.programCode ?? row.key.programCode;
+    const createdDto = await studentService.createWalkInFromOmr({
+      schoolId: row.school.id,
+      name: walkInName,
+      rollNo: "",
+      programCode: walkInProgram,
+      classLevel: walkInClass,
+      sectionId: walkInSectionId ?? null,
+    });
+    const created = await studentRepository.findStudentById(createdDto.id);
+    if (!created || created.status !== "ACTIVE") {
+      throw new AppError(500, "Student was added but could not be loaded for this OMR.");
+    }
+    enrolled = created;
+  } else {
+    if (!/^\d{7}$/.test(typedRoll)) {
+      throw new AppError(422, "Enter the 7-digit registration number, or leave it empty with a name");
+    }
+    try {
+      enrolled = await resolveStudent(row.school, [typedRoll], preferredSchoolId);
+    } catch (error) {
+      if (!isNoStudentError(error) || walkInName.length < 2) throw error;
+      const majority = majorityPlacementFromPending(context);
+      const walkInClass = walkInClassHint ?? majority.classLevel ?? row.key.classLevel;
+      const walkInProgram =
+        walkInProgramHint ?? majority.programCode ?? row.key.programCode;
+      const createdDto = await studentService.createWalkInFromOmr({
+        schoolId: row.school.id,
+        name: walkInName,
+        rollNo: typedRoll,
+        programCode: walkInProgram,
+        classLevel: walkInClass,
+        sectionId: walkInSectionId ?? null,
+      });
+      const created = await studentRepository.findStudentById(createdDto.id);
+      if (!created || created.status !== "ACTIVE") {
+        throw new AppError(500, "Student was added but could not be loaded for this OMR.");
+      }
+      enrolled = created;
+    }
+  }
+
+  if (enrolled.schoolId !== row.school.id) {
+    row.school = {
+      id: enrolled.school.id,
+      name: enrolled.school.name,
+      type: "type" in enrolled.school ? (enrolled.school.type as SchoolType) : SchoolType.REGULAR,
+    };
+  }
+
+  const { key } = await resolveKey(row.school, [row.identity.testId], {
+    name: enrolled.name,
+    rollNo: enrolled.rollNo,
+    classLevel: enrolled.classLevel,
+    programCode: enrolled.program?.code ?? null,
+    sectionId: enrolled.sectionId ?? enrolled.section?.id ?? null,
+  });
+  if (key.id !== row.key.id) {
+    const readFlags = row.flags.filter((flag) => flag.reason !== "Un-attempted");
+    if (row.bubbles) {
+      const sheet = await loadPendingImage(row.diskDir, "sheet");
+      const { score, image } = await evaluatedImage(sheet, row.bubbles, row.answers, key, {
+        examPattern: row.examPattern,
+      });
+      row.score = score;
+      await replacePendingPreview(row.diskDir, image);
+    } else {
+      row.score = scoreWithKey(row.answers, key, { examPattern: row.examPattern });
+    }
+    row.flags = sheetFlags(row.score, readFlags);
+    row.key = { ...row.key, ...key };
+  }
+  row.identity = {
+    ...row.identity,
+    rollNo: enrolled.rollNo,
+    studentName: enrolled.name || walkInName || row.identity.studentName,
+    classLevel: enrolled.classLevel,
+    sectionName: displaySectionName(enrolled.section?.name),
+    programName: enrolled.program?.name || row.identity.programName,
+  };
+  row.studentId = enrolled.schoolId === row.school.id ? enrolled.id : null;
+  row.needsIdentity = false;
+  touchPending(previewId, row);
+  return { previewId, scan: unsavedDto(previewId, row, false) };
+}
+
+/** Bind reg/name onto a failed PDF page that was already scored at scan time. */
+export async function recoverPdfPage(
+  context: ScanContext,
+  batchId: string,
+  page: number,
+  identity: {
+    rollNo?: string;
+    studentName?: string;
+    schoolId?: string;
+    sectionId?: string;
+    classLevel?: number;
+    programCode?: string;
+  },
+) {
+  const batch = ownPdfBatch(context, batchId);
+  const item = batch.items.find((row) => row.page === page);
+  if (!item) throw new AppError(404, `No page ${page} in this PDF batch`);
+  if (!item.previewId) {
+    throw new AppError(
+      422,
+      "This page has no scored OMR yet. Upload the sheet again to read the answers.",
+    );
+  }
+  const result = await bindPendingIdentity(context, item.previewId, identity);
+  item.error = undefined;
+  item.demoted = undefined;
+  item.duplicateOf = undefined;
+  item.rollNo = result.scan.rollNo;
+  touchBatch(batch);
+  return result;
 }
 
 /** Most sheets "Save all" sends in one request; the page sends a big batch in chunks for progress. */
@@ -1590,6 +1907,9 @@ async function saveScan(context: ScanContext, previewId: string) {
   }
   if (ownerOf(row.context) !== ownerOf(context)) {
     throw new AppError(403, "This preview belongs to another session");
+  }
+  if (row.needsIdentity) {
+    throw new AppError(422, "Enter the registration number (or name) before saving this sheet.");
   }
   await useCurrentKey(row);
   const testId = row.identity.testId;

@@ -56,7 +56,10 @@ export function previewScan(
 ) {
   const body = new FormData();
   body.append("file", file);
-  if (identity?.rollNo) body.append("rollNo", identity.rollNo);
+  // Walk-in with empty reg: always send rollNo (including "") so the API skips bubbles.
+  // Omit rollNo entirely on normal scans so the reader uses the printed bubbles.
+  if (identity?.studentName) body.append("rollNo", identity.rollNo ?? "");
+  else if (identity?.rollNo != null && identity.rollNo !== "") body.append("rollNo", identity.rollNo);
   if (identity?.testId) body.append("testId", identity.testId);
   if (identity?.examPattern) body.append("examPattern", identity.examPattern);
   if (identity?.schoolId) body.append("schoolId", identity.schoolId);
@@ -81,6 +84,38 @@ export function commitScan(portal: ScanPortal, previewId: string, options?: { ro
       previewId,
       ...(rollNo ? { rollNo } : {}),
     },
+  });
+}
+
+type BindIdentity = {
+  rollNo?: string;
+  studentName?: string;
+  schoolId?: string;
+  sectionId?: string;
+  classLevel?: number;
+  programCode?: string;
+};
+
+/** Bind reg/name onto a pending already scored at scan — no bubble re-read. */
+export function bindPendingIdentity(portal: ScanPortal, previewId: string, identity: BindIdentity) {
+  const route = client(portal);
+  return route.api<ScanPreview>(`${route.list}/previews/${previewId}/bind`, {
+    method: "POST",
+    body: identity,
+  });
+}
+
+/** Bind reg/name onto a failed PDF page that was scored at scan time. */
+export function recoverPdfPage(
+  portal: ScanPortal,
+  batchId: string,
+  page: number,
+  identity: BindIdentity,
+) {
+  const route = client(portal);
+  return route.api<ScanPreview>(`${route.list}/batches/${batchId}/pages/${page}/recover`, {
+    method: "POST",
+    body: identity,
   });
 }
 

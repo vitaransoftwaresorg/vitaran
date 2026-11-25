@@ -9,7 +9,8 @@ const question = z
 export const extractedAnswersSchema = z.record(question, z.array(option).min(1).max(4));
 
 export const extractedSheetSchema = z.object({
-  rollNo: z.string().regex(/^\d{7}$/, "Registration number must be 7 digits"),
+  // Empty allowed for name-only walk-in; otherwise 7 digits.
+  rollNo: z.union([z.literal(""), z.string().regex(/^\d{7}$/, "Registration number must be 7 digits")]),
   rollCandidates: z.array(z.string()),
   printedName: z.string(),
   testId: z.string(),

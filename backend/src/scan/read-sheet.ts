@@ -122,19 +122,25 @@ function cleanRoll(value?: string) {
   return isPlausibleRoll(digits) ? digits : "";
 }
 
-/** Examiner typed a 7-digit reg (incl. blank 0000000) — force 0° vs 180° upright compare. */
+/** Examiner typed a 7-digit reg — force 0° vs 180° upright compare. */
 function examinerTypedRoll(value?: string) {
   return /^\d{7}$/.test((value ?? "").replace(/\D/g, ""));
 }
 
+/** Empty / all-zeros from the examiner (name-only walk-in). */
+function examinerBlankRoll(value?: string) {
+  const digits = (value ?? "").replace(/\D/g, "");
+  return digits.length === 0 || /^0+$/.test(digits);
+}
+
 /**
  * Authoritative roll from the examiner (recovery / walk-in).
- * Accepts shared blank 0000000 — cleanRoll alone rejects it and then bubble-read fails.
+ * Empty string = shared blank walk-in (no bubble read required).
  */
 function examinerGivenRoll(value?: string) {
   const digits = (value ?? "").replace(/\D/g, "");
   if (isPlausibleRoll(digits)) return digits;
-  if (digits === "0000000") return "0000000";
+  if (examinerBlankRoll(digits)) return "";
   return "";
 }
 
@@ -294,8 +300,8 @@ async function readSheetOriented(image: Buffer, identity: SheetIdentity = {}): P
         ),
       };
     }
-    // Walk-in name-only sends 0000000 — must win over empty bubble read.
-    const givenRoll = examinerGivenRoll(identity.rollNo) || cleanRoll(identity.rollNo);
+    const blankGiven = identity.rollNo !== undefined && examinerBlankRoll(identity.rollNo);
+    const givenRoll = blankGiven ? "" : examinerGivenRoll(identity.rollNo) || cleanRoll(identity.rollNo);
     const givenTest = cleanTest(identity.testId);
     // When the examiner typed the test ID, skip header OCR entirely (bubbles only).
     const printed = givenTest
@@ -303,17 +309,16 @@ async function readSheetOriented(image: Buffer, identity: SheetIdentity = {}): P
       : await readPrintedDetails(prepared.rgba);
     // Always read bubble roll for orientation scoring — typed reg must not make an
     // upside-down sheet score as well as the upright one (both would get +200).
-    const bubbleRollCandidates = readRollBubbleCandidates(prepared.rgba).filter(isPlausibleRoll);
+    const bubbleRollCandidates = blankGiven
+      ? []
+      : readRollBubbleCandidates(prepared.rgba).filter(isPlausibleRoll);
     const bubbleRoll = bubbleRollCandidates[0] || "";
-    const rollCandidates = givenRoll ? [givenRoll] : bubbleRollCandidates;
-    const rollNo = givenRoll || bubbleRoll;
-    if (!rollNo) {
+    const rollCandidates = blankGiven ? [""] : givenRoll ? [givenRoll] : bubbleRollCandidates;
+    const rollNo = blankGiven ? "" : givenRoll || bubbleRoll;
+    // Missing reg still returns answers so the sheet can be scored now; examiner binds
+    // registration later without re-reading the 100 question bubbles.
+    if (!blankGiven && !rollNo) {
       logger.warn({ rollCandidates, markCount: bubbles.markCount }, "registration bubbles missed");
-      return {
-        ok: false,
-        score: scoreRead(Boolean(bubbles.gridFound), "", bubbles.markCount, bubbles.flags.length, meanY),
-        error: new AppError(422, "Unable to read the registration number."),
-      };
     }
     const testCandidates = givenTest
       ? [givenTest]

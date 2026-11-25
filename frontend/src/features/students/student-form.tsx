@@ -233,7 +233,7 @@ export function StudentForm({
     {
       const digits = rollNo.replace(/\D/g, "");
       if (digits.length > 0 && digits.length !== 7) {
-        next.rollNo = "Enter the 7-digit registration number (or blank / 0000000)";
+        next.rollNo = "Enter the 7-digit registration number, or leave blank";
       }
     }
     if (parentName.trim() && parentName.trim().length < 2) {

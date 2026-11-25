@@ -226,7 +226,7 @@ export function OmrRollRecovery({
         return;
       }
       if (!blankOrZero && rollDigits.length !== ROLL_LENGTH) {
-        toast.error("Enter the 7-digit registration number (or 0000000)");
+        toast.error("Enter the 7-digit registration number, or leave it empty with a name");
         return;
       }
       await onSaveWithRoll(
@@ -257,7 +257,7 @@ export function OmrRollRecovery({
       : mismatch
         ? "Wrong student — enter correct reg"
         : walkIn
-          ? "Enter registration number and student name"
+          ? "Enter student name"
           : "Enter registration number";
 
   return (
@@ -356,7 +356,7 @@ export function OmrRollRecovery({
         <p className="truncate text-[11px] font-medium text-emerald-900">{matchLabel(matches[0]!)}</p>
       ) : showNameField ? (
         <p className="text-[11px] text-amber-900/80">
-          Not on student list — enter registration number and student name
+          Not on student list — enter student name
           {sections.length === 0 ? " · Section A" : ""}
         </p>
       ) : lookupError && rollComplete ? (

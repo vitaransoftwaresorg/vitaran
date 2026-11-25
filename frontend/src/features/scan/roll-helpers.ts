@@ -1,6 +1,6 @@
 export const ROLL_LENGTH = 7;
-/** Shared blank / unknown registration — many students may use this value. */
-export const SHARED_BLANK_ROLL = "0000000";
+/** Shared blank / unknown registration — empty string (many students may share it). */
+export const SHARED_BLANK_ROLL = "";
 
 export function rollInput(value: string) {
   return value.replace(/\D/g, "").slice(0, ROLL_LENGTH);
@@ -11,7 +11,7 @@ export function isSharedBlankRoll(rollNo: string) {
   return digits.length === 0 || /^0+$/.test(digits);
 }
 
-/** Empty or all zeros → 0000000; otherwise the typed 7 digits. */
+/** Empty or all zeros → `""`; otherwise the typed 7 digits. */
 export function normalizeRollNo(rollNo: string) {
   const digits = rollInput(rollNo);
   return isSharedBlankRoll(digits) ? SHARED_BLANK_ROLL : digits;

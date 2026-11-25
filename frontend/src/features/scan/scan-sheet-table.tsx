@@ -9,8 +9,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { cn } from "@/lib/utils";
 import type { ScanPortal } from "@/services/scans";
 import { formatMarks, type ScanPreview } from "@/types/scan";
-import { previewScanAction } from "./actions";
-import { getScanBatch, majorityWalkInFromBatch, setScanBatch, type PdfFailure } from "./batch-store";
+import { previewScanAction, recoverPdfPageAction, type PreviewScanFailure } from "./actions";
+import { getPdfJob, getScanBatch, majorityWalkInFromBatch, setScanBatch, type PdfFailure } from "./batch-store";
 import { asJpegFile } from "./camera";
 import { fetchOriginalSheetDirect, fetchPreviewSheetDirect } from "./client-upload";
 import { OmrRollRecovery } from "./omr-roll-recovery";
@@ -149,7 +149,7 @@ export function ScanSheetTable({
     sectionId?: string,
     placement?: { classLevel?: number; programCode?: string },
   ) {
-    if (!failure.hasImage) {
+    if (!failure.hasImage && !failure.previewId) {
       toast.error("No page image to save.");
       return;
     }
@@ -160,33 +160,47 @@ export function ScanSheetTable({
       return;
     }
     if (walkIn && typed.length > 0 && typed.length !== ROLL_LENGTH) {
-      toast.error("Registration number must be 7 digits (or 0000000).");
+      toast.error("Registration number must be 7 digits, or empty with a name");
       return;
     }
     setSavingPage(failure.page);
     try {
-      const url = await fetchFailedPageImage(failure.page, portal);
-      const blob = await fetch(url).then((response) => response.blob());
-      URL.revokeObjectURL(url);
-      const form = new FormData();
-      form.append("file", await asJpegFile(blob));
-      form.append("testId", testId);
-      form.append("examPattern", examPattern);
-      form.append("rollNo", walkIn ? normalizeRollNo(typed) : typed);
-      // Same as PDF batch — flat page JPEG already uprighted at scan; evaluate with current test key.
-      form.append("flat", "1");
-      form.append("upright", "1");
-      // Walk-in: majority school / class / program from this PDF batch.
       const batchPlace = majorityWalkInFromBatch();
       const batchSchoolId = schoolId || batchPlace.schoolId;
-      if (batchSchoolId) form.append("schoolId", batchSchoolId);
-      if (studentName?.trim()) form.append("studentName", studentName.trim());
-      if (sectionId?.trim()) form.append("sectionId", sectionId.trim());
       const classLevel = placement?.classLevel ?? batchPlace.classLevel;
       const programCode = placement?.programCode ?? batchPlace.programCode;
-      if (classLevel) form.append("classLevel", String(classLevel));
-      if (programCode) form.append("programCode", programCode);
-      const result = await previewScanAction(portal, form);
+      const identity = {
+        rollNo: walkIn ? normalizeRollNo(typed) : typed,
+        studentName: studentName?.trim() || undefined,
+        schoolId: batchSchoolId || undefined,
+        sectionId: sectionId?.trim() || undefined,
+        classLevel: classLevel || undefined,
+        programCode: programCode || undefined,
+      };
+
+      // Prefer bind-only recover when answers were already scored at scan.
+      const job = getPdfJob();
+      let result: { ok: true; result: ScanPreview } | PreviewScanFailure;
+      if (failure.previewId && job?.batchId) {
+        result = await recoverPdfPageAction(portal, job.batchId, failure.page, identity);
+      } else {
+        const url = await fetchFailedPageImage(failure.page, portal);
+        const blob = await fetch(url).then((response) => response.blob());
+        URL.revokeObjectURL(url);
+        const form = new FormData();
+        form.append("file", await asJpegFile(blob));
+        form.append("testId", testId);
+        form.append("examPattern", examPattern);
+        form.append("rollNo", identity.rollNo);
+        form.append("flat", "1");
+        form.append("upright", "1");
+        if (identity.schoolId) form.append("schoolId", identity.schoolId);
+        if (identity.studentName) form.append("studentName", identity.studentName);
+        if (identity.sectionId) form.append("sectionId", identity.sectionId);
+        if (identity.classLevel) form.append("classLevel", String(identity.classLevel));
+        if (identity.programCode) form.append("programCode", identity.programCode);
+        result = await previewScanAction(portal, form);
+      }
       if (!result.ok) {
         toast.error(`Page ${failure.page}: ${result.message}`);
         if (result.matches?.length) {
@@ -199,7 +213,10 @@ export function ScanSheetTable({
         return;
       }
       const reg = result.result.scan.student.rollNo;
-      if (getScanBatch().some((item) => item.scan.student.rollNo === reg)) {
+      if (
+        reg &&
+        getScanBatch().some((item) => item.scan.student.rollNo === reg)
+      ) {
         toast.warning(
           `Page ${failure.page}: Reg ${reg} is already in the list. Enter a different registration.`,
         );
@@ -364,7 +381,7 @@ export function ScanSheetTable({
                     {isDup ? "Duplicate registration" : displayScanError(failure.message)}
                   </td>
                   <td className="px-3 py-1">
-                    {recoverRoll && failure.hasImage ? (
+                    {recoverRoll && (failure.hasImage || failure.previewId) ? (
                       <OmrRollRecovery
                         portal={portal}
                         message={failure.message}
@@ -385,7 +402,7 @@ export function ScanSheetTable({
                           )
                         }
                       />
-                    ) : recoverRoll && !failure.hasImage ? (
+                    ) : recoverRoll && !failure.hasImage && !failure.previewId ? (
                       <span className="text-[11px] text-red-800">No page image</span>
                     ) : (
                       <span className="whitespace-nowrap tabular-nums text-red-800/80">
@@ -393,10 +410,14 @@ export function ScanSheetTable({
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-1.5 text-red-800/40">—</td>
+                  <td className="whitespace-nowrap px-3 py-1.5 font-semibold tabular-nums text-red-900">
+                    {failure.total != null && failure.maxTotal != null
+                      ? `${formatMarks(failure.total)}/${formatMarks(failure.maxTotal)}`
+                      : "—"}
+                  </td>
                   <td className="px-3 py-1.5">
                     <div className="flex items-center justify-end gap-1.5">
-                      {failure.hasImage ? (
+                      {failure.hasImage || failure.previewId ? (
                         <>
                           <Button
                             type="button"
@@ -516,18 +537,33 @@ export function ScanSheetTable({
               <SheetHeader className="shrink-0 border-b border-neutral-100 px-4 py-3">
                 <SheetTitle>PDF page {viewing.failure.page}</SheetTitle>
                 <p className="text-sm text-red-700">{displayScanError(viewing.failure.message)}</p>
+                {viewing.failure.total != null && viewing.failure.maxTotal != null ? (
+                  <p className="text-sm font-semibold tabular-nums text-neutral-800">
+                    Score {formatMarks(viewing.failure.total)}/{formatMarks(viewing.failure.maxTotal)}
+                  </p>
+                ) : null}
               </SheetHeader>
               <div className="min-h-0 flex-1">
-                <ImageZoomPane
-                  key={viewing.failure.page}
-                  className="h-full"
-                  toolbarLeft={`PDF page ${viewing.failure.page}`}
-                  resetKey={viewing.failure.page}
-                >
-                  <FailedPageImage page={viewing.failure.page} portal={portal} />
-                </ImageZoomPane>
+                {viewing.failure.previewId ? (
+                  <ReadySheetImage
+                    key={viewing.failure.previewId}
+                    portal={portal}
+                    previewId={viewing.failure.previewId}
+                    label={`PDF page ${viewing.failure.page}`}
+                  />
+                ) : (
+                  <ImageZoomPane
+                    key={viewing.failure.page}
+                    className="h-full"
+                    toolbarLeft={`PDF page ${viewing.failure.page}`}
+                    resetKey={viewing.failure.page}
+                  >
+                    <FailedPageImage page={viewing.failure.page} portal={portal} />
+                  </ImageZoomPane>
+                )}
               </div>
-              {canRecoverRoll(viewing.failure.message) && viewing.failure.hasImage ? (
+              {canRecoverRoll(viewing.failure.message) &&
+              (viewing.failure.hasImage || viewing.failure.previewId) ? (
                 <div className="shrink-0 space-y-3 border-t border-neutral-100 p-4">
                   <OmrRollRecovery
                     portal={portal}

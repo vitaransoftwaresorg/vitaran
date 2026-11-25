@@ -111,10 +111,17 @@ export async function loginAdmin(input: LoginInput): Promise<LoginResult> {
   }
 
   const operator = await adminOperatorRepository.findAdminOperatorByEmail(email);
-  if (!operator || operator.status !== AdminOperatorStatus.ACTIVE) {
+  if (!operator) {
     throw invalidCredentials();
   }
   if (!(await verifyPassword(input.password, operator.passwordHash))) {
+    throw invalidCredentials();
+  }
+  if (operator.status === AdminOperatorStatus.DISABLED) {
+    // 403 (not 401) so portal login shows this instead of school/teacher fall-through.
+    throw new AppError(403, "Login disabled by admin. Please contact admin.");
+  }
+  if (operator.status !== AdminOperatorStatus.ACTIVE) {
     throw invalidCredentials();
   }
 

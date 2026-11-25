@@ -112,10 +112,10 @@ function validateBulkRows(
     if (!isFilled(row)) return;
     const errors: Record<string, string> = {};
     const rawRoll = row.rollNo.replace(/\D/g, "").slice(0, 7);
-    const roll = !rawRoll || /^0+$/.test(rawRoll) ? "0000000" : rawRoll;
+    const roll = !rawRoll || /^0+$/.test(rawRoll) ? "" : rawRoll;
     if (rawRoll.length > 0 && rawRoll.length !== 7) {
-      errors.rollNo = "Enter the 7-digit registration number (or blank / 0000000)";
-    } else if (roll !== "0000000") {
+      errors.rollNo = "Enter the 7-digit registration number, or leave blank";
+    } else if (roll !== "") {
       const earlier = seenRolls.get(roll);
       if (earlier != null) {
         errors.rollNo = `Duplicate Reg No (also on row ${earlier + 1})`;

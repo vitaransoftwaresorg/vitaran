@@ -219,20 +219,21 @@ async function assertSeatAvailable(
   await assertSchoolStrengthAllows(schoolId, seatsNeeded, excludeStudentId);
 }
 
-/** Shared blank / unknown OMR registration — many students may use this value. */
+/** Shared blank / unknown OMR registration — empty string (many students may share it). */
 export function isSharedBlankRoll(rollNo: string) {
   const digits = rollNo.replace(/\D/g, "");
   return digits.length === 0 || /^0+$/.test(digits);
 }
 
+/** Empty / all-zeros → `""`; otherwise the 7 digits. */
 export function normalizeRollNo(rollNo: string) {
   const digits = rollNo.replace(/\D/g, "").slice(0, 7);
-  if (isSharedBlankRoll(digits)) return "0000000";
+  if (isSharedBlankRoll(digits)) return "";
   return digits;
 }
 
 async function assertUniqueRoll(schoolId: string, rollNo: string, excludeId?: string) {
-  // 0000000 is shared across students (blank / unknown OMR regs).
+  // Empty roll is shared across students (blank / unknown OMR regs).
   if (isSharedBlankRoll(rollNo)) return;
   const taken = await studentRepository.isRollTaken(schoolId, rollNo, excludeId);
   if (taken) {
@@ -291,8 +292,8 @@ export async function getStudent(id: string, schoolId?: string) {
 export async function createStudent(schoolId: string, input: CreateStudentInput) {
   const sectionId = input.sectionId ?? null;
   const rollNo = normalizeRollNo(input.rollNo);
-  if (!/^\d{7}$/.test(rollNo)) {
-    throw new AppError(422, "Registration number must be 7 digits (or blank / 0000000)", [
+  if (rollNo !== "" && !/^\d{7}$/.test(rollNo)) {
+    throw new AppError(422, "Registration number must be 7 digits, or empty", [
       { path: ["rollNo"], message: "Registration number must be 7 digits" },
     ]);
   }

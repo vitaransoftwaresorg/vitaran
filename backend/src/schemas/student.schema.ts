@@ -28,12 +28,12 @@ const optionalStudentName = z
   .transform((value) => (value == null ? "" : value.trim()))
   .pipe(z.union([z.literal(""), titleText(2, 120)]));
 
-/** 7 digits, or blank / all zeros → shared `0000000` (many students may share it). */
+/** 7 digits, or blank / all zeros → shared empty string (many students may share it). */
 const rollNoField = z.preprocess((value) => {
   const digits = String(value ?? "").replace(/\D/g, "").slice(0, 7);
-  if (!digits || /^0+$/.test(digits)) return "0000000";
+  if (!digits || /^0+$/.test(digits)) return "";
   return digits;
-}, z.string().regex(/^\d{7}$/, "Registration number must be 7 digits"));
+}, z.union([z.literal(""), z.string().regex(/^\d{7}$/, "Registration number must be 7 digits")]));
 
 const studentRowSchema = z.object({
   name: optionalStudentName,

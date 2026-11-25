@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { useRegisterInPageBack } from "@/components/layout/in-page-back";
 import { cn } from "@/lib/utils";
 import { commitScanAction, commitScansAction, previewScanAction } from "./actions";
 import {
@@ -83,7 +82,6 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
     setCameraKey((key) => key + 1);
     restRef.current = [];
   }, []);
-  useRegisterInPageBack(batch.length > 0 || job ? clearReview : null);
 
   function openReview(index: number) {
     // Next keeps this page's state for back navigation, so empty the field before leaving for review.
@@ -235,12 +233,22 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
-                      <p className="text-base font-bold tabular-nums text-neutral-950">
-                        Test ID {job.testId}
-                        {job.examPattern ? (
-                          <span className="font-semibold text-neutral-500"> · {job.examPattern}</span>
-                        ) : null}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <button
+                          type="button"
+                          onClick={clearReview}
+                          className="inline-flex shrink-0 items-center gap-1.5 text-sm font-semibold text-brand-900 hover:opacity-70 active:opacity-60"
+                        >
+                          <ArrowLeft className="size-4" strokeWidth={2.25} />
+                          Back
+                        </button>
+                        <p className="text-base font-bold tabular-nums text-neutral-950">
+                          Test ID {job.testId}
+                          {job.examPattern ? (
+                            <span className="font-semibold text-neutral-500"> · {job.examPattern}</span>
+                          ) : null}
+                        </p>
+                      </div>
                       {(job.keys?.length
                         ? job.keys
                         : batch[0]
@@ -296,12 +304,22 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
                 </div>
               ) : batch[0] ? (
                 <div className="min-w-0 space-y-1">
-                  <p className="text-base font-bold tabular-nums text-neutral-950">
-                    Test ID {batch[0].scan.testId}
-                    {examPattern ? (
-                      <span className="font-semibold text-neutral-500"> · {examPattern}</span>
-                    ) : null}
-                  </p>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={clearReview}
+                      className="inline-flex shrink-0 items-center gap-1.5 text-sm font-semibold text-brand-900 hover:opacity-70 active:opacity-60"
+                    >
+                      <ArrowLeft className="size-4" strokeWidth={2.25} />
+                      Back
+                    </button>
+                    <p className="text-base font-bold tabular-nums text-neutral-950">
+                      Test ID {batch[0].scan.testId}
+                      {examPattern ? (
+                        <span className="font-semibold text-neutral-500"> · {examPattern}</span>
+                      ) : null}
+                    </p>
+                  </div>
                   <p className="text-sm font-semibold text-neutral-800">
                     {batch[0].scan.student.programName}
                     {" · "}

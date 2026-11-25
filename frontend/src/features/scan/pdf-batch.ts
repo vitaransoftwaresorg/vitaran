@@ -98,13 +98,17 @@ function failureFromItem(item: {
   error?: string;
   hasImage?: boolean;
   rollNo?: string;
+  preview?: { previewId: string; scan: { total: number; maxTotal: number } };
 }): PdfFailure | null {
   if (!item.error) return null;
   return {
     page: item.page,
     message: item.error,
-    hasImage: Boolean(item.hasImage),
+    hasImage: Boolean(item.hasImage || item.preview),
     rollNo: item.rollNo?.trim() || undefined,
+    previewId: item.preview?.previewId,
+    total: item.preview?.scan.total,
+    maxTotal: item.preview?.scan.maxTotal,
   };
 }
 
@@ -131,8 +135,9 @@ async function poll() {
       );
     }
 
+    // Error items may still carry a scored preview (needs identity) — keep those as failures only.
     const previews = status.items.flatMap((item) =>
-      item.preview ? [{ ...item.preview, pdfPage: item.page }] : [],
+      item.preview && !item.error ? [{ ...item.preview, pdfPage: item.page }] : [],
     );
     if (previews.length) {
       setScanBatch([

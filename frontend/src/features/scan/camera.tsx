@@ -18,7 +18,7 @@ import type { ScanPreview, TestIdCheck } from "@/types/scan";
 import { registerOmrPdfDirect } from "./client-upload";
 import { EXAM_PATTERN_OPTIONS, type ExamPattern } from "./exam-pattern";
 import { startPdfJob } from "./pdf-batch";
-import { checkTestIdAction } from "./actions";
+import { bindPendingIdentityAction, checkTestIdAction } from "./actions";
 import { DocumentScanner } from "./document-scanner";
 import { OmrRollRecovery } from "./omr-roll-recovery";
 import type { OmrStudentMatch } from "./omr-student-actions";
@@ -161,7 +161,7 @@ export function ScanCamera({
   const [rollError, setRollError] = useState<string | null>(null);
   const [rollMatches, setRollMatches] = useState<OmrStudentMatch[]>([]);
   const [rollHint, setRollHint] = useState("");
-  const retryRef = useRef<{ source: Blob; corners?: SheetQuad } | null>(null);
+  const retryRef = useRef<{ source: Blob; corners?: SheetQuad; previewId?: string } | null>(null);
   const enteredTest = testId.trim();
   const testComplete = TEST_ID_PATTERN.test(enteredTest);
   const checked = testComplete && testCheck?.value === enteredTest ? testCheck : null;
@@ -306,7 +306,7 @@ export function ScanCamera({
     result: PreviewScanFailure,
   ) {
     if (!canRecoverRoll(result.message) && !(result.matches && result.matches.length > 1)) return;
-    retryRef.current = { source, corners };
+    retryRef.current = { source, corners, previewId: result.previewId };
     setRollError(result.message);
     setRollMatches(result.matches ?? []);
     setRollHint(result.rollNo ?? "");
@@ -355,31 +355,44 @@ export function ScanCamera({
       return;
     }
     if (walkIn && typed.length > 0 && typed.length !== ROLL_LENGTH) {
-      toast.error("Registration number must be 7 digits (or 0000000).");
+      toast.error("Registration number must be 7 digits, or empty with a name");
       return;
     }
     if (!(await verifyTestId())) return;
     setBusy(true);
     setStatus(studentName?.trim() ? "Saving walk-in…" : "Saving with registration…");
     try {
-      // Omit corners on recovery so the reader can auto-upright a reverse sheet (0° vs 180°).
       const batchPlace = majorityWalkInFromBatch();
-      const result = await readPhoto(
-        pending.source,
-        undefined,
-        typed,
-        schoolId || batchPlace.schoolId,
-        studentName,
-        sectionId,
-        {
-          classLevel: placement?.classLevel ?? batchPlace.classLevel,
-          programCode: placement?.programCode ?? batchPlace.programCode,
-        },
-      );
+      const identity = {
+        rollNo: walkIn ? normalizeRollNo(typed) : typed,
+        studentName: studentName?.trim() || undefined,
+        schoolId: schoolId || batchPlace.schoolId || undefined,
+        sectionId: sectionId || undefined,
+        classLevel: placement?.classLevel ?? batchPlace.classLevel,
+        programCode: placement?.programCode ?? batchPlace.programCode,
+      };
+      // Answers already scored at scan — bind only (no bubble re-read).
+      const result = pending.previewId
+        ? await bindPendingIdentityAction(portal, pending.previewId, identity)
+        : await readPhoto(
+            pending.source,
+            undefined,
+            typed,
+            identity.schoolId,
+            studentName,
+            sectionId,
+            {
+              classLevel: identity.classLevel,
+              programCode: identity.programCode,
+            },
+          );
       if (!result.ok) {
         toast.error(result.message);
         // Keep recovery open so they can pick another student or fix the number.
-        rememberRollFailure(pending.source, pending.corners, result);
+        rememberRollFailure(pending.source, pending.corners, {
+          ...result,
+          previewId: result.previewId ?? pending.previewId,
+        });
         return;
       }
       retryRef.current = null;
