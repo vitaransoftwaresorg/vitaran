@@ -44,6 +44,8 @@ export function previewScan(
     studentName?: string;
     /** PDF page / flat scan — skip photo perspective warp. */
     flat?: boolean;
+    /** Failed PDF thumb already auto-rotated at scan — skip re-upright on save. */
+    upright?: boolean;
     corners?: string;
   },
 ) {
@@ -55,6 +57,7 @@ export function previewScan(
   if (identity?.schoolId) body.append("schoolId", identity.schoolId);
   if (identity?.studentName) body.append("studentName", identity.studentName);
   if (identity?.flat) body.append("flat", "1");
+  if (identity?.upright) body.append("upright", "1");
   /** JSON `[[x, y] ×4]` (TL, TR, BR, BL, 0–1) from the phone document scanner. */
   if (identity?.corners) body.append("corners", identity.corners);
   const route = client(portal);

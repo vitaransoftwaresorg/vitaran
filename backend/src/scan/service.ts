@@ -55,6 +55,7 @@ import {
   isPlausibleRoll,
   pickRollNo,
   pickTestId,
+  ensureUprightSource,
   uprightOmrJpeg,
   type SheetCorners,
   type SheetRead,
@@ -1130,6 +1131,8 @@ export async function previewScan(
     /** When set and the roll is not on the roster, save as a walk-in for the test ID's class. */
     studentName?: string;
     flat?: boolean;
+    /** Failed PDF thumb was already rotated at scan time — skip re-upright on save. */
+    upright?: boolean;
     lean?: boolean;
     corners?: SheetCorners;
   } = {},
@@ -1148,12 +1151,12 @@ export async function previewScan(
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identity.schoolId)
       ? identity.schoolId
       : undefined;
-  // Failed-page save with typed reg: upright first (layout-aware 0/90/180/270), then evaluate.
+  // Failed-page save (typed reg or blank 0000000 walk-in): evaluate with current test key.
   const recoverySave = Boolean(identity.flat && /^\d{7}$/.test(typedRoll));
   let sheetImage = image;
-  if (recoverySave) {
-    // `source` = rotated original so readSheet prepares cleanly (not a double-warped thumb).
-    sheetImage = await uprightOmrJpeg(image, { flat: true, mode: "source" });
+  if (recoverySave && !identity.upright) {
+    // Fast 0°/180° only — failed thumbs are usually already upright from scan.
+    sheetImage = await ensureUprightSource(image, { flat: true });
   }
   const read = await readQueued(sheetImage, fileName, {
     rollNo: typedRoll,

@@ -158,7 +158,7 @@ export function ScanSheetTable({
       return;
     }
     if (walkIn && typed.length > 0 && typed.length !== ROLL_LENGTH) {
-      toast.error("Registration number must be 7 digits (or blank / 0000000).");
+      toast.error("Registration number must be 7 digits (or 0000000).");
       return;
     }
     setSavingPage(failure.page);
@@ -171,8 +171,9 @@ export function ScanSheetTable({
       form.append("testId", testId);
       form.append("examPattern", examPattern);
       form.append("rollNo", walkIn ? normalizeRollNo(typed) : typed);
-      // Same as PDF batch — flat page JPEG; reader will 0° vs 180° upright like a reverse sheet.
+      // Same as PDF batch — flat page JPEG already uprighted at scan; evaluate with current test key.
       form.append("flat", "1");
+      form.append("upright", "1");
       if (schoolId) form.append("schoolId", schoolId);
       if (studentName?.trim()) form.append("studentName", studentName.trim());
       const result = await previewScanAction(portal, form);

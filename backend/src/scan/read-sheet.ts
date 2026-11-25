@@ -127,6 +127,17 @@ function examinerTypedRoll(value?: string) {
   return /^\d{7}$/.test((value ?? "").replace(/\D/g, ""));
 }
 
+/**
+ * Authoritative roll from the examiner (recovery / walk-in).
+ * Accepts shared blank 0000000 — cleanRoll alone rejects it and then bubble-read fails.
+ */
+function examinerGivenRoll(value?: string) {
+  const digits = (value ?? "").replace(/\D/g, "");
+  if (isPlausibleRoll(digits)) return digits;
+  if (digits === "0000000") return "0000000";
+  return "";
+}
+
 function cleanTest(value?: string) {
   return (value ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
@@ -187,12 +198,12 @@ async function orientationScore(image: Buffer, flat: boolean) {
   try {
     const prepared = await prepareSheet(image, { flat });
     const bubbles = readAnswerBubbles(prepared.rgba);
-    const bubbleRoll = readRollBubbleCandidates(prepared.rgba).find(isPlausibleRoll) ?? "";
+    // Layout (answer block mid-lower) is enough — skip expensive roll Hough here.
     const meanY = answerGridMeanY(prepared.rgba.height, bubbles.bubbles?.points);
     return {
       score: scoreRead(
         Boolean(bubbles.gridFound),
-        bubbleRoll,
+        "",
         bubbles.markCount,
         bubbles.flags.length,
         meanY,
@@ -203,6 +214,26 @@ async function orientationScore(image: Buffer, flat: boolean) {
   } catch {
     return { score: -1, jpeg: image, meanY: 0.5 };
   }
+}
+
+/**
+ * Fast upright for failed-page save: trust scan-time rotate when layout already looks
+ * upright; otherwise only try 180° (not 90/270). Much cheaper than full uprightOmrJpeg.
+ */
+export async function ensureUprightSource(image: Buffer, options: { flat?: boolean } = {}): Promise<Buffer> {
+  const flat = options.flat !== false;
+  const first = await orientationScore(image, flat);
+  if (first.score >= 0 && layoutUprightBonus(first.meanY) >= 1200) {
+    return image;
+  }
+  let flipped: Buffer;
+  try {
+    flipped = await rotate180(image);
+  } catch {
+    return image;
+  }
+  const second = await orientationScore(flipped, flat);
+  return second.score > first.score ? flipped : image;
 }
 
 /**
@@ -263,7 +294,8 @@ async function readSheetOriented(image: Buffer, identity: SheetIdentity = {}): P
         ),
       };
     }
-    const givenRoll = cleanRoll(identity.rollNo);
+    // Walk-in name-only sends 0000000 — must win over empty bubble read.
+    const givenRoll = examinerGivenRoll(identity.rollNo) || cleanRoll(identity.rollNo);
     const givenTest = cleanTest(identity.testId);
     // When the examiner typed the test ID, skip header OCR entirely (bubbles only).
     const printed = givenTest

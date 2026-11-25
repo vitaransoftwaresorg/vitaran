@@ -177,7 +177,7 @@ export function OmrRollRecovery({
         return;
       }
       if (!blankOrZero && rollDigits.length !== ROLL_LENGTH) {
-        toast.error("Enter the 7-digit registration number (or leave blank / 0000000)");
+        toast.error("Enter the 7-digit registration number (or 0000000)");
         return;
       }
       await onSaveWithRoll(normalizeRollNo(rollDigits), schoolId, name);
@@ -215,7 +215,7 @@ export function OmrRollRecovery({
           maxLength={ROLL_LENGTH}
           value={rollNo}
           disabled={busy}
-          placeholder="Reg No (or blank)"
+          placeholder="Registration number"
           aria-label={prompt}
           className="h-7 w-[40%] max-w-[40%] min-w-0 shrink-0 rounded-md border border-amber-200 bg-white px-2 text-xs tracking-widest tabular-nums"
           onChange={(event) => setRollNo(rollInput(event.currentTarget.value))}

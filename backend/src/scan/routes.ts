@@ -97,9 +97,11 @@ function omrRouter(contextOf: (res: Response) => scanService.ScanContext) {
       examPattern?: string;
       studentName?: string;
       flat?: string;
+      upright?: string;
       corners?: string;
     };
     const flatFlag = typeof body?.flat === "string" ? body.flat.trim().toLowerCase() : "";
+    const uprightFlag = typeof body?.upright === "string" ? body.upright.trim().toLowerCase() : "";
     sendSuccess(
       res,
       await scanService.previewScan(contextOf(res), file.buffer, file.originalname, {
@@ -110,6 +112,8 @@ function omrRouter(contextOf: (res: Response) => scanService.ScanContext) {
         studentName: typeof body?.studentName === "string" ? body.studentName : "",
         // Failed PDF page recovery — page JPEGs are already flat (same as batch read).
         flat: flatFlag === "1" || flatFlag === "true",
+        // Scan-time thumb is already rotated — skip another upright pass on save.
+        upright: uprightFlag === "1" || uprightFlag === "true",
         corners: parseCorners(body?.corners),
       }),
     );

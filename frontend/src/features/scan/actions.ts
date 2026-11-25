@@ -46,6 +46,7 @@ export async function previewScanAction(
   const schoolId = String(formData.get("schoolId") ?? "").trim();
   const studentName = String(formData.get("studentName") ?? "").trim();
   const flat = String(formData.get("flat") ?? "").trim();
+  const upright = String(formData.get("upright") ?? "").trim();
   const corners = String(formData.get("corners") ?? "").trim();
   try {
     return {
@@ -57,6 +58,7 @@ export async function previewScanAction(
         schoolId: schoolId || undefined,
         studentName: studentName || undefined,
         flat: flat === "1" || flat === "true",
+        upright: upright === "1" || upright === "true",
         corners,
       }),
     };

@@ -343,7 +343,7 @@ export function ScanCamera({
       return;
     }
     if (walkIn && typed.length > 0 && typed.length !== ROLL_LENGTH) {
-      toast.error("Registration number must be 7 digits (or blank / 0000000).");
+      toast.error("Registration number must be 7 digits (or 0000000).");
       return;
     }
     if (!(await verifyTestId())) return;
