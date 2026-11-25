@@ -575,6 +575,8 @@ model AppSettings {
   teacherDesktopOmrEnabled Boolean @default(true) @map("teacher_desktop_omr_enabled")
   /// School portal mobile camera scan.
   schoolMobileOmrEnabled Boolean @default(true) @map("school_mobile_omr_enabled")
+  /// Teacher portal mobile camera scan.
+  teacherMobileOmrEnabled Boolean @default(true) @map("teacher_mobile_omr_enabled")
   /// Inboxes for every answer-key objection.
   vitaranEmails    String[] @default([]) @map("vitaran_emails") @db.VarChar(254)
   /// SME contacts: [{ "name": "…", "subject": "MATHEMATICS", "email": "…" }]

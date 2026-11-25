@@ -41,6 +41,7 @@ export function upsertSettings(data: {
   schoolDesktopOmrEnabled: boolean;
   teacherDesktopOmrEnabled: boolean;
   schoolMobileOmrEnabled: boolean;
+  teacherMobileOmrEnabled: boolean;
   vitaranEmails: string[];
   smeContacts: Prisma.InputJsonValue;
 }) {
@@ -55,6 +56,7 @@ export function upsertSettings(data: {
       schoolDesktopOmrEnabled: data.schoolDesktopOmrEnabled,
       teacherDesktopOmrEnabled: data.teacherDesktopOmrEnabled,
       schoolMobileOmrEnabled: data.schoolMobileOmrEnabled,
+      teacherMobileOmrEnabled: data.teacherMobileOmrEnabled,
       vitaranEmails: data.vitaranEmails,
       smeContacts: data.smeContacts,
     },
@@ -66,6 +68,7 @@ export function upsertSettings(data: {
       schoolDesktopOmrEnabled: data.schoolDesktopOmrEnabled,
       teacherDesktopOmrEnabled: data.teacherDesktopOmrEnabled,
       schoolMobileOmrEnabled: data.schoolMobileOmrEnabled,
+      teacherMobileOmrEnabled: data.teacherMobileOmrEnabled,
       vitaranEmails: data.vitaranEmails,
       smeContacts: data.smeContacts,
     },

@@ -43,7 +43,9 @@ export function TeacherSidebar({ teacher }: { teacher: TeacherAccount }) {
   const { settings } = usePublicSettings();
   const displayName = capitalizeWords(teacher.name);
   const initials = displayName.slice(0, 2).toUpperCase();
-  const omrNavVisible = settings.teacherDesktopOmrEnabled;
+  const omrNavVisible =
+    (isMobile && settings.teacherMobileOmrEnabled) ||
+    (!isMobile && settings.teacherDesktopOmrEnabled);
 
   return (
     <Sidebar side={isMobile ? "right" : "left"} collapsible="icon">

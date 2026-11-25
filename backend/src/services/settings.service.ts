@@ -20,6 +20,7 @@ export type AppSettingsDto = {
   schoolDesktopOmrEnabled: boolean;
   teacherDesktopOmrEnabled: boolean;
   schoolMobileOmrEnabled: boolean;
+  teacherMobileOmrEnabled: boolean;
   vitaranEmails: string[];
   smeContacts: SmeContact[];
   updatedAt: string;
@@ -52,6 +53,7 @@ function toDto(row: NonNullable<Awaited<ReturnType<typeof settingsRepository.fin
     schoolDesktopOmrEnabled: row.schoolDesktopOmrEnabled,
     teacherDesktopOmrEnabled: row.teacherDesktopOmrEnabled,
     schoolMobileOmrEnabled: row.schoolMobileOmrEnabled,
+    teacherMobileOmrEnabled: row.teacherMobileOmrEnabled,
     vitaranEmails: row.vitaranEmails,
     smeContacts: asSmeContacts(row.smeContacts),
     updatedAt: row.updatedAt.toISOString(),
@@ -66,6 +68,7 @@ const EMPTY: AppSettingsDto = {
   schoolDesktopOmrEnabled: true,
   teacherDesktopOmrEnabled: true,
   schoolMobileOmrEnabled: true,
+  teacherMobileOmrEnabled: true,
   vitaranEmails: [],
   smeContacts: [],
   updatedAt: new Date(0).toISOString(),
@@ -87,6 +90,7 @@ export async function getPublicSettings() {
     schoolDesktopOmrEnabled: settings.schoolDesktopOmrEnabled,
     teacherDesktopOmrEnabled: settings.teacherDesktopOmrEnabled,
     schoolMobileOmrEnabled: settings.schoolMobileOmrEnabled,
+    teacherMobileOmrEnabled: settings.teacherMobileOmrEnabled,
   };
 }
 
@@ -130,6 +134,7 @@ export async function updateAppSettings(input: UpdateAppSettingsInput) {
     schoolDesktopOmrEnabled: input.schoolDesktopOmrEnabled,
     teacherDesktopOmrEnabled: input.teacherDesktopOmrEnabled,
     schoolMobileOmrEnabled: input.schoolMobileOmrEnabled,
+    teacherMobileOmrEnabled: input.teacherMobileOmrEnabled,
     vitaranEmails: input.vitaranEmails,
     smeContacts: input.smeContacts.map((row) => ({
       name: row.name.trim(),
@@ -150,6 +155,7 @@ export async function updateAppSettings(input: UpdateAppSettingsInput) {
       schoolDesktopOmrEnabled: after.schoolDesktopOmrEnabled,
       teacherDesktopOmrEnabled: after.teacherDesktopOmrEnabled,
       schoolMobileOmrEnabled: after.schoolMobileOmrEnabled,
+      teacherMobileOmrEnabled: after.teacherMobileOmrEnabled,
     },
   });
   void sendOnboardingEmails(after).catch((error) =>

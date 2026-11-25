@@ -15,6 +15,7 @@ export const updateAppSettingsSchema = z.object({
   schoolDesktopOmrEnabled: z.boolean(),
   teacherDesktopOmrEnabled: z.boolean(),
   schoolMobileOmrEnabled: z.boolean(),
+  teacherMobileOmrEnabled: z.boolean(),
   vitaranEmails: z
     .array(z.string().trim().toLowerCase().email("Enter a valid Vitaran email").max(254))
     .max(20)

@@ -20,6 +20,7 @@ export type PublicSettingsSnapshot = {
   schoolDesktopOmrEnabled: boolean;
   teacherDesktopOmrEnabled: boolean;
   schoolMobileOmrEnabled: boolean;
+  teacherMobileOmrEnabled: boolean;
 };
 
 export type ContentChange = {

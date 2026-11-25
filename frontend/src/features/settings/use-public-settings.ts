@@ -13,6 +13,7 @@ const EMPTY: PublicSettings = {
   schoolDesktopOmrEnabled: true,
   teacherDesktopOmrEnabled: true,
   schoolMobileOmrEnabled: true,
+  teacherMobileOmrEnabled: true,
 };
 
 function isPublicSettings(value: unknown): value is PublicSettings {
@@ -25,7 +26,8 @@ function isPublicSettings(value: unknown): value is PublicSettings {
     typeof row.resultsPublic === "boolean" &&
     typeof row.schoolDesktopOmrEnabled === "boolean" &&
     typeof row.teacherDesktopOmrEnabled === "boolean" &&
-    typeof row.schoolMobileOmrEnabled === "boolean"
+    typeof row.schoolMobileOmrEnabled === "boolean" &&
+    typeof row.teacherMobileOmrEnabled === "boolean"
   );
 }
 

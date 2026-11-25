@@ -40,10 +40,12 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
   const omrAllowed =
     portal === "admin"
       ? true
-      : portal === "teacher"
-        ? settings.teacherDesktopOmrEnabled
-        : phone === null
-          ? true
+      : phone === null
+        ? true
+        : portal === "teacher"
+          ? phone
+            ? settings.teacherMobileOmrEnabled
+            : settings.teacherDesktopOmrEnabled
           : phone
             ? settings.schoolMobileOmrEnabled
             : settings.schoolDesktopOmrEnabled;
@@ -221,7 +223,9 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
   if (settingsReady && !omrAllowed) {
     const title =
       portal === "teacher"
-        ? "Teacher OMR is turned off"
+        ? phone
+          ? "Teacher mobile scan is turned off"
+          : "Teacher desktop OMR is turned off"
         : phone
           ? "School mobile scan is turned off"
           : "School desktop OMR is turned off";

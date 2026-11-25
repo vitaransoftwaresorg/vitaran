@@ -26,7 +26,7 @@ const requireSchoolOmrEnabled: RequestHandler = async (_req, _res, next) => {
 
 const requireTeacherOmrEnabled: RequestHandler = async (_req, _res, next) => {
   const settings = await settingsService.getPublicSettings();
-  if (!settings.teacherDesktopOmrEnabled) {
+  if (!settings.teacherDesktopOmrEnabled && !settings.teacherMobileOmrEnabled) {
     next(new AppError(403, "OMR scan is disabled for teachers. Ask the admin to turn it on."));
     return;
   }
