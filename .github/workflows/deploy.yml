@@ -60,8 +60,15 @@ jobs:
              # from manual edits/rsync so pull never fails on dirty trees.
              git fetch origin main
              git reset --hard origin/main
-             # backend/data holds durable OMR batches (gitignored); exclude so git clean keeps them.
-             git clean -fd -e backend/.env -e frontend/.env.production -e frontend/.env.local -e backend/data
+             # Keep only durable production env + OMR data. Never keep frontend/.env.local —
+             # Next loads it over .env.production and that broke Google login on Vitaran.
+             git clean -fd -e backend/.env -e frontend/.env.production -e backend/data
+             # If someone recreates .env.local between cleans, drop it before start.
+             rm -f frontend/.env.local
+             if [ ! -f frontend/.env.production ] || [ ! -f backend/.env ]; then
+               echo "Missing production env (frontend/.env.production and/or backend/.env)" >&2
+               exit 1
+             fi
              cd backend
              npm ci
              npx prisma generate
