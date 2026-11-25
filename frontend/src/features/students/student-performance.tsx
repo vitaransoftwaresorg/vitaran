@@ -389,6 +389,7 @@ export function StudentPerformance({
                               studentName: test.testId
                                 ? `Test ID ${test.testId}`
                                 : `Test ${test.testNumber}`,
+                              testId: test.testId ?? "",
                               total: test.total ?? 0,
                               maxTotal: test.totalMax ?? 0,
                               updatedAt: test.date,

@@ -310,6 +310,11 @@ export function ClassResultsBoard({
     );
   }
 
+  const classTestId =
+    resultSet?.testId?.trim() ||
+    scans.map((scan) => scan.testId?.trim()).find(Boolean) ||
+    `T-${path.testNumber}`;
+
   function save() {
     if (rows.length === 0) {
       toast.error("No students in this class");
@@ -320,7 +325,7 @@ export function ClassResultsBoard({
       const result = await saveManualResultAction({
         schoolId: path.schoolId,
         ...programFields,
-        testId: resultSet?.testId ?? `T-${path.testNumber}`,
+        testId: classTestId,
         testNumber: path.testNumber,
         classLevel: path.classLevel,
         resultSetId: resultSet?.id,
@@ -344,8 +349,18 @@ export function ClassResultsBoard({
   return (
     <>
       <section className="overflow-hidden rounded-2xl border border-brand-100 bg-white shadow-[0_12px_32px_-20px_rgb(25_28_95/0.35)]">
-        <header className="flex flex-wrap items-center justify-end gap-3 border-b border-neutral-200 px-3 py-2.5 sm:px-4">
-          <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+        <header className="flex flex-wrap items-center gap-3 border-b border-neutral-200 px-3 py-2.5 sm:px-4">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-neutral-900">
+              Test ID{" "}
+              <span className="font-mono text-brand-800">{classTestId}</span>
+              <span className="mx-1.5 text-neutral-300">·</span>
+              Test {path.testNumber}
+              <span className="mx-1.5 text-neutral-300">·</span>
+              Class {path.classLevel}
+            </p>
+          </div>
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
             <TableSearch value={query} onChange={setQuery} placeholder="Search students" />
             <ClassResultPdfDownload target={savedRolls.size ? cardTarget : null} />
             <ClassRankCardsDownload target={savedRolls.size ? cardTarget : null} />

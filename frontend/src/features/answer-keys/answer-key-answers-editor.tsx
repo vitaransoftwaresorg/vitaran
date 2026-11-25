@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { subjectLabel } from "@/features/schools/constants";
+import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { cn } from "@/lib/utils";
 import type { AnswerKeyDetail, AnswerOption, KeyAnswer, KeyTypeRange, SubjectRange } from "@/types/answer-key";
 import {
@@ -457,75 +458,86 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
     }
   }
 
-  function save() {
+  async function persistAnswers(): Promise<boolean> {
     if (omrLocked) {
       toast.error(omrLockMessage ?? "OMR evaluation is ongoing. Editing is locked.");
-      return;
+      return false;
     }
     const nextTestId = testId.trim();
     if (!TEST_ID_PATTERN.test(nextTestId)) {
       toast.error(TEST_ID_MESSAGE);
       document.querySelector<HTMLInputElement>('[aria-label="Test ID"]')?.focus();
-      return;
+      return false;
     }
     if (testIdCheck.state === "taken") {
       toast.error("This test ID is already used by another answer key.");
       document.querySelector<HTMLInputElement>('[aria-label="Test ID"]')?.focus();
-      return;
+      return false;
     }
     if (incomplete.length > 0) {
       const first = incomplete[0]!;
       toast.error(`Complete all answers before saving · Q${first} is incomplete`);
       goToQuestion(first);
-      return;
+      return false;
     }
     if (!dirty) {
       toast.message("Nothing to save");
-      return;
+      return true;
     }
+    try {
+      const saved = await saveAnswerKeyAnswersAction(answerKey.id, {
+        answers,
+        explanations,
+        printedAnswers,
+        subjectRanges: ranges,
+        keyTypeRanges,
+        testId: nextTestId,
+        correctMarks,
+        wrongMarks,
+      });
+      setAnswers(saved.answers);
+      setExplanations(saved.explanations);
+      setPrintedAnswers(saved.printedAnswers ?? {});
+      const savedCorrect = saved.correctMarks ?? DEFAULT_CORRECT_MARKS;
+      const savedWrong = saved.wrongMarks ?? 0;
+      const savedTypeRanges = normalizeKeyTypeRanges(saved.keyTypeRanges, {
+        correctMarks: savedCorrect,
+        wrongMarks: savedWrong,
+      });
+      setKeyTypeRanges(savedTypeRanges);
+      setTestId(enteredTestId(saved.testId));
+      setCorrectMarks(savedCorrect);
+      setWrongMarks(savedWrong);
+      setCounts(
+        saved.subjectRanges.map((range) => ({ subject: range.subject, count: countOf(range) })),
+      );
+      setBaseline(
+        snapshot(
+          saved.answers,
+          saved.explanations,
+          saved.subjectRanges,
+          savedTypeRanges,
+          enteredTestId(saved.testId),
+          savedCorrect,
+          savedWrong,
+        ),
+      );
+      toast.success("Saved");
+      return true;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save answers");
+      return false;
+    }
+  }
+
+  const unsaved = useUnsavedChanges(!locked && dirty, {
+    onSave: persistAnswers,
+  });
+
+  function save() {
     startSaving(async () => {
-      try {
-        const saved = await saveAnswerKeyAnswersAction(answerKey.id, {
-          answers,
-          explanations,
-          printedAnswers,
-          subjectRanges: ranges,
-          keyTypeRanges,
-          testId: nextTestId,
-          correctMarks,
-          wrongMarks,
-        });
-        setAnswers(saved.answers);
-        setExplanations(saved.explanations);
-        setPrintedAnswers(saved.printedAnswers ?? {});
-        const savedCorrect = saved.correctMarks ?? DEFAULT_CORRECT_MARKS;
-        const savedWrong = saved.wrongMarks ?? 0;
-        const savedTypeRanges = normalizeKeyTypeRanges(saved.keyTypeRanges, {
-          correctMarks: savedCorrect,
-          wrongMarks: savedWrong,
-        });
-        setKeyTypeRanges(savedTypeRanges);
-        setTestId(enteredTestId(saved.testId));
-        setCorrectMarks(savedCorrect);
-        setWrongMarks(savedWrong);
-        setCounts(
-          saved.subjectRanges.map((range) => ({ subject: range.subject, count: countOf(range) })),
-        );
-        setBaseline(
-          snapshot(
-            saved.answers,
-            saved.explanations,
-            saved.subjectRanges,
-            savedTypeRanges,
-            enteredTestId(saved.testId),
-            savedCorrect,
-            savedWrong,
-          ),
-        );
-        toast.success("Saved");
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Could not save answers");
-      }
+      const ok = await persistAnswers();
+      if (ok) unsaved.markClean();
     });
   }
 
@@ -601,32 +613,34 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
           {Object.keys(answers).length > 0 ? (
             <AnswerKeyPdfActions basePath={ANSWER_KEYS_PATH} id={answerKey.id} />
           ) : null}
-          {!locked ? (
-            <div className="flex flex-col items-end gap-1">
+          {!locked || !readOnly || Object.keys(answers).length === 0 ? (
+            <div className="flex flex-col items-end gap-1 pl-3">
               {Object.keys(answers).length === 0 ? (
                 <span className="text-xs font-medium text-neutral-400">Answers not published yet</span>
               ) : null}
-              <Button type="button" onClick={save} disabled={pending}>
-                {saving ? <Loader2 className="animate-spin" /> : <Save />}
-                Save
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                {!locked ? (
+                  <Button type="button" onClick={save} disabled={pending}>
+                    {saving ? <Loader2 className="animate-spin" /> : <Save />}
+                    Save
+                  </Button>
+                ) : null}
+                {!readOnly ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={pending || omrLocked}
+                    title={omrLocked ? (omrLockMessage ?? "OMR evaluation is ongoing") : "Delete this answer key"}
+                    className="border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                    onClick={() => setDeleteOpen(true)}
+                  >
+                    {deleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
+                    Delete
+                  </Button>
+                ) : null}
+              </div>
             </div>
-          ) : Object.keys(answers).length === 0 ? (
-            <span className="text-xs font-medium text-neutral-400">Answers not published yet</span>
-          ) : null}
-          {!readOnly ? (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={pending || omrLocked}
-              title={omrLocked ? (omrLockMessage ?? "OMR evaluation is ongoing") : "Delete this answer key"}
-              className="border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
-              onClick={() => setDeleteOpen(true)}
-            >
-              {deleting ? <Loader2 className="size-4 animate-spin" /> : <Trash2 className="size-4" />}
-              Delete
-            </Button>
           ) : null}
         </div>
       </div>
@@ -657,14 +671,14 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-neutral-100 text-left text-xs font-medium tracking-wide text-neutral-500 uppercase">
-              <th className="px-4 py-2 font-medium">Test ID</th>
+              <th className="px-4 py-2 pl-7 font-medium">Test ID</th>
               <th className="px-4 py-2 font-medium">Correct</th>
               <th className="px-4 py-2 font-medium">Wrong</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td className="px-4 py-3">
+              <td className="px-4 py-3 pl-7">
                 <div className="flex flex-col gap-1.5">
                   <Input
                     value={testId}
@@ -891,6 +905,8 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
           onSave={applyKeyTypeRanges}
         />
       ) : null}
+
+      {unsaved.dialog}
     </div>
   );
 }

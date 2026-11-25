@@ -40,6 +40,8 @@ export type ClassScan = {
   id: string;
   rollNo: string;
   studentName: string;
+  /** Test ID this sheet was evaluated against. */
+  testId: string;
   total: number;
   maxTotal: number;
   updatedAt: string;

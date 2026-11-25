@@ -309,7 +309,12 @@ async function answerKeySubjects(meta: ResultSetMeta, classLevel: number) {
   }));
 }
 
-const defaultCaption = (classLevel: number, testNumber: number) => [`Class ${classLevel} · Test ${testNumber}`];
+const defaultCaption = (classLevel: number, testNumber: number, testId?: string) => {
+  const id = testId?.trim();
+  return id
+    ? [`Class ${classLevel} · Test ${testNumber} · ${id}`]
+    : [`Class ${classLevel} · Test ${testNumber}`];
+};
 
 function resultSheetDownloadName(
   meta: Pick<ResultSetMeta, "programCode" | "programName" | "testId" | "testNumber"> & {
@@ -511,9 +516,13 @@ export async function recordOmrResult(entry: OmrResultEntry) {
     entry.classLevel,
   );
 
-  const caption = sheet?.caption.length ? sheet.caption : defaultCaption(entry.classLevel, entry.testNumber);
+  // Prefer the test ID this OMR was evaluated against so key updates stay in sync.
+  const evaluatedTestId = meta.testId.trim() || resultSet?.testId || `T-${entry.testNumber}`;
+  const caption = sheet?.caption.length
+    ? sheet.caption
+    : defaultCaption(entry.classLevel, entry.testNumber, evaluatedTestId);
   return writeClassSheet(
-    { ...meta, testId: resultSet?.testId ?? meta.testId },
+    { ...meta, testId: evaluatedTestId },
     resultSet?.id ?? null,
     entry.classLevel,
     caption,

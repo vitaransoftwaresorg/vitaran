@@ -728,6 +728,8 @@ export async function setAnswerKeyTestId(id: string, testId: string) {
   }
   const answerKey = await answerKeyRepository.updateAnswerKey(id, { testId });
   notifyContentChanged({ kind: KIND, schoolId: answerKey.school?.id ?? null });
+  // Keep saved OMR + class results on the same evaluated test ID.
+  if (testId !== existing.testId) regradeScansForKey(id);
   return answerKeyDto(answerKey);
 }
 
@@ -795,7 +797,10 @@ export async function saveAnswerKeyAnswers(id: string, input: SaveAnswerKeyAnswe
     wrongMarks: input.wrongMarks,
   });
   notifyContentChanged({ kind: KIND, schoolId: answerKey.school?.id ?? null });
-  if (scoringFingerprint(answerKey) !== scoringFingerprint(existing)) regradeScansForKey(id);
+  const scoringChanged = scoringFingerprint(answerKey) !== scoringFingerprint(existing);
+  const testIdChanged = nextTestId !== (existing.testId ?? "");
+  // Scoring edits re-mark every sheet; test ID-only edits still sync OmScan + result rows.
+  if (scoringChanged || testIdChanged) regradeScansForKey(id);
   return answerKeyDto(answerKey);
 }
 

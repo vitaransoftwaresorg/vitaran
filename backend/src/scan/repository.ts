@@ -74,8 +74,26 @@ function classScanWhere(filter: ClassScanFilter): Prisma.OmScanWhereInput {
 export function findClassScans(filter: ClassScanFilter) {
   return prisma.omScan.findMany({
     where: classScanWhere(filter),
-    select: { id: true, rollNo: true, studentName: true, total: true, maxTotal: true, updatedAt: true },
+    select: {
+      id: true,
+      rollNo: true,
+      studentName: true,
+      testId: true,
+      total: true,
+      maxTotal: true,
+      updatedAt: true,
+    },
     orderBy: { rollNo: "asc" },
+  });
+}
+
+/** Keep every saved sheet's evaluated test ID aligned with the answer key. */
+export function syncTestIdForKey(answerKeyId: string, testId: string) {
+  const value = testId.trim();
+  if (!value) return Promise.resolve({ count: 0 });
+  return prisma.omScan.updateMany({
+    where: { answerKeyId, NOT: { testId: value } },
+    data: { testId: value },
   });
 }
 

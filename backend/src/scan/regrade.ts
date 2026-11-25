@@ -88,6 +88,11 @@ export async function evaluatedImage(
 const running = new Set<string>();
 const rerun = new Set<string>();
 
+/** Per-sheet retries before waiting for another key edit / requeue. */
+const MAX_ATTEMPTS_PER_SCAN = 8;
+const RETRY_BASE_MS = 500;
+const RETRY_MAX_MS = 30_000;
+
 /**
  * Re-mark every saved sheet of this answer key in the background: marks, flags, the evaluated image
  * and the student's result row. Rank cards and class PDFs are built from the result rows.
@@ -120,27 +125,76 @@ export function regradeScansForKey(answerKeyId: string) {
 async function regradeOnce(answerKeyId: string) {
   const key = await answerKeyRepository.findAnswerKeyById(answerKeyId);
   if (!key) return;
-  const ids = await scanRepository.findScanIdsForKey(answerKeyId);
-  if (!ids.length) return;
-  const schools = new Set<string>();
-  let failed = 0;
-  for (const id of ids) {
-    // Live phone scans get served between sheets.
-    await new Promise((resolve) => setImmediate(resolve));
-    if (rerun.has(answerKeyId)) break;
-    try {
-      const schoolId = await regradeScan(id, key);
-      if (schoolId) schools.add(schoolId);
-    } catch (error) {
-      failed += 1;
-      logger.error({ err: error, scanId: id, answerKeyId }, "Could not re-mark OMR sheet");
-    }
+  const evaluatedTestId = key.testId?.trim() || "";
+  if (evaluatedTestId) {
+    await scanRepository.syncTestIdForKey(answerKeyId, evaluatedTestId);
   }
-  logger.info({ answerKeyId, sheets: ids.length, failed }, "OMR sheets re-marked after answer key change");
+
+  let pending = await scanRepository.findScanIdsForKey(answerKeyId);
+  if (!pending.length) return;
+
+  const schools = new Set<string>();
+  const attempts = new Map<string, number>();
+  let round = 0;
+  let succeeded = 0;
+
+  while (pending.length > 0) {
+    if (rerun.has(answerKeyId)) break;
+    round += 1;
+    const failed: string[] = [];
+
+    for (const id of pending) {
+      // Live phone scans get served between sheets.
+      await new Promise((resolve) => setImmediate(resolve));
+      if (rerun.has(answerKeyId)) break;
+      try {
+        const schoolId = await regradeScan(id, key, evaluatedTestId);
+        if (schoolId) schools.add(schoolId);
+        attempts.delete(id);
+        succeeded += 1;
+      } catch (error) {
+        const n = (attempts.get(id) ?? 0) + 1;
+        attempts.set(id, n);
+        logger.error({ err: error, scanId: id, answerKeyId, attempt: n }, "Could not re-mark OMR sheet");
+        if (n < MAX_ATTEMPTS_PER_SCAN) {
+          failed.push(id);
+        } else {
+          logger.error(
+            { scanId: id, answerKeyId, attempts: n },
+            "OMR re-mark stopped for this sheet after max attempts — will retry on next key save",
+          );
+        }
+      }
+    }
+
+    if (failed.length === 0) break;
+
+    const delay = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** Math.min(round - 1, 5));
+    logger.info(
+      { answerKeyId, remaining: failed.length, round, delayMs: delay },
+      "Retrying failed OMR re-marks",
+    );
+    await new Promise((resolve) => setTimeout(resolve, delay));
+    pending = failed;
+  }
+
+  logger.info(
+    {
+      answerKeyId,
+      succeeded,
+      remaining: pending.length,
+      rounds: round,
+    },
+    "OMR sheets re-marked after answer key change",
+  );
   for (const schoolId of schools) notifyContentChanged({ kind: "results", schoolId });
 }
 
-async function regradeScan(id: string, key: NonNullable<Awaited<ReturnType<typeof answerKeyRepository.findAnswerKeyById>>>) {
+async function regradeScan(
+  id: string,
+  key: NonNullable<Awaited<ReturnType<typeof answerKeyRepository.findAnswerKeyById>>>,
+  evaluatedTestId: string,
+) {
   const scan = await scanRepository.findScanForRegrade(id);
   if (!scan) return null;
   const answers = (scan.answers ?? {}) as Marked;
@@ -159,11 +213,13 @@ async function regradeScan(id: string, key: NonNullable<Awaited<ReturnType<typeo
   const readFlags = (Array.isArray(scan.flags) ? (scan.flags as Array<{ question: number; reason: string }>) : []).filter(
     (flag) => flag.reason !== "Un-attempted",
   );
-  const previewImage = await replaceObject(null, `omr/${scan.schoolId}/${scan.testId}/${scan.rollNo}/evaluated`, image, {
+  const testId = evaluatedTestId || scan.testId;
+  const previewImage = await replaceObject(null, `omr/${scan.schoolId}/${testId}/${scan.rollNo}/evaluated`, image, {
     fileName: "evaluated.jpg",
     contentType: "image/jpeg",
   });
   await scanRepository.updateScanScore(scan.id, {
+    ...(testId !== scan.testId ? { testId } : {}),
     flags: sheetFlags(score, readFlags) as Prisma.InputJsonValue,
     subjectScores: score.subjectScores as Prisma.InputJsonValue,
     correct: score.correct,
@@ -176,7 +232,7 @@ async function regradeScan(id: string, key: NonNullable<Awaited<ReturnType<typeo
   await recordOmrResult({
     schoolId: scan.schoolId,
     programCode: key.programCode,
-    testId: scan.testId,
+    testId,
     testNumber: key.testNumber,
     classLevel: scan.classLevel,
     name: scan.studentName,

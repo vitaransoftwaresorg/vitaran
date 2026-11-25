@@ -167,14 +167,17 @@ export function ResultsDrive({
   } else if (inSchool && !inTest) {
     driveItems.push(
       ...DRIVE_TESTS.map((testNumber) => {
-        const count = resultSets
-          .filter((item) => item.school.id === schoolId && item.testNumber === testNumber)
-          .reduce((total, item) => total + item.classes.length, 0);
+        const sets = resultSets.filter(
+          (item) => item.school.id === schoolId && item.testNumber === testNumber,
+        );
+        const count = sets.reduce((total, item) => total + item.classes.length, 0);
+        const testId = sets.map((item) => item.testId).find((id) => id?.trim()) ?? "";
         return {
           id: String(testNumber),
           name: `Test ${testNumber}`,
           kind: "folder" as const,
           href: link({ schoolId, testNumber }),
+          testId,
           detail: count > 0 ? `${count} uploaded` : "Empty",
         };
       }),
