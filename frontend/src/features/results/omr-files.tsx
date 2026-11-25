@@ -30,7 +30,7 @@ function omrSubjectLabel(scan: ClassScan) {
   return name ? `${name} · ${scan.rollNo}` : scan.rollNo;
 }
 
-/** Scale the whole Read vs key block to fit — measure at 100% first so nothing is clipped. */
+/** Scale the answer key and response block to fit — measure at 100% first so nothing is clipped. */
 function FitFixed({ children }: { children: ReactNode }) {
   const outerRef = useRef<HTMLDivElement>(null);
   const innerRef = useRef<HTMLDivElement>(null);
@@ -79,6 +79,59 @@ function portalFromBasePath(basePath: string): ScanPortal {
   if (basePath.startsWith("/school")) return "school";
   if (basePath.startsWith("/teacher")) return "teacher";
   return "admin";
+}
+
+function pct(part: number, whole: number) {
+  if (!whole) return "0.00%";
+  return `${((part / whole) * 100).toFixed(2)}%`;
+}
+
+/** Correct / Wrong / Blank cards — same feel as the OMR viewer stats strip. */
+function OmrStatCards({
+  correct,
+  partial,
+  wrong,
+  blank,
+}: {
+  correct: number;
+  partial: number | null;
+  wrong: number;
+  blank: number;
+}) {
+  const total = correct + (partial ?? 0) + wrong + blank;
+  const cards = [
+    { label: "Correct", value: correct, tone: "emerald" as const },
+    ...(partial != null
+      ? [{ label: "Partial", value: partial, tone: "yellow" as const }]
+      : []),
+    { label: "Wrong", value: wrong, tone: "red" as const },
+    { label: "Blank", value: blank, tone: "neutral" as const },
+  ];
+  const toneClass = {
+    emerald: "border-emerald-100 bg-emerald-50 text-emerald-800",
+    yellow: "border-yellow-100 bg-yellow-50 text-yellow-800",
+    red: "border-red-100 bg-red-50 text-red-800",
+    neutral: "border-neutral-200 bg-neutral-50 text-neutral-700",
+  } as const;
+  return (
+    <dl
+      className={cn(
+        "grid shrink-0 gap-2 border-b border-neutral-100 p-3 text-center text-sm",
+        cards.length === 4 ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3",
+      )}
+    >
+      {cards.map((card) => (
+        <div
+          key={card.label}
+          className={cn("rounded-xl border px-2 py-2", toneClass[card.tone])}
+        >
+          <dt className="text-[11px] font-medium opacity-80">{card.label}</dt>
+          <dd className="text-lg font-bold tabular-nums">{card.value}</dd>
+          <dd className="text-[10px] font-semibold tabular-nums opacity-70">{pct(card.value, total)}</dd>
+        </div>
+      ))}
+    </dl>
+  );
 }
 
 export function omrImageHref(scanId: string, kind: OmrKind, download = false, basePath = RESULTS_PATH) {
@@ -194,7 +247,7 @@ export function OmrCell({
               </Dialog.Close>
             </header>
             <div className="grid min-h-0 flex-1 gap-3 overflow-hidden p-3 lg:grid-cols-2">
-              {/* OMR sheet — zoom/scroll only here; Read vs key stays fixed on the right. */}
+              {/* OMR sheet — zoom/scroll only here; answer key and response stays fixed on the right. */}
               <ImageZoomPane
                 className="rounded-xl border border-neutral-200 bg-neutral-50"
                 toolbarLeft={`${KIND_LABEL[kind]} OMR`}
@@ -219,31 +272,12 @@ export function OmrCell({
                   </p>
                 ) : detail ? (
                   <>
-                    <dl
-                      className={cn(
-                        "grid shrink-0 gap-2 border-b border-neutral-100 p-3 text-center text-sm",
-                        showPartial ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3",
-                      )}
-                    >
-                      <div className="rounded-xl bg-neutral-50 px-2 py-2">
-                        <dt className="text-xs text-neutral-500">Correct</dt>
-                        <dd className="text-lg font-bold tabular-nums">{detail.correct}</dd>
-                      </div>
-                      {showPartial ? (
-                        <div className="rounded-xl bg-neutral-50 px-2 py-2">
-                          <dt className="text-xs text-neutral-500">Partial</dt>
-                          <dd className="text-lg font-bold tabular-nums">{detail.partial ?? 0}</dd>
-                        </div>
-                      ) : null}
-                      <div className="rounded-xl bg-neutral-50 px-2 py-2">
-                        <dt className="text-xs text-neutral-500">Wrong</dt>
-                        <dd className="text-lg font-bold tabular-nums">{detail.wrong}</dd>
-                      </div>
-                      <div className="rounded-xl bg-neutral-50 px-2 py-2">
-                        <dt className="text-xs text-neutral-500">Blank</dt>
-                        <dd className="text-lg font-bold tabular-nums">{detail.blank}</dd>
-                      </div>
-                    </dl>
+                    <OmrStatCards
+                      correct={detail.correct}
+                      partial={showPartial ? (detail.partial ?? 0) : null}
+                      wrong={detail.wrong}
+                      blank={detail.blank}
+                    />
                     <div className="min-h-0 flex-1 overflow-hidden p-2 sm:p-3">
                       <FitFixed>
                         <ReadVsKeyTable
