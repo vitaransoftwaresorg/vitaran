@@ -30,6 +30,7 @@ import { asAnswers, asKeyTypeRanges } from "../utils/answer-key-parse.js";
 import { logger } from "../utils/logger.js";
 import { displaySectionName } from "../utils/section-label.js";
 import { titleCase } from "../utils/title-case.js";
+import { fileNameHasTestNumber } from "./pdf-file-name.js";
 import { omrPdfPageCount, openOmrPdf } from "./pdf-pages.js";
 import {
   batchMetaPath,
@@ -855,7 +856,17 @@ export async function registerOmrPdf(
   }
   let accepted = false;
   try {
-    const { testId } = await checkTestId(context, identity.testId ?? "");
+    const { testId, keys } = await checkTestId(context, identity.testId ?? "");
+    const testNumber = keys[0]?.testNumber;
+    if (
+      testNumber != null &&
+      !fileNameHasTestNumber(fileName, testNumber)
+    ) {
+      throw new AppError(
+        400,
+        `Rejected: file name must include Test ${testNumber}. This test ID is Test ${testNumber}. Upload a PDF whose name contains ${testNumber} by itself (e.g. “v school ${testNumber}.pdf” or “schoolsrk${testNumber}.pdf”). Your file “${fileName || "omr.pdf"}” does not match — a longer number like ${testNumber}6, a different number, or no number is not accepted.`,
+      );
+    }
     purgeExpiredPdfBatches();
     const owner = ownerOf(context);
     const active = [...pdfBatches.values()].find(

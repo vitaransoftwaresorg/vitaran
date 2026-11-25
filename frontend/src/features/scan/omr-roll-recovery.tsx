@@ -36,6 +36,15 @@ type OmrRollRecoveryProps = {
   /** Matches already known from the scan error (same reg at multiple schools). */
   initialMatches?: OmrStudentMatch[];
   initialRollNo?: string;
+  /** Prefill name when editing a ready sheet / walk-in. */
+  initialStudentName?: string;
+  /**
+   * Ready-sheet edit: always show the form; keep class from the sheet;
+   * allow empty reg + name; section dropdown when that class has sections.
+   */
+  editMode?: boolean;
+  /** Prefer this school/class/program over the batch majority (ready-sheet edit). */
+  placementHint?: { schoolId?: string; classLevel?: number; programCode?: string };
   onSaveWithRoll: (
     rollNo: string,
     schoolId?: string,
@@ -58,7 +67,7 @@ function pickDefaultSectionId(sections: OmrWalkInSection[]) {
   return namedA?.id ?? sections[0]?.id ?? "";
 }
 
-/** Manual registration when bubbles could not be read or a duplicate roll was found. */
+/** Manual registration when bubbles could not be read, a duplicate roll was found, or editing a ready sheet. */
 export function OmrRollRecovery({
   portal,
   message,
@@ -67,12 +76,15 @@ export function OmrRollRecovery({
   inputId = "omr-recovery-roll",
   initialMatches = [],
   initialRollNo = "",
+  initialStudentName = "",
+  editMode = false,
+  placementHint,
   onSaveWithRoll,
 }: OmrRollRecoveryProps) {
-  const recoverable = canRecoverRoll(message);
-  const duplicate = isDuplicateRollError(message);
-  const mismatch = isStudentMismatchError(message);
-  const noStudent = isNoStudentRollError(message);
+  const recoverable = editMode || canRecoverRoll(message);
+  const duplicate = !editMode && isDuplicateRollError(message);
+  const mismatch = !editMode && isStudentMismatchError(message);
+  const noStudent = !editMode && isNoStudentRollError(message);
   // Duplicate / mismatch: clear so they type the correct reg. Unknown student: keep the failed roll.
   const clearSeed = duplicate || mismatch;
   const duplicateRoll =
@@ -86,8 +98,9 @@ export function OmrRollRecovery({
     : noStudent
       ? noStudentRoll || initialRollNo
       : initialRollNo;
+  const seedName = initialStudentName.trim();
   const [rollNo, setRollNo] = useState(() => rollInput(seedRoll));
-  const [studentName, setStudentName] = useState("");
+  const [studentName, setStudentName] = useState(() => seedName);
   const [matches, setMatches] = useState<OmrStudentMatch[]>(initialMatches);
   const [selectedId, setSelectedId] = useState<string | null>(
     initialMatches.length === 1 ? initialMatches[0]!.id : null,
@@ -97,16 +110,16 @@ export function OmrRollRecovery({
   const [sections, setSections] = useState<OmrWalkInSection[]>([]);
   const [sectionId, setSectionId] = useState("");
 
-  const initialKey = `${seedRoll}:${initialMatches.map((row) => row.id).join(",")}`;
+  const initialKey = `${seedRoll}:${seedName}:${initialMatches.map((row) => row.id).join(",")}`;
 
   useEffect(() => {
     setRollNo(rollInput(seedRoll));
-    setStudentName("");
+    setStudentName(seedName);
     setMatches(clearSeed ? [] : initialMatches);
     setSelectedId(!clearSeed && initialMatches.length === 1 ? initialMatches[0]!.id : null);
     setLookupError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset when the scan error / seed list changes
-  }, [message, initialKey, clearSeed]);
+  }, [message, initialKey, clearSeed, editMode]);
 
   useEffect(() => {
     const roll = rollInput(rollNo);
@@ -173,7 +186,7 @@ export function OmrRollRecovery({
     !lookingUp &&
     matches.length === 0 &&
     Boolean(lookupError && /no student/i.test(lookupError));
-  const walkIn = blankOrZero || unknownRoll || noStudent;
+  const walkIn = blankOrZero || unknownRoll || noStudent || (editMode && blankOrZero);
   const nameReady = studentName.trim().length >= 2;
   const showNameField = walkIn && !selected && matches.length <= 1;
   const canSave =
@@ -182,9 +195,14 @@ export function OmrRollRecovery({
     (showNameField && nameReady && (blankOrZero || rollComplete));
 
   const batchPlace = majorityWalkInFromBatch();
-  const walkInSchoolId = schoolId?.trim() || selected?.schoolId || batchPlace.schoolId || "";
-  const walkInClass = batchPlace.classLevel;
-  const walkInProgram = batchPlace.programCode;
+  const walkInSchoolId =
+    schoolId?.trim() ||
+    placementHint?.schoolId?.trim() ||
+    selected?.schoolId ||
+    batchPlace.schoolId ||
+    "";
+  const walkInClass = placementHint?.classLevel ?? batchPlace.classLevel;
+  const walkInProgram = placementHint?.programCode ?? batchPlace.programCode;
 
   useEffect(() => {
     // Only show a section dropdown when this school+class+program actually has sections.
@@ -248,20 +266,22 @@ export function OmrRollRecovery({
     toast.error(lookupError || "No student found");
   }
 
-  const prompt = ambiguous
-    ? `Same reg at ${matches.length || "several"} schools — pick or enter another`
-    : duplicate
-      ? duplicateRoll
-        ? `Duplicate ${duplicateRoll} — enter correct reg`
-        : "Duplicate — enter correct reg"
-      : mismatch
-        ? "Wrong student — enter correct reg"
-        : walkIn
-          ? "Enter student name"
-          : "Enter registration number";
+  const prompt = editMode
+    ? "Edit registration number"
+    : ambiguous
+      ? `Same reg at ${matches.length || "several"} schools — pick or enter another`
+      : duplicate
+        ? duplicateRoll
+          ? `Duplicate ${duplicateRoll} — enter correct reg`
+          : "Duplicate — enter correct reg"
+        : mismatch
+          ? "Wrong student — enter correct reg"
+          : walkIn
+            ? "Enter student name"
+            : "Enter registration number";
 
   return (
-    <div className="space-y-1 text-amber-950">
+    <div className={cn("space-y-1", editMode ? "text-emerald-950" : "text-amber-950")}>
       <div className="flex w-full flex-wrap items-center gap-2">
         <label htmlFor={inputId} className="sr-only">
           {prompt}
@@ -275,7 +295,10 @@ export function OmrRollRecovery({
           disabled={busy}
           placeholder="Registration number"
           aria-label={prompt}
-          className="h-7 w-[40%] max-w-[40%] min-w-0 shrink-0 rounded-md border border-amber-200 bg-white px-2 text-xs tracking-widest tabular-nums"
+          className={cn(
+            "h-7 w-[40%] max-w-[40%] min-w-0 shrink-0 rounded-md border bg-white px-2 text-xs tracking-widest tabular-nums",
+            editMode ? "border-emerald-300" : "border-amber-200",
+          )}
           onChange={(event) => setRollNo(rollInput(event.currentTarget.value))}
         />
         {showNameField ? (
@@ -287,7 +310,10 @@ export function OmrRollRecovery({
             disabled={busy}
             placeholder="Student name"
             aria-label="Student name"
-            className="h-7 min-w-0 flex-1 rounded-md border border-amber-200 bg-white px-2 text-xs"
+            className={cn(
+              "h-7 min-w-0 flex-1 rounded-md border bg-white px-2 text-xs",
+              editMode ? "border-emerald-300" : "border-amber-200",
+            )}
             onChange={(event) => setStudentName(event.currentTarget.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
@@ -297,13 +323,26 @@ export function OmrRollRecovery({
             }}
           />
         ) : null}
+        {editMode && walkInClass ? (
+          <span
+            className="inline-flex h-7 shrink-0 items-center rounded-md border border-emerald-200 bg-emerald-50 px-1.5 text-[11px] font-medium text-emerald-900"
+            title="Class stays the same"
+          >
+            Class {walkInClass}
+          </span>
+        ) : null}
         {showNameField && sections.length > 0 ? (
           <select
             id={`${inputId}-section`}
             value={sectionId}
             disabled={busy}
             aria-label="Section"
-            className="h-7 w-14 shrink-0 rounded-md border border-amber-200 bg-white px-1 text-xs font-medium text-amber-950"
+            className={cn(
+              "h-7 w-14 shrink-0 rounded-md border bg-white px-1 text-xs font-medium",
+              editMode
+                ? "border-emerald-300 text-emerald-950"
+                : "border-amber-200 text-amber-950",
+            )}
             onChange={(event) => setSectionId(event.currentTarget.value)}
           >
             {sections.map((row) => (
@@ -355,9 +394,15 @@ export function OmrRollRecovery({
       ) : matches.length === 1 && !blankOrZero ? (
         <p className="truncate text-[11px] font-medium text-emerald-900">{matchLabel(matches[0]!)}</p>
       ) : showNameField ? (
-        <p className="text-[11px] text-amber-900/80">
-          Not on student list — enter student name
+        <p className={cn("text-[11px]", editMode ? "text-emerald-900/80" : "text-amber-900/80")}>
+          {editMode
+            ? `Leave reg empty and enter name · Class ${walkInClass ?? "—"} stays the same`
+            : "Not on student list — enter student name"}
           {sections.length === 0 ? " · Section A" : ""}
+        </p>
+      ) : editMode ? (
+        <p className="text-[11px] text-emerald-900/70">
+          Change reg and Save, or clear reg and enter a name
         </p>
       ) : lookupError && rollComplete ? (
         <p className="text-[11px] text-amber-900/80">{shortLookupError(lookupError)}</p>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Download, Eye, Loader2 } from "lucide-react";
+import { Download, Eye, Loader2, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { ImageZoomPane } from "@/components/shared/image-zoom-pane";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,12 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { cn } from "@/lib/utils";
 import type { ScanPortal } from "@/services/scans";
 import { formatMarks, type ScanPreview } from "@/types/scan";
-import { previewScanAction, recoverPdfPageAction, type PreviewScanFailure } from "./actions";
+import {
+  bindPendingIdentityAction,
+  previewScanAction,
+  recoverPdfPageAction,
+  type PreviewScanFailure,
+} from "./actions";
 import { getPdfJob, getScanBatch, majorityWalkInFromBatch, setScanBatch, type PdfFailure } from "./batch-store";
 import { asJpegFile } from "./camera";
 import { fetchOriginalSheetDirect, fetchPreviewSheetDirect } from "./client-upload";
@@ -116,6 +121,9 @@ export function ScanSheetTable({
   const [downloading, setDownloading] = useState<string | null>(null);
   const [pageMatches, setPageMatches] = useState<Record<number, OmrStudentMatch[]>>({});
   const [pageRollHints, setPageRollHints] = useState<Record<number, string>>({});
+  const [editingPreviewId, setEditingPreviewId] = useState<string | null>(null);
+  const [savingReadyId, setSavingReadyId] = useState<string | null>(null);
+  const [readyMatches, setReadyMatches] = useState<Record<string, OmrStudentMatch[]>>({});
 
   async function handleDownloadReady(item: ScanPreview) {
     const key = item.previewId;
@@ -138,6 +146,75 @@ export function ScanSheetTable({
       toast.error(error instanceof Error ? error.message : "Could not download this OMR.");
     } finally {
       setDownloading((current) => (current === key ? null : current));
+    }
+  }
+
+  async function saveReadyWithRoll(
+    item: ScanPreview,
+    typedRoll: string,
+    schoolId?: string,
+    studentName?: string,
+    sectionId?: string,
+    placement?: { classLevel?: number; programCode?: string },
+  ) {
+    const typed = rollInput(typedRoll);
+    const walkIn = Boolean(studentName?.trim());
+    if (!walkIn && typed.length !== ROLL_LENGTH) {
+      toast.error("Enter the 7-digit registration number, then save.");
+      return;
+    }
+    if (walkIn && typed.length > 0 && typed.length !== ROLL_LENGTH) {
+      toast.error("Registration number must be 7 digits, or empty with a name");
+      return;
+    }
+    setSavingReadyId(item.previewId);
+    try {
+      const batchPlace = majorityWalkInFromBatch();
+      const batchSchoolId =
+        schoolId || item.scan.student.schoolId || batchPlace.schoolId;
+      const classLevel =
+        placement?.classLevel ?? item.scan.student.classLevel ?? batchPlace.classLevel;
+      const programCode =
+        placement?.programCode ?? item.scan.student.programCode ?? batchPlace.programCode;
+      const result = await bindPendingIdentityAction(portal, item.previewId, {
+        rollNo: walkIn ? normalizeRollNo(typed) : typed,
+        studentName: studentName?.trim() || undefined,
+        schoolId: batchSchoolId || undefined,
+        sectionId: sectionId?.trim() || undefined,
+        classLevel: classLevel || undefined,
+        programCode: programCode || undefined,
+      });
+      if (!result.ok) {
+        toast.error(result.message);
+        if (result.matches?.length) {
+          setReadyMatches((prev) => ({ ...prev, [item.previewId]: result.matches ?? [] }));
+        }
+        return;
+      }
+      const next = result.result;
+      setScanBatch(
+        getScanBatch().map((row) =>
+          row.previewId === item.previewId
+            ? { ...next, pdfPage: item.pdfPage ?? next.pdfPage }
+            : row,
+        ),
+      );
+      setReadyMatches((prev) => {
+        const copy = { ...prev };
+        delete copy[item.previewId];
+        return copy;
+      });
+      setEditingPreviewId(null);
+      const reg = next.scan.student.rollNo;
+      toast.success(
+        reg
+          ? `Updated · ${next.scan.student.name} (Reg ${reg})`
+          : `Updated · ${next.scan.student.name}`,
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not update this sheet.");
+    } finally {
+      setSavingReadyId(null);
     }
   }
 
@@ -284,6 +361,8 @@ export function ScanSheetTable({
                 const item = row.item;
                 const scan = item.scan;
                 const busy = savingAll || saving.has(item.previewId);
+                const editing = editingPreviewId === item.previewId;
+                const editingBusy = savingReadyId === item.previewId;
                 return (
                   <tr
                     key={`ready-${item.previewId}`}
@@ -298,14 +377,71 @@ export function ScanSheetTable({
                         Class {scan.student.classLevel}-{scan.student.sectionName?.trim() || "A"}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-emerald-900">
-                      {scan.student.rollNo}
+                    <td className="min-w-[16rem] px-3 py-1.5 tabular-nums text-emerald-900">
+                      {editing ? (
+                        <OmrRollRecovery
+                          portal={portal}
+                          message="Edit registration"
+                          editMode
+                          busy={editingBusy || busy}
+                          schoolId={scan.student.schoolId}
+                          inputId={`omr-edit-roll-${item.previewId}`}
+                          initialMatches={readyMatches[item.previewId] ?? NO_MATCHES}
+                          initialRollNo={scan.student.rollNo}
+                          initialStudentName={scan.student.name}
+                          placementHint={{
+                            schoolId: scan.student.schoolId,
+                            classLevel: scan.student.classLevel,
+                            programCode: scan.student.programCode,
+                          }}
+                          onSaveWithRoll={(roll, schoolId, studentName, sectionId, placement) =>
+                            void saveReadyWithRoll(
+                              item,
+                              roll,
+                              schoolId,
+                              studentName,
+                              sectionId,
+                              placement,
+                            )
+                          }
+                        />
+                      ) : (
+                        <div className="flex items-center gap-1.5">
+                          <span className="whitespace-nowrap">
+                            {scan.student.rollNo || "—"}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 shrink-0 p-0 text-emerald-800 hover:bg-emerald-100 hover:text-emerald-950"
+                            title="Edit registration / name"
+                            disabled={savingAll || busy}
+                            onClick={() => setEditingPreviewId(item.previewId)}
+                          >
+                            <Pencil className="size-3.5" />
+                            <span className="sr-only">Edit registration</span>
+                          </Button>
+                        </div>
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-3 py-1.5 font-semibold tabular-nums text-emerald-900">
                       {formatMarks(scan.total)}/{formatMarks(scan.maxTotal)}
                     </td>
                     <td className="px-3 py-1.5">
                       <div className="flex items-center justify-end gap-1.5">
+                        {editing ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-7 border-emerald-300 px-2 text-xs text-emerald-900"
+                            disabled={editingBusy}
+                            onClick={() => setEditingPreviewId(null)}
+                          >
+                            Cancel
+                          </Button>
+                        ) : null}
                         <Button
                           type="button"
                           variant="outline"
@@ -351,7 +487,7 @@ export function ScanSheetTable({
                           type="button"
                           size="sm"
                           className="h-7 bg-emerald-700 px-2.5 text-xs hover:bg-emerald-800"
-                          disabled={busy}
+                          disabled={busy || editing}
                           onClick={() => onSaveOne(item)}
                         >
                           {saving.has(item.previewId) ? (

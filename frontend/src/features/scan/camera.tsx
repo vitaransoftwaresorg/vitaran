@@ -17,6 +17,7 @@ import type { ScanPortal } from "@/services/scans";
 import type { ScanPreview, TestIdCheck } from "@/types/scan";
 import { registerOmrPdfDirect } from "./client-upload";
 import { EXAM_PATTERN_OPTIONS, type ExamPattern } from "./exam-pattern";
+import { fileNameHasTestNumber } from "./pdf-file-name";
 import { startPdfJob } from "./pdf-batch";
 import { bindPendingIdentityAction, checkTestIdAction } from "./actions";
 import { DocumentScanner } from "./document-scanner";
@@ -432,6 +433,13 @@ export function ScanCamera({
     }
     const keys = await verifyTestId();
     if (!keys) return;
+    const testNumber = keys[0]?.testNumber;
+    if (testNumber != null && !fileNameHasTestNumber(file.name, testNumber)) {
+      toast.error(`Rejected: file name must include Test ${testNumber}`, {
+        description: `This test ID is Test ${testNumber}. Upload a PDF whose name contains ${testNumber} by itself (e.g. “v school ${testNumber}.pdf” or “schoolsrk${testNumber}.pdf”). Your file “${file.name}” does not match — a longer number like ${testNumber}6, a different number, or no number is not accepted.`,
+      });
+      return;
+    }
     setBusy(true);
     setStatus("Uploading PDF…");
     try {
