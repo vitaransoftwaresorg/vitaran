@@ -1,7 +1,10 @@
 /**
- * Import frontend public/solution-books PDFs into regular_teacher_resources.
+ * One-off / manual import: frontend public/solution-books PDFs → regular_teacher_resources.
+ * Not part of normal production deploy (resources are already in PostgreSQL + object storage).
  *
  * Usage (from backend/):
+ *   npm run db:import-teacher-resources:files
+ *   # or:
  *   npx tsx --env-file=.env src/scripts/import-regular-teacher-resources.ts \
  *     [--dir ../frontend/public/solution-books]
  */
