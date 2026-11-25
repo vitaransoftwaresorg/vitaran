@@ -46,17 +46,39 @@ export async function findSchoolByName(name: string) {
   });
 }
 
-export function upsertOmScan(
+/** Shared blank roll — many students may use 0000000; match by student when set. */
+function isSharedBlankRoll(rollNo: string) {
+  return /^0+$/.test(rollNo.replace(/\D/g, "")) || rollNo.replace(/\D/g, "").length === 0;
+}
+
+export async function upsertOmScan(
   schoolId: string,
   rollNo: string,
   testId: string,
   classLevel: number,
   data: Prisma.OmScanUncheckedCreateInput,
 ) {
-  return prisma.omScan.upsert({
-    where: { schoolId_rollNo_testId_classLevel: { schoolId, rollNo, testId, classLevel } },
-    create: data,
-    update: data,
+  const blank = isSharedBlankRoll(rollNo);
+  const studentId = typeof data.studentId === "string" ? data.studentId : null;
+  const existing = blank && studentId
+    ? await prisma.omScan.findFirst({
+        where: { schoolId, studentId, testId, classLevel, rollNo: "0000000" },
+        select: { id: true },
+      })
+    : await prisma.omScan.findFirst({
+        where: { schoolId, rollNo, testId, classLevel },
+        select: { id: true },
+      });
+
+  if (existing) {
+    return prisma.omScan.update({
+      where: { id: existing.id },
+      data,
+      select: scanSelect,
+    });
+  }
+  return prisma.omScan.create({
+    data: { ...data, rollNo: blank ? "0000000" : rollNo },
     select: scanSelect,
   });
 }

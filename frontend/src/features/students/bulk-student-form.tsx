@@ -111,10 +111,11 @@ function validateBulkRows(
   rows.forEach((row, index) => {
     if (!isFilled(row)) return;
     const errors: Record<string, string> = {};
-    const roll = row.rollNo.replace(/\D/g, "").slice(0, 7);
-    if (!/^\d{7}$/.test(roll)) {
-      errors.rollNo = "Enter the 7-digit registration number";
-    } else {
+    const rawRoll = row.rollNo.replace(/\D/g, "").slice(0, 7);
+    const roll = !rawRoll || /^0+$/.test(rawRoll) ? "0000000" : rawRoll;
+    if (rawRoll.length > 0 && rawRoll.length !== 7) {
+      errors.rollNo = "Enter the 7-digit registration number (or blank / 0000000)";
+    } else if (roll !== "0000000") {
       const earlier = seenRolls.get(roll);
       if (earlier != null) {
         errors.rollNo = `Duplicate Reg No (also on row ${earlier + 1})`;

@@ -20,6 +20,7 @@ import {
   canRecoverRoll,
   displayScanError,
   isDuplicateRollError,
+  normalizeRollNo,
   ROLL_LENGTH,
   rollInput,
 } from "./roll-helpers";
@@ -151,8 +152,13 @@ export function ScanSheetTable({
       return;
     }
     const typed = rollInput(typedRoll);
-    if (typed.length !== ROLL_LENGTH) {
+    const walkIn = Boolean(studentName?.trim());
+    if (!walkIn && typed.length !== ROLL_LENGTH) {
       toast.error("Enter the 7-digit registration number, then save.");
+      return;
+    }
+    if (walkIn && typed.length > 0 && typed.length !== ROLL_LENGTH) {
+      toast.error("Registration number must be 7 digits (or blank / 0000000).");
       return;
     }
     setSavingPage(failure.page);
@@ -164,7 +170,7 @@ export function ScanSheetTable({
       form.append("file", await asJpegFile(blob));
       form.append("testId", testId);
       form.append("examPattern", examPattern);
-      form.append("rollNo", typed);
+      form.append("rollNo", walkIn ? normalizeRollNo(typed) : typed);
       if (schoolId) form.append("schoolId", schoolId);
       if (studentName?.trim()) form.append("studentName", studentName.trim());
       const result = await previewScanAction(portal, form);

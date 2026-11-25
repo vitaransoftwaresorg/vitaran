@@ -159,7 +159,7 @@ async function orientationScore(image: Buffer, flat: boolean) {
 
 /**
  * Auto-rotate a sheet image upright for display (failed PDF pages, etc.).
- * Same idea as readSheet: EXIF → portrait → pick 0° vs 180° by bubble-grid score.
+ * Tries every 90° turn and keeps the strongest bubble-grid orientation (production upright).
  */
 export async function uprightOmrJpeg(image: Buffer, options: { flat?: boolean } = {}): Promise<Buffer> {
   const flat = options.flat !== false;
@@ -167,7 +167,8 @@ export async function uprightOmrJpeg(image: Buffer, options: { flat?: boolean } 
   const meta = await sharp(base).metadata();
   const landscape = (meta.width ?? 0) > (meta.height ?? 0);
 
-  const angles: Array<0 | 90 | 180 | 270> = landscape ? [90, 270] : [0, 180];
+  // Always score all four turns — PDF pages and phone shots land in every orientation.
+  const angles: Array<0 | 90 | 180 | 270> = [0, 90, 180, 270];
   let bestJpeg: Buffer = Buffer.from(base);
   let bestScore = -Infinity;
 
@@ -180,9 +181,10 @@ export async function uprightOmrJpeg(image: Buffer, options: { flat?: boolean } 
     }
   }
 
-  // If both orientations failed detection, at least keep portrait.
-  if (bestScore < 0 && landscape) {
-    return Buffer.from(await rotateBy(base, 90));
+  // Detection failed — still force portrait so the viewer isn't sideways.
+  if (bestScore < 0) {
+    const portrait = landscape ? await rotateBy(base, 90) : base;
+    return Buffer.from(portrait);
   }
   return bestJpeg;
 }

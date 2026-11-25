@@ -1,6 +1,7 @@
 import { prisma } from "../config/database.js";
 import { StudentStatus } from "../generated/prisma/enums.js";
 import { classWithSectionLabel, displaySectionName } from "../utils/section-label.js";
+import * as programRepository from "../repositories/program.repository.js";
 import * as schoolClassRepository from "../repositories/school-class.repository.js";
 import * as schoolRepository from "../repositories/school.repository.js";
 import * as sectionRepository from "../repositories/section.repository.js";
@@ -218,7 +219,21 @@ async function assertSeatAvailable(
   await assertSchoolStrengthAllows(schoolId, seatsNeeded, excludeStudentId);
 }
 
+/** Shared blank / unknown OMR registration — many students may use this value. */
+export function isSharedBlankRoll(rollNo: string) {
+  const digits = rollNo.replace(/\D/g, "");
+  return digits.length === 0 || /^0+$/.test(digits);
+}
+
+export function normalizeRollNo(rollNo: string) {
+  const digits = rollNo.replace(/\D/g, "").slice(0, 7);
+  if (isSharedBlankRoll(digits)) return "0000000";
+  return digits;
+}
+
 async function assertUniqueRoll(schoolId: string, rollNo: string, excludeId?: string) {
+  // 0000000 is shared across students (blank / unknown OMR regs).
+  if (isSharedBlankRoll(rollNo)) return;
   const taken = await studentRepository.isRollTaken(schoolId, rollNo, excludeId);
   if (taken) {
     throw new AppError(409, "Registration number already exists in this school", [
@@ -275,14 +290,20 @@ export async function getStudent(id: string, schoolId?: string) {
 
 export async function createStudent(schoolId: string, input: CreateStudentInput) {
   const sectionId = input.sectionId ?? null;
+  const rollNo = normalizeRollNo(input.rollNo);
+  if (!/^\d{7}$/.test(rollNo)) {
+    throw new AppError(422, "Registration number must be 7 digits (or blank / 0000000)", [
+      { path: ["rollNo"], message: "Registration number must be 7 digits" },
+    ]);
+  }
   await assertSchoolOffering(schoolId, input.programId, input.classLevel);
-  await assertUniqueRoll(schoolId, input.rollNo);
+  await assertUniqueRoll(schoolId, rollNo);
   await assertSeatAvailable(schoolId, input.programId, input.classLevel, sectionId);
 
   const student = await studentRepository.createStudent({
     schoolId,
     name: input.name,
-    rollNo: input.rollNo.trim(),
+    rollNo,
     email: input.email?.trim().toLowerCase() || null,
     parentName: input.parentName?.trim() || null,
     parentPhone: input.parentPhone ?? null,
@@ -294,6 +315,68 @@ export async function createStudent(schoolId: string, input: CreateStudentInput)
 
   notifyContentChanged({ kind: KIND, schoolId });
   return toStudentDetailDto(student);
+}
+
+/** OMR walk-in: enroll like Add student (program/class from the answer key). */
+export async function createWalkInFromOmr(input: {
+  schoolId: string;
+  name: string;
+  rollNo: string;
+  programCode: string;
+  classLevel: number;
+  sectionId?: string | null;
+}) {
+  const program = await programRepository.findProgramByCode(input.programCode);
+  if (!program) {
+    throw new AppError(422, `No learning program for code ${input.programCode}.`);
+  }
+
+  const sectionId = await resolveWalkInSectionId(
+    input.schoolId,
+    program.id,
+    input.classLevel,
+    input.sectionId,
+  );
+
+  return createStudent(input.schoolId, {
+    name: input.name,
+    rollNo: normalizeRollNo(input.rollNo),
+    parentName: null,
+    programId: program.id,
+    classLevel: input.classLevel,
+    sectionId,
+    status: StudentStatus.ACTIVE,
+  });
+}
+
+/** Prefer key section, then A, then the only section, else whole-class (null). */
+async function resolveWalkInSectionId(
+  schoolId: string,
+  programId: string,
+  classLevel: number,
+  preferredSectionId?: string | null,
+) {
+  if (preferredSectionId) {
+    const section = await sectionRepository.findSectionById(preferredSectionId);
+    if (
+      section &&
+      section.schoolId === schoolId &&
+      section.programId === programId &&
+      section.classLevel === classLevel
+    ) {
+      return section.id;
+    }
+  }
+
+  const sections = (await sectionRepository.listSectionsBySchool(schoolId)).filter(
+    (row) => row.programId === programId && row.classLevel === classLevel,
+  );
+  if (sections.length === 0) return null;
+
+  const namedA = sections.find((row) => row.name.trim().toUpperCase() === "A");
+  if (namedA) return namedA.id;
+  if (sections.length === 1) return sections[0]!.id;
+  return [...sections].sort((a, b) => a.name.localeCompare(b.name))[0]!.id;
 }
 
 export async function createStudentsBulk(schoolId: string, input: CreateStudentsBulkInput) {
@@ -315,6 +398,7 @@ export async function createStudentsBulk(schoolId: string, input: CreateStudents
   const seen = new Map<string, number>();
   for (const [index, row] of rows.entries()) {
     const key = row.rollNo.trim().toLowerCase();
+    if (isSharedBlankRoll(key)) continue;
     const earlier = seen.get(key);
     if (earlier != null) {
       issues.push({
@@ -327,9 +411,15 @@ export async function createStudentsBulk(schoolId: string, input: CreateStudents
   }
 
   const existing = await studentRepository.listSchoolRolls(schoolId);
-  const taken = new Set(existing.map((row) => row.rollNo.trim().toLowerCase()));
+  const taken = new Set(
+    existing
+      .map((row) => row.rollNo.trim().toLowerCase())
+      .filter((roll) => !isSharedBlankRoll(roll)),
+  );
   for (const [index, row] of rows.entries()) {
-    if (taken.has(row.rollNo.trim().toLowerCase())) {
+    const key = row.rollNo.trim().toLowerCase();
+    if (isSharedBlankRoll(key)) continue;
+    if (taken.has(key)) {
       issues.push({
         path: ["students", String(index), "rollNo"],
         message: "Registration number already exists",

@@ -13,7 +13,9 @@ import {
   isAmbiguousRollError,
   isDuplicateRollError,
   isNoStudentRollError,
+  isSharedBlankRoll,
   isStudentMismatchError,
+  normalizeRollNo,
   ROLL_LENGTH,
   rollInput,
 } from "./roll-helpers";
@@ -89,6 +91,14 @@ export function OmrRollRecovery({
 
   useEffect(() => {
     const roll = rollInput(rollNo);
+    // Blank / all-zeros are shared — skip roster lookup; examiner enters a name to add.
+    if (isSharedBlankRoll(roll)) {
+      setMatches([]);
+      setSelectedId(null);
+      setLookupError(null);
+      setLookingUp(false);
+      return;
+    }
     if (roll.length !== ROLL_LENGTH) {
       if (initialMatches.length === 0) {
         setMatches([]);
@@ -136,34 +146,41 @@ export function OmrRollRecovery({
 
   if (!recoverable) return null;
 
-  const rollComplete = rollInput(rollNo).length === ROLL_LENGTH;
+  const rollDigits = rollInput(rollNo);
+  const blankOrZero = isSharedBlankRoll(rollDigits);
+  const rollComplete = rollDigits.length === ROLL_LENGTH;
   const selected = matches.find((row) => row.id === selectedId) ?? null;
   const unknownRoll =
-    rollComplete && !lookingUp && matches.length === 0 && Boolean(lookupError && /no student/i.test(lookupError));
+    rollComplete &&
+    !blankOrZero &&
+    !lookingUp &&
+    matches.length === 0 &&
+    Boolean(lookupError && /no student/i.test(lookupError));
+  const walkIn = blankOrZero || unknownRoll || noStudent;
   const nameReady = studentName.trim().length >= 2;
+  const showNameField = walkIn && !selected && matches.length <= 1;
   const canSave =
     Boolean(selected) ||
-    (matches.length === 1 && rollComplete && !lookingUp && !lookupError) ||
-    (unknownRoll && nameReady);
+    (matches.length === 1 && rollComplete && !lookingUp && !lookupError && !blankOrZero) ||
+    (showNameField && nameReady && (blankOrZero || rollComplete));
 
   async function save() {
-    const roll = rollInput(rollNo);
-    if (roll.length !== ROLL_LENGTH) {
-      toast.error("Enter the 7-digit registration number");
-      return;
-    }
-    const pick = selected ?? (matches.length === 1 ? matches[0]! : null);
+    const pick = selected ?? (matches.length === 1 && !blankOrZero ? matches[0]! : null);
     if (pick) {
       await onSaveWithRoll(pick.rollNo, pick.schoolId);
       return;
     }
-    if (unknownRoll) {
+    if (showNameField) {
       const name = studentName.trim();
       if (name.length < 2) {
         toast.error("Enter the student name");
         return;
       }
-      await onSaveWithRoll(roll, schoolId, name);
+      if (!blankOrZero && rollDigits.length !== ROLL_LENGTH) {
+        toast.error("Enter the 7-digit registration number (or leave blank / 0000000)");
+        return;
+      }
+      await onSaveWithRoll(normalizeRollNo(rollDigits), schoolId, name);
       return;
     }
     if (matches.length > 1) {
@@ -181,8 +198,8 @@ export function OmrRollRecovery({
         : "Duplicate — enter correct reg"
       : mismatch
         ? "Wrong student — enter correct reg"
-        : noStudent || unknownRoll
-          ? "Enter registration and name"
+        : walkIn
+          ? "Enter registration number and student name"
           : "Enter registration number";
 
   return (
@@ -198,19 +215,19 @@ export function OmrRollRecovery({
           maxLength={ROLL_LENGTH}
           value={rollNo}
           disabled={busy}
-          placeholder="Enter Reg Number"
+          placeholder="Reg No (or blank)"
           aria-label={prompt}
           className="h-7 w-[40%] max-w-[40%] min-w-0 shrink-0 rounded-md border border-amber-200 bg-white px-2 text-xs tracking-widest tabular-nums"
           onChange={(event) => setRollNo(rollInput(event.currentTarget.value))}
         />
-        {unknownRoll ? (
+        {showNameField ? (
           <Input
             id={`${inputId}-name`}
             autoComplete="off"
             maxLength={120}
             value={studentName}
             disabled={busy}
-            placeholder="Enter name"
+            placeholder="Student name"
             aria-label="Student name"
             className="h-7 min-w-0 flex-1 rounded-md border border-amber-200 bg-white px-2 text-xs"
             onChange={(event) => setStudentName(event.currentTarget.value)}
@@ -233,9 +250,9 @@ export function OmrRollRecovery({
           Save
         </Button>
       </div>
-      {lookingUp && rollComplete ? (
+      {lookingUp && rollComplete && !blankOrZero ? (
         <p className="text-[11px] text-amber-900/60">Looking up…</p>
-      ) : matches.length > 1 ? (
+      ) : matches.length > 1 && !blankOrZero ? (
         <ul className="max-h-28 space-y-0.5 overflow-y-auto rounded-md border border-amber-200/80 bg-white/80 p-0.5">
           {matches.map((student) => {
             const active = student.id === selectedId;
@@ -261,11 +278,11 @@ export function OmrRollRecovery({
             );
           })}
         </ul>
-      ) : matches.length === 1 ? (
+      ) : matches.length === 1 && !blankOrZero ? (
         <p className="truncate text-[11px] font-medium text-emerald-900">{matchLabel(matches[0]!)}</p>
-      ) : unknownRoll ? (
+      ) : showNameField ? (
         <p className="text-[11px] text-amber-900/80">
-          Not on roster — enter name to add at end of class list
+          Not on student list — enter registration number and student name
         </p>
       ) : lookupError && rollComplete ? (
         <p className="text-[11px] text-amber-900/80">{shortLookupError(lookupError)}</p>

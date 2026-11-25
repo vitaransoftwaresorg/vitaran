@@ -56,9 +56,16 @@ const optionalSectionId = z.preprocess(
   z.union([z.literal(""), z.string().uuid("Pick a valid section")]),
 );
 
+/** 7 digits, or blank / all zeros → shared `0000000`. */
+const rollNoField = z.preprocess((value) => {
+  const digits = String(value ?? "").replace(/\D/g, "").slice(0, 7);
+  if (!digits || /^0+$/.test(digits)) return "0000000";
+  return digits;
+}, z.string().regex(/^\d{7}$/, "Enter the 7-digit registration number"));
+
 const studentSchema = z.object({
   name: optionalStudentName,
-  rollNo: z.string().trim().regex(/^\d{7}$/, "Enter the 7-digit registration number"),
+  rollNo: rollNoField,
   email: z.union([z.literal(""), z.string().trim().email("Enter a valid email")]),
   parentName: optionalParentName,
   parentPhone: optionalParentPhone,
@@ -72,7 +79,7 @@ const studentSchema = z.object({
 
 const bulkRowSchema = z.object({
   name: optionalStudentName,
-  rollNo: z.string().trim().regex(/^\d{7}$/, "Enter the 7-digit registration number"),
+  rollNo: rollNoField,
   email: z.union([z.literal(""), z.string().trim().email("Enter a valid email")]),
   parentName: optionalParentName,
   parentPhone: optionalParentPhone,

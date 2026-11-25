@@ -10,7 +10,18 @@ import * as programRepository from "../repositories/program.repository.js";
 import * as schoolRepository from "../repositories/school.repository.js";
 import * as studentRepository from "../repositories/student.repository.js";
 import { recordOmrResult } from "../services/result.service.js";
+import * as studentService from "../services/student.service.js";
 import { AppError } from "../utils/app-error.js";
+
+/** Failed PDF page view — already upright (and often with marks table on top). */
+export class SheetDisplayError extends AppError {
+  readonly displayJpeg: Buffer;
+  constructor(statusCode: number, message: string, displayJpeg: Buffer, details?: unknown) {
+    super(statusCode, message, details);
+    this.name = "SheetDisplayError";
+    this.displayJpeg = displayJpeg;
+  }
+}
 import { notifyContentChanged } from "../utils/content-events.js";
 import { downloadFileName } from "../utils/download-file-name.js";
 import type { SchoolAccountDto } from "../services/school.service.js";
@@ -813,15 +824,25 @@ export async function registerOmrPdf(
   }
 }
 
-/** Thumbnail kept for failed / duplicate PDF pages so the examiner can enter a registration. */
-async function storePdfPageThumb(batchId: string, page: number, jpeg: Buffer) {
+/**
+ * Thumbnail for failed / duplicate PDF pages.
+ * Pass `alreadyUpright` when the buffer is a prepared sheet or evaluated preview
+ * (marks table on top) — do not re-warp or it destroys the table and can flip the page.
+ */
+async function storePdfPageThumb(
+  batchId: string,
+  page: number,
+  jpeg: Buffer,
+  options: { alreadyUpright?: boolean } = {},
+) {
   const thumb = await (async () => {
     try {
-      // Same auto-upright path as ready sheets (portrait + 0°/180° by bubble grid).
-      const upright = await uprightOmrJpeg(jpeg, { flat: true });
-      return await sharp(upright)
+      const source = options.alreadyUpright
+        ? jpeg
+        : await uprightOmrJpeg(jpeg, { flat: true });
+      return await sharp(source)
         .resize({ width: 900, withoutEnlargement: true })
-        .jpeg({ quality: 75 })
+        .jpeg({ quality: 82 })
         .toBuffer();
     } catch {
       return undefined;
@@ -829,6 +850,47 @@ async function storePdfPageThumb(batchId: string, page: number, jpeg: Buffer) {
   })();
   if (!thumb) return undefined;
   return storeBatchPageImage(batchId, page, thumb).catch(() => undefined);
+}
+
+/**
+ * Evaluated preview for a failed page: upright sheet + marks table on top (same as ready OMR).
+ * Falls back to the prepared upright sheet when the key cannot be resolved.
+ */
+async function failedPageDisplayJpeg(
+  read: SheetRead,
+  school: ScanSchool | null,
+  testId: string,
+  examPattern: ExamPattern,
+): Promise<Buffer> {
+  if (!school || !testId.trim() || !read.bubbles?.points.length) {
+    return read.jpeg;
+  }
+  try {
+    const key = await resolveWalkInKey(school, testId);
+    const score = scoreWithKey(read.answers, key, { examPattern });
+    if (score.subjectScores.length === 0) return read.jpeg;
+    return await markedSheetPreview(
+      read.jpeg,
+      read.bubbles,
+      read.answers,
+      key.answers,
+      score.subjectScores,
+      key.keyTypeRanges,
+    );
+  } catch {
+    return read.jpeg;
+  }
+}
+
+async function rethrowWithDisplay(
+  error: unknown,
+  displayJpeg: Buffer,
+): Promise<never> {
+  if (error instanceof SheetDisplayError) throw error;
+  if (error instanceof AppError) {
+    throw new SheetDisplayError(error.statusCode, error.message, displayJpeg, error.details);
+  }
+  throw error;
 }
 
 /** Every sheet in a colliding group is a duplicate — none is kept as the “correct” OMR. */
@@ -845,12 +907,15 @@ async function stripPdfPreviewKeepImage(batch: PdfBatch, item: PdfBatchItem) {
     const row = getPending(item.previewId);
     if (row) {
       if (!item.imagePath) {
+        // Prefer evaluated preview (marks table on top) — already upright like ready OMR.
         const sheetBuf =
+          (await loadPendingImage(row.diskDir, "preview").catch(() => null)) ??
           (await loadPendingImage(row.diskDir, "sheet").catch(() => null)) ??
-          (await loadPendingImage(row.diskDir, "raw").catch(() => null)) ??
-          (await loadPendingImage(row.diskDir, "preview").catch(() => null));
+          (await loadPendingImage(row.diskDir, "raw").catch(() => null));
         if (sheetBuf) {
-          item.imagePath = await storePdfPageThumb(batch.id, item.page, sheetBuf);
+          item.imagePath = await storePdfPageThumb(batch.id, item.page, sheetBuf, {
+            alreadyUpright: true,
+          });
         }
       }
       void removePendingDir(row.diskDir);
@@ -882,6 +947,8 @@ async function finalizeDuplicateRolls(batch: PdfBatch) {
   for (const item of batch.items) {
     const roll = item.rollNo?.trim();
     if (!roll) continue;
+    // Shared blank roll may appear on many different students — never flag as duplicates.
+    if (studentService.isSharedBlankRoll(roll)) continue;
     // Only sheets that were read as this roll (success or already flagged duplicate).
     if (item.error && !item.demoted && !item.duplicateOf) continue;
     const list = pagesByRoll.get(roll) ?? [];
@@ -913,19 +980,29 @@ async function readPdfBatch(context: ScanContext, batch: PdfBatch) {
           lean: true,
         });
         const rollNo = scan.rollNo;
-        const priorPages = pagesByRoll.get(rollNo) ?? [];
+        const priorPages = studentService.isSharedBlankRoll(rollNo)
+          ? []
+          : (pagesByRoll.get(rollNo) ?? []);
         const allPages = [...priorPages, page];
-        pagesByRoll.set(rollNo, allPages);
+        if (!studentService.isSharedBlankRoll(rollNo)) {
+          pagesByRoll.set(rollNo, allPages);
+        }
 
         if (priorPages.length > 0) {
           // Collision: this sheet is a failure, and every earlier copy becomes one too.
-          // Prefer the upright sheet from the successful read (same as ready OMR view).
+          // Prefer evaluated preview (marks table on top) — same upright view as ready OMR.
           const dup = getPending(previewId);
-          const uprightBuf = dup
-            ? ((await loadPendingImage(dup.diskDir, "sheet").catch(() => null)) ??
+          const displayBuf = dup
+            ? ((await loadPendingImage(dup.diskDir, "preview").catch(() => null)) ??
+              (await loadPendingImage(dup.diskDir, "sheet").catch(() => null)) ??
               (await loadPendingImage(dup.diskDir, "raw").catch(() => null)))
             : null;
-          const imagePath = await storePdfPageThumb(batch.id, page, uprightBuf ?? sheet.jpeg);
+          const imagePath = await storePdfPageThumb(
+            batch.id,
+            page,
+            displayBuf ?? sheet.jpeg,
+            { alreadyUpright: Boolean(displayBuf) },
+          );
           if (dup) void removePendingDir(dup.diskDir);
           pending.delete(previewId);
           batch.items.push({
@@ -944,7 +1021,14 @@ async function readPdfBatch(context: ScanContext, batch: PdfBatch) {
         }
       } catch (error) {
         if (!(error instanceof AppError)) logger.error({ err: error, page, batchId: batch.id }, "PDF page read failed");
-        const imagePath = sheet ? await storePdfPageThumb(batch.id, page, sheet.jpeg) : undefined;
+        let imagePath: string | undefined;
+        if (error instanceof SheetDisplayError) {
+          imagePath = await storePdfPageThumb(batch.id, page, error.displayJpeg, {
+            alreadyUpright: true,
+          });
+        } else if (sheet) {
+          imagePath = await storePdfPageThumb(batch.id, page, sheet.jpeg);
+        }
         batch.items.push({
           page,
           imagePath,
@@ -1094,15 +1178,34 @@ export async function previewScan(
 
   type Enrolled = Awaited<ReturnType<typeof resolveStudent>>;
   let enrolled: Enrolled | null = null;
-  try {
-    // Typed registration is authoritative — do not fall back to a different bubble read.
-    enrolled = await resolveStudent(
-      sessionSchool,
-      typedRoll ? [typedRoll] : [read.rollNo, ...read.rollCandidates],
-      preferredSchoolId,
-    );
-  } catch (error) {
-    if (!isNoStudentError(error) || !walkInName) throw error;
+  // Blank / all-zeros + name → always create a new shared-roll student (do not match existing).
+  const forceWalkIn =
+    Boolean(walkInName) &&
+    (typedRoll.length === 0 || studentService.isSharedBlankRoll(typedRoll));
+  if (!forceWalkIn) {
+    try {
+      // Typed registration is authoritative — do not fall back to a different bubble read.
+      enrolled = await resolveStudent(
+        sessionSchool,
+        typedRoll ? [typedRoll] : [read.rollNo, ...read.rollCandidates],
+        preferredSchoolId,
+      );
+    } catch (error) {
+      if (isNoStudentError(error) && walkInName) {
+        // Continue into walk-in enrollment below.
+      } else {
+        const displaySchool =
+          sessionSchool ??
+          (preferredSchoolId ? await loadScanSchool(preferredSchoolId).catch(() => null) : null);
+        const display = await failedPageDisplayJpeg(
+          read,
+          displaySchool,
+          typedTest,
+          examPattern,
+        );
+        await rethrowWithDisplay(error, display);
+      }
+    }
   }
 
   const school: ScanSchool = enrolled
@@ -1115,7 +1218,11 @@ export async function previewScan(
       (preferredSchoolId
         ? await loadScanSchool(preferredSchoolId)
         : (() => {
-            throw new AppError(422, "Pick a school to save an unregistered student.");
+            throw new SheetDisplayError(
+              422,
+              "Pick a school to save an unregistered student.",
+              read.jpeg,
+            );
           })());
 
   const visibleKeys = (await answerKeyRepository.findAnswerKeys({})).filter((key) => keyVisibleTo(key, school));
@@ -1125,7 +1232,12 @@ export async function previewScan(
   if (typedTest) {
     testId = known.find((id) => id.toUpperCase() === typedTest.toUpperCase()) ?? "";
     if (!testId) {
-      throw new AppError(422, `No answer key for test ID ${typedTest} at ${school.name}.`);
+      const display = await failedPageDisplayJpeg(read, school, typedTest, examPattern);
+      throw new SheetDisplayError(
+        422,
+        `No answer key for test ID ${typedTest} at ${school.name}.`,
+        display,
+      );
     }
   } else if (enrolled) {
     testId = pickTestId([read.testId, ...read.testCandidates], known, [
@@ -1135,13 +1247,21 @@ export async function previewScan(
       ...read.rollCandidates,
     ].filter(Boolean));
     if (!testId) {
-      throw new AppError(422, "Enter the test ID from the answer key, then scan again.");
+      throw new SheetDisplayError(
+        422,
+        "Enter the test ID from the answer key, then scan again.",
+        read.jpeg,
+      );
     }
   } else {
-    throw new AppError(422, "Enter the test ID from the answer key, then scan again.");
+    throw new SheetDisplayError(
+      422,
+      "Enter the test ID from the answer key, then scan again.",
+      read.jpeg,
+    );
   }
 
-  let key: ScanKey;
+  let key!: ScanKey;
   let identityRoll: string;
   let identityName: string;
   let identityClass: number;
@@ -1150,13 +1270,19 @@ export async function previewScan(
   let studentId: string | null;
 
   if (enrolled) {
-    ({ key } = await resolveKey(school, [testId], {
-      name: enrolled.name,
-      rollNo: enrolled.rollNo,
-      classLevel: enrolled.classLevel,
-      programCode: enrolled.program?.code ?? null,
-      sectionId: enrolled.sectionId ?? enrolled.section?.id ?? null,
-    }));
+    try {
+      const resolved = await resolveKey(school, [testId], {
+        name: enrolled.name,
+        rollNo: enrolled.rollNo,
+        classLevel: enrolled.classLevel,
+        programCode: enrolled.program?.code ?? null,
+        sectionId: enrolled.sectionId ?? enrolled.section?.id ?? null,
+      });
+      key = resolved.key;
+    } catch (error) {
+      const display = await failedPageDisplayJpeg(read, school, testId, examPattern);
+      await rethrowWithDisplay(error, display);
+    }
     identityRoll = enrolled.rollNo;
     identityName = enrolled.name || read.printedName;
     identityClass = enrolled.classLevel;
@@ -1164,19 +1290,47 @@ export async function previewScan(
     identityProgram = enrolled.program?.name || programNameOf(context, key);
     studentId = enrolled.schoolId === school.id ? enrolled.id : null;
   } else {
-    if (!/^\d{7}$/.test(typedRoll)) {
-      throw new AppError(422, "Enter the 7-digit registration number");
+    // Blank / all-zeros → shared 0000000; otherwise require exactly 7 digits.
+    if (
+      typedRoll.length > 0 &&
+      typedRoll.length !== 7 &&
+      !studentService.isSharedBlankRoll(typedRoll)
+    ) {
+      throw new AppError(422, "Registration number must be 7 digits (or blank / 0000000)");
     }
+    const walkInRoll = studentService.normalizeRollNo(typedRoll);
     if (walkInName.length < 2) {
       throw new AppError(422, "Enter the student name");
     }
     key = await resolveWalkInKey(school, testId);
-    identityRoll = typedRoll;
-    identityName = walkInName;
-    identityClass = key.classLevel;
-    identitySection = displaySectionName(null);
-    identityProgram = programNameOf(context, key);
-    studentId = null;
+    // Same as Add student — enroll on the school roster for this key's program/class.
+    const createdDto = await studentService.createWalkInFromOmr({
+      schoolId: school.id,
+      name: walkInName,
+      rollNo: walkInRoll,
+      programCode: key.programCode,
+      classLevel: key.classLevel,
+      sectionId: key.sectionId,
+    });
+    // Load by id — 0000000 is shared, so roll lookup is ambiguous.
+    const created = await studentRepository.findStudentById(createdDto.id);
+    if (!created || created.status !== "ACTIVE") {
+      throw new AppError(500, "Student was added but could not be loaded for this OMR.");
+    }
+    enrolled = created;
+    ({ key } = await resolveKey(school, [testId], {
+      name: created.name,
+      rollNo: created.rollNo,
+      classLevel: created.classLevel,
+      programCode: created.program?.code ?? null,
+      sectionId: created.sectionId ?? created.section?.id ?? null,
+    }));
+    identityRoll = created.rollNo;
+    identityName = created.name || walkInName;
+    identityClass = created.classLevel;
+    identitySection = displaySectionName(created.section?.name);
+    identityProgram = created.program?.name || programNameOf(context, key);
+    studentId = created.id;
   }
 
   const score = scoreWithKey(read.answers, key, { examPattern });

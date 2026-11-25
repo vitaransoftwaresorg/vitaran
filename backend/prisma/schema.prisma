@@ -308,7 +308,8 @@ model Student {
   updatedAt         DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
   omScans           OmScan[]
 
-  @@unique([schoolId, rollNo])
+  /// Unique per school except shared blank roll `0000000` (partial index in SQL).
+  @@index([schoolId, rollNo])
   @@index([schoolId, classLevel])
   @@index([programId])
   @@index([sectionId])
@@ -456,7 +457,9 @@ model OmScan {
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  @@unique([schoolId, rollNo, testId, classLevel])
+  /// Unique per school/roll/test/class except shared blank roll `0000000` (partial indexes in SQL).
+  @@index([schoolId, rollNo, testId, classLevel])
+  @@index([schoolId, studentId, testId, classLevel])
   @@index([schoolId, testId])
   @@index([answerKeyId])
   @@map("om_scans")

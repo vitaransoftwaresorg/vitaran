@@ -230,7 +230,12 @@ export function StudentForm({
   function validateBeforeSubmit(): boolean {
     const next: typeof clientErrors = {};
     if (name.trim() && name.trim().length < 2) next.name = "Enter at least 2 characters";
-    if (!/^\d{7}$/.test(rollNo.trim())) next.rollNo = "Enter the 7-digit registration number";
+    {
+      const digits = rollNo.replace(/\D/g, "");
+      if (digits.length > 0 && digits.length !== 7) {
+        next.rollNo = "Enter the 7-digit registration number (or blank / 0000000)";
+      }
+    }
     if (parentName.trim() && parentName.trim().length < 2) {
       next.parentName = "Enter a parent / guardian name (at least 2 characters)";
     }

@@ -70,8 +70,8 @@ export function listSchoolRoster(schoolId: string) {
 }
 
 export function findStudentBySchoolAndRoll(schoolId: string, rollNo: string) {
-  return prisma.student.findUnique({
-    where: { schoolId_rollNo: { schoolId, rollNo } },
+  return prisma.student.findFirst({
+    where: { schoolId, rollNo: { equals: rollNo.trim(), mode: "insensitive" } },
     include: studentInclude,
   });
 }

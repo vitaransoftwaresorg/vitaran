@@ -23,7 +23,7 @@ import { DocumentScanner } from "./document-scanner";
 import { OmrRollRecovery } from "./omr-roll-recovery";
 import type { OmrStudentMatch } from "./omr-student-actions";
 import { requestTiltPermission } from "./phone-tilt";
-import { canRecoverRoll, ROLL_LENGTH, rollInput } from "./roll-helpers";
+import { canRecoverRoll, normalizeRollNo, ROLL_LENGTH, rollInput } from "./roll-helpers";
 import { FULL_PAGE_QUAD, type SheetQuad } from "./sheet-detect";
 import { getOmrUploadAuthAction } from "./upload-auth";
 import type { ScanQueueItem } from "./queue-item";
@@ -283,9 +283,13 @@ export function ScanCamera({
     if (testId.trim()) form.append("testId", testId.trim());
     if (examPattern) form.append("examPattern", examPattern);
     const roll = rollInput(forcedRoll ?? "");
-    if (roll.length === ROLL_LENGTH) form.append("rollNo", roll);
+    if (forcedName?.trim()) {
+      form.append("rollNo", normalizeRollNo(roll));
+      form.append("studentName", forcedName.trim());
+    } else if (roll.length === ROLL_LENGTH) {
+      form.append("rollNo", roll);
+    }
     if (forcedSchoolId) form.append("schoolId", forcedSchoolId);
-    if (forcedName?.trim()) form.append("studentName", forcedName.trim());
     if (corners) form.append("corners", JSON.stringify(corners.map((p) => [p.x, p.y])));
     return scanAction(form);
   }
@@ -333,8 +337,13 @@ export function ScanCamera({
     const pending = retryRef.current;
     if (!pending) return;
     const typed = rollInput(typedRoll);
-    if (typed.length !== ROLL_LENGTH) {
+    const walkIn = Boolean(studentName?.trim());
+    if (!walkIn && typed.length !== ROLL_LENGTH) {
       toast.error("Enter the 7-digit registration number, then save.");
+      return;
+    }
+    if (walkIn && typed.length > 0 && typed.length !== ROLL_LENGTH) {
+      toast.error("Registration number must be 7 digits (or blank / 0000000).");
       return;
     }
     if (!(await verifyTestId())) return;
