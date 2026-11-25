@@ -17,6 +17,9 @@ export type PublicSettingsSnapshot = {
   teacherResourcesPublic: boolean;
   answerKeysPublic: boolean;
   resultsPublic: boolean;
+  schoolDesktopOmrEnabled: boolean;
+  teacherDesktopOmrEnabled: boolean;
+  schoolMobileOmrEnabled: boolean;
 };
 
 export type ContentChange = {

@@ -569,6 +569,12 @@ model AppSettings {
   answerKeysPublic Boolean @default(false) @map("answer_keys_public")
   /// When true, published results are public on /results (no login).
   resultsPublic Boolean @default(false) @map("results_public")
+  /// School portal desktop OMR (PDF / file upload).
+  schoolDesktopOmrEnabled Boolean @default(true) @map("school_desktop_omr_enabled")
+  /// Teacher portal desktop OMR.
+  teacherDesktopOmrEnabled Boolean @default(true) @map("teacher_desktop_omr_enabled")
+  /// School portal mobile camera scan.
+  schoolMobileOmrEnabled Boolean @default(true) @map("school_mobile_omr_enabled")
   /// Inboxes for every answer-key objection.
   vitaranEmails    String[] @default([]) @map("vitaran_emails") @db.VarChar(254)
   /// SME contacts: [{ "name": "…", "subject": "MATHEMATICS", "email": "…" }]

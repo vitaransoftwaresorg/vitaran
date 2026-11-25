@@ -319,9 +319,9 @@ export function ScanSheetTable({
   const failedCount = failures.length;
 
   return (
-    <div>
+    <div className="flex min-h-0 flex-1 flex-col">
       {(readyCount > 0 || failedCount > 0) && !savingAll ? (
-        <div className="flex items-center justify-between gap-3 border-b border-neutral-100 bg-neutral-50/60 px-4 py-2">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-100 bg-neutral-50/60 px-4 py-2">
           <p className="text-sm text-neutral-600">
             {readyCount > 0 ? (
               <span className="font-semibold text-emerald-800">{readyCount} ready</span>
@@ -344,15 +344,15 @@ export function ScanSheetTable({
         </div>
       ) : null}
 
-      <div className="max-h-[42rem] overflow-auto">
-        <table className="w-full min-w-[44rem] border-collapse text-left text-sm">
-          <thead className="sticky top-0 z-10 bg-neutral-100 text-xs font-semibold tracking-wide text-neutral-600 uppercase">
+      <div className="min-h-0 flex-1 overflow-auto">
+        <table className="w-full min-w-[44rem] border-separate border-spacing-0 text-left text-sm">
+          <thead className="sticky top-0 z-10 bg-neutral-100 text-xs font-semibold tracking-wide text-neutral-600 uppercase shadow-[0_1px_0_0_rgb(229_229_229)]">
             <tr>
-              <th className="whitespace-nowrap px-3 py-2">Page</th>
-              <th className="px-3 py-2">Student / error</th>
-              <th className="min-w-[14rem] px-3 py-2">Registration number</th>
-              <th className="whitespace-nowrap px-3 py-2">Score</th>
-              <th className="whitespace-nowrap px-3 py-2 text-right">Actions</th>
+              <th className="whitespace-nowrap bg-neutral-100 px-3 py-2">Page</th>
+              <th className="bg-neutral-100 px-3 py-2">Student / error</th>
+              <th className="min-w-[14rem] bg-neutral-100 px-3 py-2">Registration number</th>
+              <th className="whitespace-nowrap bg-neutral-100 px-3 py-2">Score</th>
+              <th className="whitespace-nowrap bg-neutral-100 px-3 py-2 text-right">Actions</th>
             </tr>
           </thead>
           <tbody>

@@ -316,7 +316,10 @@ export async function findSchoolOptions(query: { type?: SchoolType; status?: Sch
 
 export async function getSchoolStats() {
   const [catalog, total, active, customized, byBoard, programGroups, recent] = await Promise.all([
+    // Regular catalog only — customized programs are named after each school and
+    // must not appear as enrolment bars on the admin dashboard.
     prisma.learningProgram.findMany({
+      where: { type: SchoolType.REGULAR },
       select: { id: true, code: true, name: true },
       orderBy: { name: "asc" },
     }),

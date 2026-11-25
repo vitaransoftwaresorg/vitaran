@@ -10,6 +10,9 @@ const EMPTY: PublicSettings = {
   teacherResourcesPublic: false,
   answerKeysPublic: false,
   resultsPublic: false,
+  schoolDesktopOmrEnabled: true,
+  teacherDesktopOmrEnabled: true,
+  schoolMobileOmrEnabled: true,
 };
 
 function isPublicSettings(value: unknown): value is PublicSettings {
@@ -19,7 +22,10 @@ function isPublicSettings(value: unknown): value is PublicSettings {
     typeof row.maintenanceMode === "boolean" &&
     typeof row.teacherResourcesPublic === "boolean" &&
     typeof row.answerKeysPublic === "boolean" &&
-    typeof row.resultsPublic === "boolean"
+    typeof row.resultsPublic === "boolean" &&
+    typeof row.schoolDesktopOmrEnabled === "boolean" &&
+    typeof row.teacherDesktopOmrEnabled === "boolean" &&
+    typeof row.schoolMobileOmrEnabled === "boolean"
   );
 }
 

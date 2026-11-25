@@ -1,18 +1,37 @@
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
-import { Router, type Response } from "express";
+import { Router, type RequestHandler, type Response } from "express";
 import multer from "multer";
 import { z } from "zod";
 import { requireAdmin, requireSchool, requireTeacher } from "../middleware/authenticate.js";
 import { omrScanRateLimit } from "../middleware/rate-limit.js";
 import { validate } from "../middleware/validate.js";
 import type { SchoolAccountDto } from "../services/school.service.js";
+import * as settingsService from "../services/settings.service.js";
 import type { TeacherAccountDto } from "../services/teacher.service.js";
 import { sendSuccess } from "../utils/api-response.js";
 import { AppError } from "../utils/app-error.js";
 import { MAX_PDF_PAGES } from "./pdf-pages.js";
 import { omrUploadDir } from "./pending-store.js";
 import * as scanService from "./service.js";
+
+const requireSchoolOmrEnabled: RequestHandler = async (_req, _res, next) => {
+  const settings = await settingsService.getPublicSettings();
+  if (!settings.schoolDesktopOmrEnabled && !settings.schoolMobileOmrEnabled) {
+    next(new AppError(403, "OMR scan is disabled for schools. Ask the admin to turn it on."));
+    return;
+  }
+  next();
+};
+
+const requireTeacherOmrEnabled: RequestHandler = async (_req, _res, next) => {
+  const settings = await settingsService.getPublicSettings();
+  if (!settings.teacherDesktopOmrEnabled) {
+    next(new AppError(403, "OMR scan is disabled for teachers. Ask the admin to turn it on."));
+    return;
+  }
+  next();
+};
 
 const IMAGE_MAX = 8 * 1024 * 1024;
 const PDF_MAX = 500 * 1024 * 1024;
@@ -322,8 +341,10 @@ adminOmScanRouter.use(
 
 export const schoolOmScanRouter = Router();
 schoolOmScanRouter.use(requireSchool);
+schoolOmScanRouter.use(requireSchoolOmrEnabled);
 schoolOmScanRouter.use(omrRouter((res) => ({ kind: "school", school: res.locals.school as SchoolAccountDto })));
 
 export const teacherOmScanRouter = Router();
 teacherOmScanRouter.use(requireTeacher);
+teacherOmScanRouter.use(requireTeacherOmrEnabled);
 teacherOmScanRouter.use(omrRouter((res) => ({ kind: "teacher", teacher: res.locals.teacher as TeacherAccountDto })));

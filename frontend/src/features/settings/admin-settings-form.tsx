@@ -23,7 +23,14 @@ import type { AppSettings, SmeContact } from "@/types/settings";
 import { saveAdminSettingsAction } from "./actions";
 import { AdminEmployeesPanel } from "./admin-employees-panel";
 
-type ToggleKey = "maintenance" | "resources" | "keys" | "results";
+type ToggleKey =
+  | "maintenance"
+  | "resources"
+  | "keys"
+  | "results"
+  | "schoolDesktopOmr"
+  | "teacherDesktopOmr"
+  | "schoolMobileOmr";
 
 const SUBJECT_OPTIONS = [
   "MATHEMATICS",
@@ -58,6 +65,15 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
   );
   const [answerKeysPublic, setAnswerKeysPublic] = useState(initial.answerKeysPublic);
   const [resultsPublic, setResultsPublic] = useState(initial.resultsPublic);
+  const [schoolDesktopOmrEnabled, setSchoolDesktopOmrEnabled] = useState(
+    initial.schoolDesktopOmrEnabled ?? true,
+  );
+  const [teacherDesktopOmrEnabled, setTeacherDesktopOmrEnabled] = useState(
+    initial.teacherDesktopOmrEnabled ?? true,
+  );
+  const [schoolMobileOmrEnabled, setSchoolMobileOmrEnabled] = useState(
+    initial.schoolMobileOmrEnabled ?? true,
+  );
   const [vitaranEmails, setVitaranEmails] = useState<string[]>(
     initial.vitaranEmails.length > 0 ? initial.vitaranEmails : [""],
   );
@@ -121,6 +137,9 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
       teacherResourcesPublic: boolean;
       answerKeysPublic: boolean;
       resultsPublic: boolean;
+      schoolDesktopOmrEnabled: boolean;
+      teacherDesktopOmrEnabled: boolean;
+      schoolMobileOmrEnabled: boolean;
       vitaranEmails: string[];
       smeContacts: SmeContact[];
     }>,
@@ -138,6 +157,9 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
       teacherResourcesPublic,
       answerKeysPublic,
       resultsPublic,
+      schoolDesktopOmrEnabled,
+      teacherDesktopOmrEnabled,
+      schoolMobileOmrEnabled,
     };
     setError(null);
     if (options?.toggle) {
@@ -152,6 +174,12 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
             patch.teacherResourcesPublic ?? previous.teacherResourcesPublic,
           answerKeysPublic: patch.answerKeysPublic ?? previous.answerKeysPublic,
           resultsPublic: patch.resultsPublic ?? previous.resultsPublic,
+          schoolDesktopOmrEnabled:
+            patch.schoolDesktopOmrEnabled ?? previous.schoolDesktopOmrEnabled,
+          teacherDesktopOmrEnabled:
+            patch.teacherDesktopOmrEnabled ?? previous.teacherDesktopOmrEnabled,
+          schoolMobileOmrEnabled:
+            patch.schoolMobileOmrEnabled ?? previous.schoolMobileOmrEnabled,
           vitaranEmails: patch.vitaranEmails ?? [
             ...new Set(vitaranEmails.map((email) => email.trim().toLowerCase()).filter(Boolean)),
           ],
@@ -171,6 +199,15 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
           if (patch.resultsPublic !== undefined) {
             setResultsPublic(previous.resultsPublic);
           }
+          if (patch.schoolDesktopOmrEnabled !== undefined) {
+            setSchoolDesktopOmrEnabled(previous.schoolDesktopOmrEnabled);
+          }
+          if (patch.teacherDesktopOmrEnabled !== undefined) {
+            setTeacherDesktopOmrEnabled(previous.teacherDesktopOmrEnabled);
+          }
+          if (patch.schoolMobileOmrEnabled !== undefined) {
+            setSchoolMobileOmrEnabled(previous.schoolMobileOmrEnabled);
+          }
           return;
         }
         setSmeContacts(result.settings.smeContacts);
@@ -184,6 +221,9 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
           setTeacherResourcesPublic(result.settings.teacherResourcesPublic);
           setAnswerKeysPublic(result.settings.answerKeysPublic);
           setResultsPublic(result.settings.resultsPublic);
+          setSchoolDesktopOmrEnabled(result.settings.schoolDesktopOmrEnabled);
+          setTeacherDesktopOmrEnabled(result.settings.teacherDesktopOmrEnabled);
+          setSchoolMobileOmrEnabled(result.settings.schoolMobileOmrEnabled);
         }
         if (options?.clearDrafts) setDrafts([emptySme()]);
         toast.success(options?.successMessage ?? "Settings saved");
@@ -235,6 +275,39 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
       {
         toggle: "results",
         successMessage: next ? "Results are public" : "Results are private",
+      },
+    );
+  }
+
+  function setSchoolDesktopOmr(next: boolean) {
+    setSchoolDesktopOmrEnabled(next);
+    persist(
+      { schoolDesktopOmrEnabled: next },
+      {
+        toggle: "schoolDesktopOmr",
+        successMessage: next ? "School desktop OMR on" : "School desktop OMR off",
+      },
+    );
+  }
+
+  function setTeacherDesktopOmr(next: boolean) {
+    setTeacherDesktopOmrEnabled(next);
+    persist(
+      { teacherDesktopOmrEnabled: next },
+      {
+        toggle: "teacherDesktopOmr",
+        successMessage: next ? "Teacher desktop OMR on" : "Teacher desktop OMR off",
+      },
+    );
+  }
+
+  function setSchoolMobileOmr(next: boolean) {
+    setSchoolMobileOmrEnabled(next);
+    persist(
+      { schoolMobileOmrEnabled: next },
+      {
+        toggle: "schoolMobileOmr",
+        successMessage: next ? "School mobile scan on" : "School mobile scan off",
       },
     );
   }
@@ -409,6 +482,83 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
               <label htmlFor="results-public" className="text-sm font-semibold text-neutral-800">
                 {resultsPublic ? "Public" : "Private"}
               </label>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-brand-200 bg-white p-5 shadow-[0_4px_16px_-8px_rgb(25_28_95/0.12)]">
+          <div>
+            <h2 className="text-sm font-bold text-brand-950">OMR scan access</h2>
+            <p className="mt-1 text-sm text-neutral-600">
+              Turn school and teacher OMR on or off. Admin OMR is always available.
+            </p>
+          </div>
+          <div className="mt-4 space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-4 border-t border-brand-100 pt-4">
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-900">School desktop OMR</h3>
+                <p className="mt-0.5 text-sm text-neutral-600">
+                  PDF and photo upload on school computers.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={schoolDesktopOmrEnabled}
+                  onCheckedChange={setSchoolDesktopOmr}
+                  disabled={busyToggle === "schoolDesktopOmr"}
+                  id="school-desktop-omr"
+                />
+                <label
+                  htmlFor="school-desktop-omr"
+                  className="text-sm font-semibold text-neutral-800"
+                >
+                  {schoolDesktopOmrEnabled ? "On" : "Off"}
+                </label>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-start justify-between gap-4 border-t border-brand-100 pt-4">
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-900">Teacher desktop OMR</h3>
+                <p className="mt-0.5 text-sm text-neutral-600">
+                  PDF and photo upload for teachers.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={teacherDesktopOmrEnabled}
+                  onCheckedChange={setTeacherDesktopOmr}
+                  disabled={busyToggle === "teacherDesktopOmr"}
+                  id="teacher-desktop-omr"
+                />
+                <label
+                  htmlFor="teacher-desktop-omr"
+                  className="text-sm font-semibold text-neutral-800"
+                >
+                  {teacherDesktopOmrEnabled ? "On" : "Off"}
+                </label>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-start justify-between gap-4 border-t border-brand-100 pt-4">
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-900">School mobile scan</h3>
+                <p className="mt-0.5 text-sm text-neutral-600">
+                  Phone camera scan in the school portal.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={schoolMobileOmrEnabled}
+                  onCheckedChange={setSchoolMobileOmr}
+                  disabled={busyToggle === "schoolMobileOmr"}
+                  id="school-mobile-omr"
+                />
+                <label
+                  htmlFor="school-mobile-omr"
+                  className="text-sm font-semibold text-neutral-800"
+                >
+                  {schoolMobileOmrEnabled ? "On" : "Off"}
+                </label>
+              </div>
             </div>
           </div>
         </section>

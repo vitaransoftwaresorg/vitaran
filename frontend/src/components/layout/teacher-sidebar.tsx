@@ -31,6 +31,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { capitalizeWords } from "@/features/schools/schema";
+import { usePublicSettings } from "@/features/settings/use-public-settings";
 import { teacherLogout } from "@/features/teacher-auth/actions";
 import { isTeacherNavActive, teacherNavGroups } from "@/features/teacher-portal/navigation";
 import type { TeacherAccount } from "@/types/teacher";
@@ -39,8 +40,10 @@ export function TeacherSidebar({ teacher }: { teacher: TeacherAccount }) {
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
   const [signingOut, startSignOut] = useTransition();
+  const { settings } = usePublicSettings();
   const displayName = capitalizeWords(teacher.name);
   const initials = displayName.slice(0, 2).toUpperCase();
+  const omrNavVisible = settings.teacherDesktopOmrEnabled;
 
   return (
     <Sidebar side={isMobile ? "right" : "left"} collapsible="icon">
@@ -77,7 +80,9 @@ export function TeacherSidebar({ teacher }: { teacher: TeacherAccount }) {
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {group.items.map((item) => (
+                {group.items
+                  .filter((item) => item.href !== "/teacher/omr-scan" || omrNavVisible)
+                  .map((item) => (
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
                       tooltip={item.title}

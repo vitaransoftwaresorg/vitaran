@@ -17,6 +17,9 @@ export type AppSettingsDto = {
   teacherResourcesPublic: boolean;
   answerKeysPublic: boolean;
   resultsPublic: boolean;
+  schoolDesktopOmrEnabled: boolean;
+  teacherDesktopOmrEnabled: boolean;
+  schoolMobileOmrEnabled: boolean;
   vitaranEmails: string[];
   smeContacts: SmeContact[];
   updatedAt: string;
@@ -46,6 +49,9 @@ function toDto(row: NonNullable<Awaited<ReturnType<typeof settingsRepository.fin
     teacherResourcesPublic: row.teacherResourcesPublic,
     answerKeysPublic: row.answerKeysPublic,
     resultsPublic: row.resultsPublic,
+    schoolDesktopOmrEnabled: row.schoolDesktopOmrEnabled,
+    teacherDesktopOmrEnabled: row.teacherDesktopOmrEnabled,
+    schoolMobileOmrEnabled: row.schoolMobileOmrEnabled,
     vitaranEmails: row.vitaranEmails,
     smeContacts: asSmeContacts(row.smeContacts),
     updatedAt: row.updatedAt.toISOString(),
@@ -57,6 +63,9 @@ const EMPTY: AppSettingsDto = {
   teacherResourcesPublic: false,
   answerKeysPublic: false,
   resultsPublic: false,
+  schoolDesktopOmrEnabled: true,
+  teacherDesktopOmrEnabled: true,
+  schoolMobileOmrEnabled: true,
   vitaranEmails: [],
   smeContacts: [],
   updatedAt: new Date(0).toISOString(),
@@ -75,6 +84,9 @@ export async function getPublicSettings() {
     teacherResourcesPublic: settings.teacherResourcesPublic,
     answerKeysPublic: settings.answerKeysPublic,
     resultsPublic: settings.resultsPublic,
+    schoolDesktopOmrEnabled: settings.schoolDesktopOmrEnabled,
+    teacherDesktopOmrEnabled: settings.teacherDesktopOmrEnabled,
+    schoolMobileOmrEnabled: settings.schoolMobileOmrEnabled,
   };
 }
 
@@ -115,6 +127,9 @@ export async function updateAppSettings(input: UpdateAppSettingsInput) {
     teacherResourcesPublic: input.teacherResourcesPublic,
     answerKeysPublic: input.answerKeysPublic,
     resultsPublic: input.resultsPublic,
+    schoolDesktopOmrEnabled: input.schoolDesktopOmrEnabled,
+    teacherDesktopOmrEnabled: input.teacherDesktopOmrEnabled,
+    schoolMobileOmrEnabled: input.schoolMobileOmrEnabled,
     vitaranEmails: input.vitaranEmails,
     smeContacts: input.smeContacts.map((row) => ({
       name: row.name.trim(),
@@ -132,6 +147,9 @@ export async function updateAppSettings(input: UpdateAppSettingsInput) {
       teacherResourcesPublic: after.teacherResourcesPublic,
       answerKeysPublic: after.answerKeysPublic,
       resultsPublic: after.resultsPublic,
+      schoolDesktopOmrEnabled: after.schoolDesktopOmrEnabled,
+      teacherDesktopOmrEnabled: after.teacherDesktopOmrEnabled,
+      schoolMobileOmrEnabled: after.schoolMobileOmrEnabled,
     },
   });
   void sendOnboardingEmails(after).catch((error) =>

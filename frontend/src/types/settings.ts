@@ -9,6 +9,9 @@ export type AppSettings = {
   teacherResourcesPublic: boolean;
   answerKeysPublic: boolean;
   resultsPublic: boolean;
+  schoolDesktopOmrEnabled: boolean;
+  teacherDesktopOmrEnabled: boolean;
+  schoolMobileOmrEnabled: boolean;
   vitaranEmails: string[];
   smeContacts: SmeContact[];
   updatedAt: string;
@@ -19,6 +22,9 @@ export type PublicSettings = {
   teacherResourcesPublic: boolean;
   answerKeysPublic: boolean;
   resultsPublic: boolean;
+  schoolDesktopOmrEnabled: boolean;
+  teacherDesktopOmrEnabled: boolean;
+  schoolMobileOmrEnabled: boolean;
 };
 
 export type UpdateAppSettingsInput = {
@@ -26,6 +32,9 @@ export type UpdateAppSettingsInput = {
   teacherResourcesPublic: boolean;
   answerKeysPublic: boolean;
   resultsPublic: boolean;
+  schoolDesktopOmrEnabled: boolean;
+  teacherDesktopOmrEnabled: boolean;
+  schoolMobileOmrEnabled: boolean;
   vitaranEmails: string[];
   smeContacts: SmeContact[];
 };

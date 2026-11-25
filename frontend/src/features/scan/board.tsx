@@ -14,10 +14,12 @@ import {
   setScanBatch,
   subscribeScanBatch,
 } from "./batch-store";
+import { usePublicSettings } from "@/features/settings/use-public-settings";
 import { ScanCamera } from "./camera";
 import { resumePdfJob, stopPdfJob } from "./pdf-batch";
 import type { ScanQueueItem } from "./queue-item";
 import { ScanSheetTable } from "./scan-sheet-table";
+import { useIsPhone } from "./use-is-phone";
 import type { ScanPortal } from "@/services/scans";
 import { formatMarks, type ScanPreview } from "@/types/scan";
 
@@ -33,6 +35,18 @@ const SAVE_CHUNK = 25;
 export function ScanBoard({ portal }: { portal: ScanPortal }) {
   const router = useRouter();
   const base = BASE[portal];
+  const phone = useIsPhone();
+  const { settings, ready: settingsReady } = usePublicSettings();
+  const omrAllowed =
+    portal === "admin"
+      ? true
+      : portal === "teacher"
+        ? settings.teacherDesktopOmrEnabled
+        : phone === null
+          ? true
+          : phone
+            ? settings.schoolMobileOmrEnabled
+            : settings.schoolDesktopOmrEnabled;
   const [batch, setBatch] = useState<ScanPreview[]>(() => {
     // A single photo has no list: coming back from its review starts a new scan.
     if (getScanBatch().length === 1 && !getPdfJob()) clearScanBatch();
@@ -204,8 +218,35 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
   const openingSingle = batch.length === 1 && !job;
   const reading = job != null && !job.finished;
 
+  if (settingsReady && !omrAllowed) {
+    const title =
+      portal === "teacher"
+        ? "Teacher OMR is turned off"
+        : phone
+          ? "School mobile scan is turned off"
+          : "School desktop OMR is turned off";
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-8 text-center shadow-sm">
+        <p className="text-base font-bold text-amber-950">{title}</p>
+        <p className="mt-2 text-sm text-amber-900/80">
+          An admin can enable this under Admin → Settings → OMR scan access.
+        </p>
+      </div>
+    );
+  }
+
+  const previewOpen = batch.length > 0 || job != null;
+
   return (
-    <div className={showCamera ? "grid gap-6 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]" : "space-y-4"}>
+    <div
+      className={
+        showCamera
+          ? "grid gap-6 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]"
+          : previewOpen
+            ? "flex h-[calc(100dvh-7.25rem)] min-h-0 flex-col"
+            : "space-y-4"
+      }
+    >
       {showCamera ? (
         <ScanCamera
           key={cameraKey}
@@ -220,15 +261,15 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
         />
       ) : null}
 
-      <div className="space-y-4">
+      <div className={previewOpen && !showCamera ? "flex min-h-0 flex-1 flex-col" : "space-y-4"}>
         {openingSingle ? (
           <div className="flex flex-col items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-6 py-14 text-center shadow-sm">
             <Loader2 className="size-6 animate-spin text-brand-700" />
             <p className="text-sm font-semibold text-neutral-900">Opening the sheet…</p>
           </div>
         ) : batch.length > 0 || job ? (
-          <section className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
-            <header className="space-y-3 border-b border-neutral-100 px-5 py-4">
+          <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
+            <header className="shrink-0 space-y-3 border-b border-neutral-100 px-5 py-4">
               {job ? (
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -334,7 +375,7 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
               ) : null}
             </header>
             {savingAll ? (
-              <div className="space-y-2 border-b border-brand-100 bg-brand-50/60 px-4 py-4" role="status" aria-live="polite">
+              <div className="shrink-0 space-y-2 border-b border-brand-100 bg-brand-50/60 px-4 py-4" role="status" aria-live="polite">
                 <div className="flex items-center gap-2.5">
                   <Loader2 className="size-5 shrink-0 animate-spin text-brand-700" />
                   <p className="text-sm font-semibold text-neutral-900 tabular-nums">
