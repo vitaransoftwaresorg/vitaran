@@ -56,31 +56,8 @@ jobs:
              # shellcheck disable=SC1091
              . "$NVM_DIR/nvm.sh"
              cd /srv/apps/vitaranlearning
-             # Deploy servers must match origin/main exactly. Discard local overlays
-             # from manual edits/rsync so pull never fails on dirty trees.
              git fetch origin main
              git reset --hard origin/main
-             # Keep only durable production env + OMR data. Never keep frontend/.env.local —
-             # Next loads it over .env.production and that broke Google login on Vitaran.
-             git clean -fd -e backend/.env -e frontend/.env.production -e backend/data
-             # If someone recreates .env.local between cleans, drop it before start.
-             rm -f frontend/.env.local
-             if [ ! -f frontend/.env.production ] || [ ! -f backend/.env ]; then
-               echo "Missing production env (frontend/.env.production and/or backend/.env)" >&2
-               exit 1
-             fi
-             cd backend
-             npm ci
-             npx prisma generate
-             npx prisma migrate deploy
-             echo "Importing regular teacher resources into DB…"
-             npm run db:import-teacher-resources
-             npm run build
-             cd ../frontend
-             npm ci
-             npm run build
-             cd ..
-             pm2 startOrReload ecosystem.config.cjs --only vitaranlearning-api --update-env
-             pm2 startOrReload ecosystem.config.cjs --only vitaranlearning-web --update-env
-             pm2 save
-             pm2 status vitaranlearning-api vitaranlearning-web'
+             chmod +x scripts/vps-deploy.sh
+             # Script owns clean/build/migrate/pm2. Import of teacher resources is not part of deploy.
+             ./scripts/vps-deploy.sh'
