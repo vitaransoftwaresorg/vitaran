@@ -65,6 +65,7 @@ export function PortalResultsDrive({ resultSets, basePath, schoolCode }: PortalR
     const testFolder = resultsTestFolderHref(basePath, set.testNumber);
     const view = resultSetHref(basePath, set.id, classLevel, school || undefined, testFolder);
     const live = sheet.published && set.published;
+    const testId = set.testId?.trim() || "";
     return {
       id: `${set.id}:${classLevel}`,
       name,
@@ -74,7 +75,8 @@ export function PortalResultsDrive({ resultSets, basePath, schoolCode }: PortalR
       blockedMessage: live
         ? undefined
         : "Not Published. This result will open here once the admin publishes it.",
-      testId: set.testId,
+      // Class / section rows show Test ID; Test 1 / Test 2 folders do not.
+      testId,
       detail: live
         ? studentCount(sheet.rowCount)
         : `${studentCount(sheet.rowCount)} · Not Published`,
@@ -128,13 +130,11 @@ export function PortalResultsDrive({ resultSets, basePath, schoolCode }: PortalR
         0,
       );
       const anyLive = sets.some((set) => set.published && set.classes.some((row) => row.published));
-      const testId = sets.map((set) => set.testId).find((id) => id?.trim()) ?? "";
       return {
         id: `test:${testNumber}`,
         name: `Test ${testNumber}`,
         kind: "folder" as const,
         href: href({ test: testNumber }),
-        testId,
         detail: anyLive
           ? `${classes.size} ${classes.size === 1 ? "class" : "classes"} · ${formatNumber(students)} students`
           : `${classes.size} ${classes.size === 1 ? "class" : "classes"} · Not Published`,
@@ -150,6 +150,23 @@ export function PortalResultsDrive({ resultSets, basePath, schoolCode }: PortalR
     ].sort((a, b) => a - b);
 
     items = classLevels.flatMap((classLevel) => {
+      const setsForClass = openSets.filter((set) =>
+        set.classes.some((row) => row.classLevel === classLevel),
+      );
+      const distinctTestIds = [
+        ...new Set(setsForClass.map((set) => set.testId?.trim()).filter(Boolean)),
+      ];
+      // Same class, different section/program test IDs → one row each.
+      if (distinctTestIds.length > 1) {
+        return setsForClass.flatMap((set) => {
+          const sheet = set.classes.find((row) => row.classLevel === classLevel);
+          if (!sheet) return [];
+          const program = set.programName?.trim() || set.program?.trim() || "";
+          const baseName = sheet.label || `Class ${classLevel}`;
+          const name = program && !baseName.includes(program) ? `${baseName} · ${program}` : baseName;
+          return [sheetItem(set, classLevel, name)];
+        });
+      }
       const set = pickSetForClass(openSets, classLevel);
       if (!set) return [];
       const sheet = set.classes.find((row) => row.classLevel === classLevel);

@@ -12,7 +12,7 @@ import type {
   AnswerOption,
   KeyTypeRange,
   ParsedAnswerKeyImport,
-  SchoolTestOption,
+  SchoolTestsForResults,
   SubjectRange,
   TestIdAvailability,
 } from "@/types/answer-key";
@@ -47,7 +47,7 @@ export function listRecentAnswerKeys(filters?: ListFilters) {
 /** Tests + program/class combos for a school, from its answer keys. */
 export function listSchoolTests(schoolId: string) {
   const query = new URLSearchParams({ schoolId });
-  return adminApi<SchoolTestOption[]>(`${BASE}/school-tests?${query}`);
+  return adminApi<SchoolTestsForResults>(`${BASE}/school-tests?${query}`);
 }
 
 export type SchoolSectionKeyBoard = {

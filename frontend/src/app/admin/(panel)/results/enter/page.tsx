@@ -4,11 +4,13 @@ import { ClassResultsBoard } from "@/features/results/class-results-board";
 import { RESULTS_PATH } from "@/features/results/constants";
 import type { DrivePath } from "@/features/results/drive-path";
 import { isRegularProgramCode, resultProgramFields } from "@/features/results/school-program";
+import { listSchoolTests } from "@/services/answer-keys";
 import { listAdminPrograms } from "@/services/programs";
 import { listAdminClassScans } from "@/services/scans";
 import { getClassResultTemplate, getResultSheet, listResultSets } from "@/services/results";
 import { listSchoolOptions } from "@/services/schools";
 import { listAllAdminSchoolStudents } from "@/services/students";
+import type { SchoolClassTestRow } from "@/types/answer-key";
 
 export const metadata: Metadata = { title: "Enter results" };
 
@@ -91,7 +93,7 @@ export default async function AdminResultEnterPage({
       return true;
     }) ?? null;
 
-  const [sheet, template, scans] = await Promise.all([
+  const [sheet, template, scans, schoolTests] = await Promise.all([
     resultSet?.classes.some((item) => item.classLevel === classLevel)
       ? getResultSheet(resultSet.id, classLevel)
       : null,
@@ -101,8 +103,9 @@ export default async function AdminResultEnterPage({
       programName: programFields.programName,
       testNumber,
       classLevel,
-    }).catch(() => ({ columns: FALLBACK_COLUMNS })),
+    }).catch(() => ({ columns: FALLBACK_COLUMNS, testId: undefined as string | undefined })),
     listAdminClassScans({ schoolId, testNumber, classLevel, program: effectiveProgram }),
+    listSchoolTests(schoolId).catch(() => ({ tests: [], classSlots: [] })),
   ]);
 
   const path: DrivePath & { schoolId: string; testNumber: number; classLevel: number } = {
@@ -119,15 +122,43 @@ export default async function AdminResultEnterPage({
   const backHref = `${RESULTS_PATH}?${backParams}`;
   const schoolParams = new URLSearchParams({ school: schoolId });
   if (school.type) schoolParams.set("type", school.type);
-  const classTestId =
-    resultSet?.testId?.trim() ||
-    scans.map((scan) => scan.testId?.trim()).find(Boolean) ||
-    undefined;
+  const isPlaceholderTestId = (value: string | null | undefined) => {
+    const id = value?.trim() ?? "";
+    return !id || id === "-" || /^T-\d+$/i.test(id);
+  };
+  const sectionTestIds: SchoolClassTestRow[] =
+    schoolTests.classSlots.find(
+      (slot) => slot.testNumber === testNumber && slot.classLevel === classLevel,
+    )?.rows ?? [];
+  const classTestId = (() => {
+    if (sectionTestIds.length === 1 && !isPlaceholderTestId(sectionTestIds[0]?.testId)) {
+      return sectionTestIds[0]!.testId;
+    }
+    if (sectionTestIds.length > 1) {
+      // Multiple section IDs — header lists them; save uses the first real one.
+      return sectionTestIds.map((row) => row.testId).find((id) => !isPlaceholderTestId(id));
+    }
+    const fromScans = scans.map((scan) => scan.testId?.trim()).find((id) => id && !isPlaceholderTestId(id));
+    if (fromScans) return fromScans;
+    const fromTemplate = template.testId?.trim();
+    if (fromTemplate && !isPlaceholderTestId(fromTemplate)) return fromTemplate;
+    const fromSet = resultSet?.testId?.trim();
+    if (fromSet && !isPlaceholderTestId(fromSet)) return fromSet;
+    return undefined;
+  })();
+  const breadcrumbTestLabel =
+    sectionTestIds.length > 1
+      ? sectionTestIds
+          .map((row) =>
+            row.sectionName ? `Sec ${row.sectionName} ${row.testId}` : row.testId,
+          )
+          .join(" · ")
+      : classTestId;
   // Folder levels only — "Results and Ranks" already lives in the top navbar.
   const breadcrumbs = [
     { label: school.name, href: `${RESULTS_PATH}?${schoolParams}` },
     {
-      label: classTestId ? `Test ${testNumber} · ${classTestId}` : `Test ${testNumber}`,
+      label: breadcrumbTestLabel ? `Test ${testNumber} · ${breadcrumbTestLabel}` : `Test ${testNumber}`,
       href: backHref,
     },
     { label: `Class ${classLevel}`, href: `${RESULTS_PATH}/enter?${new URLSearchParams({
@@ -140,7 +171,7 @@ export default async function AdminResultEnterPage({
 
   return (
     <ClassResultsBoard
-      key={`${resultSet?.id ?? "new"}:${path.classLevel}:${scans.length}:${scans.at(-1)?.updatedAt ?? ""}:${studentPage.items.length}`}
+      key={`${resultSet?.id ?? "new"}:${path.classLevel}:${scans.length}:${scans.at(-1)?.updatedAt ?? ""}:${studentPage.items.length}:${classTestId ?? ""}`}
       students={studentPage.items}
       columns={template.columns}
       sheet={sheet}
@@ -151,6 +182,8 @@ export default async function AdminResultEnterPage({
       backHref={backHref}
       breadcrumbs={breadcrumbs}
       scans={scans}
+      resolvedTestId={classTestId}
+      sectionTestIds={sectionTestIds}
     />
   );
 }

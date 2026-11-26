@@ -38,6 +38,7 @@ import * as answerKeyRepository from "../repositories/answer-key.repository.js";
 import * as scanRepository from "../scan/repository.js";
 import * as studentRepository from "../repositories/student.repository.js";
 import { asSubjectRanges } from "../utils/answer-key-parse.js";
+import { enteredTestId } from "../utils/test-id.js";
 import {
   canonicalizePaperMaxes,
   projectSheetForTeacher,
@@ -334,26 +335,64 @@ async function subjectsFromOmrScans(
  * Subjects and max marks from this class's answer key, else the closest key of the same program
  * (same test, then any test), else the standard four-subject paper.
  */
-async function answerKeySubjects(meta: ResultSetMeta, classLevel: number) {
+function isPlaceholderTestId(value: string | null | undefined) {
+  const id = value?.trim() ?? "";
+  return !id || id === "-" || /^T-\d+$/i.test(id);
+}
+
+/** Best matching answer key for this school / program / test / class. */
+async function findMatchingAnswerKey(meta: ResultSetMeta, classLevel: number) {
   const keys = meta.programCode
     ? await answerKeyRepository.findAnswerKeys({
         programCode: meta.programCode,
+        testNumber: meta.testNumber,
         OR: [{ type: SchoolType.REGULAR }, { schoolId: meta.schoolId }],
       })
-    : await answerKeyRepository.findAnswerKeys({ schoolId: meta.schoolId });
+    : await answerKeyRepository.findAnswerKeys({
+        schoolId: meta.schoolId,
+        testNumber: meta.testNumber,
+      });
   const score = (key: (typeof keys)[number]) =>
-    (key.testNumber === meta.testNumber ? 4 : 0) +
     (key.classLevel === classLevel ? 8 : 0) +
-    (key.school?.id === meta.schoolId ? 1 : 0) -
+    (key.school?.id === meta.schoolId ? 2 : 0) +
+    (enteredTestId(key.testId) ? 1 : 0) -
     Math.abs(key.classLevel - classLevel) * 0.01;
-  const key = keys
-    .filter((row) => asSubjectRanges(row.subjectRanges).length > 0)
-    .sort((a, b) => score(b) - score(a))[0];
-  if (!key) return DEFAULT_SUBJECTS;
+  return [...keys].sort((a, b) => score(b) - score(a))[0] ?? null;
+}
+
+async function answerKeySubjects(meta: ResultSetMeta, classLevel: number) {
+  const key = await findMatchingAnswerKey(meta, classLevel);
+  if (!key || asSubjectRanges(key.subjectRanges).length === 0) return DEFAULT_SUBJECTS;
   return asSubjectRanges(key.subjectRanges).map((range) => ({
     subject: range.subject,
     maxMarks: range.maxMarks || (range.to - range.from + 1) * key.correctMarks,
   }));
+}
+
+/** Prefer OMR / stored IDs; fall back to the answer key for this class test. */
+async function resolveClassTestId(
+  meta: ResultSetMeta,
+  classLevel: number,
+  preferred?: string | null,
+) {
+  const candidates = [preferred, meta.testId];
+  for (const candidate of candidates) {
+    const id = enteredTestId(candidate);
+    if (id && !isPlaceholderTestId(id)) return id;
+  }
+  const fromScan = (
+    await scanRepository.findClassScans({
+      schoolId: meta.schoolId,
+      testNumber: meta.testNumber,
+      classLevel,
+      program: meta.programCode || undefined,
+    })
+  )
+    .map((scan) => enteredTestId(scan.testId))
+    .find((id) => id && !isPlaceholderTestId(id));
+  if (fromScan) return fromScan;
+  const key = await findMatchingAnswerKey(meta, classLevel);
+  return enteredTestId(key?.testId) || "";
 }
 
 const defaultCaption = (classLevel: number, testNumber: number, testId?: string) => {
@@ -424,7 +463,8 @@ async function writeClassSheet(
  */
 export async function getClassResultTemplate(query: ClassResultTemplateQuery) {
   const meta = await resolveMeta({ ...query, testId: "-", removeClasses: [] });
-  const { sheet } = await findClassSheet(meta, query.classLevel);
+  const { resultSet, sheet } = await findClassSheet(meta, query.classLevel);
+  const testId = await resolveClassTestId(meta, query.classLevel, resultSet?.testId);
   const saved = (sheet?.columns as string[] | undefined) ?? [];
   const savedRows = sheet ? sheet.rows.map(({ values }) => values as CellValue[]) : [];
   const omrSubjects = await subjectsFromOmrScans(meta, query.classLevel);
@@ -434,15 +474,19 @@ export async function getClassResultTemplate(query: ClassResultTemplateQuery) {
         omrSubjects.map((row) => row.subject),
         { oldColumns: saved, rows: savedRows },
       ) ?? standardColumns(omrSubjects);
-    return { columns: withRankColumns(columns, [], query.classLevel).columns };
+    return { columns: withRankColumns(columns, [], query.classLevel).columns, testId };
   }
   const hasSubjects = saved.some((label) => columnRole(label) === "subject");
   if (saved.length && hasSubjects) {
     return {
       columns: withRankColumns(forceSubjectPaperMaxes(saved), [], query.classLevel).columns,
+      testId,
     };
   }
-  return { columns: standardColumns(await classSubjects(meta, query.classLevel)) };
+  return {
+    columns: standardColumns(await classSubjects(meta, query.classLevel)),
+    testId,
+  };
 }
 
 function assertWithinMax(columns: string[], rows: CellValue[][]) {
@@ -470,8 +514,12 @@ function assertWithinMax(columns: string[], rows: CellValue[][]) {
 
 /** Saves the admin class table; student rows are the school roster for this class. */
 export async function saveManualResultSheet(input: ManualResultSheetInput) {
-  const meta = await resolveMeta({ ...input, removeClasses: [] });
-  const { resultSet, sheet } = await findClassSheet(meta, input.classLevel, input.resultSetId);
+  const draftMeta = await resolveMeta({ ...input, removeClasses: [] });
+  const { resultSet, sheet } = await findClassSheet(draftMeta, input.classLevel, input.resultSetId);
+  const testId =
+    (await resolveClassTestId(draftMeta, input.classLevel, input.testId || resultSet?.testId)) ||
+    input.testId;
+  const meta = { ...draftMeta, testId };
   const columns = forceSubjectPaperMaxes(input.columns);
   const filled = input.rows.filter((row) => row.some((cell) => cell !== null && cell !== ""));
   assertWithinMax(columns, filled);
@@ -487,7 +535,9 @@ export async function saveManualResultSheet(input: ManualResultSheetInput) {
     })),
     input.classLevel,
   );
-  const caption = sheet?.caption.length ? sheet.caption : defaultCaption(input.classLevel, input.testNumber);
+  const caption = sheet?.caption.length
+    ? sheet.caption
+    : defaultCaption(input.classLevel, input.testNumber, testId);
   return toResultSetDto(
     await writeClassSheet(meta, resultSet?.id ?? null, input.classLevel, caption, columns, rows),
   );
@@ -589,7 +639,11 @@ export async function recordOmrResult(entry: OmrResultEntry) {
   );
 
   // Prefer the test ID this OMR was evaluated against so key updates stay in sync.
-  const evaluatedTestId = meta.testId.trim() || resultSet?.testId || `T-${entry.testNumber}`;
+  const evaluatedTestId =
+    (await resolveClassTestId(meta, entry.classLevel, entry.testId || resultSet?.testId)) ||
+    entry.testId.trim() ||
+    resultSet?.testId ||
+    `T-${entry.testNumber}`;
   const caption = sheet?.caption.length
     ? sheet.caption
     : defaultCaption(entry.classLevel, entry.testNumber, evaluatedTestId);

@@ -70,7 +70,7 @@ export function getClassResultTemplate(query: {
   });
   if (query.program) params.set("program", query.program);
   if (query.programName) params.set("programName", query.programName);
-  return adminApi<{ columns: string[] }>(`${BASE}/class-template?${params}`);
+  return adminApi<{ columns: string[]; testId?: string }>(`${BASE}/class-template?${params}`);
 }
 
 export function setResultSetPublished(id: string, published: boolean) {

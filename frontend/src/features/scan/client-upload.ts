@@ -25,18 +25,22 @@ export async function registerOmrPdfDirect(
   token: string,
   file: File,
   testId: string,
+  examPattern: string,
 ): Promise<{ batchId: string; pageCount: number; testId: string; examPattern?: string }> {
   const body = new FormData();
   // Text field before file so multer always sees it; also pass as query (reliable).
   body.append("testId", testId);
+  body.append("examPattern", examPattern);
   body.append("file", file);
   const url = new URL(uploadUrl, window.location.origin);
   url.searchParams.set("testId", testId);
+  url.searchParams.set("examPattern", examPattern);
   const response = await fetch(url, {
     method: "POST",
     headers: {
       ...authHeaders(token),
       "X-Test-Id": testId,
+      "X-Exam-Pattern": examPattern,
     },
     body,
   });

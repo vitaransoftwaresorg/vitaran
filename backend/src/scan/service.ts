@@ -465,6 +465,21 @@ function majoritySchoolFromPending(context: ScanContext): ScanSchool | null {
   return majorityPlacementFromPending(context).school;
 }
 
+/** Save only when the OMR scan pattern matches the student's class/section pattern. */
+async function assertScanPatternMatchesClass(
+  schoolId: string,
+  classLevel: number,
+  sectionId: string | null | undefined,
+  scanPattern: ExamPattern,
+) {
+  const classPattern = await resolveClassExamPattern(schoolId, classLevel, sectionId);
+  if (classPattern === scanPattern) return;
+  throw new AppError(
+    422,
+    `Exam pattern ${scanPattern} does not match this student's class pattern ${classPattern}. Scan with ${classPattern}, or update the class exam pattern.`,
+  );
+}
+
 function programNameOf(context: ScanContext, key: ScanKey) {
   const programs =
     context.kind === "school"
@@ -903,16 +918,10 @@ export async function registerOmrPdf(
         `Rejected: file name must include Test ${testNumber}. This test ID is Test ${testNumber}. Upload a PDF whose name contains ${testNumber} by itself (e.g. “v school ${testNumber}.pdf” or “schoolsrk${testNumber}.pdf”). Your file “${fileName || "omr.pdf"}” does not match — a longer number like ${testNumber}6, a different number, or no number is not accepted.`,
       );
     }
-    // Prefer pattern from the school's class for this test; per-sheet resolve still runs at score time.
-    let examPattern = parseExamPattern(identity.examPattern);
+    const examPattern = parseExamPattern(identity.examPattern);
     if (!examPattern) {
-      const school = contextSchool(context);
-      const classLevel = keys[0]?.classLevel;
-      if (school && classLevel != null) {
-        examPattern = await resolveClassExamPattern(school.id, classLevel);
-      }
+      throw new AppError(400, "Choose the exam pattern (MPCB, PCB, or MPC) before uploading");
     }
-    examPattern = examPattern ?? "MPCB";
     purgeExpiredPdfBatches();
     const owner = ownerOf(context);
     const active = [...pdfBatches.values()].find(
@@ -1574,9 +1583,11 @@ export async function previewScan(
     const bubbleRoll = [typedRoll, read.rollNo, ...read.rollCandidates].find((roll) =>
       /^\d{7}$/.test(roll),
     );
+    // Failed sheets use the same scan-selected pattern as the rest of the batch.
     examPattern =
       examPattern ??
-      (await resolveClassExamPattern(school.id, evalKey.classLevel));
+      (await resolveClassExamPattern(school.id, evalKey.classLevel)) ??
+      "MPCB";
     await storeNeedsIdentityPreview({
       context,
       school,
@@ -1597,13 +1608,14 @@ export async function previewScan(
     throw new AppError(422, "Enter the student name");
   }
 
+  // Always evaluate with the pattern chosen at OMR scan (batch / form).
   examPattern =
+    examPattern ??
     (await resolveClassExamPattern(
       school.id,
       identityClass,
       enrolled?.sectionId ?? enrolled?.section?.id ?? null,
-    )) ||
-    examPattern ||
+    )) ??
     "MPCB";
 
   const score = scoreWithKey(read.answers, key, { examPattern });
@@ -1715,14 +1727,10 @@ async function rebindPendingRoll(context: ScanContext, previewId: string, rollNo
     programCode: enrolled.program?.code ?? null,
     sectionId: enrolled.sectionId ?? enrolled.section?.id ?? null,
   });
-  const nextPattern = await resolveClassExamPattern(
-    row.school.id,
-    enrolled.classLevel,
-    enrolled.sectionId ?? enrolled.section?.id ?? null,
-  );
+  // Keep the scan/PDF exam pattern; re-score when the answer key changes after rebinding.
+  const nextPattern = row.examPattern;
   const keyChanged = key.id !== row.key.id;
-  const patternChanged = nextPattern !== row.examPattern;
-  if (keyChanged || patternChanged) {
+  if (keyChanged) {
     const readFlags = row.flags.filter((flag) => flag.reason !== "Un-attempted");
     if (row.bubbles) {
       const sheet = await loadPendingImage(row.diskDir, "sheet");
@@ -1736,7 +1744,6 @@ async function rebindPendingRoll(context: ScanContext, previewId: string, rollNo
     }
     row.flags = sheetFlags(row.score, readFlags);
     row.key = { ...row.key, ...key };
-    row.examPattern = nextPattern;
   }
   row.identity = {
     ...row.identity,
@@ -1871,14 +1878,10 @@ export async function bindPendingIdentity(
     programCode: enrolled.program?.code ?? null,
     sectionId: enrolled.sectionId ?? enrolled.section?.id ?? null,
   });
-  const nextPattern = await resolveClassExamPattern(
-    row.school.id,
-    enrolled.classLevel,
-    enrolled.sectionId ?? enrolled.section?.id ?? null,
-  );
+  // Keep the scan/PDF exam pattern after correcting registration.
+  const nextPattern = row.examPattern;
   const keyChanged = key.id !== row.key.id;
-  const patternChanged = nextPattern !== row.examPattern;
-  if (keyChanged || patternChanged) {
+  if (keyChanged) {
     const readFlags = row.flags.filter((flag) => flag.reason !== "Un-attempted");
     if (row.bubbles) {
       const sheet = await loadPendingImage(row.diskDir, "sheet");
@@ -1892,7 +1895,6 @@ export async function bindPendingIdentity(
     }
     row.flags = sheetFlags(row.score, readFlags);
     row.key = { ...row.key, ...key };
-    row.examPattern = nextPattern;
   }
   row.identity = {
     ...row.identity,
@@ -1994,6 +1996,18 @@ async function saveScan(context: ScanContext, previewId: string) {
   if (row.needsIdentity) {
     throw new AppError(422, "Enter the registration number (or name) before saving this sheet.");
   }
+  // Scan pattern must match the student's class/section exam pattern before save.
+  let sectionId: string | null = null;
+  if (row.studentId) {
+    const student = await studentRepository.findStudentById(row.studentId);
+    sectionId = student?.sectionId ?? student?.section?.id ?? null;
+  }
+  await assertScanPatternMatchesClass(
+    row.school.id,
+    row.identity.classLevel,
+    sectionId,
+    row.examPattern,
+  );
   await useCurrentKey(row);
   const testId = row.identity.testId;
   const folder = `omr/${row.school.id}/${testId}/${row.identity.rollNo}`;

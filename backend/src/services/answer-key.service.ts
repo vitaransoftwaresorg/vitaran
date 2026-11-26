@@ -305,6 +305,10 @@ export async function listRecentAnswerKeys({
 /**
  * Distinct tests (and their program/class combos) available for a school via answer keys.
  * Used by the admin results upload flow: school → test → program/class → upload.
+ *
+ * `classSlots` collapses section answer keys:
+ * - same Test ID on every section → one Class row
+ * - different Test IDs → one row per section (Section A / Section B)
  */
 export async function listSchoolTestsForResults(schoolId: string) {
   const school = await schoolRepository.findSchoolById(schoolId);
@@ -313,9 +317,21 @@ export async function listSchoolTestsForResults(schoolId: string) {
   const programCodes = school.schoolPrograms.map((row) => row.program.code);
   const nameByCode = new Map(school.schoolPrograms.map((row) => [row.program.code, row.program.name]));
 
-  const keys = await answerKeyRepository.findAnswerKeys(
-    schoolAccessFilter({ id: school.id, type: school.type, programCodes }),
-  );
+  const [keys, sections] = await Promise.all([
+    // Include platform keys plus this school's section overrides (regular schools).
+    answerKeyRepository.findAnswerKeys({
+      programCode: { in: programCodes },
+      ...(school.type === SchoolType.CUSTOMIZED
+        ? { schoolId: school.id }
+        : {
+            OR: [
+              { type: SchoolType.REGULAR, schoolId: null },
+              { schoolId: school.id },
+            ],
+          }),
+    }),
+    sectionRepository.listSectionsBySchool(schoolId),
+  ]);
 
   type ProgramBucket = { code: string; name: string; classLevels: Set<number> };
   type TestBucket = {
@@ -348,19 +364,108 @@ export async function listSchoolTestsForResults(schoolId: string) {
     program.classLevels.add(key.classLevel);
   }
 
-  return [...tests.values()]
-    .map(({ testId, testNumber, programs }) => ({
-      testId,
-      testNumber,
-      programs: [...programs.values()]
-        .map(({ code, name, classLevels }) => ({
-          code,
-          name,
-          classLevels: [...classLevels].sort((a, b) => a - b),
-        }))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    }))
-    .sort((a, b) => b.testNumber - a.testNumber || a.testId.localeCompare(b.testId));
+  const resolveSectionTestId = (
+    testNumber: number,
+    classLevel: number,
+    programCode: string,
+    sectionId: string | null,
+  ) => {
+    const pool = keys.filter(
+      (key) =>
+        key.testNumber === testNumber &&
+        key.classLevel === classLevel &&
+        key.programCode === programCode &&
+        enteredTestId(key.testId),
+    );
+    const sectionKey = sectionId
+      ? pool.find((key) => key.sectionId === sectionId)
+      : undefined;
+    if (sectionKey) return enteredTestId(sectionKey.testId);
+    const classKey = pool.find((key) => !key.sectionId);
+    return enteredTestId(classKey?.testId);
+  };
+
+  const testNumbers = [...new Set(keys.map((key) => key.testNumber))].sort((a, b) => a - b);
+  const classLevels = [
+    ...new Set([
+      ...keys.map((key) => key.classLevel),
+      ...sections.map((section) => section.classLevel),
+      ...school.schoolPrograms.flatMap((row) => row.classes.map((cls) => cls.classLevel)),
+    ]),
+  ].sort((a, b) => a - b);
+
+  const classSlots: Array<{
+    testNumber: number;
+    classLevel: number;
+    programCode: string | null;
+    rows: Array<{ testId: string; sectionId: string | null; sectionName: string | null }>;
+  }> = [];
+
+  for (const testNumber of testNumbers) {
+    for (const classLevel of classLevels) {
+      const atLevel = sections.filter((section) => section.classLevel === classLevel);
+      const programCode =
+        atLevel[0]?.program.code ??
+        school.schoolPrograms.find((row) =>
+          row.classes.some((cls) => cls.classLevel === classLevel),
+        )?.program.code ??
+        null;
+      if (!programCode) continue;
+
+      const resolved = (atLevel.length ? atLevel : [null]).map((section) => {
+        const sectionId = section?.id ?? null;
+        const sectionName = section?.name ?? null;
+        return {
+          sectionId,
+          sectionName,
+          testId: resolveSectionTestId(testNumber, classLevel, programCode, sectionId),
+        };
+      });
+      const withIds = resolved.filter((row) => row.testId);
+      if (!withIds.length) continue;
+
+      const distinct = [...new Set(withIds.map((row) => row.testId))];
+      // Same Test ID on every section (or whole class) → one Class row.
+      if (distinct.length === 1) {
+        classSlots.push({
+          testNumber,
+          classLevel,
+          programCode,
+          rows: [{ testId: distinct[0]!, sectionId: null, sectionName: null }],
+        });
+        continue;
+      }
+
+      // Different Test IDs → one row per section.
+      classSlots.push({
+        testNumber,
+        classLevel,
+        programCode,
+        rows: withIds.map((row) => ({
+          testId: row.testId,
+          sectionId: row.sectionId,
+          sectionName: row.sectionName,
+        })),
+      });
+    }
+  }
+
+  return {
+    tests: [...tests.values()]
+      .map(({ testId, testNumber, programs }) => ({
+        testId,
+        testNumber,
+        programs: [...programs.values()]
+          .map(({ code, name, classLevels }) => ({
+            code,
+            name,
+            classLevels: [...classLevels].sort((a, b) => a - b),
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      }))
+      .sort((a, b) => b.testNumber - a.testNumber || a.testId.localeCompare(b.testId)),
+    classSlots,
+  };
 }
 
 export async function getAnswerKeyStats() {

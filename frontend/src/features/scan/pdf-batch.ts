@@ -179,6 +179,7 @@ async function poll() {
 
     setPdfJob({
       ...job,
+      examPattern: status.examPattern ?? job.examPattern,
       done: status.done,
       finished: status.finished && next >= status.done,
       next,

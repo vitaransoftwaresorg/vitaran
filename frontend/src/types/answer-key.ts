@@ -205,6 +205,26 @@ export type SchoolTestOption = {
   }>;
 };
 
+/** One Class / Section row under a Test folder, with its resolved Test ID. */
+export type SchoolClassTestRow = {
+  testId: string;
+  sectionId: string | null;
+  /** Null when every section shares the same Test ID (or the class has no sections). */
+  sectionName: string | null;
+};
+
+export type SchoolClassTestSlot = {
+  testNumber: number;
+  classLevel: number;
+  programCode: string | null;
+  rows: SchoolClassTestRow[];
+};
+
+export type SchoolTestsForResults = {
+  tests: SchoolTestOption[];
+  classSlots: SchoolClassTestSlot[];
+};
+
 /** Whether answer-key edits are locked because OMR is scoring this test ID. */
 export type AnswerKeyOmrStatus = {
   locked: boolean;

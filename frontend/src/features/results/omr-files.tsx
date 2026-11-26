@@ -152,6 +152,8 @@ export function OmrCell({
 }) {
   const [kind, setKind] = useState<OmrKind>("preview");
   const [open, setOpen] = useState(false);
+  /** Mobile: one pane at a time — side-by-side grid leaves Answer key at 0 height. */
+  const [mobilePane, setMobilePane] = useState<"omr" | "key">("omr");
   const [detail, setDetail] = useState<OmScan | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -188,6 +190,7 @@ export function OmrCell({
           setOpen(next);
           if (next) {
             setKind("preview");
+            setMobilePane("omr");
           } else {
             setDetail(null);
             setError(null);
@@ -246,10 +249,36 @@ export function OmrCell({
                 <X className="size-4" />
               </Dialog.Close>
             </header>
+            {/* Mobile: switch panes — stacked grid hid Answer key under a zero-height aside. */}
+            <div className="flex shrink-0 gap-1 border-b border-neutral-200 p-2 lg:hidden">
+              {(
+                [
+                  { id: "omr" as const, label: "OMR sheet" },
+                  { id: "key" as const, label: "Answer key" },
+                ] as const
+              ).map((pane) => (
+                <button
+                  key={pane.id}
+                  type="button"
+                  onClick={() => setMobilePane(pane.id)}
+                  className={cn(
+                    "flex-1 rounded-lg px-3 py-2 text-xs font-semibold",
+                    mobilePane === pane.id
+                      ? "bg-brand-900 text-white"
+                      : "bg-neutral-100 text-neutral-700",
+                  )}
+                >
+                  {pane.label}
+                </button>
+              ))}
+            </div>
             <div className="grid min-h-0 flex-1 gap-3 overflow-hidden p-3 lg:grid-cols-2">
               {/* OMR sheet — zoom/scroll only here; answer key and response stays fixed on the right. */}
               <ImageZoomPane
-                className="rounded-xl border border-neutral-200 bg-neutral-50"
+                className={cn(
+                  "rounded-xl border border-neutral-200 bg-neutral-50",
+                  mobilePane !== "omr" && "hidden lg:flex",
+                )}
                 toolbarLeft={`${KIND_LABEL[kind]} OMR`}
                 resetKey={kind}
               >
@@ -261,7 +290,12 @@ export function OmrCell({
                   draggable={false}
                 />
               </ImageZoomPane>
-              <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white">
+              <aside
+                className={cn(
+                  "flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white",
+                  mobilePane !== "key" && "hidden lg:flex",
+                )}
+              >
                 {loading ? (
                   <div className="flex flex-1 items-center justify-center text-neutral-500">
                     <Loader2 className="size-5 animate-spin" />
@@ -278,16 +312,27 @@ export function OmrCell({
                       wrong={detail.wrong}
                       blank={detail.blank}
                     />
-                    <div className="min-h-0 flex-1 overflow-hidden p-2 sm:p-3">
-                      <FitFixed>
+                    {/* Mobile: scroll the full table. Desktop: FitFixed scales into the pane. */}
+                    <div className="min-h-0 flex-1 overflow-auto p-2 lg:overflow-hidden sm:p-3">
+                      <div className="lg:hidden">
                         <ReadVsKeyTable
                           answers={detail.answers ?? {}}
                           keyAnswers={detail.keyAnswers}
                           keyTypeRanges={detail.keyTypeRanges}
                           ranges={detail.subjectScores}
-                          className="[&_[data-table-scroll]]:overflow-visible"
                         />
-                      </FitFixed>
+                      </div>
+                      <div className="hidden h-full lg:block">
+                        <FitFixed>
+                          <ReadVsKeyTable
+                            answers={detail.answers ?? {}}
+                            keyAnswers={detail.keyAnswers}
+                            keyTypeRanges={detail.keyTypeRanges}
+                            ranges={detail.subjectScores}
+                            className="[&_[data-table-scroll]]:overflow-visible"
+                          />
+                        </FitFixed>
+                      </div>
                     </div>
                   </>
                 ) : null}

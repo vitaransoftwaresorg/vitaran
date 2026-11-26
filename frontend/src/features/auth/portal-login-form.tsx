@@ -2,7 +2,7 @@
 
 import { useActionState, useId, useState } from "react";
 import Form from "next/form";
-import { AlertCircle, ArrowRight, Loader2 } from "lucide-react";
+import { AlertCircle, ArrowRight, Eye, EyeOff, Loader2 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -25,6 +25,7 @@ export function PortalLoginForm({
 }) {
   const [mode, setMode] = useState<"login" | "forgot">("login");
   const [identifier, setIdentifier] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [forgotHint, setForgotHint] = useState<string | null>(null);
   const [forgotEmail, setForgotEmail] = useState("");
   const [state, formAction, pending] = useActionState<LoginFormState, FormData>(
@@ -122,17 +123,27 @@ export function PortalLoginForm({
                 Forgot password?
               </button>
             </div>
-            <Input
-              id={passwordId}
-              name="password"
-              type="text"
-              required
-              autoComplete="current-password"
-              spellCheck={false}
-              placeholder="Enter your password"
-              aria-invalid={passwordError ? true : undefined}
-              className={INPUT_CLASSES}
-            />
+            <div className="relative">
+              <Input
+                id={passwordId}
+                name="password"
+                type={showPassword ? "text" : "password"}
+                required
+                autoComplete="current-password"
+                spellCheck={false}
+                placeholder="Enter your password"
+                aria-invalid={passwordError ? true : undefined}
+                className={cn(INPUT_CLASSES, "pr-11")}
+              />
+              <button
+                type="button"
+                className="absolute top-1/2 right-3 -translate-y-1/2 text-neutral-500 hover:text-neutral-800"
+                onClick={() => setShowPassword((value) => !value)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </button>
+            </div>
             <FieldError>{passwordError}</FieldError>
           </Field>
 

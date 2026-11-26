@@ -30,6 +30,7 @@ import { useResetOnScopeChange } from "@/hooks/use-reset-on-scope-change";
 import { cn } from "@/lib/utils";
 import type { LearningProgram } from "@/types/program";
 import type { ResultCell, ResultSet, ResultSheet } from "@/types/result";
+import type { SchoolClassTestRow } from "@/types/answer-key";
 import { formatMarks, type ClassScan } from "@/types/scan";
 import type { Student } from "@/types/student";
 import { saveManualResultAction } from "./actions";
@@ -185,6 +186,10 @@ type ClassResultsBoardProps = {
   backHref: string;
   breadcrumbs: DriveCrumb[];
   scans: ClassScan[];
+  /** Real answer-key / OMR test ID resolved on the server (never a T-N placeholder). */
+  resolvedTestId?: string;
+  /** When sections have different Test IDs — show each; when shared, a single class-wide row. */
+  sectionTestIds?: SchoolClassTestRow[];
 };
 
 export function ClassResultsBoard({
@@ -198,6 +203,8 @@ export function ClassResultsBoard({
   backHref,
   breadcrumbs,
   scans,
+  resolvedTestId,
+  sectionTestIds = [],
 }: ClassResultsBoardProps) {
   const columns = useMemo(
     () => ensureSerialColumn(columnsProp, []).columns,
@@ -332,14 +339,27 @@ export function ClassResultsBoard({
     );
   }
 
-  const classTestId =
-    resultSet?.testId?.trim() ||
-    scans.map((scan) => scan.testId?.trim()).find(Boolean) ||
-    `T-${path.testNumber}`;
+  /** Prefer a real OMR/answer-key test ID over placeholders like "T-2". */
+  const classTestId = (() => {
+    const placeholder = (value: string | null | undefined) => {
+      const id = value?.trim() ?? "";
+      return !id || id === "-" || /^T-\d+$/i.test(id);
+    };
+    if (resolvedTestId?.trim() && !placeholder(resolvedTestId)) return resolvedTestId.trim();
+    const fromScans = scans.map((scan) => scan.testId?.trim()).find((id) => id && !placeholder(id));
+    if (fromScans) return fromScans;
+    const fromSet = resultSet?.testId?.trim();
+    if (fromSet && !placeholder(fromSet)) return fromSet;
+    return "";
+  })();
 
   function save() {
     if (rows.length === 0) {
       toast.error("No students in this class");
+      return;
+    }
+    if (!classTestId) {
+      toast.error("No Test ID for this class — add an answer key first");
       return;
     }
     startTransition(async () => {
@@ -374,9 +394,33 @@ export function ClassResultsBoard({
         <header className="flex flex-wrap items-center gap-3 border-b border-neutral-200 px-3 py-2.5 sm:px-4">
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold text-neutral-900">
-              Test ID{" "}
-              <span className="font-mono text-brand-800">{classTestId}</span>
-              <span className="mx-1.5 text-neutral-300">·</span>
+              {sectionTestIds.length > 1 ? (
+                <>
+                  {sectionTestIds.map((row, index) => (
+                    <span key={`${row.sectionId ?? "all"}:${row.testId}`}>
+                      {index > 0 ? <span className="mx-1.5 text-neutral-300">·</span> : null}
+                      {row.sectionName ? (
+                        <>
+                          Section {row.sectionName}{" "}
+                          <span className="font-mono text-brand-800">{row.testId}</span>
+                        </>
+                      ) : (
+                        <>
+                          Test ID{" "}
+                          <span className="font-mono text-brand-800">{row.testId}</span>
+                        </>
+                      )}
+                    </span>
+                  ))}
+                  <span className="mx-1.5 text-neutral-300">·</span>
+                </>
+              ) : classTestId ? (
+                <>
+                  Test ID{" "}
+                  <span className="font-mono text-brand-800">{classTestId}</span>
+                  <span className="mx-1.5 text-neutral-300">·</span>
+                </>
+              ) : null}
               Test {path.testNumber}
               <span className="mx-1.5 text-neutral-300">·</span>
               Class {path.classLevel}

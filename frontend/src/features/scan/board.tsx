@@ -62,6 +62,7 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
   const [cameraKey, setCameraKey] = useState(0);
   // Owned by this page, so opening it any way (back from review, refresh, menu) starts with an empty test ID.
   const [testId, setTestId] = useState("");
+  const [examPattern, setExamPattern] = useState<"" | "MPCB" | "PCB" | "MPC">("");
   const restRef = useRef<ScanQueueItem[]>([]);
 
   useEffect(
@@ -192,6 +193,7 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
         const form = new FormData();
         form.append("file", next.file);
         if (next.testId) form.append("testId", next.testId);
+        if (next.examPattern) form.append("examPattern", next.examPattern);
         const result = await previewScanAction(portal, form);
         if (result.ok) {
           setScanBatch([result.result]);
@@ -277,6 +279,8 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
           scanAction={(form) => previewScanAction(portal, form)}
           testId={testId}
           onTestId={setTestId}
+          examPattern={examPattern}
+          onExamPattern={setExamPattern}
         />
       ) : null}
 
@@ -411,7 +415,7 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
               <ScanSheetTable
                 portal={portal}
                 testId={job?.testId ?? batch[0]?.scan.testId ?? testId}
-                examPattern={job?.examPattern ?? ""}
+                examPattern={job?.examPattern ?? examPattern}
                 batch={batch}
                 failures={job?.failures ?? []}
                 saving={saving}

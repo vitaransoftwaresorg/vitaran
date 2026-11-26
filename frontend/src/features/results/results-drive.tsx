@@ -3,6 +3,7 @@
 import { wasEdited } from "@/features/documents/constants";
 import { DriveBrowser, type DriveCrumb, type DriveItem } from "@/features/documents/drive-browser";
 import { programLabel, TYPE_LABELS } from "@/features/schools/constants";
+import type { SchoolClassTestSlot, SchoolTestOption } from "@/types/answer-key";
 import type { DeleteResult } from "@/types/document";
 import type { LearningProgram } from "@/types/program";
 import type { ResultSet } from "@/types/result";
@@ -18,8 +19,50 @@ type ResultsDriveProps = {
   programs: LearningProgram[];
   schools: DriveSchool[];
   path: DrivePath;
+  /** Answer-key test IDs for the open school — fills Class row Test ID before results exist. */
+  schoolTests?: SchoolTestOption[];
+  /** Per-class section rows: split when sections have different Test IDs. */
+  classSlots?: SchoolClassTestSlot[];
   publishAction: (id: string, classLevel: number, published: boolean) => Promise<DeleteResult>;
 };
+
+function isPlaceholderTestId(value: string | null | undefined) {
+  const id = value?.trim() ?? "";
+  return !id || id === "-" || /^T-\d+$/i.test(id);
+}
+
+function testIdForClass(
+  schoolTests: SchoolTestOption[] | undefined,
+  testNumber: number,
+  classLevel: number,
+  program?: string,
+) {
+  const matches = (schoolTests ?? []).filter((test) => test.testNumber === testNumber);
+  const preferred = matches.find((test) =>
+    test.programs.some(
+      (row) =>
+        row.classLevels.includes(classLevel) && (!program || row.code === program),
+    ),
+  );
+  const fallback = matches.find((test) =>
+    test.programs.some((row) => row.classLevels.includes(classLevel)),
+  );
+  return (preferred ?? fallback)?.testId?.trim() || "";
+}
+
+function classSlotRows(
+  classSlots: SchoolClassTestSlot[] | undefined,
+  testNumber: number,
+  classLevel: number,
+) {
+  return (classSlots ?? []).find(
+    (slot) => slot.testNumber === testNumber && slot.classLevel === classLevel,
+  )?.rows;
+}
+
+function classRowLabel(classLevel: number, sectionName: string | null) {
+  return sectionName ? `Class ${classLevel} · Section ${sectionName}` : `Class ${classLevel}`;
+}
 
 type ClassEntry = {
   classLevel: number;
@@ -124,6 +167,8 @@ export function ResultsDrive({
   programs,
   schools,
   path,
+  schoolTests = [],
+  classSlots = [],
   publishAction,
 }: ResultsDriveProps) {
   const schoolId = path.schoolId;
@@ -171,56 +216,102 @@ export function ResultsDrive({
           (item) => item.school.id === schoolId && item.testNumber === testNumber,
         );
         const count = sets.reduce((total, item) => total + item.classes.length, 0);
-        const testId = sets.map((item) => item.testId).find((id) => id?.trim()) ?? "";
         return {
           id: String(testNumber),
           name: `Test ${testNumber}`,
           kind: "folder" as const,
           href: link({ schoolId, testNumber }),
-          testId,
           detail: count > 0 ? `${count} uploaded` : "Empty",
         };
       }),
     );
   } else if (inTest && schoolId && path.testNumber !== undefined) {
     const testNumber = path.testNumber;
-    const entries = classEntriesForSchool(currentSchool, resultSets, programs, testNumber);
+    const schoolSets = resultSets.filter(
+      (item) => item.school.id === schoolId && item.testNumber === testNumber,
+    );
+    const classLevels = [
+      ...new Set([
+        ...classEntriesForSchool(currentSchool, resultSets, programs, testNumber).map(
+          (entry) => entry.classLevel,
+        ),
+        ...schoolSets.flatMap((set) => set.classes.map((row) => row.classLevel)),
+      ]),
+    ].sort((a, b) => a - b);
 
-    driveItems.push(
-      ...entries.map((entry) => {
-        const entryPath: DrivePath = {
-          schoolId,
-          testNumber,
-          classLevel: entry.classLevel,
-          program: entry.program,
-        };
-        const resultSet = findResultSet(resultSets, entryPath);
-        const sheet = resultSet?.classes.find((item) => item.classLevel === entry.classLevel);
-        const enterHref = resultEnterHref({
-          schoolId,
-          program: entry.program,
-          testNumber,
-          classLevel: entry.classLevel,
-        });
+    const classRows: DriveItem[] = classLevels.flatMap((classLevel): DriveItem[] => {
+      const entry = classEntriesForSchool(
+        currentSchool,
+        resultSets,
+        programs,
+        testNumber,
+      ).find((row) => row.classLevel === classLevel);
+      const entryPath: DrivePath = {
+        schoolId,
+        testNumber,
+        classLevel,
+        program: entry?.program,
+      };
+      const resultSet = findResultSet(resultSets, entryPath);
+      const sheet = resultSet?.classes.find((item) => item.classLevel === classLevel);
+      const enterHref = resultEnterHref({
+        schoolId,
+        program: entry?.program ?? classSlots.find(
+          (slot) => slot.testNumber === testNumber && slot.classLevel === classLevel,
+        )?.programCode ?? undefined,
+        testNumber,
+        classLevel,
+      });
 
-        if (!sheet || !resultSet) {
-          return {
-            id: `class:${entry.classLevel}`,
-            name: `Class ${entry.classLevel}`,
-            kind: "folder" as const,
+      const slotRows = classSlotRows(classSlots, testNumber, classLevel);
+      const fallbackTestId = testIdForClass(
+        schoolTests,
+        testNumber,
+        classLevel,
+        entry?.program,
+      );
+      // Prefer answer-key section split; fall back to one Class row.
+      const displayRows =
+        slotRows && slotRows.length > 0
+          ? slotRows
+          : [{ testId: fallbackTestId, sectionId: null, sectionName: null }];
+
+      if (!sheet || !resultSet) {
+        return displayRows.map(
+          (row): DriveItem => ({
+            id: row.sectionId
+              ? `class:${classLevel}:section:${row.sectionId}`
+              : `class:${classLevel}`,
+            name: classRowLabel(classLevel, row.sectionName),
+            kind: "folder",
             href: enterHref,
+            testId: row.testId,
             detail: "Empty",
-          };
-        }
+          }),
+        );
+      }
 
-        const viewHref = resultSetHref(RESULTS_PATH, resultSet.id, entry.classLevel);
-        const classPublished = sheet.published;
-        return {
-          id: `${resultSet.id}:${entry.classLevel}`,
-          name: `Class ${entry.classLevel}`,
-          kind: "file" as const,
-          fileKind: "sheet" as const,
+      const viewHref = resultSetHref(RESULTS_PATH, resultSet.id, classLevel);
+      const classPublished = sheet.published;
+      const storedTestId = resultSet.testId?.trim() || "";
+      const sharedStored =
+        !isPlaceholderTestId(storedTestId) && displayRows.length === 1
+          ? storedTestId
+          : "";
+
+      return displayRows.map(
+        (row): DriveItem => ({
+          id: row.sectionId
+            ? `${resultSet.id}:${classLevel}:section:${row.sectionId}`
+            : `${resultSet.id}:${classLevel}`,
+          name: classRowLabel(classLevel, row.sectionName),
+          kind: "file",
+          fileKind: "sheet",
           href: enterHref,
+          testId:
+            row.testId ||
+            sharedStored ||
+            (!isPlaceholderTestId(storedTestId) ? storedTestId : ""),
           detail: classPublished
             ? `${formatNumber(sheet.rowCount)} students · Published`
             : `${formatNumber(sheet.rowCount)} students · Hidden`,
@@ -228,15 +319,16 @@ export function ResultsDrive({
             ? formatDateTime(sheet.updatedAt)
             : undefined,
           published: classPublished,
-          publishLabel: `Class ${entry.classLevel}`,
-          onPublish: publishAction.bind(null, resultSet.id, entry.classLevel),
+          publishLabel: classRowLabel(classLevel, row.sectionName),
+          onPublish: publishAction.bind(null, resultSet.id, classLevel),
           actions: [
-            { label: "Enter marks", href: enterHref, icon: "edit" as const },
-            { label: "View", href: viewHref, icon: "view" as const },
+            { label: "Enter marks", href: enterHref, icon: "edit" },
+            { label: "View", href: viewHref, icon: "view" },
           ],
-        };
-      }),
-    );
+        }),
+      );
+    });
+    driveItems.push(...classRows);
   }
 
   const emptyText = atRoot
