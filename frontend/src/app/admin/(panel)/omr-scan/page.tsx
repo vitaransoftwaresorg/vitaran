@@ -5,5 +5,9 @@ export const metadata: Metadata = { title: "OMR Scan" };
 export const maxDuration = 120;
 
 export default function AdminOmrScanPage() {
-  return <ScanBoard portal="admin" />;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <ScanBoard portal="admin" />
+    </div>
+  );
 }

@@ -344,29 +344,48 @@ export function ScanSheetTable({
         </div>
       ) : null}
 
-      {/* Only the row list scrolls — header + Save all stay fixed above. */}
-      <div className="min-h-0 flex-1 overflow-auto overscroll-contain">
-        <table className="w-full min-w-[28rem] border-separate border-spacing-0 text-left text-sm sm:min-w-[40rem]">
-          <thead className="text-xs font-semibold tracking-wide text-neutral-600 uppercase">
-            <tr>
-              <th className="sticky top-0 z-10 whitespace-nowrap border-b border-neutral-200 bg-neutral-100 px-2 py-2 shadow-[0_1px_0_0_rgb(229_229_229)] sm:px-3">
-                Page
-              </th>
-              <th className="sticky top-0 z-10 border-b border-neutral-200 bg-neutral-100 px-2 py-2 shadow-[0_1px_0_0_rgb(229_229_229)] sm:px-3">
-                Student / error
-              </th>
-              <th className="sticky top-0 z-10 min-w-0 border-b border-neutral-200 bg-neutral-100 px-2 py-2 shadow-[0_1px_0_0_rgb(229_229_229)] sm:min-w-[12rem] sm:px-3">
-                Registration number
-              </th>
-              <th className="sticky top-0 z-10 whitespace-nowrap border-b border-neutral-200 bg-neutral-100 px-3 py-2 shadow-[0_1px_0_0_rgb(229_229_229)]">
-                Score
-              </th>
-              <th className="sticky top-0 z-10 whitespace-nowrap border-b border-neutral-200 bg-neutral-100 px-3 py-2 text-right shadow-[0_1px_0_0_rgb(229_229_229)]">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody>
+      {/* Column titles stay fixed; only the student/failed rows scroll vertically. No horizontal scroll. */}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="shrink-0">
+          <table className="w-full table-fixed border-separate border-spacing-0 text-left text-sm">
+            <colgroup>
+              <col className="w-12" />
+              <col className="w-[28%]" />
+              <col className="w-[18%]" />
+              <col className="w-20" />
+              <col />
+            </colgroup>
+            <thead className="text-xs font-semibold tracking-wide text-neutral-600 uppercase">
+              <tr>
+                <th className="whitespace-nowrap border-b border-neutral-200 bg-neutral-100 px-2 py-2">
+                  Page
+                </th>
+                <th className="border-b border-neutral-200 bg-neutral-100 px-2 py-2">
+                  Student / error
+                </th>
+                <th className="border-b border-neutral-200 bg-neutral-100 px-2 py-2">
+                  Reg no
+                </th>
+                <th className="whitespace-nowrap border-b border-neutral-200 bg-neutral-100 px-2 py-2">
+                  Score
+                </th>
+                <th className="whitespace-nowrap border-b border-neutral-200 bg-neutral-100 px-2 py-2 text-right">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+          </table>
+        </div>
+        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain">
+          <table className="w-full table-fixed border-separate border-spacing-0 text-left text-sm">
+            <colgroup>
+              <col className="w-12" />
+              <col className="w-[28%]" />
+              <col className="w-[18%]" />
+              <col className="w-20" />
+              <col />
+            </colgroup>
+            <tbody>
             {rows.map((row) => {
               if (row.kind === "ready") {
                 const item = row.item;
@@ -379,16 +398,16 @@ export function ScanSheetTable({
                     key={`ready-${item.previewId}`}
                     className="border-t border-emerald-100 bg-emerald-50/50 hover:bg-emerald-50"
                   >
-                    <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-emerald-900">
+                    <td className="px-2 py-1.5 tabular-nums text-emerald-900">
                       {item.pdfPage != null ? item.pdfPage : "—"}
                     </td>
-                    <td className="max-w-[16rem] truncate px-3 py-1.5 font-medium text-emerald-950">
+                    <td className="truncate px-2 py-1.5 font-medium text-emerald-950">
                       {scan.student.name}
                       <span className="ml-1.5 font-normal text-emerald-800/70">
                         Class {scan.student.classLevel}-{scan.student.sectionName?.trim() || "A"}
                       </span>
                     </td>
-                    <td className="min-w-[16rem] px-3 py-1.5 tabular-nums text-emerald-900">
+                    <td className="px-2 py-1.5 tabular-nums text-emerald-900">
                       {editing ? (
                         <OmrRollRecovery
                           portal={portal}
@@ -436,11 +455,11 @@ export function ScanSheetTable({
                         </div>
                       )}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-1.5 font-semibold tabular-nums text-emerald-900">
+                    <td className="whitespace-nowrap px-2 py-1.5 font-semibold tabular-nums text-emerald-900">
                       {formatMarks(scan.total)}/{formatMarks(scan.maxTotal)}
                     </td>
-                    <td className="px-3 py-1.5">
-                      <div className="flex items-center justify-end gap-1.5">
+                    <td className="px-2 py-1.5">
+                      <div className="flex flex-wrap items-center justify-end gap-1">
                         {editing ? (
                           <Button
                             type="button"
@@ -457,19 +476,21 @@ export function ScanSheetTable({
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="h-7 gap-1 border-emerald-300 px-2 text-xs text-emerald-900"
+                          className="h-7 gap-1 border-emerald-300 px-1.5 text-xs text-emerald-900 sm:px-2"
                           onClick={() => setViewing({ kind: "ready", item })}
                           disabled={savingAll}
+                          title="View OMR"
                         >
                           <Eye className="size-3.5" />
-                          View OMR
+                          <span className="hidden lg:inline">View OMR</span>
                         </Button>
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="h-7 border-emerald-300 px-2 text-xs text-emerald-900"
+                          className="h-7 border-emerald-300 px-1.5 text-xs text-emerald-900 sm:px-2"
                           disabled={savingAll}
+                          title="View details"
                           onClick={() => {
                             const index = getScanBatch().findIndex(
                               (row) => row.previewId === item.previewId,
@@ -477,22 +498,24 @@ export function ScanSheetTable({
                             if (index >= 0) onOpenReview(index);
                           }}
                         >
-                          View details
+                          <span className="lg:hidden">Details</span>
+                          <span className="hidden lg:inline">View details</span>
                         </Button>
                         <Button
                           type="button"
                           variant="outline"
                           size="sm"
-                          className="h-7 gap-1 border-emerald-300 px-2 text-xs text-emerald-900"
+                          className="h-7 gap-1 border-emerald-300 px-1.5 text-xs text-emerald-900 sm:px-2"
                           disabled={savingAll || downloading === item.previewId}
                           onClick={() => void handleDownloadReady(item)}
+                          title="Download"
                         >
                           {downloading === item.previewId ? (
                             <Loader2 className="size-3.5 animate-spin" />
                           ) : (
                             <Download className="size-3.5" />
                           )}
-                          Download
+                          <span className="hidden lg:inline">Download</span>
                         </Button>
                         <Button
                           type="button"
@@ -521,13 +544,13 @@ export function ScanSheetTable({
                   key={`failed-${failure.page}`}
                   className="border-t border-red-100 bg-red-50/60 hover:bg-red-50"
                 >
-                  <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-red-900">
+                  <td className="px-2 py-1.5 tabular-nums text-red-900">
                     {failure.page}
                   </td>
-                  <td className="max-w-[18rem] px-3 py-1.5 text-xs leading-snug text-red-800">
+                  <td className="truncate px-2 py-1.5 text-xs leading-snug text-red-800">
                     {isDup ? "Duplicate registration" : displayScanError(failure.message)}
                   </td>
-                  <td className="px-3 py-1">
+                  <td className="px-2 py-1">
                     {recoverRoll && (failure.hasImage || failure.previewId) ? (
                       <OmrRollRecovery
                         portal={portal}
@@ -557,39 +580,41 @@ export function ScanSheetTable({
                       </span>
                     )}
                   </td>
-                  <td className="whitespace-nowrap px-3 py-1.5 font-semibold tabular-nums text-red-900">
+                  <td className="whitespace-nowrap px-2 py-1.5 font-semibold tabular-nums text-red-900">
                     {failure.total != null && failure.maxTotal != null
                       ? `${formatMarks(failure.total)}/${formatMarks(failure.maxTotal)}`
                       : "—"}
                   </td>
-                  <td className="px-3 py-1.5">
-                    <div className="flex items-center justify-end gap-1.5">
+                  <td className="px-2 py-1.5">
+                    <div className="flex flex-wrap items-center justify-end gap-1">
                       {failure.hasImage || failure.previewId ? (
                         <>
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            className="h-7 gap-1 border-red-300 px-2 text-xs text-red-900"
+                            className="h-7 gap-1 border-red-300 px-1.5 text-xs text-red-900 sm:px-2"
                             onClick={() => setViewing({ kind: "failed", failure })}
+                            title="View OMR"
                           >
                             <Eye className="size-3.5" />
-                            View OMR
+                            <span className="hidden lg:inline">View OMR</span>
                           </Button>
                           <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            className="h-7 gap-1 border-red-300 px-2 text-xs text-red-900"
+                            className="h-7 gap-1 border-red-300 px-1.5 text-xs text-red-900 sm:px-2"
                             disabled={downloading === `failed-${failure.page}`}
                             onClick={() => void handleDownloadFailed(failure)}
+                            title="Download"
                           >
                             {downloading === `failed-${failure.page}` ? (
                               <Loader2 className="size-3.5 animate-spin" />
                             ) : (
                               <Download className="size-3.5" />
                             )}
-                            Download
+                            <span className="hidden lg:inline">Download</span>
                           </Button>
                         </>
                       ) : null}
@@ -598,8 +623,9 @@ export function ScanSheetTable({
                 </tr>
               );
             })}
-          </tbody>
-        </table>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <Sheet open={viewing != null} onOpenChange={(open) => (open ? null : setViewing(null))}>

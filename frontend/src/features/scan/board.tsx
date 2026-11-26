@@ -252,7 +252,7 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
         showCamera
           ? "grid gap-6 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]"
           : previewOpen
-            ? // Fill the panel; only the sheet list scrolls (header + Save all stay fixed).
+            ? // Fill the panel; only the student rows scroll (headers stay fixed).
               "flex min-h-0 flex-1 flex-col overflow-hidden"
             : "space-y-4"
       }

@@ -43,15 +43,18 @@ export default async function AdminPanelLayout({
             }
           >
             <AdminSidebar admin={admin} />
-            <SidebarInset className="min-h-0 min-w-0 overflow-hidden bg-neutral-50">
+            <SidebarInset className="h-svh min-h-0 min-w-0 overflow-hidden bg-neutral-50">
               <AdminHeader />
-              <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto p-3 sm:p-5 lg:px-6 lg:py-6">
+              <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden p-3 sm:p-5 lg:px-6 lg:py-6">
                 <AdminPageBack />
                 <Suspense fallback={null}>
                   <PortalNavMemory roots={ADMIN_NAV_ROOTS} />
                 </Suspense>
-                {/* null fallback: keep the current table visible during soft refresh (toggles/publish). */}
-                <Suspense fallback={null}>{children}</Suspense>
+                {/* Scroll lives here (or inside a page like OMR list rows), not on the whole shell. */}
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+                  {/* null fallback: keep the current table visible during soft refresh (toggles/publish). */}
+                  <Suspense fallback={null}>{children}</Suspense>
+                </div>
               </div>
             </SidebarInset>
           </SidebarProvider>

@@ -51,16 +51,20 @@ export default async function TeacherPanelLayout({
             }
           >
             <TeacherSidebar teacher={teacher} />
-            <SidebarInset className="min-h-0 min-w-0 overflow-hidden bg-neutral-50">
+            <SidebarInset className="h-svh min-h-0 min-w-0 overflow-hidden bg-neutral-50">
               <TeacherHeader />
-              <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto p-3 sm:p-5 lg:px-6 lg:py-6">
+              <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden p-3 sm:p-5 lg:px-6 lg:py-6">
                 <PortalMaintenanceGate initialMaintenance={settings.maintenanceMode}>
-                  <TeacherPageBack />
-                  <Suspense fallback={null}>
-                    <PortalNavMemory roots={TEACHER_NAV_ROOTS} />
-                  </Suspense>
-                  {/* null fallback: keep the current table visible during soft refresh (toggles/publish). */}
-                  <Suspense fallback={null}>{children}</Suspense>
+                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                    <TeacherPageBack />
+                    <Suspense fallback={null}>
+                      <PortalNavMemory roots={TEACHER_NAV_ROOTS} />
+                    </Suspense>
+                    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+                      {/* null fallback: keep the current table visible during soft refresh (toggles/publish). */}
+                      <Suspense fallback={null}>{children}</Suspense>
+                    </div>
+                  </div>
                 </PortalMaintenanceGate>
               </div>
             </SidebarInset>
