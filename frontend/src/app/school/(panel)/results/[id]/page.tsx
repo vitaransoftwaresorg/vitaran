@@ -1,5 +1,6 @@
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { SCHOOL_RESULTS_PATH } from "@/features/results/constants";
+import { safeResultsReturnHref } from "@/features/results/portal-drive-path";
 import { PortalResultSetView } from "@/features/results/portal-result-set-view";
 import { classScanFilter, selectedClass } from "@/features/results/result-set-view";
 import { listClassScans } from "@/services/scans";
@@ -18,7 +19,10 @@ export default async function SchoolResultDetailPage({
         listClassScans("school", classScanFilter(resultSet, classLevel)),
       ])
     : [null, []];
-  if (!resultSet || !sheet) notFound();
+  // Deleted from admin / unpublished sheet — return to the test folder, not a hard 404.
+  if (!resultSet || !sheet) {
+    redirect(safeResultsReturnHref(query.from, SCHOOL_RESULTS_PATH));
+  }
 
   if (!resultSet.published || !sheet.published) {
     return (

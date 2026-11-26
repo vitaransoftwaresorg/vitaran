@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { AdminResultActions } from "@/features/results/admin-result-actions";
 import { RESULTS_PATH } from "@/features/results/constants";
+import { safeResultsReturnHref } from "@/features/results/portal-drive-path";
 import { PortalResultSetView } from "@/features/results/portal-result-set-view";
 import { classScanFilter, selectedClass } from "@/features/results/result-set-view";
 import { listClassScans } from "@/services/scans";
@@ -19,7 +20,9 @@ export default async function ResultPage({ params, searchParams }: PageProps<"/a
         listClassScans("admin", classScanFilter(resultSet, classLevel)),
       ])
     : [null, []];
-  if (!resultSet || !sheet) notFound();
+  if (!resultSet || !sheet) {
+    redirect(safeResultsReturnHref(query.from, RESULTS_PATH));
+  }
 
   // Layout LiveRefresh keeps this page in sync across admin / school / teacher.
   return (

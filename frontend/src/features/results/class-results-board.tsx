@@ -523,9 +523,11 @@ export function ClassResultsBoard({
                         : label.replace(/\s*\((\d+M?)\)/i, "\n($1)")}
                     </TableHead>
                   ))}
-                  <TableHead className="text-center text-xs font-bold uppercase">
-                    <span className="md:hidden">Card</span>
-                    <span className="hidden md:inline">Report card</span>
+                  <TableHead className="w-14 text-center text-xs font-bold uppercase">
+                    <span className="inline-flex flex-col items-center leading-tight">
+                      <span>Report</span>
+                      <span>Card</span>
+                    </span>
                   </TableHead>
                   <TableHead className="text-center text-xs font-bold uppercase">
                     OMR

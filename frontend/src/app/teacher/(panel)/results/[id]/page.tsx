@@ -1,5 +1,6 @@
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { TEACHER_RESULTS_PATH } from "@/features/results/constants";
+import { safeResultsReturnHref } from "@/features/results/portal-drive-path";
 import { PortalResultSetView } from "@/features/results/portal-result-set-view";
 import { classScanFilter, selectedClass } from "@/features/results/result-set-view";
 import { listClassScans } from "@/services/scans";
@@ -10,7 +11,7 @@ export default async function TeacherResultDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ class?: string }>;
+  searchParams: Promise<{ class?: string; from?: string }>;
 }) {
   const [{ id }, query] = await Promise.all([params, searchParams]);
   const resultSet = await getTeacherResultSet(id);
@@ -21,7 +22,10 @@ export default async function TeacherResultDetailPage({
         listClassScans("teacher", classScanFilter(resultSet, classLevel)),
       ])
     : [null, []];
-  if (!resultSet || !sheet) notFound();
+  // Deleted from admin / missing sheet — return to the test folder, not a hard 404.
+  if (!resultSet || !sheet) {
+    redirect(safeResultsReturnHref(query.from, TEACHER_RESULTS_PATH));
+  }
 
   if (!resultSet.published || !sheet.published) {
     return (

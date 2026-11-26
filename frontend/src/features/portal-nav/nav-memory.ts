@@ -43,19 +43,36 @@ function isSafeRememberedHref(rootHref: string, href: string) {
 }
 
 /**
- * Answer/school key editors are ephemeral — remember the folder (?from=) instead
- * so sidebar return after delete does not reopen a missing /answers URL.
+ * Ephemeral detail pages (key editors, result sheets) — remember the folder (?from=)
+ * so sidebar return after admin delete does not reopen a missing URL.
  */
 function folderHrefFromEditor(pathname: string, search: string): string | null {
-  if (
-    !/\/(answer-keys|school-keys)\/[^/]+\/(answers|edit)$/.test(pathname)
-  ) {
-    return null;
-  }
+  const isKeyEditor = /\/(answer-keys|school-keys)\/[^/]+\/(answers|edit)$/.test(pathname);
+  const isResultDetail = /\/results\/[^/]+$/.test(pathname);
+  if (!isKeyEditor && !isResultDetail) return null;
+
   const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
   const from = params.get("from");
-  if (!from || from.includes("://") || from.includes("..")) return null;
-  return from;
+  if (from && !from.includes("://") && !from.includes("..")) {
+    if (isKeyEditor) return from;
+    const pathOnly = from.split("?")[0] ?? "";
+    if (
+      pathOnly === "/admin/results" ||
+      pathOnly === "/school/results" ||
+      pathOnly === "/teacher/results" ||
+      pathOnly === "/results"
+    ) {
+      return from;
+    }
+  }
+
+  // Result detail without a usable ?from= — remember the portal results root, not the sheet id.
+  if (isResultDetail) {
+    if (pathname.startsWith("/school/results/")) return "/school/results";
+    if (pathname.startsWith("/teacher/results/")) return "/teacher/results";
+    if (pathname.startsWith("/admin/results/")) return "/admin/results";
+  }
+  return null;
 }
 
 export function rememberPortalNavPath(

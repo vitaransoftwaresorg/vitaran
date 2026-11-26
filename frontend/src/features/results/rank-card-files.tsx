@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Dialog } from "@base-ui/react/dialog";
 import { Award, Download, Eye, FileText, Loader2, Printer, X } from "lucide-react";
 import { ImageZoomPane } from "@/components/shared/image-zoom-pane";
@@ -80,6 +80,16 @@ export function RankCardCell({
   roll: string;
   name: string;
 }) {
+  /** Laptop/desktop: 50%; mobile: 75% (same as OMR). */
+  const [mobileView, setMobileView] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const sync = () => setMobileView(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
   if (!target || !roll) return <span className="text-neutral-300">—</span>;
   const jpgHref = rankCardHref(target, { roll, format: "jpg" });
   const downloadHref = rankCardHref(target, { roll, format: "pdf", download: true });
@@ -134,7 +144,12 @@ export function RankCardCell({
                 <X className="size-4" />
               </Dialog.Close>
             </header>
-            <ImageZoomPane className="min-h-0 flex-1 bg-neutral-100" toolbarLeft="Report card" resetKey={jpgHref}>
+            <ImageZoomPane
+              className="min-h-0 flex-1 bg-neutral-100"
+              toolbarLeft="Report card"
+              resetKey={jpgHref}
+              defaultZoom={mobileView ? 0.75 : 0.5}
+            >
               <img
                 src={jpgHref}
                 alt={`Report card of ${name}`}

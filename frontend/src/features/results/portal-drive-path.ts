@@ -1,5 +1,6 @@
 import {
   PUBLIC_RESULTS_PATH,
+  RESULTS_PATH,
   SCHOOL_RESULTS_PATH,
   TEACHER_RESULTS_PATH,
 } from "./constants";
@@ -18,10 +19,21 @@ export function isResultsFolderHref(href: string) {
   const pathOnly = href.split("?")[0];
   return (
     !href.includes("://") &&
-    (pathOnly === SCHOOL_RESULTS_PATH ||
+    (pathOnly === RESULTS_PATH ||
+      pathOnly === SCHOOL_RESULTS_PATH ||
       pathOnly === TEACHER_RESULTS_PATH ||
       pathOnly === PUBLIC_RESULTS_PATH)
   );
+}
+
+/** Safe redirect target after a deleted / missing result sheet (prefer ?from= folder). */
+export function safeResultsReturnHref(
+  from: string | string[] | undefined,
+  fallback: string,
+): string {
+  const value = Array.isArray(from) ? from[0] : from;
+  if (!value || value.includes("://") || value.includes("..")) return fallback;
+  return isResultsFolderHref(value) ? value : fallback;
 }
 
 export function isResultDetailPath(pathname: string) {

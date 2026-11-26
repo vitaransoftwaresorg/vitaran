@@ -254,53 +254,10 @@ export function ResultSheetCard({
 
       {visible.length > 0 ? (
         <Table className="border-collapse">
-          <TableHeader>
-            <TableRow className="border-0 bg-brand-50 hover:bg-brand-50">
-              {shown.map((index) => {
-                const role = roles[index] ?? null;
-                const isName = role === "name";
-                const isCompact =
-                  role === "subject" ||
-                  role === "total" ||
-                  role === "percentage" ||
-                  role === "sectionRank" ||
-                  role === "classRank";
-                return (
-                  <TableHead
-                    key={index}
-                    className={cn(
-                      "h-auto border border-neutral-300 bg-brand-50 py-2 text-center align-middle text-[11px] font-semibold tracking-wide text-brand-900 uppercase",
-                      isCompact ? "px-1" : "px-2",
-                      isName && "text-left",
-                    )}
-                  >
-                    <StackedHeading
-                      label={numbered.columns[index]!}
-                      role={role}
-                      className={isName ? "items-start" : undefined}
-                    />
-                  </TableHead>
-                );
-              })}
-              {files ? (
-                <>
-                  <TableHead className="h-auto border border-neutral-300 bg-brand-50 px-1.5 py-2.5 text-center align-middle text-[11px] font-semibold tracking-wide whitespace-nowrap text-brand-900 uppercase">
-                    <span className="md:hidden">Card</span>
-                    <span className="hidden md:inline">Report card</span>
-                  </TableHead>
-                  <TableHead className="h-auto border border-neutral-300 bg-brand-50 px-1.5 py-2.5 text-center align-middle text-[11px] font-semibold tracking-wide whitespace-nowrap text-brand-900 uppercase">
-                    OMR
-                  </TableHead>
-                </>
-              ) : null}
-            </TableRow>
-          </TableHeader>
-          <TableBody className="[&_tr:last-child]:border-b">
-            {visible.map((row, rowIndex) => (
-              <TableRow key={rowIndex} className="border-0 hover:bg-brand-50/50">
+            <TableHeader>
+              <TableRow className="border-0 bg-brand-50 hover:bg-brand-50">
                 {shown.map((index) => {
-                  const role = roles[index];
-                  const isRoll = role === "roll";
+                  const role = roles[index] ?? null;
                   const isName = role === "name";
                   const isCompact =
                     role === "subject" ||
@@ -308,56 +265,101 @@ export function ResultSheetCard({
                     role === "percentage" ||
                     role === "sectionRank" ||
                     role === "classRank";
-                  const canOpen = isRoll || isName;
-                  const href = canOpen ? studentHref(row) : null;
-                  const open = canOpen ? studentOpen(row) : undefined;
                   return (
-                    <TableCell
+                    <TableHead
                       key={index}
                       className={cn(
-                        "border border-neutral-300 py-2 text-neutral-700 whitespace-nowrap",
-                        isCompact ? "px-1.5 text-center" : "px-2 text-center",
-                        isName &&
-                          "max-w-[9rem] truncate text-left font-medium text-neutral-950 sm:max-w-none sm:whitespace-nowrap",
-                        numeric.has(index) && "text-neutral-950 tabular-nums",
-                        (isRoll || isCompact) && "tabular-nums",
-                        row[index] === null && "text-neutral-300",
+                        "h-auto border border-neutral-300 bg-brand-50 py-2 text-center align-middle text-[11px] font-semibold tracking-wide text-brand-900 uppercase",
+                        isCompact ? "px-1" : "px-2",
+                        isName && "text-left",
                       )}
                     >
-                      {(href || open) && row[index] != null ? (
-                        <ProfileLink
-                          href={href}
-                          onClick={open}
-                          className={isName ? "max-w-full truncate" : "whitespace-nowrap"}
-                        >
-                          {formatCell(row[index], role)}
-                        </ProfileLink>
-                      ) : (
-                        <span className={isName ? "truncate" : "whitespace-nowrap"}>
-                          {formatCell(row[index] ?? null, role)}
-                        </span>
-                      )}
-                    </TableCell>
+                      <StackedHeading
+                        label={numbered.columns[index]!}
+                        role={role}
+                        className={isName ? "items-start" : undefined}
+                      />
+                    </TableHead>
                   );
                 })}
                 {files ? (
                   <>
-                    <TableCell className="border border-neutral-300 px-1 py-1 text-center">
-                      <RankCardCell
-                        target={hasMarks(row) ? cardTarget : null}
-                        roll={rollOf(row)}
-                        name={nameCol >= 0 ? formatCell(row[nameCol] ?? null) : rollOf(row)}
-                      />
-                    </TableCell>
-                    <TableCell className="border border-neutral-300 px-1 py-1 text-center">
-                      <OmrCell scan={scanByRoll.get(foldRoll(rollOf(row)))} basePath={files.basePath} />
-                    </TableCell>
+                    <TableHead className="h-auto w-14 border border-neutral-300 bg-brand-50 px-1 py-2 text-center align-middle text-[11px] font-semibold tracking-wide text-brand-900 uppercase">
+                      <span className="inline-flex flex-col items-center leading-tight">
+                        <span>Report</span>
+                        <span>Card</span>
+                      </span>
+                    </TableHead>
+                    <TableHead className="h-auto w-14 border border-neutral-300 bg-brand-50 px-1.5 py-2.5 text-center align-middle text-[11px] font-semibold tracking-wide whitespace-nowrap text-brand-900 uppercase">
+                      OMR
+                    </TableHead>
                   </>
                 ) : null}
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody className="[&_tr:last-child]:border-b">
+              {visible.map((row, rowIndex) => (
+                <TableRow key={rowIndex} className="border-0 hover:bg-brand-50/50">
+                  {shown.map((index) => {
+                    const role = roles[index];
+                    const isRoll = role === "roll";
+                    const isName = role === "name";
+                    const isCompact =
+                      role === "subject" ||
+                      role === "total" ||
+                      role === "percentage" ||
+                      role === "sectionRank" ||
+                      role === "classRank";
+                    const canOpen = isRoll || isName;
+                    const href = canOpen ? studentHref(row) : null;
+                    const open = canOpen ? studentOpen(row) : undefined;
+                    return (
+                      <TableCell
+                        key={index}
+                        className={cn(
+                          "border border-neutral-300 py-2 text-neutral-700 whitespace-nowrap",
+                          isCompact ? "px-1.5 text-center" : "px-2 text-center",
+                          isName &&
+                            "max-w-[9rem] truncate text-left font-medium text-neutral-950 sm:max-w-none sm:whitespace-nowrap",
+                          numeric.has(index) && "text-neutral-950 tabular-nums",
+                          (isRoll || isCompact) && "tabular-nums",
+                          row[index] === null && "text-neutral-300",
+                        )}
+                      >
+                        {(href || open) && row[index] != null ? (
+                          <ProfileLink
+                            href={href}
+                            onClick={open}
+                            className={isName ? "max-w-full truncate" : "whitespace-nowrap"}
+                          >
+                            {formatCell(row[index], role)}
+                          </ProfileLink>
+                        ) : (
+                          <span className={isName ? "truncate" : "whitespace-nowrap"}>
+                            {formatCell(row[index] ?? null, role)}
+                          </span>
+                        )}
+                      </TableCell>
+                    );
+                  })}
+                  {files ? (
+                    <>
+                      <TableCell className="border border-neutral-300 px-1 py-1 text-center">
+                        <RankCardCell
+                          target={hasMarks(row) ? cardTarget : null}
+                          roll={rollOf(row)}
+                          name={nameCol >= 0 ? formatCell(row[nameCol] ?? null) : rollOf(row)}
+                        />
+                      </TableCell>
+                      <TableCell className="border border-neutral-300 px-1 py-1 text-center">
+                        <OmrCell scan={scanByRoll.get(foldRoll(rollOf(row)))} basePath={files.basePath} />
+                      </TableCell>
+                    </>
+                  ) : null}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
       ) : (
         <div className="flex flex-col items-center gap-2 px-6 py-14 text-center">
           <SearchX className="size-6 text-brand-300" />
