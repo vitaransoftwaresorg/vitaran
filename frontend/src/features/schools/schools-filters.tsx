@@ -88,7 +88,7 @@ export function SchoolsFilters() {
         />
       </InputGroup>
 
-      <div className="flex flex-wrap gap-3">
+      <div className="hidden flex-wrap gap-3 md:flex">
         {FILTERS.map(({ key, label, items }) => (
           <Select
             key={key}

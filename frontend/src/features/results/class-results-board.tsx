@@ -523,10 +523,11 @@ export function ClassResultsBoard({
                         : label.replace(/\s*\((\d+M?)\)/i, "\n($1)")}
                     </TableHead>
                   ))}
-                  <TableHead className="hidden text-center text-xs font-bold uppercase md:table-cell">
-                    Report card
+                  <TableHead className="text-center text-xs font-bold uppercase">
+                    <span className="md:hidden">Card</span>
+                    <span className="hidden md:inline">Report card</span>
                   </TableHead>
-                  <TableHead className="hidden text-center text-xs font-bold uppercase md:table-cell">
+                  <TableHead className="text-center text-xs font-bold uppercase">
                     OMR
                   </TableHead>
                 </TableRow>
@@ -597,7 +598,7 @@ export function ClassResultsBoard({
                         </TableCell>
                       );
                     })}
-                    <TableCell className="hidden px-1.5 py-1 text-center md:table-cell">
+                    <TableCell className="px-1.5 py-1 text-center">
                       <RankCardCell
                         target={
                           savedRolls.has(foldRoll(row.cells[roles.indexOf("roll")]))
@@ -608,7 +609,7 @@ export function ClassResultsBoard({
                         name={cellText(row.cells[roles.indexOf("name")])}
                       />
                     </TableCell>
-                    <TableCell className="hidden px-1.5 py-1 text-center md:table-cell">
+                    <TableCell className="px-1.5 py-1 text-center">
                       <OmrCell
                         scan={scanByRoll.get(
                           foldRoll(row.cells[roles.indexOf("roll")]),

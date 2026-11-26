@@ -157,6 +157,16 @@ export function OmrCell({
   const [detail, setDetail] = useState<OmScan | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Below `lg`: default OMR zoom 75%; desktop stays at 50%. */
+  const [mobileView, setMobileView] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const sync = () => setMobileView(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
 
   useEffect(() => {
     if (!open || !scan) return;
@@ -280,9 +290,9 @@ export function OmrCell({
                   mobilePane !== "omr" && "hidden lg:flex",
                 )}
                 toolbarLeft={`${KIND_LABEL[kind]} OMR`}
-                resetKey={kind}
+                resetKey={`${kind}-${mobileView ? "m" : "d"}`}
                 align="start"
-                defaultZoom={0.5}
+                defaultZoom={mobileView ? 0.75 : 0.5}
               >
                 <img
                   key={kind}

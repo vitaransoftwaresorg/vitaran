@@ -1,20 +1,13 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { FileSpreadsheet, Plus } from "lucide-react";
-import { buttonVariants } from "@/components/ui/button";
 import { PageHeader } from "@/features/admin/page-header";
-import { subjectsForClassLevel } from "@/features/schools/constants";
 import {
   DEFAULT_STUDENTS_PAGE_SIZE,
   parseListPage,
   parseListPageSize,
 } from "@/features/list/page-params";
-import { AdminStudentRollSearch } from "@/features/students/admin-student-roll-search";
-import { DeleteRosterStudentsButton } from "@/features/students/delete-roster-students-button";
-import { ClassProfilesPdfActions } from "@/features/students/student-pdf-actions";
+import { AdminStudentsPageActions } from "@/features/students/admin-students-page-actions";
 import { StudentsDrive } from "@/features/students/students-drive";
 import { sectionIdsForClass, studentsInClass } from "@/features/students/school-roster";
-import { cn } from "@/lib/utils";
 import { listAdminSchoolSections } from "@/services/sections";
 import { listSchoolOptions } from "@/services/schools";
 import { listAdminSchoolStudents } from "@/services/students";
@@ -93,51 +86,34 @@ export default async function AdminAllStudentsPage({
         description={description}
         count={school ? undefined : schools.length}
         actions={
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <AdminStudentRollSearch schoolId={school?.id} />
-            {school && inClass && classLevel != null ? (
-              <>
-                {classScopeLabel ? (
-                  <ClassProfilesPdfActions
-                    portal="admin"
-                    studentIds={roster.map((student) => student.id)}
-                    scopeLabel={classScopeLabel}
-                    schoolName={school.name}
-                    subjects={subjectsForClassLevel(classLevel)}
-                  />
-                ) : null}
-                <Link
-                  href={
-                    section
-                      ? `/admin/schools/${school.id}/students/new?class=${classLevel}&section=${encodeURIComponent(section)}`
-                      : `/admin/schools/${school.id}/students/new?class=${classLevel}`
-                  }
-                  className={cn(buttonVariants({ size: "sm" }), "h-8 gap-1.5 rounded-lg")}
-                >
-                  <Plus className="size-4" />
-                  Add students
-                </Link>
-                {section || !(organization?.sections ?? []).some((row) => row.classLevel === classLevel) ? (
-                  <DeleteRosterStudentsButton
-                    mode="admin"
-                    schoolId={school.id}
-                    classLevel={classLevel}
-                    sectionId={sectionIds?.length === 1 ? sectionIds[0] : null}
-                    sectionLabel={section}
-                    studentCount={showRosterTable ? (studentsPage?.pagination.total ?? roster.length) : roster.length}
-                  />
-                ) : null}
-              </>
-            ) : school && !inClass ? (
-              <Link
-                href={`/admin/schools/${school.id}/students/import`}
-                className={cn(buttonVariants({ size: "sm", variant: "outline" }), "h-8 gap-1.5 rounded-lg")}
-              >
-                <FileSpreadsheet className="size-4" />
-                Import all students
-              </Link>
-            ) : null}
-          </div>
+          <AdminStudentsPageActions
+            schoolId={school?.id}
+            schoolName={school?.name}
+            classLevel={classLevel}
+            section={section}
+            inClass={inClass}
+            classScopeLabel={classScopeLabel}
+            studentIds={roster.map((student) => student.id)}
+            canDeleteRoster={Boolean(
+              school &&
+                inClass &&
+                classLevel != null &&
+                (section ||
+                  !(organization?.sections ?? []).some((row) => row.classLevel === classLevel)),
+            )}
+            sectionId={sectionIds?.length === 1 ? sectionIds[0] : null}
+            studentCount={
+              showRosterTable ? (studentsPage?.pagination.total ?? roster.length) : roster.length
+            }
+            showImportAll={Boolean(school && !inClass)}
+            addStudentsHref={
+              school && inClass && classLevel != null
+                ? section
+                  ? `/admin/schools/${school.id}/students/new?class=${classLevel}&section=${encodeURIComponent(section)}`
+                  : `/admin/schools/${school.id}/students/new?class=${classLevel}`
+                : undefined
+            }
+          />
         }
       />
       <StudentsDrive

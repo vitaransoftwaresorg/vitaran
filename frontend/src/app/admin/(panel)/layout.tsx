@@ -43,15 +43,15 @@ export default async function AdminPanelLayout({
             }
           >
             <AdminSidebar admin={admin} />
-            <SidebarInset className="h-svh min-h-0 min-w-0 overflow-hidden bg-neutral-50">
+            {/* Mobile: natural document scroll (nested overflow traps iOS on drive tables). Desktop: contained shell scroll. */}
+            <SidebarInset className="min-h-0 min-w-0 bg-neutral-50 md:h-dvh md:overflow-hidden">
               <AdminHeader />
-              <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden p-3 sm:p-5 lg:px-6 lg:py-6">
+              <div className="flex min-h-0 w-full flex-1 flex-col p-3 sm:p-5 md:overflow-hidden lg:px-6 lg:py-6">
                 <AdminPageBack />
                 <Suspense fallback={null}>
                   <PortalNavMemory roots={ADMIN_NAV_ROOTS} />
                 </Suspense>
-                {/* Scroll lives here (or inside a page like OMR list rows), not on the whole shell. */}
-                <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col md:overflow-y-auto">
                   {/* null fallback: keep the current table visible during soft refresh (toggles/publish). */}
                   <Suspense fallback={null}>{children}</Suspense>
                 </div>

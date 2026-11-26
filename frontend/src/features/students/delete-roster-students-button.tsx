@@ -32,6 +32,11 @@ type DeleteRosterStudentsButtonProps = {
   sectionId?: string | null;
   sectionLabel?: string;
   studentCount: number;
+  /** Controlled dialog open (e.g. opened from a mobile More menu). */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** Hide the default trigger when another control opens the dialog. */
+  hideTrigger?: boolean;
 };
 
 const CONFIRM_WORD = "delete";
@@ -46,11 +51,21 @@ export function DeleteRosterStudentsButton({
   sectionId,
   sectionLabel,
   studentCount,
+  open: openProp,
+  onOpenChange,
+  hideTrigger = false,
 }: DeleteRosterStudentsButtonProps) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const [pending, startTransition] = useTransition();
+  const controlled = openProp !== undefined;
+  const open = controlled ? openProp : uncontrolledOpen;
+
+  function setOpen(next: boolean) {
+    if (!controlled) setUncontrolledOpen(next);
+    onOpenChange?.(next);
+  }
 
   if (studentCount <= 0) return null;
   if (mode === "admin" && !schoolId) return null;
@@ -95,22 +110,34 @@ export function DeleteRosterStudentsButton({
 
   return (
     <>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="h-7 gap-1 rounded-md border-red-200 px-2 text-xs font-medium text-red-700 hover:bg-red-50 hover:text-red-800"
-        disabled={pending}
-        onClick={() => {
-          setTyped("");
-          setOpen(true);
+      {hideTrigger ? null : (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 gap-1 rounded-md border-red-200 px-2 text-xs font-medium text-red-700 hover:bg-red-50 hover:text-red-800"
+          disabled={pending}
+          onClick={() => {
+            setTyped("");
+            setOpen(true);
+          }}
+        >
+          {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
+          {sectionId ? "Delete section" : "Delete class"}
+        </Button>
+      )}
+
+      <AlertDialog
+        open={open}
+        onOpenChange={(next) => {
+          if (next) {
+            setTyped("");
+            setOpen(true);
+          } else {
+            closeDialog();
+          }
         }}
       >
-        {pending ? <Loader2 className="size-3.5 animate-spin" /> : <Trash2 className="size-3.5" />}
-        {sectionId ? "Delete section" : "Delete class"}
-      </Button>
-
-      <AlertDialog open={open} onOpenChange={(next) => (next ? setOpen(true) : closeDialog())}>
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
             <AlertDialogTitle>

@@ -284,10 +284,11 @@ export function ResultSheetCard({
               })}
               {files ? (
                 <>
-                  <TableHead className="hidden h-auto border border-neutral-300 bg-brand-50 px-1.5 py-2.5 text-center align-middle text-[11px] font-semibold tracking-wide whitespace-nowrap text-brand-900 uppercase md:table-cell">
-                    Report card
+                  <TableHead className="h-auto border border-neutral-300 bg-brand-50 px-1.5 py-2.5 text-center align-middle text-[11px] font-semibold tracking-wide whitespace-nowrap text-brand-900 uppercase">
+                    <span className="md:hidden">Card</span>
+                    <span className="hidden md:inline">Report card</span>
                   </TableHead>
-                  <TableHead className="hidden h-auto border border-neutral-300 bg-brand-50 px-1.5 py-2.5 text-center align-middle text-[11px] font-semibold tracking-wide whitespace-nowrap text-brand-900 uppercase md:table-cell">
+                  <TableHead className="h-auto border border-neutral-300 bg-brand-50 px-1.5 py-2.5 text-center align-middle text-[11px] font-semibold tracking-wide whitespace-nowrap text-brand-900 uppercase">
                     OMR
                   </TableHead>
                 </>
@@ -341,14 +342,14 @@ export function ResultSheetCard({
                 })}
                 {files ? (
                   <>
-                    <TableCell className="hidden border border-neutral-300 px-1 py-1 text-center md:table-cell">
+                    <TableCell className="border border-neutral-300 px-1 py-1 text-center">
                       <RankCardCell
                         target={hasMarks(row) ? cardTarget : null}
                         roll={rollOf(row)}
                         name={nameCol >= 0 ? formatCell(row[nameCol] ?? null) : rollOf(row)}
                       />
                     </TableCell>
-                    <TableCell className="hidden border border-neutral-300 px-1 py-1 text-center md:table-cell">
+                    <TableCell className="border border-neutral-300 px-1 py-1 text-center">
                       <OmrCell scan={scanByRoll.get(foldRoll(rollOf(row)))} basePath={files.basePath} />
                     </TableCell>
                   </>
