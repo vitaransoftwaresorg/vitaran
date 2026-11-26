@@ -1,8 +1,7 @@
 "use client";
 
 import { useDeferredValue, useState } from "react";
-import Link from "next/link";
-import { Download, Search, SearchX } from "lucide-react";
+import { Search, SearchX } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import {
@@ -19,8 +18,9 @@ import { cn } from "@/lib/utils";
 import type { ResultCell, ResultSheet } from "@/types/result";
 import { studentCount } from "./constants";
 import { formatMarks, type ClassScan } from "@/types/scan";
-import { ClassOmrDownload, OmrCell } from "./omr-files";
-import { ClassRankCardsDownload, ClassResultPdfDownload, RankCardCell } from "./rank-card-files";
+import { ClassSheetExports } from "./class-sheet-exports";
+import { OmrCell } from "./omr-files";
+import { RankCardCell } from "./rank-card-files";
 import {
   columnRole,
   ensureSerialColumn,
@@ -205,9 +205,9 @@ export function ResultSheetCard({
 
   return (
     <section className="overflow-hidden rounded-2xl border border-brand-100 bg-white shadow-[0_12px_32px_-20px_rgb(25_28_95/0.35)]">
-      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-brand-100 px-4 py-3.5 sm:gap-4 sm:px-6 sm:py-4">
+      <header className="flex flex-col gap-3 border-b border-brand-100 px-3 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4 sm:px-6 sm:py-4">
         <div className="min-w-0">
-          <h2 className="text-lg font-bold text-neutral-950">
+          <h2 className="text-base font-bold text-neutral-950 sm:text-lg">
             {sheet.classLabel || sheet.label || `Class ${sheet.classLevel}`}
           </h2>
           <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-neutral-500">
@@ -215,7 +215,7 @@ export function ResultSheetCard({
             {detail && (
               <>
                 <span aria-hidden className="text-neutral-300">·</span>
-                <span>{detail}</span>
+                <span className="break-words">{detail}</span>
               </>
             )}
             {tags.map(({ label, value }) => (
@@ -229,8 +229,8 @@ export function ResultSheetCard({
           </p>
         </div>
 
-        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
-          <InputGroup className="h-10 w-full bg-white sm:w-64">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+          <InputGroup className="h-9 w-full min-w-0 flex-1 bg-white sm:h-10 sm:w-64 sm:flex-none">
             <InputGroupAddon>
               <Search />
             </InputGroupAddon>
@@ -242,32 +242,13 @@ export function ResultSheetCard({
               aria-label="Search students"
             />
           </InputGroup>
-          {files ? (
-            <>
-              <ClassResultPdfDownload target={cardTarget} />
-              <ClassRankCardsDownload target={cardTarget} />
-              <ClassOmrDownload path={files.path} count={files.scans.length} basePath={files.basePath} />
-            </>
-          ) : null}
-          {showDownload && (
-            <Button
-              nativeButton={false}
-              className="h-10 shrink-0 rounded-lg bg-brand-900 px-4 text-sm font-semibold text-white hover:bg-brand-800"
-              render={
-                <Link
-                  href={downloadHref}
-                  download={downloadFileName ?? sheet.fileName}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  prefetch={false}
-                  title="Download Excel"
-                />
-              }
-            >
-              <Download className="size-4" />
-              <span className="hidden sm:inline">Download</span>
-            </Button>
-          )}
+          <ClassSheetExports
+            target={files ? cardTarget : null}
+            omr={files?.path}
+            omrCount={files?.scans.length}
+            excelHref={showDownload ? downloadHref : undefined}
+            showExcel={showDownload}
+          />
         </div>
       </header>
 
@@ -303,10 +284,10 @@ export function ResultSheetCard({
               })}
               {files ? (
                 <>
-                  <TableHead className="h-auto border border-neutral-300 bg-brand-50 px-1.5 py-2.5 text-center align-middle text-[11px] font-semibold tracking-wide whitespace-nowrap text-brand-900 uppercase">
+                  <TableHead className="hidden h-auto border border-neutral-300 bg-brand-50 px-1.5 py-2.5 text-center align-middle text-[11px] font-semibold tracking-wide whitespace-nowrap text-brand-900 uppercase md:table-cell">
                     Report card
                   </TableHead>
-                  <TableHead className="h-auto border border-neutral-300 bg-brand-50 px-1.5 py-2.5 text-center align-middle text-[11px] font-semibold tracking-wide whitespace-nowrap text-brand-900 uppercase">
+                  <TableHead className="hidden h-auto border border-neutral-300 bg-brand-50 px-1.5 py-2.5 text-center align-middle text-[11px] font-semibold tracking-wide whitespace-nowrap text-brand-900 uppercase md:table-cell">
                     OMR
                   </TableHead>
                 </>
@@ -335,18 +316,23 @@ export function ResultSheetCard({
                       className={cn(
                         "border border-neutral-300 py-2 text-neutral-700 whitespace-nowrap",
                         isCompact ? "px-1.5 text-center" : "px-2 text-center",
-                        isName && "max-w-none text-left font-medium text-neutral-950",
+                        isName &&
+                          "max-w-[9rem] truncate text-left font-medium text-neutral-950 sm:max-w-none sm:whitespace-nowrap",
                         numeric.has(index) && "text-neutral-950 tabular-nums",
                         (isRoll || isCompact) && "tabular-nums",
                         row[index] === null && "text-neutral-300",
                       )}
                     >
                       {(href || open) && row[index] != null ? (
-                        <ProfileLink href={href} onClick={open} className="whitespace-nowrap">
+                        <ProfileLink
+                          href={href}
+                          onClick={open}
+                          className={isName ? "max-w-full truncate" : "whitespace-nowrap"}
+                        >
                           {formatCell(row[index], role)}
                         </ProfileLink>
                       ) : (
-                        <span className="whitespace-nowrap">
+                        <span className={isName ? "truncate" : "whitespace-nowrap"}>
                           {formatCell(row[index] ?? null, role)}
                         </span>
                       )}
@@ -355,14 +341,14 @@ export function ResultSheetCard({
                 })}
                 {files ? (
                   <>
-                    <TableCell className="border border-neutral-300 px-1 py-1 text-center">
+                    <TableCell className="hidden border border-neutral-300 px-1 py-1 text-center md:table-cell">
                       <RankCardCell
                         target={hasMarks(row) ? cardTarget : null}
                         roll={rollOf(row)}
                         name={nameCol >= 0 ? formatCell(row[nameCol] ?? null) : rollOf(row)}
                       />
                     </TableCell>
-                    <TableCell className="border border-neutral-300 px-1 py-1 text-center">
+                    <TableCell className="hidden border border-neutral-300 px-1 py-1 text-center md:table-cell">
                       <OmrCell scan={scanByRoll.get(foldRoll(rollOf(row)))} basePath={files.basePath} />
                     </TableCell>
                   </>

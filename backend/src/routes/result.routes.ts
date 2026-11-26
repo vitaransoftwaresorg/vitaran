@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   deleteResultSet,
+  deleteResultSheet,
   getResultSet,
   getResultSheet,
   getResultSheetFile,
@@ -61,6 +62,7 @@ resultRouter.patch(
   validate(publishBodySchema, "body"),
   setResultSheetPublished,
 );
+resultRouter.delete("/:id/classes/:classLevel", validateSheet, deleteResultSheet);
 resultRouter.get("/:id/classes/:classLevel", validateSheet, getResultSheet);
 resultRouter.get("/:id/classes/:classLevel/file", validateSheet, getResultSheetFile);
 resultRouter.get("/:id/classes/:classLevel/rank-cards", validateSheet, getRankCards);

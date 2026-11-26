@@ -31,7 +31,10 @@ export function ResultClassTabs({
   if (classes.length <= 1) return null;
 
   return (
-    <nav aria-label="Class" className="flex gap-1.5 overflow-x-auto border-b border-brand-100">
+    <nav
+      aria-label="Class"
+      className="flex min-w-0 gap-1 overflow-x-auto border-b border-brand-100 [scrollbar-width:none] sm:gap-1.5 [&::-webkit-scrollbar]:hidden"
+    >
       {classes.map((item) => {
         const active = item.classLevel === activeClassLevel;
         const href = resultSetHref(basePath, resultSetId, item.classLevel, schoolCode);
@@ -45,7 +48,7 @@ export function ResultClassTabs({
               aria-current={active ? "page" : undefined}
               onClick={() => toast.message(BLOCKED)}
               className={cn(
-                "-mb-px shrink-0 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors",
+                "-mb-px shrink-0 border-b-2 px-3 py-2 text-sm font-semibold whitespace-nowrap transition-colors sm:px-4 sm:py-2.5",
                 active
                   ? "border-brand-900 text-brand-900"
                   : "border-transparent text-neutral-400 hover:border-amber-200 hover:text-amber-900",
@@ -63,7 +66,7 @@ export function ResultClassTabs({
             aria-current={active ? "page" : undefined}
             scroll={false}
             className={cn(
-              "-mb-px shrink-0 border-b-2 px-4 py-2.5 text-sm font-semibold transition-colors",
+              "-mb-px shrink-0 border-b-2 px-3 py-2 text-sm font-semibold whitespace-nowrap transition-colors sm:px-4 sm:py-2.5",
               active
                 ? "border-brand-900 text-brand-900"
                 : "border-transparent text-neutral-500 hover:border-brand-200 hover:text-brand-800",

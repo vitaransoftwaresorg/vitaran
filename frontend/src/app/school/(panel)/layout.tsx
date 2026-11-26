@@ -47,9 +47,9 @@ export default async function SchoolPanelLayout({
             }
           >
             <SchoolSidebar school={school} />
-            <SidebarInset className="min-w-0 bg-neutral-50">
+            <SidebarInset className="min-h-0 min-w-0 overflow-hidden bg-neutral-50">
               <SchoolHeader />
-              <div className="w-full flex-1 p-4 sm:p-5 lg:px-6 lg:py-6">
+              <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto p-3 sm:p-5 lg:px-6 lg:py-6">
                 <PortalMaintenanceGate initialMaintenance={settings.maintenanceMode}>
                   <SchoolPageBack />
                   <Suspense fallback={null}>

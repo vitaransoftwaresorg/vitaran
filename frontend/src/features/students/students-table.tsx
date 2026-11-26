@@ -112,7 +112,7 @@ export function StudentsTable({
 
   return (
     <div className="rounded-xl border border-brand-200 bg-white shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)]">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-100 bg-brand-50/40 px-3 py-2.5 sm:px-4">
+      <div className="flex flex-col gap-2 border-b border-brand-100 bg-brand-50/40 px-3 py-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-4">
         <p className="min-w-0 shrink-0 text-xs font-medium text-neutral-500 tabular-nums">
           {filtered.length === students.length
             ? `${students.length} students`
@@ -122,14 +122,14 @@ export function StudentsTable({
           value={query}
           onChange={setQuery}
           placeholder="Search students"
-          className="w-[12.8rem] shrink-0 sm:w-[12.8rem]"
+          className="w-full min-w-0 sm:w-64"
         />
       </div>
       {filtered.length === 0 ? (
         <p className="px-4 py-8 text-center text-sm text-neutral-500">No matching students.</p>
       ) : (
         <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] text-left text-sm">
+        <table className="w-full min-w-[32rem] text-left text-sm sm:min-w-[40rem]">
           <thead className="border-b border-brand-100 bg-brand-50/60 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">
             <tr>
               <th className="w-12 px-3 py-2.5 text-center">#</th>
@@ -137,9 +137,9 @@ export function StudentsTable({
               <th className="px-4 py-2.5">Reg No</th>
               <th className="px-4 py-2.5">Name</th>
               <th className="hidden px-4 py-2.5 sm:table-cell">Class</th>
-              <th className="px-4 py-2.5">Section</th>
+              <th className="hidden px-4 py-2.5 sm:table-cell">Section</th>
               <th className="hidden px-4 py-2.5 md:table-cell">Program</th>
-              <th className="px-4 py-2.5">Status</th>
+              <th className="hidden px-4 py-2.5 sm:table-cell">Status</th>
               <th className="hidden px-3 py-2.5 lg:table-cell">Report Cards</th>
               {showActions ? <th className="px-4 py-2.5 text-right">Actions</th> : null}
             </tr>
@@ -198,11 +198,13 @@ export function StudentsTable({
                   <td className="hidden px-4 py-2.5 text-neutral-600 sm:table-cell">
                     Class {student.classLevel}
                   </td>
-                  <td className="px-4 py-2.5 font-medium text-neutral-950">{sectionLabel}</td>
+                  <td className="hidden px-4 py-2.5 font-medium text-neutral-950 sm:table-cell">
+                    {sectionLabel}
+                  </td>
                   <td className="hidden px-4 py-2.5 text-neutral-600 md:table-cell">
                     {student.programName}
                   </td>
-                  <td className="px-4 py-2.5">
+                  <td className="hidden px-4 py-2.5 sm:table-cell">
                     <span
                       className={cn(
                         "inline-flex rounded-md px-2 py-0.5 text-[11px] font-semibold",

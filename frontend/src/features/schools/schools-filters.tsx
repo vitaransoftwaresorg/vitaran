@@ -96,7 +96,7 @@ export function SchoolsFilters() {
             value={valueOf(key)}
             onValueChange={(value) => updateParams({ [key]: value as string })}
           >
-            <SelectTrigger className="w-40 bg-white" aria-label={label}>
+            <SelectTrigger className="w-full bg-white sm:w-40" aria-label={label}>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

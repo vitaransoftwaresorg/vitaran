@@ -24,6 +24,7 @@ type ResultsDriveProps = {
   /** Per-class section rows: split when sections have different Test IDs. */
   classSlots?: SchoolClassTestSlot[];
   publishAction: (id: string, classLevel: number, published: boolean) => Promise<DeleteResult>;
+  deleteAction: (id: string, classLevel: number) => Promise<DeleteResult>;
 };
 
 function isPlaceholderTestId(value: string | null | undefined) {
@@ -170,6 +171,7 @@ export function ResultsDrive({
   schoolTests = [],
   classSlots = [],
   publishAction,
+  deleteAction,
 }: ResultsDriveProps) {
   const schoolId = path.schoolId;
   const currentSchool = schools.find((school) => school.id === schoolId);
@@ -321,6 +323,8 @@ export function ResultsDrive({
           published: classPublished,
           publishLabel: classRowLabel(classLevel, row.sectionName),
           onPublish: publishAction.bind(null, resultSet.id, classLevel),
+          onDelete: () => deleteAction(resultSet.id, classLevel),
+          deleteNoun: "class result",
           actions: [
             { label: "Enter marks", href: enterHref, icon: "edit" },
             { label: "View", href: viewHref, icon: "view" },

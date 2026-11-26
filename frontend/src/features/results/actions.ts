@@ -64,3 +64,14 @@ export async function deleteResultAction(id: string) {
   if (result.ok) revalidateResultViews();
   return result;
 }
+
+/** Delete one class sheet (and the parent set if it was the last class). */
+export async function deleteResultSheetAction(id: string, classLevel: number) {
+  const result = await deleteDocument(
+    () => resultService.deleteResultSheet(id, classLevel),
+    RESULTS_PATH,
+    "class result",
+  );
+  if (result.ok) revalidateResultViews();
+  return result;
+}

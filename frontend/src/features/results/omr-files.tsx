@@ -313,27 +313,17 @@ export function OmrCell({
                       wrong={detail.wrong}
                       blank={detail.blank}
                     />
-                    {/* Mobile: scroll the full table. Desktop: FitFixed scales into the pane. */}
-                    <div className="min-h-0 flex-1 overflow-auto p-2 lg:overflow-hidden sm:p-3">
-                      <div className="lg:hidden">
+                    {/* Fit the full answer key + response table — no sideways / drag scroll. */}
+                    <div className="min-h-0 flex-1 overflow-hidden p-2 sm:p-3">
+                      <FitFixed>
                         <ReadVsKeyTable
                           answers={detail.answers ?? {}}
                           keyAnswers={detail.keyAnswers}
                           keyTypeRanges={detail.keyTypeRanges}
                           ranges={detail.subjectScores}
+                          className="[&_[data-table-scroll]]:overflow-visible"
                         />
-                      </div>
-                      <div className="hidden h-full lg:block">
-                        <FitFixed>
-                          <ReadVsKeyTable
-                            answers={detail.answers ?? {}}
-                            keyAnswers={detail.keyAnswers}
-                            keyTypeRanges={detail.keyTypeRanges}
-                            ranges={detail.subjectScores}
-                            className="[&_[data-table-scroll]]:overflow-visible"
-                          />
-                        </FitFixed>
-                      </div>
+                      </FitFixed>
                     </div>
                   </>
                 ) : null}

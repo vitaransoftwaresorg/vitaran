@@ -184,13 +184,13 @@ export function AnswerKeysFilters({ path, programs, schools }: AnswerKeysFilters
   const testReady = customProgram ? Boolean(schoolId) : Boolean(path.program || schoolId);
 
   return (
-    <div className="flex flex-wrap items-center justify-end gap-2">
+    <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
       <FilterSelect
         label="Program"
         value={programValue}
         items={programItems}
         onChange={onProgram}
-        className="min-w-40 max-w-52"
+        className="w-full sm:min-w-40 sm:max-w-52"
       />
       {customProgram && !soleSchool ? (
         <FilterSelect
@@ -198,7 +198,7 @@ export function AnswerKeysFilters({ path, programs, schools }: AnswerKeysFilters
           value={path.schoolId ?? ALL}
           items={schoolItems}
           onChange={onSchool}
-          className="min-w-40 max-w-52"
+          className="w-full sm:min-w-40 sm:max-w-52"
         />
       ) : null}
       <FilterSelect
@@ -207,7 +207,7 @@ export function AnswerKeysFilters({ path, programs, schools }: AnswerKeysFilters
         items={testItems}
         onChange={onTest}
         disabled={!testReady}
-        className="w-32"
+        className="w-full sm:w-32"
       />
     </div>
   );

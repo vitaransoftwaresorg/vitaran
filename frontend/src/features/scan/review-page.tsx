@@ -15,7 +15,6 @@ import { fetchOriginalSheetDirect, fetchPreviewSheetDirect } from "./client-uplo
 import { keyHasMcq, ReadVsKeyTable } from "./read-vs-key-table";
 import { getOmrUploadAuthAction } from "./upload-auth";
 import {
-  clearScanBatch,
   getPdfJob,
   getScanBatch,
   removeScanBatchAt,
@@ -66,10 +65,10 @@ export function ScanReviewPage({ portal }: { portal: ScanPortal }) {
   // A PDF still being read can have one sheet so far; it is still a batch.
   const single = batch.length === 1 && !pdfJob;
 
+  // Keep unsaved previews on the list — Save / Save all on the board write results.
   const goBack = useCallback(() => {
-    if (single) clearScanBatch();
     router.push(base);
-  }, [single, router, base]);
+  }, [router, base]);
   useRegisterInPageBack(goBack);
 
   const goTo = useCallback(
@@ -215,12 +214,12 @@ export function ScanReviewPage({ portal }: { portal: ScanPortal }) {
             <div className="flex flex-wrap gap-2 pt-1">
               <Button type="button" onClick={saveOne} disabled={saving}>
                 {saving ? <Loader2 className="animate-spin" /> : <Check />}
-                {single ? "OK, save" : "Save this sheet"}
+                Save this sheet
               </Button>
               {single ? (
                 <Button type="button" variant="outline" onClick={goBack} disabled={saving}>
                   <Camera />
-                  Scan again
+                  Back to list
                 </Button>
               ) : (
                 <>

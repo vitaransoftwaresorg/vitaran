@@ -88,6 +88,10 @@ export function deleteResultSet(id: string) {
   return adminApi<void>(setPath(BASE, id), { method: "DELETE" });
 }
 
+export function deleteResultSheet(id: string, classLevel: number) {
+  return adminApi<void>(sheetPath(BASE, id, classLevel), { method: "DELETE" });
+}
+
 export function getResultSheet(id: string, classLevel: number) {
   return orNull(adminApi<ResultSheet>(sheetPath(BASE, id, classLevel)));
 }

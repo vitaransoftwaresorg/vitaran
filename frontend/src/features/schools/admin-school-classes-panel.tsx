@@ -1172,7 +1172,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
             embedded && "rounded-xl border border-brand-200 bg-white",
           )}
         >
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-100 px-3 py-2.5 sm:px-4">
+          <div className="flex flex-col gap-2 border-b border-brand-100 px-3 py-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-4">
             <p className="text-xs font-medium text-neutral-500 tabular-nums">
               {filteredRows.length === classRows.length
                 ? `${classRows.length} class${classRows.length === 1 ? "" : "es"}`
@@ -1182,13 +1182,13 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
               value={query}
               onChange={setQuery}
               placeholder="Search classes"
-              className="w-[12.8rem] shrink-0 sm:w-[12.8rem]"
+              className="w-full min-w-0 sm:w-64"
             />
           </div>
           {filteredRows.length === 0 ? (
             <p className="px-4 py-8 text-center text-sm text-neutral-500">No matching classes.</p>
           ) : (
-          <table className="w-full min-w-[780px] text-left text-sm">
+          <table className="w-full min-w-[36rem] text-left text-sm sm:min-w-[48rem] lg:min-w-[780px]">
             <thead className="border-b border-brand-100 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">
               <tr>
                 <th className="px-4 py-2.5">Class</th>

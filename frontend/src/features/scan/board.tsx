@@ -49,11 +49,7 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
           : phone
             ? settings.schoolMobileOmrEnabled
             : settings.schoolDesktopOmrEnabled;
-  const [batch, setBatch] = useState<ScanPreview[]>(() => {
-    // A single photo has no list: coming back from its review starts a new scan.
-    if (getScanBatch().length === 1 && !getPdfJob()) clearScanBatch();
-    return getScanBatch();
-  });
+  const [batch, setBatch] = useState<ScanPreview[]>(() => getScanBatch());
   const [job, setJob] = useState(() => getPdfJob());
   const [saving, setSaving] = useState<Set<string>>(() => new Set());
   const [savingAll, setSavingAll] = useState(false);
@@ -105,9 +101,10 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
     router.push(`${base}/review?i=${index}`);
   }
 
+  /** Preview only — results are written when the user clicks Save / Save all. */
   function onScanned(result: ScanPreview) {
-    setScanBatch([result]);
-    openReview(0);
+    setScanBatch([...getScanBatch(), result]);
+    void drainPhotoQueue();
   }
 
   async function commit(item: ScanPreview) {
@@ -196,28 +193,17 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
         if (next.examPattern) form.append("examPattern", next.examPattern);
         const result = await previewScanAction(portal, form);
         if (result.ok) {
-          setScanBatch([result.result]);
-          openReview(0);
-          return;
+          setScanBatch([...getScanBatch(), result.result]);
+          continue;
         }
         toast.error(result.message);
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Could not read this sheet.");
       }
     }
-    clearReview();
   }
 
-  // When returning from a single-photo review with more files queued, continue.
-  useEffect(() => {
-    if (batch.length || !restRef.current.length) return;
-    void drainPhotoQueue();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when batch empties after save
-  }, [batch.length]);
-
   const showCamera = batch.length === 0 && !job;
-  // One photo goes straight to its review page; the list is only for PDF batches.
-  const openingSingle = batch.length === 1 && !job;
   const reading = job != null && !job.finished;
 
   if (settingsReady && !omrAllowed) {
@@ -266,7 +252,8 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
         showCamera
           ? "grid gap-6 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]"
           : previewOpen
-            ? "flex h-[calc(100dvh-7.25rem)] min-h-0 flex-col"
+            ? // Fill the panel; only the sheet list scrolls (header + Save all stay fixed).
+              "flex min-h-0 flex-1 flex-col overflow-hidden"
             : "space-y-4"
       }
     >
@@ -284,15 +271,16 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
         />
       ) : null}
 
-      <div className={previewOpen && !showCamera ? "flex min-h-0 flex-1 flex-col" : "space-y-4"}>
-        {openingSingle ? (
-          <div className="flex flex-col items-center gap-3 rounded-2xl border border-neutral-200 bg-white px-6 py-14 text-center shadow-sm">
-            <Loader2 className="size-6 animate-spin text-brand-700" />
-            <p className="text-sm font-semibold text-neutral-900">Opening the sheet…</p>
-          </div>
-        ) : batch.length > 0 || job ? (
+      <div
+        className={
+          previewOpen && !showCamera
+            ? "flex min-h-0 flex-1 flex-col overflow-hidden"
+            : "space-y-4"
+        }
+      >
+        {batch.length > 0 || job ? (
           <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
-            <header className="shrink-0 space-y-3 border-b border-neutral-100 px-5 py-4">
+            <header className="shrink-0 space-y-3 border-b border-neutral-100 px-4 py-3 sm:px-5 sm:py-4">
               {job ? (
                 <div className="space-y-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -434,8 +422,8 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
             )}
           >
             <span className="hidden sm:inline">
-              Enter the test ID, then upload a PDF (one student sheet per page). Open each sheet on its own
-              page to review and save.
+              Enter the test ID, then upload a PDF (one student sheet per page). Review the list, then tap
+              Save or Save all.
               {queued > 0 ? " · " : ""}
             </span>
             {queued > 0 ? `${queued} photo${queued === 1 ? "" : "s"} waiting` : ""}

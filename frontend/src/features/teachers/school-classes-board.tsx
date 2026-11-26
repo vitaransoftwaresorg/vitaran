@@ -279,19 +279,24 @@ export function SchoolClassesBoard({
         </div>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-brand-200 bg-white shadow-[0_4px_16px_-8px_rgb(25_28_95/0.18)]">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-brand-100 bg-brand-50/40 px-3 py-2.5 sm:px-4">
+          <div className="flex flex-col gap-2 border-b border-brand-100 bg-brand-50/40 px-3 py-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-4">
             <p className="text-xs font-medium text-neutral-500 tabular-nums">
               {filteredClassRows.length === classRows.length
                 ? `${classRows.length} class${classRows.length === 1 ? "" : "es"}`
                 : `${filteredClassRows.length} of ${classRows.length} classes`}
             </p>
-            <TableSearch value={query} onChange={setQuery} placeholder="Search classes" />
+            <TableSearch
+              value={query}
+              onChange={setQuery}
+              placeholder="Search classes"
+              className="w-full min-w-0 sm:w-64"
+            />
           </div>
           <div className="overflow-x-auto">
             {filteredClassRows.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-neutral-500">No matching classes.</p>
             ) : (
-              <table className="w-full min-w-[860px] text-left text-sm">
+              <table className="w-full min-w-[36rem] text-left text-sm sm:min-w-[48rem] lg:min-w-[860px]">
                 <thead className="border-b border-brand-100 bg-brand-50/70 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">
                   <tr>
                     <th className="px-4 py-2.5">Program</th>

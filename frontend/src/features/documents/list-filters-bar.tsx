@@ -117,13 +117,13 @@ export function ListFiltersBar({ filters, schools, programs }: ListFiltersBarPro
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-2" aria-busy={pending}>
+    <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center" aria-busy={pending}>
       <FilterSelect
         label="Filter by test"
         value={filters.testNumber ? String(filters.testNumber) : ALL}
         items={testOptions}
         onChange={(test) => update({ test })}
-        className="w-32"
+        className="w-full sm:w-32"
       />
       {showPrograms && (
         <FilterSelect
@@ -131,7 +131,7 @@ export function ListFiltersBar({ filters, schools, programs }: ListFiltersBarPro
           value={filters.program ?? ALL}
           items={programOptions}
           onChange={(program) => update({ program })}
-          className="min-w-40 max-w-56"
+          className="w-full sm:min-w-40 sm:max-w-56"
         />
       )}
       <FilterSelect
@@ -139,7 +139,7 @@ export function ListFiltersBar({ filters, schools, programs }: ListFiltersBarPro
         value={filters.type ?? ALL}
         items={typeOptions}
         onChange={changeType}
-        className="w-36"
+        className="w-full sm:w-36"
       />
       {showSchools && (
         <FilterSelect
@@ -147,7 +147,7 @@ export function ListFiltersBar({ filters, schools, programs }: ListFiltersBarPro
           value={filters.schoolId ?? ALL}
           items={schoolOptions}
           onChange={(school) => update({ school })}
-          className="w-56"
+          className="w-full sm:w-56"
         />
       )}
       {hasListFilters(filters) && (

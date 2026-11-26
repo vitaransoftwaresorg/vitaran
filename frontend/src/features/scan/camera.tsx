@@ -350,7 +350,7 @@ export function ScanCamera({
     const typed = rollInput(typedRoll);
     const walkIn = Boolean(studentName?.trim());
     if (!walkIn && typed.length !== ROLL_LENGTH) {
-      toast.error("Enter the 7-digit registration number, then save.");
+      toast.error("Enter the 7-digit registration number, then confirm.");
       return;
     }
     if (walkIn && typed.length > 0 && typed.length !== ROLL_LENGTH) {
@@ -359,7 +359,7 @@ export function ScanCamera({
     }
     if (!(await verifyTestId())) return;
     setBusy(true);
-    setStatus(studentName?.trim() ? "Saving walk-in…" : "Saving with registration…");
+    setStatus(studentName?.trim() ? "Applying walk-in…" : "Applying registration…");
     try {
       const batchPlace = majorityWalkInFromBatch();
       const identity = {
@@ -400,7 +400,7 @@ export function ScanCamera({
       setRollHint("");
       onScanned(result.result);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save this sheet. Try again.");
+      toast.error(error instanceof Error ? error.message : "Could not apply registration. Try again.");
     } finally {
       setBusy(false);
       setStatus("");

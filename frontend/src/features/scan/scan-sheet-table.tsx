@@ -160,7 +160,7 @@ export function ScanSheetTable({
     const typed = rollInput(typedRoll);
     const walkIn = Boolean(studentName?.trim());
     if (!walkIn && typed.length !== ROLL_LENGTH) {
-      toast.error("Enter the 7-digit registration number, then save.");
+      toast.error("Enter the 7-digit registration number, then confirm.");
       return;
     }
     if (walkIn && typed.length > 0 && typed.length !== ROLL_LENGTH) {
@@ -227,13 +227,13 @@ export function ScanSheetTable({
     placement?: { classLevel?: number; programCode?: string },
   ) {
     if (!failure.hasImage && !failure.previewId) {
-      toast.error("No page image to save.");
+      toast.error("No page image for this sheet.");
       return;
     }
     const typed = rollInput(typedRoll);
     const walkIn = Boolean(studentName?.trim());
     if (!walkIn && typed.length !== ROLL_LENGTH) {
-      toast.error("Enter the 7-digit registration number, then save.");
+      toast.error("Enter the 7-digit registration number, then confirm.");
       return;
     }
     if (walkIn && typed.length > 0 && typed.length !== ROLL_LENGTH) {
@@ -309,7 +309,7 @@ export function ScanSheetTable({
       setViewing(null);
       toast.success(`PDF page ${failure.page} ready · ${result.result.scan.student.name}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not save this page.");
+      toast.error(error instanceof Error ? error.message : "Could not apply registration.");
     } finally {
       setSavingPage(null);
     }
@@ -319,7 +319,7 @@ export function ScanSheetTable({
   const failedCount = failures.length;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
       {(readyCount > 0 || failedCount > 0) && !savingAll ? (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-100 bg-neutral-50/60 px-4 py-2">
           <p className="text-sm text-neutral-600">
@@ -344,15 +344,26 @@ export function ScanSheetTable({
         </div>
       ) : null}
 
-      <div className="min-h-0 flex-1 overflow-auto">
-        <table className="w-full min-w-[44rem] border-separate border-spacing-0 text-left text-sm">
-          <thead className="sticky top-0 z-10 bg-neutral-100 text-xs font-semibold tracking-wide text-neutral-600 uppercase shadow-[0_1px_0_0_rgb(229_229_229)]">
+      {/* Only the row list scrolls — header + Save all stay fixed above. */}
+      <div className="min-h-0 flex-1 overflow-auto overscroll-contain">
+        <table className="w-full min-w-[28rem] border-separate border-spacing-0 text-left text-sm sm:min-w-[40rem]">
+          <thead className="text-xs font-semibold tracking-wide text-neutral-600 uppercase">
             <tr>
-              <th className="whitespace-nowrap bg-neutral-100 px-3 py-2">Page</th>
-              <th className="bg-neutral-100 px-3 py-2">Student / error</th>
-              <th className="min-w-[14rem] bg-neutral-100 px-3 py-2">Registration number</th>
-              <th className="whitespace-nowrap bg-neutral-100 px-3 py-2">Score</th>
-              <th className="whitespace-nowrap bg-neutral-100 px-3 py-2 text-right">Actions</th>
+              <th className="sticky top-0 z-10 whitespace-nowrap border-b border-neutral-200 bg-neutral-100 px-2 py-2 shadow-[0_1px_0_0_rgb(229_229_229)] sm:px-3">
+                Page
+              </th>
+              <th className="sticky top-0 z-10 border-b border-neutral-200 bg-neutral-100 px-2 py-2 shadow-[0_1px_0_0_rgb(229_229_229)] sm:px-3">
+                Student / error
+              </th>
+              <th className="sticky top-0 z-10 min-w-0 border-b border-neutral-200 bg-neutral-100 px-2 py-2 shadow-[0_1px_0_0_rgb(229_229_229)] sm:min-w-[12rem] sm:px-3">
+                Registration number
+              </th>
+              <th className="sticky top-0 z-10 whitespace-nowrap border-b border-neutral-200 bg-neutral-100 px-3 py-2 shadow-[0_1px_0_0_rgb(229_229_229)]">
+                Score
+              </th>
+              <th className="sticky top-0 z-10 whitespace-nowrap border-b border-neutral-200 bg-neutral-100 px-3 py-2 text-right shadow-[0_1px_0_0_rgb(229_229_229)]">
+                Actions
+              </th>
             </tr>
           </thead>
           <tbody>

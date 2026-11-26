@@ -360,7 +360,7 @@ export function OmrRollRecovery({
           onClick={() => void save()}
         >
           {busy || lookingUp ? <Loader2 className="size-3 animate-spin" /> : null}
-          Save
+          Confirm
         </Button>
       </div>
       {lookingUp && rollComplete && !blankOrZero ? (
@@ -402,7 +402,7 @@ export function OmrRollRecovery({
         </p>
       ) : editMode ? (
         <p className="text-[11px] text-emerald-900/70">
-          Change reg and Save, or clear reg and enter a name
+          Change reg and Confirm, or clear reg and enter a name
         </p>
       ) : lookupError && rollComplete ? (
         <p className="text-[11px] text-amber-900/80">{shortLookupError(lookupError)}</p>

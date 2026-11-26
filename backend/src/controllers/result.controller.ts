@@ -86,6 +86,12 @@ export const deleteResultSet: RequestHandler<IdParams> = async (req, res) => {
   res.status(204).end();
 };
 
+export const deleteResultSheet: RequestHandler = async (req, res) => {
+  const { id, classLevel } = sheetParams(req.params);
+  await resultService.deleteResultSheet(id, classLevel);
+  res.status(204).end();
+};
+
 export const getResultSheet: RequestHandler = async (req, res) => {
   sendSuccess(res, await resultService.getResultSheet(sheetParams(req.params)));
 };

@@ -272,7 +272,7 @@ export function StudentPerformance({
           ) : null}
         </header>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
+          <table className="w-full min-w-[28rem] text-sm sm:min-w-[40rem] lg:min-w-[720px]">
             <thead className="border-b border-brand-100 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase print:table-row-group">
               <tr>
                 <th className="px-4 py-2.5 text-left">Test</th>

@@ -60,9 +60,9 @@ function Field({ label, span, children }: { label: string; span?: 2 | 3; childre
 
 function Chip({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="min-w-18 rounded-md border border-white/15 bg-white/10 px-3 py-1.5 text-center">
+    <div className="min-w-0 shrink-0 rounded-md border border-white/15 bg-white/10 px-2.5 py-1.5 text-center sm:min-w-18 sm:px-3">
       <p className="text-[9px] font-semibold tracking-wider text-white/50 uppercase">{label}</p>
-      <p className="text-sm font-bold text-white">{value}</p>
+      <p className="max-w-[7.5rem] truncate text-sm font-bold text-white sm:max-w-none">{value}</p>
     </div>
   );
 }
@@ -112,7 +112,7 @@ export function StudentDetailView({
   return (
     <div className="space-y-3">
       {backHref ? <ProfileBackBinder href={backHref} /> : null}
-      <header className="rounded-xl border border-brand-700 bg-linear-to-r from-brand-800 to-brand-950 px-5 py-4 text-white shadow-[0_10px_30px_-12px_rgb(25_28_95/0.55)]">
+      <header className="rounded-xl border border-brand-700 bg-linear-to-r from-brand-800 to-brand-950 px-3 py-3 text-white shadow-[0_10px_30px_-12px_rgb(25_28_95/0.55)] sm:px-5 sm:py-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <p className="text-[10px] font-semibold tracking-[0.2em] text-white/50 uppercase">
@@ -127,7 +127,7 @@ export function StudentDetailView({
           </div>
 
           {actionsVisible || portal ? (
-            <div className="flex shrink-0 flex-wrap gap-2">
+            <div className="flex w-full min-w-0 flex-wrap gap-2 sm:w-auto sm:justify-end">
               {portal ? (
                 <StudentPdfActions
                   portal={portal}
@@ -195,7 +195,7 @@ export function StudentDetailView({
           ) : null}
         </div>
 
-        <div className="mt-3 flex flex-wrap gap-2">
+        <div className="mt-3 -mx-0.5 flex gap-2 overflow-x-auto px-0.5 pb-0.5 [scrollbar-width:none] sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden">
           <Chip label="Status" value={student.status === "ACTIVE" ? "Active" : "Inactive"} />
           <Chip label="Registration no" value={student.rollNo} />
           <Chip label="Class" value={classLabel} />

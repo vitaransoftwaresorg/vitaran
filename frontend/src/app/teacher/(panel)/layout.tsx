@@ -46,13 +46,14 @@ export default async function TeacherPanelLayout({
               {
                 // Narrow drawer on mobile; desktop matches school icon rail.
                 "--sidebar-width": "10.8rem",
+                "--sidebar-width-mobile": "min(50vw, 12rem)",
               } as React.CSSProperties
             }
           >
             <TeacherSidebar teacher={teacher} />
-            <SidebarInset className="min-w-0 bg-neutral-50">
+            <SidebarInset className="min-h-0 min-w-0 overflow-hidden bg-neutral-50">
               <TeacherHeader />
-              <div className="w-full flex-1 p-4 sm:p-5 lg:px-6 lg:py-6">
+              <div className="flex min-h-0 w-full flex-1 flex-col overflow-y-auto p-3 sm:p-5 lg:px-6 lg:py-6">
                 <PortalMaintenanceGate initialMaintenance={settings.maintenanceMode}>
                   <TeacherPageBack />
                   <Suspense fallback={null}>

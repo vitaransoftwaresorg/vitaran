@@ -662,6 +662,20 @@ export async function deleteResultSet(id: string) {
   notifyContentChanged({ kind: KIND, schoolId, adminOnly: !published });
 }
 
+/** Remove one class sheet; deletes the parent set when that was the last class. */
+export async function deleteResultSheet(id: string, classLevel: number) {
+  const set = await resultRepository.findResultSet({ id });
+  if (!set) throw new AppError(404, "Result not found");
+  const sheet = await resultRepository.findResultSheet({ resultSetId: id, classLevel });
+  if (!sheet) throw new AppError(404, "Class result not found");
+  const removed = await resultRepository.deleteClassSheetOrSet(id, classLevel);
+  notifyContentChanged({
+    kind: KIND,
+    schoolId: set.school.id,
+    adminOnly: !(set.published || removed.published),
+  });
+}
+
 /**
  * Drop registration numbers from every result sheet at the school and recalculate ranks.
  * Empty class sheets (and empty result sets) are removed.

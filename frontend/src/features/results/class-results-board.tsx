@@ -37,8 +37,9 @@ import { formatMarks, type ClassScan } from "@/types/scan";
 import type { Student, StudentDetail } from "@/types/student";
 import { StudentDetailView } from "@/features/students/student-detail-view";
 import { saveManualResultAction } from "./actions";
-import { ClassOmrDownload, OmrCell } from "./omr-files";
-import { ClassRankCardsDownload, ClassResultPdfDownload, RankCardCell } from "./rank-card-files";
+import { ClassSheetExports } from "./class-sheet-exports";
+import { OmrCell } from "./omr-files";
+import { RankCardCell } from "./rank-card-files";
 import type { DrivePath, DriveSchool } from "./drive-path";
 import { resultProgramFields } from "./school-program";
 import {
@@ -435,9 +436,9 @@ export function ClassResultsBoard({
   return (
     <>
       <section className="overflow-hidden rounded-2xl border border-brand-100 bg-white shadow-[0_12px_32px_-20px_rgb(25_28_95/0.35)]">
-        <header className="flex flex-wrap items-center gap-3 border-b border-neutral-200 px-3 py-2.5 sm:px-4">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-neutral-900">
+        <header className="flex flex-col gap-3 border-b border-neutral-200 px-3 py-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:px-4">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold break-words text-neutral-900">
               {sectionTestIds.length > 1 ? (
                 <>
                   {sectionTestIds.map((row, index) => (
@@ -470,15 +471,22 @@ export function ClassResultsBoard({
               Class {path.classLevel}
             </p>
           </div>
-          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
-            <TableSearch value={query} onChange={setQuery} placeholder="Search students" />
-            <ClassResultPdfDownload target={savedRolls.size ? cardTarget : null} />
-            <ClassRankCardsDownload target={savedRolls.size ? cardTarget : null} />
-            <ClassOmrDownload path={path} count={scans.length} />
+          <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+            <TableSearch
+              value={query}
+              onChange={setQuery}
+              placeholder="Search students"
+              className="w-full min-w-0 flex-1 sm:w-64 sm:flex-none"
+            />
+            <ClassSheetExports
+              target={savedRolls.size ? cardTarget : null}
+              omr={path}
+              omrCount={scans.length}
+            />
             <Button
               type="button"
               size="sm"
-              className="h-9 rounded-lg"
+              className="h-9 w-full rounded-lg sm:w-auto"
               disabled={pending || rows.length === 0}
               onClick={save}
             >
@@ -515,10 +523,10 @@ export function ClassResultsBoard({
                         : label.replace(/\s*\((\d+M?)\)/i, "\n($1)")}
                     </TableHead>
                   ))}
-                  <TableHead className="text-center text-xs font-bold uppercase">
+                  <TableHead className="hidden text-center text-xs font-bold uppercase md:table-cell">
                     Report card
                   </TableHead>
-                  <TableHead className="text-center text-xs font-bold uppercase">
+                  <TableHead className="hidden text-center text-xs font-bold uppercase md:table-cell">
                     OMR
                   </TableHead>
                 </TableRow>
@@ -589,7 +597,7 @@ export function ClassResultsBoard({
                         </TableCell>
                       );
                     })}
-                    <TableCell className="px-1.5 py-1 text-center">
+                    <TableCell className="hidden px-1.5 py-1 text-center md:table-cell">
                       <RankCardCell
                         target={
                           savedRolls.has(foldRoll(row.cells[roles.indexOf("roll")]))
@@ -600,7 +608,7 @@ export function ClassResultsBoard({
                         name={cellText(row.cells[roles.indexOf("name")])}
                       />
                     </TableCell>
-                    <TableCell className="px-1.5 py-1 text-center">
+                    <TableCell className="hidden px-1.5 py-1 text-center md:table-cell">
                       <OmrCell
                         scan={scanByRoll.get(
                           foldRoll(row.cells[roles.indexOf("roll")]),

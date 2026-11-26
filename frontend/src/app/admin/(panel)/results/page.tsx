@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { parseListFilters } from "@/features/documents/list-filters";
-import { setResultSheetPublishedAction } from "@/features/results/actions";
+import {
+  deleteResultSheetAction,
+  setResultSheetPublishedAction,
+} from "@/features/results/actions";
 import { ResultsDrive, type DrivePath } from "@/features/results/results-drive";
 import { listSchoolTests } from "@/services/answer-keys";
 import { listResultSets } from "@/services/results";
@@ -42,6 +45,7 @@ export default async function AdminResultsPage({ searchParams }: PageProps<"/adm
       schoolTests={schoolTests.tests}
       classSlots={schoolTests.classSlots}
       publishAction={setResultSheetPublishedAction}
+      deleteAction={deleteResultSheetAction}
     />
   );
 }

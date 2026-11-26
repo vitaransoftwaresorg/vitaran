@@ -221,7 +221,9 @@ export function DriveBrowser({
             <thead>
               <tr className="border-b border-neutral-100 text-left text-xs font-medium tracking-wide text-neutral-500 uppercase">
                 <th className="px-4 py-2 font-medium">Name</th>
-                {showTestId ? <th className="px-3 py-2 font-medium">Test ID</th> : null}
+                {showTestId ? (
+                  <th className="w-28 min-w-0 px-2 py-2 font-medium sm:w-40 sm:px-3">Test ID</th>
+                ) : null}
                 <th className="hidden px-3 py-2 font-medium sm:table-cell">Details</th>
                 <th className="hidden px-3 py-2 font-medium md:table-cell">Modified</th>
                 <th className="w-28 px-3 py-2 text-right font-medium"> </th>
@@ -259,7 +261,10 @@ export function DriveBrowser({
                     </RowOpen>
                   </td>
                   {showTestId ? (
-                    <td className="px-3 py-2" onClick={(event) => event.stopPropagation()}>
+                    <td
+                      className="min-w-0 px-2 py-2 sm:px-3"
+                      onClick={(event) => event.stopPropagation()}
+                    >
                       <TestIdCell item={item} />
                     </td>
                   ) : null}
@@ -284,7 +289,9 @@ function TestIdCell({ item }: { item: DriveItem }) {
     return <TestIdInput item={item} />;
   }
   return (
-    <span className="font-mono text-sm text-neutral-800">{item.testId?.trim() || "—"}</span>
+    <span className="block max-w-28 truncate font-mono text-sm text-neutral-800 sm:max-w-40">
+      {item.testId?.trim() || "—"}
+    </span>
   );
 }
 
@@ -315,7 +322,7 @@ function TestIdInput({ item }: { item: DriveItem }) {
       maxLength={64}
       placeholder="Enter test ID"
       aria-label={`Test ID for ${item.name}`}
-      className="h-8 w-40 bg-white font-mono text-sm"
+      className="h-8 w-full max-w-40 min-w-0 bg-white font-mono text-sm sm:w-40"
       onClick={(event) => event.stopPropagation()}
       onChange={(event) => {
         const next = event.currentTarget.value;

@@ -1,5 +1,6 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import { KeyRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -62,6 +63,28 @@ function toneClass(tone: AnswerTone) {
   return "text-neutral-900";
 }
 
+/** Side-by-side Sl No/Key/Response groups — fewer on narrow screens so the table never scrolls sideways. */
+function groupCountForWidth(width: number) {
+  if (width < 420) return 2;
+  if (width < 720) return 3;
+  return 4;
+}
+
+function subscribeWidth(onChange: () => void) {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener("resize", onChange);
+  return () => window.removeEventListener("resize", onChange);
+}
+
+function useTableGroups() {
+  const width = useSyncExternalStore(
+    subscribeWidth,
+    () => (typeof window === "undefined" ? 1024 : window.innerWidth),
+    () => 1024,
+  );
+  return groupCountForWidth(width);
+}
+
 type ReadVsKeyTableProps = {
   answers: Record<string, Array<"A" | "B" | "C" | "D">>;
   keyAnswers?: Record<string, string>;
@@ -70,7 +93,7 @@ type ReadVsKeyTableProps = {
   className?: string;
 };
 
-/** Integrated table: Sl No · Key · Response (repeated across columns). */
+/** Integrated table: Sl No · Key · Response — always fits the width (no sideways drag). */
 export function ReadVsKeyTable({
   answers,
   keyAnswers,
@@ -79,10 +102,9 @@ export function ReadVsKeyTable({
   className,
 }: ReadVsKeyTableProps) {
   const showPartial = keyHasMcq(keyTypeRanges);
+  const groups = useTableGroups();
   const onPaper = (question: number) =>
     ranges.length === 0 || ranges.some((range) => question >= range.from && question <= range.to);
-  /** How many Sl No / Key / Response groups sit side by side. */
-  const groups = 4;
   const questions = Array.from({ length: 100 }, (_, index) => index + 1).filter(onPaper);
   const rows = Math.max(1, Math.ceil(Math.max(questions.length, 1) / groups));
   const cellAt = (row: number, group: number) => {
@@ -104,10 +126,10 @@ export function ReadVsKeyTable({
           </p>
         </div>
       </header>
-      <div data-table-scroll className="overflow-x-auto">
-        <table className="w-full min-w-[36rem] border-collapse text-[11px] sm:text-sm">
+      <div data-table-scroll className="w-full overflow-x-hidden">
+        <table className="w-full table-fixed border-collapse text-[10px] sm:text-[11px] md:text-sm">
           <thead>
-            <tr className="bg-neutral-50 text-[10px] font-semibold tracking-wide text-neutral-600 uppercase sm:text-xs">
+            <tr className="bg-neutral-50 text-[9px] font-semibold tracking-wide text-neutral-600 uppercase sm:text-[10px] md:text-xs">
               {Array.from({ length: groups }, (_, group) => (
                 <FragmentHead key={group} showDivider={group > 0} />
               ))}
@@ -155,17 +177,19 @@ function FragmentHead({ showDivider }: { showDivider: boolean }) {
     <>
       <th
         className={cn(
-          "border border-neutral-200 px-1.5 py-1.5 text-center font-semibold sm:px-2",
+          "w-[12%] border border-neutral-200 px-0.5 py-1 text-center font-semibold sm:px-1.5 sm:py-1.5",
           showDivider && "border-l-2 border-l-neutral-300",
         )}
       >
-        Sl No
+        <span className="sm:hidden">Sl</span>
+        <span className="hidden sm:inline">Sl No</span>
       </th>
-      <th className="border border-neutral-200 px-1.5 py-1.5 text-center font-semibold sm:px-2">
+      <th className="w-[10%] border border-neutral-200 px-0.5 py-1 text-center font-semibold sm:px-1.5 sm:py-1.5">
         Key
       </th>
-      <th className="border border-neutral-200 px-1.5 py-1.5 text-center font-semibold sm:px-2">
-        Response
+      <th className="w-[12%] border border-neutral-200 px-0.5 py-1 text-center font-semibold sm:px-1.5 sm:py-1.5">
+        <span className="sm:hidden">Res</span>
+        <span className="hidden sm:inline">Response</span>
       </th>
     </>
   );
@@ -176,12 +200,12 @@ function FragmentEmpty({ showDivider }: { showDivider: boolean }) {
     <>
       <td
         className={cn(
-          "border border-neutral-200 px-1.5 py-1 sm:px-2 sm:py-1.5",
+          "border border-neutral-200 px-0.5 py-0.5 sm:px-1.5 sm:py-1",
           showDivider && "border-l-2 border-l-neutral-300",
         )}
       />
-      <td className="border border-neutral-200 px-1.5 py-1 sm:px-2 sm:py-1.5" />
-      <td className="border border-neutral-200 px-1.5 py-1 sm:px-2 sm:py-1.5" />
+      <td className="border border-neutral-200 px-0.5 py-0.5 sm:px-1.5 sm:py-1" />
+      <td className="border border-neutral-200 px-0.5 py-0.5 sm:px-1.5 sm:py-1" />
     </>
   );
 }
@@ -204,7 +228,7 @@ function FragmentRow({
     <>
       <td
         className={cn(
-          "border border-neutral-200 px-1.5 py-1 text-center font-semibold text-neutral-600 tabular-nums sm:px-2 sm:py-1.5",
+          "border border-neutral-200 px-0.5 py-0.5 text-center font-semibold text-neutral-600 tabular-nums sm:px-1.5 sm:py-1",
           showDivider && "border-l-2 border-l-neutral-300",
         )}
       >
@@ -212,7 +236,7 @@ function FragmentRow({
       </td>
       <td
         className={cn(
-          "border border-neutral-200 px-1.5 py-1 text-center font-bold tabular-nums sm:px-2 sm:py-1.5",
+          "border border-neutral-200 px-0.5 py-0.5 text-center font-bold break-all tabular-nums sm:px-1.5 sm:py-1",
           color,
         )}
       >
@@ -220,7 +244,7 @@ function FragmentRow({
       </td>
       <td
         className={cn(
-          "border border-neutral-200 px-1.5 py-1 text-center font-bold tabular-nums sm:px-2 sm:py-1.5",
+          "border border-neutral-200 px-0.5 py-0.5 text-center font-bold break-all tabular-nums sm:px-1.5 sm:py-1",
           color,
         )}
       >

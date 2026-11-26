@@ -52,9 +52,9 @@ export function ResultSetView({
   return (
     <div className="space-y-4">
 
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
         <div className="min-w-0">
-          <h1 className="text-lg font-bold text-neutral-950 sm:text-2xl">
+          <h1 className="text-base font-bold break-words text-neutral-950 sm:text-2xl">
             Test ID {resultSet.testId}{" "}
             <span className="text-neutral-300">·</span> Test No {resultSet.testNumber}{" "}
             <span className="text-neutral-300">·</span> {resultProgramLabel(resultSet)}
