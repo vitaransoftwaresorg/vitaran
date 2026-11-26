@@ -11,8 +11,10 @@ import {
   deleteSchoolSectionStudents,
   deleteSchoolStudent,
   findStudentIdByRoll,
+  getAdminStudent,
   getSchoolStudent,
   getTeacherStudent,
+  listAdminSchoolStudents,
   listSchoolStudents,
   listTeacherStudents,
   updateSchoolStudent,
@@ -581,14 +583,20 @@ export async function loadSchoolStudentAction(id: string): Promise<StudentDetail
   return getSchoolStudent(id);
 }
 
-export type PortalStudentPortal = "school" | "teacher";
+export type PortalStudentPortal = "admin" | "school" | "teacher";
 
 /** Prefetch class roster so result-sheet profile opens are instant. */
 export async function loadPortalClassStudentsAction(
   portal: PortalStudentPortal,
   classLevel: number,
+  schoolId?: string,
 ): Promise<Student[]> {
-  const params = { classLevel, pageSize: 200 };
+  const params = { classLevel, pageSize: 200, status: "ACTIVE" as const };
+  if (portal === "admin") {
+    if (!schoolId) return [];
+    const list = await listAdminSchoolStudents(schoolId, params);
+    return list.items;
+  }
   const list =
     portal === "school"
       ? await listSchoolStudents(params)
@@ -600,9 +608,11 @@ export async function loadPortalClassStudentsAction(
 export async function loadPortalStudentByRollAction(
   portal: PortalStudentPortal,
   roll: string,
+  schoolId?: string,
 ): Promise<StudentDetail | null> {
-  const id = await findStudentIdByRoll(portal, roll);
+  const id = await findStudentIdByRoll(portal, roll, schoolId);
   if (!id) return null;
+  if (portal === "admin") return getAdminStudent(id);
   if (portal === "school") return getSchoolStudent(id);
   return getTeacherStudent(id);
 }

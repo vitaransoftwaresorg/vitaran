@@ -3,7 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PenLine } from "lucide-react";
 import { RESULTS_PATH, resultEnterHref } from "@/features/results/constants";
-import { ResultSetView, classScanFilter, selectedClass } from "@/features/results/result-set-view";
+import { PortalResultSetView } from "@/features/results/portal-result-set-view";
+import { classScanFilter, selectedClass } from "@/features/results/result-set-view";
 import { listClassScans } from "@/services/scans";
 import { getResultSet, getResultSheet } from "@/services/results";
 
@@ -23,12 +24,13 @@ export default async function ResultPage({ params, searchParams }: PageProps<"/a
 
   // Layout LiveRefresh keeps this page in sync across admin / school / teacher.
   return (
-    <ResultSetView
+    <PortalResultSetView
       key={`${resultSet.id}:${sheet.classLevel}:${scans.length}`}
       resultSet={resultSet}
       sheet={sheet}
       scans={scans}
       basePath={RESULTS_PATH}
+      portal="admin"
       showSchool
       actions={
         <Link

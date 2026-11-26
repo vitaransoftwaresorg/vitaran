@@ -335,6 +335,7 @@ function SheetImage({ portal, previewId, marked }: { portal: ScanPortal; preview
           className="h-[min(80vh,48rem)]"
           toolbarLeft={view === "original" ? "Original OMR" : "Evaluated OMR"}
           resetKey={`${previewId}:${view}`}
+          align="start"
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- blob / data URL from scan API */}
           <img

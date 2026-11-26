@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -13,6 +14,7 @@ import { useRouter } from "next/navigation";
 import { Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { useSetDrivePathCrumbs } from "@/components/layout/drive-path-context";
+import { useRegisterInPageBack } from "@/components/layout/in-page-back";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -25,14 +27,15 @@ import {
 } from "@/components/ui/table";
 import { matchesSearch, TableSearch } from "@/components/shared/table-search";
 import type { DriveCrumb } from "@/features/documents/drive-browser";
-import { ProfileLink, studentProfileHref } from "@/components/shared/profile-link";
+import { ProfileLink } from "@/components/shared/profile-link";
 import { useResetOnScopeChange } from "@/hooks/use-reset-on-scope-change";
 import { cn } from "@/lib/utils";
 import type { LearningProgram } from "@/types/program";
 import type { ResultCell, ResultSet, ResultSheet } from "@/types/result";
 import type { SchoolClassTestRow } from "@/types/answer-key";
 import { formatMarks, type ClassScan } from "@/types/scan";
-import type { Student } from "@/types/student";
+import type { Student, StudentDetail } from "@/types/student";
+import { StudentDetailView } from "@/features/students/student-detail-view";
 import { saveManualResultAction } from "./actions";
 import { ClassOmrDownload, OmrCell } from "./omr-files";
 import { ClassRankCardsDownload, ClassResultPdfDownload, RankCardCell } from "./rank-card-files";
@@ -49,6 +52,13 @@ import {
   subjectMaxMarks,
   type ColumnRole,
 } from "./result-columns";
+
+function toStudentDetail(row: Student, school: DriveSchool): StudentDetail {
+  return {
+    ...row,
+    school: { id: school.id, name: school.name, code: school.code },
+  };
+}
 
 type BoardRow = { key: string; cells: ResultCell[] };
 
@@ -236,11 +246,22 @@ export function ClassResultsBoard({
   );
   const [query, setQuery] = useState("");
   const [pending, startTransition] = useTransition();
+  const [openedStudent, setOpenedStudent] = useState<StudentDetail | null>(null);
+  const byId = useMemo(() => {
+    const map = new Map<string, StudentDetail>();
+    for (const row of students) {
+      map.set(row.id, toStudentDetail(row, school));
+    }
+    return map;
+  }, [students, school]);
 
   // Soft-nav between classes must not keep a previous student search.
   useResetOnScopeChange(
     `${path.schoolId}:${path.classLevel}:${path.testNumber}:${path.program}`,
-    () => setQuery(""),
+    () => {
+      setQuery("");
+      setOpenedStudent(null);
+    },
   );
 
   // When another device saves an OMR, LiveRefresh reloads props — pull marks into the table.
@@ -278,10 +299,22 @@ export function ClassResultsBoard({
   // Top navbar only — breadcrumbs prop is already folder levels (no "Results" root).
   const setDrivePath = useSetDrivePathCrumbs();
   useEffect(() => {
-    if (!setDrivePath) return;
+    if (!setDrivePath || openedStudent) return;
     setDrivePath(breadcrumbs);
     return () => setDrivePath([]);
-  }, [breadcrumbs, setDrivePath]);
+  }, [breadcrumbs, setDrivePath, openedStudent]);
+
+  const closeStudent = useCallback(() => setOpenedStudent(null), []);
+  useRegisterInPageBack(openedStudent ? closeStudent : null);
+
+  const openStudent = (studentId: string) => {
+    const detail = byId.get(studentId);
+    if (!detail) {
+      toast.error("Student not found.");
+      return;
+    }
+    setOpenedStudent(detail);
+  };
 
   const refocus = useRef<HTMLElement | null>(null);
 
@@ -386,6 +419,17 @@ export function ClassResultsBoard({
       router.push(backHref);
       router.refresh();
     });
+  }
+
+  if (openedStudent) {
+    return (
+      <StudentDetailView
+        student={openedStudent}
+        showActions={false}
+        performancePortal="admin"
+        portal="admin"
+      />
+    );
   }
 
   return (
@@ -536,7 +580,7 @@ export function ClassResultsBoard({
                           cellText(value) &&
                           !row.key.startsWith("saved:") &&
                           !row.key.startsWith("walk-in:") ? (
-                            <ProfileLink href={studentProfileHref("admin", row.key)}>
+                            <ProfileLink onClick={() => openStudent(row.key)}>
                               {cellText(value)}
                             </ProfileLink>
                           ) : (

@@ -853,6 +853,7 @@ function ReadySheetImage({
           className="min-h-0 flex-1"
           toolbarLeft={label}
           resetKey={`${previewId}:${view}`}
+          align="start"
         >
           {/* eslint-disable-next-line @next/next/no-img-element -- blob / data URL from scan API */}
           <img

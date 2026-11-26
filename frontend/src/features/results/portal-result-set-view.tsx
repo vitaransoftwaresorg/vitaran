@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useSetDrivePathCrumbs } from "@/components/layout/drive-path-context";
@@ -28,6 +28,8 @@ type PortalResultSetViewProps = {
   basePath: string;
   scans?: ClassScan[];
   showDownload?: boolean;
+  showSchool?: boolean;
+  actions?: ReactNode;
   portal: PortalStudentPortal;
 };
 
@@ -41,7 +43,7 @@ function toDetail(row: Student, school: ResultSet["school"]): StudentDetail {
 }
 
 /**
- * School/teacher result sheet: student name/reg open the profile in place.
+ * Result sheet: student name/reg open the profile in place (stay on Results).
  * Class roster is prefetched so opens are instant (no loading banner).
  */
 export function PortalResultSetView({
@@ -50,6 +52,8 @@ export function PortalResultSetView({
   basePath,
   scans,
   showDownload = true,
+  showSchool = false,
+  actions,
   portal,
 }: PortalResultSetViewProps) {
   const router = useRouter();
@@ -58,9 +62,11 @@ export function PortalResultSetView({
   const setDrivePath = useSetDrivePathCrumbs();
   const testFolderHref = resultsTestFolderHref(basePath, resultSet.testNumber);
 
+  const schoolId = resultSet.school.id;
+
   useEffect(() => {
     let cancelled = false;
-    void loadPortalClassStudentsAction(portal, sheet.classLevel).then((items) => {
+    void loadPortalClassStudentsAction(portal, sheet.classLevel, schoolId).then((items) => {
       if (cancelled) return;
       const next = new Map<string, StudentDetail>();
       for (const row of items) {
@@ -71,7 +77,7 @@ export function PortalResultSetView({
     return () => {
       cancelled = true;
     };
-  }, [portal, sheet.classLevel, resultSet.school]);
+  }, [portal, sheet.classLevel, schoolId, resultSet.school]);
 
   // Keep Test → Class in the top trail so Back / Test crumb returns to the class list.
   useEffect(() => {
@@ -109,7 +115,7 @@ export function PortalResultSetView({
     }
 
     // Rare miss (roster still loading / student not in class filter) — fetch without a loading banner.
-    void loadPortalStudentByRollAction(portal, roll).then((detail) => {
+    void loadPortalStudentByRollAction(portal, roll, schoolId).then((detail) => {
       if (!detail) {
         toast.error("Student not found for that registration number.");
         return;
@@ -137,8 +143,10 @@ export function PortalResultSetView({
       scans={scans}
       basePath={basePath}
       showDownload={showDownload}
+      showSchool={showSchool || portal === "admin"}
+      actions={actions}
       onStudentClick={openStudent}
-      blockUnpublishedClasses
+      blockUnpublishedClasses={portal !== "admin"}
     />
   );
 }

@@ -19,6 +19,7 @@ export function ImageZoomPane({
   className,
   toolbarLeft,
   resetKey,
+  align = "center",
 }: {
   children: ReactNode;
   className?: string;
@@ -26,6 +27,11 @@ export function ImageZoomPane({
   toolbarLeft?: ReactNode;
   /** Changing this resets zoom/rotation to the default (e.g. Evaluated ↔ Original). */
   resetKey?: string | number;
+  /**
+   * Vertical alignment of the sheet in the pane.
+   * Use `start` for OMR so the student name at the top is visible without panning.
+   */
+  align?: "center" | "start";
 }) {
   const [zoom, setZoom] = useState(DEFAULT_ZOOM);
   const [rotation, setRotation] = useState(0);
@@ -177,7 +183,12 @@ export function ImageZoomPane({
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
       >
-        <div className="flex h-full w-full items-center justify-center">
+        <div
+          className={cn(
+            "flex h-full w-full justify-center",
+            align === "start" ? "items-start" : "items-center",
+          )}
+        >
           <div
             className="will-change-transform"
             style={{
