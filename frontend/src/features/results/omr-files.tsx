@@ -282,6 +282,7 @@ export function OmrCell({
                 toolbarLeft={`${KIND_LABEL[kind]} OMR`}
                 resetKey={kind}
                 align="start"
+                defaultZoom={0.5}
               >
                 <img
                   key={kind}

@@ -188,8 +188,7 @@ function FragmentHead({ showDivider }: { showDivider: boolean }) {
         Key
       </th>
       <th className="w-[12%] border border-neutral-200 px-0.5 py-1 text-center font-semibold sm:px-1.5 sm:py-1.5">
-        <span className="sm:hidden">Res</span>
-        <span className="hidden sm:inline">Response</span>
+        Res
       </th>
     </>
   );

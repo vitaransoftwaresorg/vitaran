@@ -20,6 +20,7 @@ export function ImageZoomPane({
   toolbarLeft,
   resetKey,
   align = "center",
+  defaultZoom = DEFAULT_ZOOM,
 }: {
   children: ReactNode;
   className?: string;
@@ -32,8 +33,11 @@ export function ImageZoomPane({
    * Use `start` for OMR so the student name at the top is visible without panning.
    */
   align?: "center" | "start";
+  /** Starting zoom level (also used by Reset). */
+  defaultZoom?: number;
 }) {
-  const [zoom, setZoom] = useState(DEFAULT_ZOOM);
+  const startZoom = clampZoom(defaultZoom);
+  const [zoom, setZoom] = useState(startZoom);
   const [rotation, setRotation] = useState(0);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
@@ -48,18 +52,18 @@ export function ImageZoomPane({
 
   if (resetKey !== prevKey) {
     setPrevKey(resetKey);
-    setZoom(DEFAULT_ZOOM);
+    setZoom(startZoom);
     setRotation(0);
     setPan({ x: 0, y: 0 });
   }
 
   const atDefault =
-    zoom === DEFAULT_ZOOM && rotation === 0 && pan.x === 0 && pan.y === 0;
+    zoom === startZoom && rotation === 0 && pan.x === 0 && pan.y === 0;
 
   function setZoomAndMaybeResetPan(next: number) {
     const value = clampZoom(next);
     setZoom(value);
-    if (value === DEFAULT_ZOOM) setPan({ x: 0, y: 0 });
+    if (value === startZoom) setPan({ x: 0, y: 0 });
   }
 
   function rotateClockwise() {
@@ -68,7 +72,7 @@ export function ImageZoomPane({
   }
 
   function resetView() {
-    setZoom(DEFAULT_ZOOM);
+    setZoom(startZoom);
     setRotation(0);
     setPan({ x: 0, y: 0 });
   }
@@ -148,8 +152,8 @@ export function ImageZoomPane({
           </button>
           <button
             type="button"
-            title={`Reset to ${Math.round(DEFAULT_ZOOM * 100)}%`}
-            aria-label={`Reset to ${Math.round(DEFAULT_ZOOM * 100)}%`}
+            title={`Reset to ${Math.round(startZoom * 100)}%`}
+            aria-label={`Reset to ${Math.round(startZoom * 100)}%`}
             disabled={atDefault}
             onClick={resetView}
             className="inline-flex size-8 items-center justify-center border-l border-neutral-200 text-neutral-700 hover:bg-neutral-50 disabled:opacity-40"
@@ -166,7 +170,7 @@ export function ImageZoomPane({
         onWheel={(event) => {
           if (!(event.ctrlKey || event.metaKey)) {
             // Trackpad / mouse wheel pans when zoomed or rotated.
-            if (zoom === DEFAULT_ZOOM && rotation === 0) return;
+            if (zoom === startZoom && rotation === 0) return;
             event.preventDefault();
             setPan((current) => ({
               x: current.x - event.deltaX,
