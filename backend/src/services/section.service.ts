@@ -37,6 +37,7 @@ export type SectionDto = {
   programName: string;
   year: number;
   studentCount: number;
+  examPattern: string;
   classTeacher: {
     id: string;
     teacherId: string;
@@ -57,6 +58,7 @@ export type WholeClassDto = {
   programName: string;
   year: number;
   studentCount: number;
+  examPattern: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -86,6 +88,7 @@ function toSectionDto(
     programName: row.program.name,
     year: row.program.year,
     studentCount: row.studentCount,
+    examPattern: row.examPattern || "MPCB",
     classTeacher: row.classTeacher
       ? {
           id: row.classTeacher.id,
@@ -112,6 +115,7 @@ function toWholeClassDto(
     programName: row.program.name,
     year: row.program.year,
     studentCount: row.studentCount,
+    examPattern: row.examPattern || "MPCB",
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -257,6 +261,7 @@ export async function createSection(schoolId: string, input: CreateSectionInput)
         name: DEFAULT_SECTION_NAME,
         programId: existingWhole.programId,
         studentCount: existingWhole.studentCount,
+        examPattern: existingWhole.examPattern || "MPCB",
         classTeacherId: null,
       });
       await studentRepository.assignWholeClassStudentsToSection(
@@ -283,6 +288,7 @@ export async function createSection(schoolId: string, input: CreateSectionInput)
     name: sectionName,
     programId: input.programId,
     studentCount: input.studentCount,
+    examPattern: input.examPattern ?? existingWhole?.examPattern ?? "MPCB",
     classTeacherId,
   });
 
@@ -344,6 +350,7 @@ export async function updateSection(schoolId: string, id: string, input: UpdateS
     name: input.name,
     programId: input.programId,
     studentCount: input.studentCount,
+    examPattern: input.examPattern,
     ...(classTeacherId !== undefined ? { classTeacherId } : {}),
   });
 
@@ -376,6 +383,7 @@ export async function updateSchoolClass(
   const row = await schoolClassRepository.updateSchoolClass(id, {
     programId: input.programId,
     studentCount: input.studentCount,
+    examPattern: input.examPattern,
   });
   notifyContentChanged({ kind: KIND, schoolId });
   return toWholeClassDto(row);

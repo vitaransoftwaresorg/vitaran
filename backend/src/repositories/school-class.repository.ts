@@ -41,16 +41,23 @@ export function createSchoolClass(data: {
   classLevel: number;
   programId: string;
   studentCount: number;
+  examPattern?: string;
 }) {
   return prisma.schoolClass.create({
-    data,
+    data: {
+      schoolId: data.schoolId,
+      classLevel: data.classLevel,
+      programId: data.programId,
+      studentCount: data.studentCount,
+      examPattern: data.examPattern ?? "MPCB",
+    },
     include: schoolClassInclude,
   });
 }
 
 export function updateSchoolClass(
   id: string,
-  data: { programId?: string; studentCount?: number },
+  data: { programId?: string; studentCount?: number; examPattern?: string },
 ) {
   return prisma.schoolClass.update({
     where: { id },

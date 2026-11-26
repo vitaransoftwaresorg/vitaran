@@ -110,6 +110,16 @@ export function findClassScans(filter: ClassScanFilter) {
   });
 }
 
+/** Subject bands from saved OMRs for a class test — used to size result columns (300 vs 400). */
+export function findClassScanSubjectScores(filter: ClassScanFilter) {
+  return prisma.omScan.findMany({
+    where: classScanWhere(filter),
+    select: { subjectScores: true, maxTotal: true },
+    orderBy: { updatedAt: "desc" },
+    take: 100,
+  });
+}
+
 /** Keep every saved sheet's evaluated test ID aligned with the answer key. */
 export function syncTestIdForKey(answerKeyId: string, testId: string) {
   const value = testId.trim();

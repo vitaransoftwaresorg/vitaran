@@ -67,7 +67,7 @@ export function deleteAdminSchoolSection(schoolId: string, id: string) {
 export function updateAdminSchoolWholeClass(
   schoolId: string,
   id: string,
-  input: { programId?: string; studentCount?: number },
+  input: { programId?: string; studentCount?: number; examPattern?: string },
 ) {
   return adminApi<WholeClass>(`${adminBase(schoolId)}/classes/${encodeURIComponent(id)}`, {
     method: "PATCH",

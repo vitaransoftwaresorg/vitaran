@@ -62,7 +62,6 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
   const [cameraKey, setCameraKey] = useState(0);
   // Owned by this page, so opening it any way (back from review, refresh, menu) starts with an empty test ID.
   const [testId, setTestId] = useState("");
-  const [examPattern, setExamPattern] = useState<"" | "MPCB" | "PCB" | "MPC">("");
   const restRef = useRef<ScanQueueItem[]>([]);
 
   useEffect(
@@ -193,7 +192,6 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
         const form = new FormData();
         form.append("file", next.file);
         if (next.testId) form.append("testId", next.testId);
-        if (next.examPattern) form.append("examPattern", next.examPattern);
         const result = await previewScanAction(portal, form);
         if (result.ok) {
           setScanBatch([result.result]);
@@ -240,10 +238,10 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
     const detail = onPhone
       ? otherStillOn
         ? "Phone camera scan is disabled for now. Desktop OMR on a computer is still available."
-        : "Phone camera scan is disabled for now. Ask an admin to turn it on under Settings → OMR scan access."
+        : "Phone camera scan is disabled for now."
       : otherStillOn
         ? "Desktop PDF / photo upload is disabled for now. Mobile scan on a phone is still available."
-        : "Desktop PDF / photo upload is disabled for now. Ask an admin to turn it on under Settings → OMR scan access.";
+        : "Desktop PDF / photo upload is disabled for now.";
     return (
       <div className="mx-auto flex w-full max-w-lg flex-col items-center rounded-2xl border border-amber-200 bg-amber-50 px-6 py-10 text-center shadow-sm">
         <span className="flex size-12 items-center justify-center rounded-full bg-amber-100 text-amber-800">
@@ -251,8 +249,8 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
         </span>
         <p className="mt-4 text-lg font-bold text-amber-950">{title}</p>
         <p className="mt-2 text-sm leading-relaxed text-amber-900/85">{detail}</p>
-        <p className="mt-4 text-xs font-medium text-amber-800/70">
-          Admin → Settings → OMR scan access
+        <p className="mt-4 text-sm font-semibold text-amber-900">
+          Please contact Vitaran Learning
         </p>
       </div>
     );
@@ -279,8 +277,6 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
           scanAction={(form) => previewScanAction(portal, form)}
           testId={testId}
           onTestId={setTestId}
-          examPattern={examPattern}
-          onExamPattern={setExamPattern}
         />
       ) : null}
 
@@ -379,9 +375,6 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
                     </button>
                     <p className="text-base font-bold tabular-nums text-neutral-950">
                       Test ID {batch[0].scan.testId}
-                      {examPattern ? (
-                        <span className="font-semibold text-neutral-500"> · {examPattern}</span>
-                      ) : null}
                     </p>
                   </div>
                   <p className="text-sm font-semibold text-neutral-800">
@@ -418,7 +411,7 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
               <ScanSheetTable
                 portal={portal}
                 testId={job?.testId ?? batch[0]?.scan.testId ?? testId}
-                examPattern={job?.examPattern ?? examPattern}
+                examPattern={job?.examPattern ?? ""}
                 batch={batch}
                 failures={job?.failures ?? []}
                 saving={saving}

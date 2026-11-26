@@ -8,6 +8,8 @@ export type SectionClassTeacher = {
   status: TeacherStatus;
 };
 
+export type ExamPattern = "MPCB" | "PCB" | "MPC";
+
 export type SchoolSection = {
   id: string;
   schoolId: string;
@@ -18,6 +20,7 @@ export type SchoolSection = {
   programName: string;
   year: number;
   studentCount: number;
+  examPattern: ExamPattern | string;
   classTeacher: SectionClassTeacher | null;
   createdAt: string;
   updatedAt: string;
@@ -32,6 +35,7 @@ export type WholeClass = {
   programName: string;
   year: number;
   studentCount: number;
+  examPattern: ExamPattern | string;
   createdAt: string;
   updatedAt: string;
 };
@@ -54,6 +58,8 @@ export type SectionInput = {
   programId: string;
   /** Legacy — unused; school seat limit is the only enrollment cap. */
   studentCount?: number;
+  /** OMR subject pattern for this class/section — required when creating. */
+  examPattern: ExamPattern;
   classTeacherId?: string | null;
   applyTeacherToClass?: boolean;
 };

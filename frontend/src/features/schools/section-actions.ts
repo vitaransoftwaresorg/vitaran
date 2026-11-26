@@ -205,7 +205,7 @@ export async function updateAdminSectionAction(
 export async function updateAdminWholeClassAction(
   schoolId: string,
   id: string,
-  input: { programId?: string; studentCount?: number },
+  input: { programId?: string; studentCount?: number; examPattern?: string },
 ) {
   try {
     const row = await sectionService.updateAdminSchoolWholeClass(schoolId, id, input);

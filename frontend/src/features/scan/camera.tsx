@@ -5,18 +5,10 @@ import { Camera, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { ScanPortal } from "@/services/scans";
 import type { ScanPreview, TestIdCheck } from "@/types/scan";
 import { registerOmrPdfDirect } from "./client-upload";
-import { EXAM_PATTERN_OPTIONS, type ExamPattern } from "./exam-pattern";
 import { fileNameHasTestNumber } from "./pdf-file-name";
 import { startPdfJob } from "./pdf-batch";
 import { bindPendingIdentityAction, checkTestIdAction } from "./actions";
@@ -142,8 +134,6 @@ export function ScanCamera({
   scanAction,
   testId = "",
   onTestId,
-  examPattern = "",
-  onExamPattern,
 }: {
   portal: ScanPortal;
   onScanned: (result: ScanPreview) => void;
@@ -151,8 +141,6 @@ export function ScanCamera({
   scanAction: ScanFn;
   testId?: string;
   onTestId?: (value: string) => void;
-  examPattern?: string;
-  onExamPattern?: (value: ExamPattern | "") => void;
 }) {
   const phone = usePhone();
   const [busy, setBusy] = useState(false);
@@ -167,8 +155,7 @@ export function ScanCamera({
   const enteredTest = testId.trim();
   const testComplete = TEST_ID_PATTERN.test(enteredTest);
   const checked = testComplete && testCheck?.value === enteredTest ? testCheck : null;
-  const patternReady = EXAM_PATTERN_OPTIONS.some((row) => row.value === examPattern);
-  const testReady = Boolean(checked?.ok) && patternReady;
+  const testReady = Boolean(checked?.ok);
 
   useEffect(() => {
     if (!testComplete) return;
@@ -187,10 +174,6 @@ export function ScanCamera({
       toast.error("Enter the 6-digit test ID from the answer key first.");
       return false;
     }
-    if (!patternReady) {
-      toast.error("Choose the exam pattern (MPCB, PCB, or MPC).");
-      return false;
-    }
     if (checked) {
       if (!checked.ok) {
         toast.error(checked.message);
@@ -206,43 +189,6 @@ export function ScanCamera({
       return false;
     }
     return state.keys;
-  }
-
-  function patternField(id: string) {
-    if (!checked?.ok) return null;
-    return (
-      <div className="space-y-1.5">
-        <Label htmlFor={id} className="text-xs font-semibold tracking-wider text-neutral-500 uppercase">
-          Exam pattern
-        </Label>
-        <Select
-          items={EXAM_PATTERN_OPTIONS.map((option) => ({
-            value: option.value,
-            label: option.label,
-          }))}
-          value={patternReady ? examPattern : null}
-          disabled={busy}
-          onValueChange={(value) => {
-            if (value == null) return;
-            onExamPattern?.(value as ExamPattern);
-          }}
-        >
-          <SelectTrigger id={id} className="h-11 w-full rounded-xl bg-white px-3.5 text-sm">
-            <SelectValue placeholder="MPCB, PCB, or MPC" />
-          </SelectTrigger>
-          <SelectContent>
-            {EXAM_PATTERN_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-[11px] text-neutral-500">
-          Evaluation only scores the subjects in this pattern.
-        </p>
-      </div>
-    );
   }
 
   const testHint = !enteredTest ? (
@@ -286,7 +232,6 @@ export function ScanCamera({
     const form = new FormData();
     form.append("file", file);
     if (testId.trim()) form.append("testId", testId.trim());
-    if (examPattern) form.append("examPattern", examPattern);
     const roll = rollInput(forcedRoll ?? "");
     if (forcedName?.trim()) {
       form.append("rollNo", normalizeRollNo(roll));
@@ -449,12 +394,11 @@ export function ScanCamera({
         toast.error(auth.message);
         return;
       }
-      const { batchId, pageCount } = await registerOmrPdfDirect(
+      const { batchId, pageCount, examPattern: resolvedPattern } = await registerOmrPdfDirect(
         auth.uploadUrl,
         auth.token,
         file,
         forcedTestId,
-        examPattern,
       );
       if (pageCount < 1) {
         toast.error("This PDF has no pages.");
@@ -470,7 +414,7 @@ export function ScanCamera({
           batchId,
           fileName: file.name,
           testId: forcedTestId,
-          examPattern,
+          examPattern: resolvedPattern ?? "MPCB",
           pageCount,
           done: 0,
           finished: false,
@@ -509,7 +453,6 @@ export function ScanCamera({
           kind: "file" as const,
           file,
           testId: testId.trim() || undefined,
-          examPattern: examPattern || undefined,
         })),
       );
     }
@@ -541,7 +484,6 @@ export function ScanCamera({
             />
             {testHint}
           </div>
-          {patternField("scan-pattern-desktop")}
           {failedRollPanel()}
         </div>
         <label
@@ -552,9 +494,7 @@ export function ScanCamera({
             toast.error(
               checked && !checked.ok
                 ? checked.message
-                : !patternReady
-                  ? "Choose the exam pattern (MPCB, PCB, or MPC)."
-                  : "Enter a valid test ID first, then upload.",
+                : "Enter a valid test ID first, then upload.",
             );
           }}
           className={cn(
@@ -577,9 +517,7 @@ export function ScanCamera({
               ? status || "Working…"
               : testReady
                 ? "Upload OMR photos or a PDF"
-                : checked?.ok
-                  ? "Choose the exam pattern to upload"
-                  : "Enter the test ID to upload"}
+                : "Enter the test ID to upload"}
           </p>
           <p className="text-xs text-neutral-500">
             One sheet, a photo batch, or one PDF with up to 500 student sheets (one page each). Large PDFs are
@@ -601,10 +539,6 @@ export function ScanCamera({
     }
     if (!checked.ok) {
       toast.error(checked.message);
-      return;
-    }
-    if (!patternReady) {
-      toast.error("Choose the exam pattern (MPCB, PCB, or MPC).");
       return;
     }
     if (typeof navigator.mediaDevices?.getUserMedia === "function") {
@@ -647,7 +581,6 @@ export function ScanCamera({
           />
           {testHint}
         </div>
-        {patternField("scan-pattern")}
         {failedRollPanel()}
       </div>
       <input
@@ -670,17 +603,11 @@ export function ScanCamera({
       >
         {busy ? <Loader2 className="size-8 animate-spin text-brand-800" /> : <Camera className="size-8 text-brand-800" />}
         <p className="text-sm font-semibold text-neutral-900">
-          {busy
-            ? status || "Reading the answers…"
-            : testReady
-              ? "Scan OMR"
-              : checked?.ok
-                ? "Choose exam pattern"
-                : "Scan OMR"}
+          {busy ? status || "Reading the answers…" : "Scan OMR"}
         </p>
         {busy ? null : (
           <p className="text-xs text-neutral-500">
-            {testReady ? "Tap here to scan the OMR sheet" : "Enter test ID and exam pattern first"}
+            {testReady ? "Tap here to scan the OMR sheet" : "Enter the test ID first"}
           </p>
         )}
       </button>

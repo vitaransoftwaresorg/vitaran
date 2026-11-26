@@ -48,7 +48,7 @@ import { useResetOnScopeChange } from "@/hooks/use-reset-on-scope-change";
 import { cn } from "@/lib/utils";
 import type { SchoolProgramOffering } from "@/types/program";
 import type { Subject } from "@/types/school";
-import type { ClassOrganization, SectionInput } from "@/types/section";
+import type { ClassOrganization, ExamPattern, SectionInput } from "@/types/section";
 import type { SchoolStudentCounts } from "@/types/student";
 import type { ClassTeacherSlot } from "@/types/teacher";
 
@@ -56,6 +56,17 @@ const linkBtn =
   "inline-flex items-center gap-1.5 font-medium text-brand-900 transition-colors hover:text-brand-700 hover:underline";
 
 const EMPTY = "—";
+
+const EXAM_PATTERN_OPTIONS: Array<{ value: ExamPattern; label: string }> = [
+  { value: "MPCB", label: "MPCB" },
+  { value: "PCB", label: "PCB" },
+  { value: "MPC", label: "MPC" },
+];
+
+function asExamPattern(value: string | undefined | null): ExamPattern {
+  if (value === "PCB" || value === "MPC" || value === "MPCB") return value;
+  return "MPCB";
+}
 
 type ClassRow = {
   key: string;
@@ -65,6 +76,7 @@ type ClassRow = {
   section: string;
   programId: string;
   programName: string;
+  examPattern: ExamPattern;
   subjects: Subject[];
   teacherId: string | null;
   teacherName: string | null;
@@ -141,13 +153,15 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
   const [classLevel, setClassLevel] = useState("");
   const [name, setName] = useState("");
   const [programId, setProgramId] = useState("");
+  const [examPattern, setExamPattern] = useState<ExamPattern | "">("");
   const [selectedSubjects, setSelectedSubjects] = useState<Subject[]>([]);
   const [errors, setErrors] = useState<
-    Partial<Record<"classLevel" | "programId" | "name" | "subjects", string>>
+    Partial<Record<"classLevel" | "programId" | "name" | "subjects" | "examPattern", string>>
   >({});
   const [editing, setEditing] = useState<ClassRow | null>(null);
   const [editName, setEditName] = useState("");
   const [editProgramId, setEditProgramId] = useState("");
+  const [editExamPattern, setEditExamPattern] = useState<ExamPattern>("MPCB");
   const [editSubjects, setEditSubjects] = useState<Subject[]>([]);
   const [editErrors, setEditErrors] = useState<
     Partial<Record<"name" | "subjects" | "programId", string>>
@@ -236,6 +250,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
             section: "A",
             programId,
             programName: program?.programName ?? row.programName,
+            examPattern: asExamPattern(row.examPattern),
             subjects: accessSubjects(programId, row.classLevel),
             teacherId: ct?.teacherId ?? null,
             teacherName: ct?.teacherName ?? null,
@@ -254,6 +269,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
             section: section.name,
             programId,
             programName: program?.programName ?? section.programName,
+            examPattern: asExamPattern(section.examPattern),
             subjects: accessSubjects(programId, section.classLevel),
             teacherId: section.classTeacher?.teacherId ?? null,
             teacherName: section.classTeacher?.name ?? null,
@@ -270,6 +286,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
           section: row.name?.trim() || "A",
           programId,
           programName: program?.programName ?? row.programName,
+          examPattern: asExamPattern(row.examPattern),
           subjects: accessSubjects(programId, row.classLevel, row.subjects),
           teacherId: null,
           teacherName: null,
@@ -414,9 +431,15 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     setClassLevel("");
     setName("");
     setProgramId("");
+    setExamPattern("");
     setSelectedSubjects([]);
     setErrors({});
   }
+
+  const examPatternSelectItems = useMemo(
+    () => EXAM_PATTERN_OPTIONS.map((row) => ({ value: row.value, label: row.label })),
+    [],
+  );
 
   function toggleSubject(subject: Subject, checked: boolean) {
     setSelectedSubjects((prev) => {
@@ -437,6 +460,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     else if (level && !programsForClass.some((row) => row.programId === programId)) {
       nextErrors.programId = "That program is not enabled for the selected class";
     }
+    if (!examPattern) nextErrors.examPattern = "Select an exam pattern";
     const subjects = selectedSubjects.filter((subject) => availableSubjects.includes(subject));
     if (programId && subjects.length === 0) {
       nextErrors.subjects = "Select at least one subject from this program";
@@ -450,6 +474,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     const sectionName = name.trim() || "A";
     const programName =
       programsForClass.find((row) => row.programId === programId)?.programName ?? "";
+    const pattern = examPattern as ExamPattern;
 
     if (deferred) {
       const duplicate = classRows.some(
@@ -472,6 +497,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
           programId,
           programName,
           studentCount: DEFAULT_SECTION_SEATS,
+          examPattern: pattern,
           subjects,
         },
       ]);
@@ -499,6 +525,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
         name: sectionName,
         programId,
         studentCount: DEFAULT_SECTION_SEATS,
+        examPattern: pattern,
       });
       if (!result.ok) {
         setErrors({ programId: result.message });
@@ -530,6 +557,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     setEditing(row);
     setEditName(row.section);
     setEditProgramId(nextProgramId);
+    setEditExamPattern(row.examPattern);
     setEditSubjects([...row.subjects]);
     setEditErrors({});
   }
@@ -555,6 +583,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     editingRow: ClassRow,
     sectionName: string,
     nextProgramId: string,
+    nextExamPattern: ExamPattern,
   ) {
     if (!schoolId) return;
     startTransition(async () => {
@@ -562,6 +591,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
         const result = await updateAdminSectionAction(schoolId, editingRow.id, {
           name: sectionName,
           programId: nextProgramId,
+          examPattern: nextExamPattern,
         });
         if (!result.ok) {
           setEditErrors({ programId: result.message });
@@ -571,6 +601,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
       } else {
         const result = await updateAdminWholeClassAction(schoolId, editingRow.id, {
           programId: nextProgramId,
+          examPattern: nextExamPattern,
         });
         if (!result.ok) {
           setEditErrors({ programId: result.message });
@@ -616,6 +647,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                 name: editing.kind === "section" ? sectionName : item.name,
                 programId: nextProgramId,
                 programName: nextProgramName,
+                examPattern: editExamPattern,
                 subjects,
               }
             : item,
@@ -647,7 +679,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
         return;
       }
       onSubjectAccessChange?.(nextProgramId, editing.classLevel, subjects);
-      persistClassEdit(editing, sectionName, nextProgramId);
+      persistClassEdit(editing, sectionName, nextProgramId, editExamPattern);
     });
   }
 
@@ -834,6 +866,29 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
               </Select>
               {editErrors.programId ? <FieldError>{editErrors.programId}</FieldError> : null}
             </Field>
+            <Field>
+              <FieldLabel>Exam pattern *</FieldLabel>
+              <Select
+                value={editExamPattern}
+                items={examPatternSelectItems}
+                onValueChange={(value) => {
+                  if (value == null) return;
+                  setEditExamPattern(asExamPattern(value));
+                }}
+              >
+                <SelectTrigger className="h-9 w-36">
+                  <SelectValue placeholder="Select" />
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  {EXAM_PATTERN_OPTIONS.map((row) => (
+                    <SelectItem key={row.value} value={row.value}>
+                      {row.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-neutral-500">OMR scores this pattern’s subjects.</p>
+            </Field>
             <Field data-invalid={editErrors.subjects ? true : undefined}>
               <div className="flex items-center justify-between gap-2">
                 <FieldLabel>Subject access</FieldLabel>
@@ -996,6 +1051,35 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
               {errors.programId ? <FieldError>{errors.programId}</FieldError> : null}
             </Field>
 
+            <Field data-invalid={errors.examPattern ? true : undefined}>
+              <FieldLabel>Exam pattern *</FieldLabel>
+              <Select
+                value={examPattern || null}
+                items={examPatternSelectItems}
+                onValueChange={(value) => {
+                  if (value == null) return;
+                  setExamPattern(asExamPattern(value));
+                  setErrors((prev) => ({ ...prev, examPattern: undefined }));
+                }}
+              >
+                <SelectTrigger className="h-9 w-36">
+                  <SelectValue placeholder="Select" />
+                </SelectTrigger>
+                <SelectContent alignItemWithTrigger={false}>
+                  {EXAM_PATTERN_OPTIONS.map((row) => (
+                    <SelectItem key={row.value} value={row.value}>
+                      {row.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.examPattern ? (
+                <FieldError>{errors.examPattern}</FieldError>
+              ) : (
+                <p className="text-[11px] text-neutral-500">OMR scores this pattern’s subjects.</p>
+              )}
+            </Field>
+
             {programId ? (
               <Field data-invalid={errors.subjects ? true : undefined}>
                 <div className="flex items-center justify-between gap-2">
@@ -1110,6 +1194,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                 <th className="px-4 py-2.5">Class</th>
                 <th className="px-4 py-2.5">Section</th>
                 <th className="px-4 py-2.5">Program</th>
+                <th className="px-4 py-2.5">Pattern</th>
                 <th className="px-4 py-2.5">Subjects</th>
                 <th className="px-4 py-2.5">Students</th>
                 <th className="px-4 py-2.5">Class teacher</th>
@@ -1141,6 +1226,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                         schoolName,
                       ) || "—"}
                     </td>
+                    <td className="px-4 py-3 text-neutral-700 tabular-nums">{row.examPattern}</td>
                     <td className="px-4 py-3 text-neutral-700">
                       {row.subjects.length > 0 ? (
                         <span className="break-words">

@@ -267,7 +267,7 @@ export function ScanSheetTable({
         const form = new FormData();
         form.append("file", await asJpegFile(blob));
         form.append("testId", testId);
-        form.append("examPattern", examPattern);
+        if (examPattern) form.append("examPattern", examPattern);
         form.append("rollNo", identity.rollNo);
         form.append("flat", "1");
         form.append("upright", "1");

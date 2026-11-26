@@ -20,18 +20,22 @@ import ExcelJS from "exceljs";
 import type { CellValue } from "../utils/excel.js";
 import {
   columnRole,
+  columnsForExamSubjects,
   foldRoll,
   forceSubjectPaperMaxes,
   identityCell,
   maxFromLabel,
   numberCell,
+  orderedPaperSubjects,
   recomputeSheet,
+  remapSheetToColumns,
   standardColumns,
   SUBJECT_PAPER_MAX,
   subjectColumn,
   withRankColumns,
 } from "../utils/result-columns.js";
 import * as answerKeyRepository from "../repositories/answer-key.repository.js";
+import * as scanRepository from "../scan/repository.js";
 import * as studentRepository from "../repositories/student.repository.js";
 import { asSubjectRanges } from "../utils/answer-key-parse.js";
 import {
@@ -283,6 +287,49 @@ async function classSubjects(meta: ResultSetMeta, classLevel: number) {
   return subjects.map((subject) => ({ subject, maxMarks: SUBJECT_PAPER_MAX }));
 }
 
+function subjectCodesFromScores(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((row) => {
+    if (!row || typeof row !== "object") return [];
+    const subject = (row as { subject?: unknown }).subject;
+    return typeof subject === "string" && subject.trim() ? [subject.trim().toUpperCase()] : [];
+  });
+}
+
+/**
+ * Prefer the exam pattern actually evaluated on OMRs for this class test
+ * (PCB/MPC → 3×100=300, MPCB → 4×100=400).
+ */
+async function subjectsFromOmrScans(
+  meta: Pick<ResultSetMeta, "schoolId" | "testNumber" | "programCode">,
+  classLevel: number,
+) {
+  const scans = await scanRepository.findClassScanSubjectScores({
+    schoolId: meta.schoolId,
+    testNumber: meta.testNumber,
+    classLevel,
+    program: meta.programCode || undefined,
+  });
+  if (!scans.length) return [] as Array<{ subject: string; maxMarks: number }>;
+
+  const counts = new Map<string, { n: number; codes: string[] }>();
+  for (const scan of scans) {
+    const codes = orderedPaperSubjects(subjectCodesFromScores(scan.subjectScores));
+    if (!codes.length) continue;
+    const key = codes.join("|");
+    const prev = counts.get(key);
+    counts.set(key, { n: (prev?.n ?? 0) + 1, codes });
+  }
+  let best: { n: number; codes: string[] } | null = null;
+  for (const row of counts.values()) {
+    if (!best || row.n > best.n || (row.n === best.n && row.codes.length > best.codes.length)) {
+      best = row;
+    }
+  }
+  if (!best?.codes.length) return [];
+  return best.codes.map((subject) => ({ subject, maxMarks: SUBJECT_PAPER_MAX }));
+}
+
 /**
  * Subjects and max marks from this class's answer key, else the closest key of the same program
  * (same test, then any test), else the standard four-subject paper.
@@ -372,13 +419,23 @@ async function writeClassSheet(
 }
 
 /**
- * Columns for the admin class table: the saved sheet's columns, or the answer key's subjects when
- * the class has no sheet yet (or only an old totals-only sheet).
+ * Columns for the admin class table: OMR exam pattern when scans exist, else the saved sheet,
+ * else school/answer-key subjects. Totals are 100 × subject count (300 or 400).
  */
 export async function getClassResultTemplate(query: ClassResultTemplateQuery) {
   const meta = await resolveMeta({ ...query, testId: "-", removeClasses: [] });
   const { sheet } = await findClassSheet(meta, query.classLevel);
   const saved = (sheet?.columns as string[] | undefined) ?? [];
+  const savedRows = sheet ? sheet.rows.map(({ values }) => values as CellValue[]) : [];
+  const omrSubjects = await subjectsFromOmrScans(meta, query.classLevel);
+  if (omrSubjects.length) {
+    const columns =
+      columnsForExamSubjects(
+        omrSubjects.map((row) => row.subject),
+        { oldColumns: saved, rows: savedRows },
+      ) ?? standardColumns(omrSubjects);
+    return { columns: withRankColumns(columns, [], query.classLevel).columns };
+  }
   const hasSubjects = saved.some((label) => columnRole(label) === "subject");
   if (saved.length && hasSubjects) {
     return {
@@ -468,11 +525,17 @@ export async function recordOmrResult(entry: OmrResultEntry) {
 
   const { resultSet, sheet } = await findClassSheet(meta, entry.classLevel);
   const savedColumns = (sheet?.columns as string[] | undefined) ?? [];
-  const columns = savedColumns.length
-    ? forceSubjectPaperMaxes(savedColumns)
-    : standardColumns(entry.subjects.map((row) => ({ subject: row.subject, maxMarks: SUBJECT_PAPER_MAX })));
+  const savedRows = sheet ? sheet.rows.map(({ values }) => values as CellValue[]) : [];
+  // Size the table to this OMR’s exam pattern (PCB/MPC → 300M, MPCB → 400M), keeping
+  // any subject that already has marks so a mixed class is not truncated.
+  const columns =
+    columnsForExamSubjects(
+      entry.subjects.map((row) => row.subject),
+      { oldColumns: savedColumns, rows: savedRows },
+    ) ??
+    standardColumns(entry.subjects.map((row) => ({ subject: row.subject, maxMarks: SUBJECT_PAPER_MAX })));
   const roles = columns.map(columnRole);
-  const rows = sheet ? sheet.rows.map(({ values }) => values as CellValue[]) : [];
+  const rows = remapSheetToColumns(savedColumns, columns, savedRows);
 
   const who = onRoster
     ? {
@@ -715,11 +778,31 @@ export async function getResultSheet(params: ResultSheetParams, actor?: ContentA
   const ranges = resultSet ? await paperRangesForTest(resultSet.testId) : [];
 
   const { rows, columns, updatedAt, caption, ...rest } = sheet;
-  const ranked = withRankColumns(
-    columns as string[],
-    rows.map(({ values }) => values as CellValue[]),
-    params.classLevel,
-  );
+  let sheetColumns = columns as string[];
+  let sheetRows = rows.map(({ values }) => values as CellValue[]);
+  // Align published/school/teacher views with the evaluated OMR pattern (300 vs 400).
+  if (resultSet) {
+    const omrSubjects = await subjectsFromOmrScans(
+      {
+        schoolId: resultSet.school.id,
+        programCode: resultSet.programCode,
+        testNumber: resultSet.testNumber,
+      },
+      params.classLevel,
+    );
+    if (omrSubjects.length) {
+      const next =
+        columnsForExamSubjects(
+          omrSubjects.map((row) => row.subject),
+          { oldColumns: sheetColumns, rows: sheetRows },
+        ) ?? null;
+      if (next) {
+        sheetRows = remapSheetToColumns(sheetColumns, next, sheetRows);
+        sheetColumns = next;
+      }
+    }
+  }
+  const ranked = withRankColumns(sheetColumns, sheetRows, params.classLevel);
   let parsedColumns = ranked.columns;
   let parsedRows = ranked.rows;
   const parsedCaption = caption;

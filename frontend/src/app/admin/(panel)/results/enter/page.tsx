@@ -12,15 +12,16 @@ import { listAllAdminSchoolStudents } from "@/services/students";
 
 export const metadata: Metadata = { title: "Enter results" };
 
+/** Last-resort headers when the API template is unavailable — prefer live OMR pattern from the server. */
 const FALLBACK_COLUMNS = [
+  "S.No",
   "Reg No",
   "CandidateName",
   "CLASS",
-  "MATHS (100M)",
   "PHYSICS (100M)",
   "CHEMISTRY (100M)",
   "BIOLOGY (100M)",
-  "Total Marks (400M)",
+  "Total Marks (300M)",
   "Percentage",
   "Section Rank",
   "Class Rank",

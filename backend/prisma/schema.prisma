@@ -235,6 +235,8 @@ model SchoolClass {
   classLevel   Int             @map("class_level") @db.SmallInt
   programId    String          @map("program_id") @db.Uuid
   studentCount Int             @map("student_count") @db.SmallInt
+  /// OMR subject pattern for this class: MPCB | PCB | MPC.
+  examPattern  String          @default("MPCB") @map("exam_pattern") @db.VarChar(8)
   school       School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   program      LearningProgram @relation(fields: [programId], references: [id], onDelete: Restrict)
   createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -270,6 +272,8 @@ model SchoolSection {
   name           String          @db.VarChar(32)
   programId      String          @map("program_id") @db.Uuid
   studentCount   Int             @map("student_count") @db.SmallInt
+  /// OMR subject pattern for this section: MPCB | PCB | MPC.
+  examPattern    String          @default("MPCB") @map("exam_pattern") @db.VarChar(8)
   classTeacherId String?         @map("class_teacher_id") @db.Uuid
   school         School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   program        LearningProgram @relation(fields: [programId], references: [id], onDelete: Restrict)

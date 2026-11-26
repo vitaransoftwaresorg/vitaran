@@ -38,6 +38,7 @@ export function createSection(data: {
   name: string;
   programId: string;
   studentCount: number;
+  examPattern?: string;
   classTeacherId?: string | null;
 }) {
   return prisma.schoolSection.create({
@@ -47,6 +48,7 @@ export function createSection(data: {
       name: data.name,
       programId: data.programId,
       studentCount: data.studentCount,
+      examPattern: data.examPattern ?? "MPCB",
       classTeacherId: data.classTeacherId ?? null,
     },
     include: sectionInclude,
@@ -59,6 +61,7 @@ export function updateSection(
     name?: string;
     programId?: string;
     studentCount?: number;
+    examPattern?: string;
     classTeacherId?: string | null;
   },
 ) {

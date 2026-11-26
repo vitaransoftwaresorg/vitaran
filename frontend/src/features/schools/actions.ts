@@ -395,11 +395,13 @@ async function applyPendingClassChanges(
         ? fallbackProgramId
         : row.programId;
     if (!programId) continue;
+    if (!row.examPattern) continue;
     await sectionService.createAdminSchoolSection(schoolId, {
       classLevel: row.classLevel,
       name: row.name?.trim() || "A",
       programId,
       studentCount: row.studentCount ?? 5000,
+      examPattern: row.examPattern,
     });
   }
 }

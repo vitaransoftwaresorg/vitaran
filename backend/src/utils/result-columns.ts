@@ -24,8 +24,79 @@ export type ColumnRole =
 const SUBJECT_HEADER: Record<string, string> = { MATHEMATICS: "MATHS" };
 const KNOWN_SUBJECT = /\bmath|\bphys|\bchem|\bbio|\bscience|\benglish|\bsocial|\bhindi|\btelugu|\bgk\b/i;
 
+/** Canonical OMR paper order (MPCB). PCB / MPC are subsets. */
+export const PAPER_SUBJECT_ORDER = ["MATHEMATICS", "PHYSICS", "CHEMISTRY", "BIOLOGY"] as const;
+
 export function subjectHeader(code: string) {
   return SUBJECT_HEADER[code] ?? code.replaceAll("_", " ").toUpperCase();
+}
+
+/** Map a results header like "MATHS (100M)" back to MATHEMATICS. */
+export function subjectCodeFromHeader(label: string): string | null {
+  const text = foldLabel(label);
+  if (/^math/.test(text)) return "MATHEMATICS";
+  if (/^phys/.test(text)) return "PHYSICS";
+  if (/^chem/.test(text)) return "CHEMISTRY";
+  if (/^bio/.test(text)) return "BIOLOGY";
+  return null;
+}
+
+export function orderedPaperSubjects(codes: Iterable<string>) {
+  const set = new Set(
+    [...codes].map((code) => code.trim().toUpperCase()).filter(Boolean),
+  );
+  return PAPER_SUBJECT_ORDER.filter((code) => set.has(code));
+}
+
+/** Copy cells from an old sheet layout into a new column layout (by role / subject). */
+export function remapSheetToColumns(
+  oldColumns: string[],
+  newColumns: string[],
+  rows: CellValue[][],
+): CellValue[][] {
+  if (oldColumns.length === 0) {
+    return rows.map(() => newColumns.map(() => null));
+  }
+  const oldRoles = oldColumns.map(columnRole);
+  const sourceOf = (label: string, role: ColumnRole) => {
+    const exact = oldColumns.findIndex((other) => foldLabel(other) === foldLabel(label));
+    if (exact >= 0) return exact;
+    if (role === "subject") {
+      const code = subjectCodeFromHeader(label);
+      if (!code) return -1;
+      return oldColumns.findIndex(
+        (other, index) =>
+          oldRoles[index] === "subject" && subjectCodeFromHeader(other) === code,
+      );
+    }
+    return role ? oldRoles.indexOf(role) : -1;
+  };
+  const sources = newColumns.map((label) => sourceOf(label, columnRole(label)));
+  return rows.map((row) => sources.map((source) => (source >= 0 ? (row[source] ?? null) : null)));
+}
+
+/**
+ * Build standard columns for the subjects on this exam (e.g. PCB → 300M, MPCB → 400M).
+ * Keeps any subject that already has marks on the sheet so mixed history is not wiped.
+ */
+export function columnsForExamSubjects(
+  subjectCodes: string[],
+  options?: { oldColumns?: string[]; rows?: CellValue[][] },
+) {
+  const codes = new Set(orderedPaperSubjects(subjectCodes));
+  const oldColumns = options?.oldColumns ?? [];
+  const rows = options?.rows ?? [];
+  oldColumns.forEach((label, index) => {
+    if (columnRole(label) !== "subject") return;
+    const code = subjectCodeFromHeader(label);
+    if (!code) return;
+    if (rows.some((row) => numberCell(row[index]) != null)) {
+      codes.add(code as (typeof PAPER_SUBJECT_ORDER)[number]);
+    }
+  });
+  const ordered = orderedPaperSubjects(codes);
+  if (ordered.length === 0) return null;
+  return standardColumns(ordered.map((subject) => ({ subject, maxMarks: SUBJECT_PAPER_MAX })));
 }
 
 export const foldLabel = (label: string) => label.replaceAll("\n", " ").replace(/\s+/g, " ").trim().toLowerCase();

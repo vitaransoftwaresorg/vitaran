@@ -7,7 +7,9 @@ import { SchoolType } from "../generated/prisma/enums.js";
 import type { Prisma } from "../generated/prisma/client.js";
 import * as answerKeyRepository from "../repositories/answer-key.repository.js";
 import * as programRepository from "../repositories/program.repository.js";
+import * as schoolClassRepository from "../repositories/school-class.repository.js";
 import * as schoolRepository from "../repositories/school.repository.js";
+import * as sectionRepository from "../repositories/section.repository.js";
 import * as studentRepository from "../repositories/student.repository.js";
 import { recordOmrResult } from "../services/result.service.js";
 import * as studentService from "../services/student.service.js";
@@ -794,6 +796,45 @@ export function isOmrEvaluationActiveForTestId(testId: string) {
   return false;
 }
 
+/**
+ * Exam pattern is set on the school class/section — OMR uses that instead of a scan-time picker.
+ * Prefer the student's section; otherwise majority among sections at that class level; then whole class.
+ */
+async function resolveClassExamPattern(
+  schoolId: string,
+  classLevel: number,
+  sectionId?: string | null,
+): Promise<ExamPattern> {
+  if (sectionId) {
+    const section = await sectionRepository.findSectionById(sectionId);
+    if (section && section.schoolId === schoolId) {
+      return parseExamPattern(section.examPattern) ?? "MPCB";
+    }
+  }
+  const sections = (await sectionRepository.listSectionsBySchool(schoolId)).filter(
+    (row) => row.classLevel === classLevel,
+  );
+  if (sections.length > 0) {
+    const counts = new Map<ExamPattern, number>();
+    for (const section of sections) {
+      const pattern = parseExamPattern(section.examPattern) ?? "MPCB";
+      counts.set(pattern, (counts.get(pattern) ?? 0) + 1);
+    }
+    let best: ExamPattern = "MPCB";
+    let bestCount = 0;
+    for (const [pattern, count] of counts) {
+      if (count > bestCount) {
+        best = pattern;
+        bestCount = count;
+      }
+    }
+    return best;
+  }
+  const whole = await schoolClassRepository.findSchoolClassByLevel(schoolId, classLevel);
+  if (whole) return parseExamPattern(whole.examPattern) ?? "MPCB";
+  return "MPCB";
+}
+
 export async function checkTestId(context: ScanContext, testId: string) {
   const value = testId.trim().toUpperCase();
   if (!value) throw new AppError(400, "Enter the test ID from the answer key.");
@@ -849,11 +890,6 @@ export async function registerOmrPdf(
     await removeOmrPath(pdfPath);
     throw new AppError(400, "Enter the test ID from the answer key before uploading");
   }
-  const examPattern = parseExamPattern(identity.examPattern);
-  if (!examPattern) {
-    await removeOmrPath(pdfPath);
-    throw new AppError(400, "Choose the exam pattern (MPCB, PCB, or MPC) before uploading");
-  }
   let accepted = false;
   try {
     const { testId, keys } = await checkTestId(context, identity.testId ?? "");
@@ -867,6 +903,16 @@ export async function registerOmrPdf(
         `Rejected: file name must include Test ${testNumber}. This test ID is Test ${testNumber}. Upload a PDF whose name contains ${testNumber} by itself (e.g. “v school ${testNumber}.pdf” or “schoolsrk${testNumber}.pdf”). Your file “${fileName || "omr.pdf"}” does not match — a longer number like ${testNumber}6, a different number, or no number is not accepted.`,
       );
     }
+    // Prefer pattern from the school's class for this test; per-sheet resolve still runs at score time.
+    let examPattern = parseExamPattern(identity.examPattern);
+    if (!examPattern) {
+      const school = contextSchool(context);
+      const classLevel = keys[0]?.classLevel;
+      if (school && classLevel != null) {
+        examPattern = await resolveClassExamPattern(school.id, classLevel);
+      }
+    }
+    examPattern = examPattern ?? "MPCB";
     purgeExpiredPdfBatches();
     const owner = ownerOf(context);
     const active = [...pdfBatches.values()].find(
@@ -1324,10 +1370,8 @@ export async function previewScan(
     typeof identity.programCode === "string" && identity.programCode.trim()
       ? identity.programCode.trim().toUpperCase()
       : undefined;
-  const examPattern = parseExamPattern(identity.examPattern);
-  if (!examPattern) {
-    throw new AppError(400, "Choose the exam pattern (MPCB, PCB, or MPC) before scanning");
-  }
+  /** Client may omit this — resolved from the student's class/section after identity is known. */
+  let examPattern = parseExamPattern(identity.examPattern);
   const preferredSchoolId =
     typeof identity.schoolId === "string" &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identity.schoolId)
@@ -1530,6 +1574,9 @@ export async function previewScan(
     const bubbleRoll = [typedRoll, read.rollNo, ...read.rollCandidates].find((roll) =>
       /^\d{7}$/.test(roll),
     );
+    examPattern =
+      examPattern ??
+      (await resolveClassExamPattern(school.id, evalKey.classLevel));
     await storeNeedsIdentityPreview({
       context,
       school,
@@ -1549,6 +1596,15 @@ export async function previewScan(
   } else {
     throw new AppError(422, "Enter the student name");
   }
+
+  examPattern =
+    (await resolveClassExamPattern(
+      school.id,
+      identityClass,
+      enrolled?.sectionId ?? enrolled?.section?.id ?? null,
+    )) ||
+    examPattern ||
+    "MPCB";
 
   const score = scoreWithKey(read.answers, key, { examPattern });
   if (score.subjectScores.length === 0) {
@@ -1659,20 +1715,28 @@ async function rebindPendingRoll(context: ScanContext, previewId: string, rollNo
     programCode: enrolled.program?.code ?? null,
     sectionId: enrolled.sectionId ?? enrolled.section?.id ?? null,
   });
-  if (key.id !== row.key.id) {
+  const nextPattern = await resolveClassExamPattern(
+    row.school.id,
+    enrolled.classLevel,
+    enrolled.sectionId ?? enrolled.section?.id ?? null,
+  );
+  const keyChanged = key.id !== row.key.id;
+  const patternChanged = nextPattern !== row.examPattern;
+  if (keyChanged || patternChanged) {
     const readFlags = row.flags.filter((flag) => flag.reason !== "Un-attempted");
     if (row.bubbles) {
       const sheet = await loadPendingImage(row.diskDir, "sheet");
       const { score, image } = await evaluatedImage(sheet, row.bubbles, row.answers, key, {
-        examPattern: row.examPattern,
+        examPattern: nextPattern,
       });
       row.score = score;
       await replacePendingPreview(row.diskDir, image);
     } else {
-      row.score = scoreWithKey(row.answers, key, { examPattern: row.examPattern });
+      row.score = scoreWithKey(row.answers, key, { examPattern: nextPattern });
     }
     row.flags = sheetFlags(row.score, readFlags);
     row.key = { ...row.key, ...key };
+    row.examPattern = nextPattern;
   }
   row.identity = {
     ...row.identity,
@@ -1807,20 +1871,28 @@ export async function bindPendingIdentity(
     programCode: enrolled.program?.code ?? null,
     sectionId: enrolled.sectionId ?? enrolled.section?.id ?? null,
   });
-  if (key.id !== row.key.id) {
+  const nextPattern = await resolveClassExamPattern(
+    row.school.id,
+    enrolled.classLevel,
+    enrolled.sectionId ?? enrolled.section?.id ?? null,
+  );
+  const keyChanged = key.id !== row.key.id;
+  const patternChanged = nextPattern !== row.examPattern;
+  if (keyChanged || patternChanged) {
     const readFlags = row.flags.filter((flag) => flag.reason !== "Un-attempted");
     if (row.bubbles) {
       const sheet = await loadPendingImage(row.diskDir, "sheet");
       const { score, image } = await evaluatedImage(sheet, row.bubbles, row.answers, key, {
-        examPattern: row.examPattern,
+        examPattern: nextPattern,
       });
       row.score = score;
       await replacePendingPreview(row.diskDir, image);
     } else {
-      row.score = scoreWithKey(row.answers, key, { examPattern: row.examPattern });
+      row.score = scoreWithKey(row.answers, key, { examPattern: nextPattern });
     }
     row.flags = sheetFlags(row.score, readFlags);
     row.key = { ...row.key, ...key };
+    row.examPattern = nextPattern;
   }
   row.identity = {
     ...row.identity,

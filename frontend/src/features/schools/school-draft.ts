@@ -6,11 +6,14 @@ import type { SectionInput } from "@/types/section";
 
 const DRAFT_KEY = "vitaran:school-registration-draft";
 
+const examPatternSchema = z.enum(["MPCB", "PCB", "MPC"]);
+
 const sectionCreateSchema = z.object({
   classLevel: z.number().int().min(1).max(12),
   name: z.string().nullable().optional(),
   programId: z.string().min(1),
   studentCount: z.number().int().min(1).optional().default(5000),
+  examPattern: examPatternSchema,
   programName: z.string().optional().default(""),
   subjects: z.array(z.string()).optional().default([]),
   draftId: z.string().optional(),
@@ -81,6 +84,7 @@ function parseDraft(raw: string | null | undefined): SchoolRegistrationDraft | n
         name: row.name,
         programId: row.programId,
         studentCount: row.studentCount,
+        examPattern: row.examPattern,
         programName: row.programName || "",
         subjects: (row.subjects ?? []) as Subject[],
         draftId: row.draftId || `draft-restored-${index}-${row.programId}-${row.classLevel}`,
@@ -119,6 +123,7 @@ export function saveSchoolDraft(
               name: row.name,
               programId: row.programId,
               studentCount: row.studentCount,
+              examPattern: row.examPattern,
               programName: row.programName || "",
               subjects: (row.subjects ?? []) as Subject[],
               draftId: row.draftId || `draft-restored-${index}-${row.programId}-${row.classLevel}`,
