@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Download, Eye, Loader2, Pencil } from "lucide-react";
+import { Dialog } from "@base-ui/react/dialog";
+import { Download, Eye, Loader2, Pencil, X } from "lucide-react";
 import { toast } from "sonner";
 import { ImageZoomPane } from "@/components/shared/image-zoom-pane";
 import { Button } from "@/components/ui/button";
@@ -122,6 +123,7 @@ export function ScanSheetTable({
   const [pageMatches, setPageMatches] = useState<Record<number, OmrStudentMatch[]>>({});
   const [pageRollHints, setPageRollHints] = useState<Record<number, string>>({});
   const [editingPreviewId, setEditingPreviewId] = useState<string | null>(null);
+  const [editingFailurePage, setEditingFailurePage] = useState<number | null>(null);
   const [savingReadyId, setSavingReadyId] = useState<string | null>(null);
   const [readyMatches, setReadyMatches] = useState<Record<string, OmrStudentMatch[]>>({});
 
@@ -205,6 +207,12 @@ export function ScanSheetTable({
         return copy;
       });
       setEditingPreviewId(null);
+      const updated = { ...next, pdfPage: item.pdfPage ?? next.pdfPage };
+      setViewing((current) =>
+        current?.kind === "ready" && current.item.previewId === item.previewId
+          ? { kind: "ready", item: updated }
+          : current,
+      );
       const reg = next.scan.student.rollNo;
       toast.success(
         reg
@@ -306,6 +314,7 @@ export function ScanSheetTable({
         delete next[failure.page];
         return next;
       });
+      setEditingFailurePage(null);
       setViewing(null);
       toast.success(`PDF page ${failure.page} ready · ${result.result.scan.student.name}`);
     } catch (error) {
@@ -317,6 +326,22 @@ export function ScanSheetTable({
 
   const readyCount = batch.length;
   const failedCount = failures.length;
+  const editingItem =
+    editingPreviewId == null
+      ? null
+      : (batch.find((item) => item.previewId === editingPreviewId) ?? null);
+  const editingFailure =
+    editingFailurePage == null
+      ? null
+      : (failures.find((failure) => failure.page === editingFailurePage) ?? null);
+  const viewingReady =
+    viewing?.kind === "ready"
+      ? (batch.find((item) => item.previewId === viewing.item.previewId) ?? viewing.item)
+      : null;
+  const viewingFailed =
+    viewing?.kind === "failed"
+      ? (failures.find((failure) => failure.page === viewing.failure.page) ?? viewing.failure)
+      : null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -391,8 +416,6 @@ export function ScanSheetTable({
                 const item = row.item;
                 const scan = item.scan;
                 const busy = savingAll || saving.has(item.previewId);
-                const editing = editingPreviewId === item.previewId;
-                const editingBusy = savingReadyId === item.previewId;
                 return (
                   <tr
                     key={`ready-${item.previewId}`}
@@ -407,82 +430,28 @@ export function ScanSheetTable({
                         Class {scan.student.classLevel}-{scan.student.sectionName?.trim() || "A"}
                       </span>
                     </td>
-                    {editing ? (
-                      <td colSpan={2} className="px-2 py-1.5">
-                        <div className="flex min-w-0 items-center gap-2">
-                          <div className="min-w-0 flex-1">
-                            <OmrRollRecovery
-                              portal={portal}
-                              message="Edit registration"
-                              editMode
-                              busy={editingBusy || busy}
-                              schoolId={scan.student.schoolId}
-                              inputId={`omr-edit-roll-${item.previewId}`}
-                              initialMatches={readyMatches[item.previewId] ?? NO_MATCHES}
-                              initialRollNo={scan.student.rollNo}
-                              initialStudentName={scan.student.name}
-                              placementHint={{
-                                schoolId: scan.student.schoolId,
-                                classLevel: scan.student.classLevel,
-                                programCode: scan.student.programCode,
-                              }}
-                              onSaveWithRoll={(roll, schoolId, studentName, sectionId, placement) =>
-                                void saveReadyWithRoll(
-                                  item,
-                                  roll,
-                                  schoolId,
-                                  studentName,
-                                  sectionId,
-                                  placement,
-                                )
-                              }
-                            />
-                          </div>
-                          <span className="shrink-0 whitespace-nowrap font-semibold tabular-nums text-emerald-900">
-                            {formatMarks(scan.total)}/{formatMarks(scan.maxTotal)}
-                          </span>
-                        </div>
-                      </td>
-                    ) : (
-                      <>
-                        <td className="px-2 py-1.5 tabular-nums text-emerald-900">
-                          <div className="flex items-center gap-1.5">
-                            <span className="whitespace-nowrap">
-                              {scan.student.rollNo || "—"}
-                            </span>
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 w-7 shrink-0 p-0 text-emerald-800 hover:bg-emerald-100 hover:text-emerald-950"
-                              title="Edit registration / name"
-                              disabled={savingAll || busy}
-                              onClick={() => setEditingPreviewId(item.previewId)}
-                            >
-                              <Pencil className="size-3.5" />
-                              <span className="sr-only">Edit registration</span>
-                            </Button>
-                          </div>
-                        </td>
-                        <td className="whitespace-nowrap px-2 py-1.5 font-semibold tabular-nums text-emerald-900">
-                          {formatMarks(scan.total)}/{formatMarks(scan.maxTotal)}
-                        </td>
-                      </>
-                    )}
+                    <td className="px-2 py-1.5 tabular-nums text-emerald-900">
+                      <div className="flex items-center gap-1.5">
+                        <span className="whitespace-nowrap">{scan.student.rollNo || "—"}</span>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 shrink-0 p-0 text-emerald-800 hover:bg-emerald-100 hover:text-emerald-950"
+                          title="Edit registration / name"
+                          disabled={savingAll || busy}
+                          onClick={() => setEditingPreviewId(item.previewId)}
+                        >
+                          <Pencil className="size-3.5" />
+                          <span className="sr-only">Edit registration</span>
+                        </Button>
+                      </div>
+                    </td>
+                    <td className="whitespace-nowrap px-2 py-1.5 font-semibold tabular-nums text-emerald-900">
+                      {formatMarks(scan.total)}/{formatMarks(scan.maxTotal)}
+                    </td>
                     <td className="px-2 py-1.5">
                       <div className="flex flex-wrap items-center justify-end gap-1">
-                        {editing ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-7 border-emerald-300 px-2 text-xs text-emerald-900"
-                            disabled={editingBusy}
-                            onClick={() => setEditingPreviewId(null)}
-                          >
-                            Cancel
-                          </Button>
-                        ) : null}
                         <Button
                           type="button"
                           variant="outline"
@@ -532,7 +501,7 @@ export function ScanSheetTable({
                           type="button"
                           size="sm"
                           className="h-7 bg-emerald-700 px-2.5 text-xs hover:bg-emerald-800"
-                          disabled={busy || editing}
+                          disabled={busy}
                           onClick={() => onSaveOne(item)}
                         >
                           {saving.has(item.previewId) ? (
@@ -549,68 +518,43 @@ export function ScanSheetTable({
               const failure = row.failure;
               const recoverRoll = canRecoverRoll(failure.message);
               const isDup = isDuplicateRollError(failure.message);
-              const busy = savingAll || savingPage === failure.page;
               return (
                 <tr
                   key={`failed-${failure.page}`}
                   className="border-t border-red-100 bg-red-50/60 hover:bg-red-50"
                 >
-                  <td className="px-2 py-1.5 tabular-nums text-red-900">
-                    {failure.page}
-                  </td>
+                  <td className="px-2 py-1.5 tabular-nums text-red-900">{failure.page}</td>
                   <td className="truncate px-2 py-1.5 text-xs leading-snug text-red-800">
                     {isDup ? "Duplicate registration" : displayScanError(failure.message)}
                   </td>
-                  {recoverRoll && (failure.hasImage || failure.previewId) ? (
-                    <td colSpan={2} className="px-2 py-1">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <div className="min-w-0 flex-1">
-                          <OmrRollRecovery
-                            portal={portal}
-                            message={failure.message}
-                            busy={busy}
-                            inputId={`omr-recovery-roll-${failure.page}`}
-                            initialMatches={pageMatches[failure.page] ?? NO_MATCHES}
-                            initialRollNo={
-                              pageRollHints[failure.page] ?? failure.rollNo?.trim() ?? ""
-                            }
-                            onSaveWithRoll={(roll, schoolId, studentName, sectionId, placement) =>
-                              void saveFailedWithRoll(
-                                failure,
-                                roll,
-                                schoolId,
-                                studentName,
-                                sectionId,
-                                placement,
-                              )
-                            }
-                          />
-                        </div>
-                        <span className="shrink-0 whitespace-nowrap font-semibold tabular-nums text-red-900">
-                          {failure.total != null && failure.maxTotal != null
-                            ? `${formatMarks(failure.total)}/${formatMarks(failure.maxTotal)}`
-                            : "—"}
-                        </span>
+                  <td className="px-2 py-1.5 tabular-nums text-red-800/80">
+                    {recoverRoll && !failure.hasImage && !failure.previewId ? (
+                      <span className="text-[11px] text-red-800">No page image</span>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <span className="whitespace-nowrap">{failure.rollNo?.trim() || "—"}</span>
+                        {recoverRoll && (failure.hasImage || failure.previewId) ? (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 w-7 shrink-0 p-0 text-red-800 hover:bg-red-100 hover:text-red-950"
+                            title="Enter registration / name"
+                            disabled={savingAll || savingPage === failure.page}
+                            onClick={() => setEditingFailurePage(failure.page)}
+                          >
+                            <Pencil className="size-3.5" />
+                            <span className="sr-only">Enter registration</span>
+                          </Button>
+                        ) : null}
                       </div>
-                    </td>
-                  ) : (
-                    <>
-                      <td className="px-2 py-1">
-                        {recoverRoll && !failure.hasImage && !failure.previewId ? (
-                          <span className="text-[11px] text-red-800">No page image</span>
-                        ) : (
-                          <span className="whitespace-nowrap tabular-nums text-red-800/80">
-                            {failure.rollNo?.trim() || "—"}
-                          </span>
-                        )}
-                      </td>
-                      <td className="whitespace-nowrap px-2 py-1.5 font-semibold tabular-nums text-red-900">
-                        {failure.total != null && failure.maxTotal != null
-                          ? `${formatMarks(failure.total)}/${formatMarks(failure.maxTotal)}`
-                          : "—"}
-                      </td>
-                    </>
-                  )}
+                    )}
+                  </td>
+                  <td className="whitespace-nowrap px-2 py-1.5 font-semibold tabular-nums text-red-900">
+                    {failure.total != null && failure.maxTotal != null
+                      ? `${formatMarks(failure.total)}/${formatMarks(failure.maxTotal)}`
+                      : "—"}
+                  </td>
                   <td className="px-2 py-1.5">
                     <div className="flex flex-wrap items-center justify-end gap-1">
                       {failure.hasImage || failure.previewId ? (
@@ -654,126 +598,273 @@ export function ScanSheetTable({
         </div>
       </div>
 
+      <Dialog.Root
+        open={editingItem != null || editingFailure != null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingPreviewId(null);
+            setEditingFailurePage(null);
+          }
+        }}
+      >
+        <Dialog.Portal>
+          <Dialog.Backdrop className="fixed inset-0 z-[60] bg-black/50 duration-100 data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />
+          <Dialog.Popup className="fixed top-1/2 left-1/2 z-[60] w-[min(28rem,calc(100vw-1.5rem))] -translate-x-1/2 -translate-y-1/2 rounded-xl bg-white p-4 shadow-2xl outline-none duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
+            {editingItem ? (
+              <>
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Dialog.Title className="text-sm font-semibold text-neutral-950">
+                      Edit registration
+                    </Dialog.Title>
+                    <p className="mt-0.5 truncate text-xs text-neutral-500">
+                      {editingItem.scan.student.name}
+                      {" · "}
+                      {formatMarks(editingItem.scan.total)}/{formatMarks(editingItem.scan.maxTotal)}
+                    </p>
+                  </div>
+                  <Dialog.Close
+                    aria-label="Close"
+                    className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
+                  >
+                    <X className="size-4" />
+                  </Dialog.Close>
+                </div>
+                <OmrRollRecovery
+                  portal={portal}
+                  message="Edit registration"
+                  editMode
+                  busy={savingReadyId === editingItem.previewId || savingAll}
+                  schoolId={editingItem.scan.student.schoolId}
+                  inputId={`omr-edit-dialog-roll-${editingItem.previewId}`}
+                  initialMatches={readyMatches[editingItem.previewId] ?? NO_MATCHES}
+                  initialRollNo={editingItem.scan.student.rollNo}
+                  initialStudentName={editingItem.scan.student.name}
+                  placementHint={{
+                    schoolId: editingItem.scan.student.schoolId,
+                    classLevel: editingItem.scan.student.classLevel,
+                    programCode: editingItem.scan.student.programCode,
+                  }}
+                  onSaveWithRoll={(roll, schoolId, studentName, sectionId, placement) =>
+                    void saveReadyWithRoll(
+                      editingItem,
+                      roll,
+                      schoolId,
+                      studentName,
+                      sectionId,
+                      placement,
+                    )
+                  }
+                />
+              </>
+            ) : editingFailure ? (
+              <>
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Dialog.Title className="text-sm font-semibold text-neutral-950">
+                      Enter registration
+                    </Dialog.Title>
+                    <p className="mt-0.5 truncate text-xs text-neutral-500">
+                      PDF page {editingFailure.page}
+                      {editingFailure.total != null && editingFailure.maxTotal != null
+                        ? ` · ${formatMarks(editingFailure.total)}/${formatMarks(editingFailure.maxTotal)}`
+                        : ""}
+                    </p>
+                    <p className="mt-1 text-xs leading-snug text-red-700">
+                      {isDuplicateRollError(editingFailure.message)
+                        ? "Duplicate registration"
+                        : displayScanError(editingFailure.message)}
+                    </p>
+                  </div>
+                  <Dialog.Close
+                    aria-label="Close"
+                    className="inline-flex size-8 shrink-0 items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
+                  >
+                    <X className="size-4" />
+                  </Dialog.Close>
+                </div>
+                <OmrRollRecovery
+                  portal={portal}
+                  message={editingFailure.message}
+                  busy={savingAll || savingPage === editingFailure.page}
+                  inputId={`omr-edit-dialog-failed-${editingFailure.page}`}
+                  initialMatches={pageMatches[editingFailure.page] ?? NO_MATCHES}
+                  initialRollNo={
+                    pageRollHints[editingFailure.page] ?? editingFailure.rollNo?.trim() ?? ""
+                  }
+                  onSaveWithRoll={(roll, schoolId, studentName, sectionId, placement) =>
+                    void saveFailedWithRoll(
+                      editingFailure,
+                      roll,
+                      schoolId,
+                      studentName,
+                      sectionId,
+                      placement,
+                    )
+                  }
+                />
+              </>
+            ) : null}
+          </Dialog.Popup>
+        </Dialog.Portal>
+      </Dialog.Root>
+
       <Sheet open={viewing != null} onOpenChange={(open) => (open ? null : setViewing(null))}>
         <SheetContent
           side="right"
           className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:w-1/2 data-[side=right]:sm:max-w-[50vw]"
         >
-          {viewing?.kind === "ready" ? (
+          {viewingReady ? (
             <>
               <SheetHeader className="shrink-0 border-b border-neutral-100 px-4 py-3">
-                <SheetTitle>{viewing.item.scan.student.name}</SheetTitle>
+                <SheetTitle>{viewingReady.scan.student.name}</SheetTitle>
                 <p className="text-sm font-semibold text-neutral-800">
-                  {viewing.item.scan.student.programName}
+                  {viewingReady.scan.student.programName}
                   {" · "}
-                  Class {viewing.item.scan.student.classLevel}-
-                  {viewing.item.scan.student.sectionName?.trim() || "A"}
+                  Class {viewingReady.scan.student.classLevel}-
+                  {viewingReady.scan.student.sectionName?.trim() || "A"}
                 </p>
                 <p className="text-sm text-neutral-600">
-                  {viewing.item.pdfPage != null ? `PDF page ${viewing.item.pdfPage} · ` : ""}
-                  Reg {viewing.item.scan.student.rollNo} ·{" "}
-                  {formatMarks(viewing.item.scan.total)}/{formatMarks(viewing.item.scan.maxTotal)}
+                  {viewingReady.pdfPage != null ? `PDF page ${viewingReady.pdfPage} · ` : ""}
+                  Reg {viewingReady.scan.student.rollNo} ·{" "}
+                  {formatMarks(viewingReady.scan.total)}/{formatMarks(viewingReady.scan.maxTotal)}
                 </p>
               </SheetHeader>
               <div className="min-h-0 flex-1">
                 <ReadySheetImage
-                  key={viewing.item.previewId}
+                  key={viewingReady.previewId}
                   portal={portal}
-                  previewId={viewing.item.previewId}
-                  marked={viewing.item.scan.sheetImage}
+                  previewId={viewingReady.previewId}
+                  marked={viewingReady.scan.sheetImage}
                   label={
-                    viewing.item.pdfPage != null
-                      ? `PDF page ${viewing.item.pdfPage}`
-                      : viewing.item.scan.student.name
+                    viewingReady.pdfPage != null
+                      ? `PDF page ${viewingReady.pdfPage}`
+                      : viewingReady.scan.student.name
                   }
                 />
               </div>
-              <div className="flex shrink-0 gap-2 border-t border-neutral-100 p-4">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="flex-1"
-                  disabled={savingAll}
-                  onClick={() => {
-                    const index = getScanBatch().findIndex(
-                      (item) => item.previewId === viewing.item.previewId,
-                    );
-                    setViewing(null);
-                    if (index >= 0) onOpenReview(index);
+              <div className="shrink-0 space-y-3 border-t border-neutral-100 p-4">
+                <p className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+                  Edit registration
+                </p>
+                <OmrRollRecovery
+                  portal={portal}
+                  message="Edit registration"
+                  editMode
+                  busy={savingReadyId === viewingReady.previewId || savingAll}
+                  schoolId={viewingReady.scan.student.schoolId}
+                  inputId={`omr-view-edit-roll-${viewingReady.previewId}`}
+                  initialMatches={readyMatches[viewingReady.previewId] ?? NO_MATCHES}
+                  initialRollNo={viewingReady.scan.student.rollNo}
+                  initialStudentName={viewingReady.scan.student.name}
+                  placementHint={{
+                    schoolId: viewingReady.scan.student.schoolId,
+                    classLevel: viewingReady.scan.student.classLevel,
+                    programCode: viewingReady.scan.student.programCode,
                   }}
-                >
-                  View details
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="flex-1 gap-1.5"
-                  disabled={savingAll || downloading === viewing.item.previewId}
-                  onClick={() => void handleDownloadReady(viewing.item)}
-                >
-                  {downloading === viewing.item.previewId ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <Download className="size-4" />
-                  )}
-                  Download
-                </Button>
-                <Button
-                  type="button"
-                  className="flex-1"
-                  disabled={savingAll || saving.has(viewing.item.previewId)}
-                  onClick={() => onSaveOne(viewing.item)}
-                >
-                  {saving.has(viewing.item.previewId) ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : null}
-                  Save
-                </Button>
+                  onSaveWithRoll={(roll, schoolId, studentName, sectionId, placement) =>
+                    void saveReadyWithRoll(
+                      viewingReady,
+                      roll,
+                      schoolId,
+                      studentName,
+                      sectionId,
+                      placement,
+                    )
+                  }
+                />
+                <div className="flex gap-2 pt-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    disabled={savingAll}
+                    onClick={() => {
+                      const index = getScanBatch().findIndex(
+                        (item) => item.previewId === viewingReady.previewId,
+                      );
+                      setViewing(null);
+                      if (index >= 0) onOpenReview(index);
+                    }}
+                  >
+                    View details
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1 gap-1.5"
+                    disabled={savingAll || downloading === viewingReady.previewId}
+                    onClick={() => void handleDownloadReady(viewingReady)}
+                  >
+                    {downloading === viewingReady.previewId ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Download className="size-4" />
+                    )}
+                    Download
+                  </Button>
+                  <Button
+                    type="button"
+                    className="flex-1"
+                    disabled={savingAll || saving.has(viewingReady.previewId)}
+                    onClick={() => onSaveOne(viewingReady)}
+                  >
+                    {saving.has(viewingReady.previewId) ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : null}
+                    Save
+                  </Button>
+                </div>
               </div>
             </>
-          ) : viewing?.kind === "failed" ? (
+          ) : viewingFailed ? (
             <>
               <SheetHeader className="shrink-0 border-b border-neutral-100 px-4 py-3">
-                <SheetTitle>PDF page {viewing.failure.page}</SheetTitle>
-                <p className="text-sm text-red-700">{displayScanError(viewing.failure.message)}</p>
-                {viewing.failure.total != null && viewing.failure.maxTotal != null ? (
+                <SheetTitle>PDF page {viewingFailed.page}</SheetTitle>
+                <p className="text-sm text-red-700">{displayScanError(viewingFailed.message)}</p>
+                {viewingFailed.total != null && viewingFailed.maxTotal != null ? (
                   <p className="text-sm font-semibold tabular-nums text-neutral-800">
-                    Score {formatMarks(viewing.failure.total)}/{formatMarks(viewing.failure.maxTotal)}
+                    Score {formatMarks(viewingFailed.total)}/{formatMarks(viewingFailed.maxTotal)}
                   </p>
                 ) : null}
               </SheetHeader>
               <div className="min-h-0 flex-1">
-                {viewing.failure.previewId ? (
+                {viewingFailed.previewId ? (
                   <ReadySheetImage
-                    key={viewing.failure.previewId}
+                    key={viewingFailed.previewId}
                     portal={portal}
-                    previewId={viewing.failure.previewId}
-                    label={`PDF page ${viewing.failure.page}`}
+                    previewId={viewingFailed.previewId}
+                    label={`PDF page ${viewingFailed.page}`}
                   />
                 ) : (
                   <ImageZoomPane
-                    key={viewing.failure.page}
+                    key={viewingFailed.page}
                     className="h-full"
-                    toolbarLeft={`PDF page ${viewing.failure.page}`}
-                    resetKey={viewing.failure.page}
+                    toolbarLeft={`PDF page ${viewingFailed.page}`}
+                    resetKey={viewingFailed.page}
                   >
-                    <FailedPageImage page={viewing.failure.page} portal={portal} />
+                    <FailedPageImage page={viewingFailed.page} portal={portal} />
                   </ImageZoomPane>
                 )}
               </div>
-              {canRecoverRoll(viewing.failure.message) &&
-              (viewing.failure.hasImage || viewing.failure.previewId) ? (
+              {canRecoverRoll(viewingFailed.message) &&
+              (viewingFailed.hasImage || viewingFailed.previewId) ? (
                 <div className="shrink-0 space-y-3 border-t border-neutral-100 p-4">
+                  <p className="text-xs font-semibold tracking-wide text-neutral-500 uppercase">
+                    Enter registration
+                  </p>
                   <OmrRollRecovery
                     portal={portal}
-                    message={viewing.failure.message}
-                    busy={savingAll || savingPage === viewing.failure.page}
-                    inputId={`omr-recovery-sheet-roll-${viewing.failure.page}`}
-                    initialMatches={pageMatches[viewing.failure.page] ?? NO_MATCHES}
-                    initialRollNo={pageRollHints[viewing.failure.page] ?? ""}
+                    message={viewingFailed.message}
+                    busy={savingAll || savingPage === viewingFailed.page}
+                    inputId={`omr-recovery-sheet-roll-${viewingFailed.page}`}
+                    initialMatches={pageMatches[viewingFailed.page] ?? NO_MATCHES}
+                    initialRollNo={
+                      pageRollHints[viewingFailed.page] ?? viewingFailed.rollNo?.trim() ?? ""
+                    }
                     onSaveWithRoll={(roll, schoolId, studentName, sectionId, placement) =>
                       void saveFailedWithRoll(
-                        viewing.failure,
+                        viewingFailed,
                         roll,
                         schoolId,
                         studentName,

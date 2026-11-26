@@ -311,7 +311,7 @@ export function OmrRollRecovery({
             placeholder="Student name"
             aria-label="Student name"
             className={cn(
-              "h-7 min-w-[9rem] flex-1 rounded-md border bg-white px-2 text-xs",
+              "h-7 min-w-0 flex-1 rounded-md border bg-white px-2 text-xs",
               editMode ? "border-emerald-300" : "border-amber-200",
             )}
             onChange={(event) => setStudentName(event.currentTarget.value)}
