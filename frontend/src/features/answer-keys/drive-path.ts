@@ -1,4 +1,4 @@
-import { ANSWER_KEYS_PATH } from "./constants";
+import { ANSWER_KEYS_PATH, SCHOOL_KEYS_PATH } from "./constants";
 import type { SchoolType } from "@/types/school";
 
 export type DrivePath = {
@@ -47,6 +47,7 @@ export function isAnswerKeysFolderHref(href: string) {
   return (
     !href.includes("://") &&
     (pathOnly === ANSWER_KEYS_PATH ||
+      pathOnly === SCHOOL_KEYS_PATH ||
       pathOnly === "/school/answer-keys" ||
       pathOnly === "/teacher/answer-keys")
   );
@@ -99,5 +100,8 @@ export function readAnswerKeysReturnHref() {
 }
 
 export function isAnswerKeyEditorPath(pathname: string) {
-  return /\/answer-keys\/[^/]+\/(answers|edit)$/.test(pathname);
+  return (
+    /\/answer-keys\/[^/]+\/(answers|edit)$/.test(pathname) ||
+    /\/school-keys\/[^/]+\/answers$/.test(pathname)
+  );
 }

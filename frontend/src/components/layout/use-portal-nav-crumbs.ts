@@ -82,25 +82,70 @@ export function usePortalNavCrumbs(routeCrumbs: PortalNavCrumb[]): PortalNavCrum
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const driveCrumbs = useDrivePathCrumbs();
-  const schoolId = schoolIdFromAdminPath(pathname);
-  // Must use getServerSnapshot=null so SSR HTML matches the first client paint.
-  const schoolName = useAdminNavLabel("school", schoolId);
   const hasClientStore = useHasClientStore();
   const answerKeysReturnHref = hasClientStore ? readAnswerKeysReturnHref() : null;
   const resultsReturnHref = hasClientStore ? readResultsReturnHref() : null;
+  // School Keys editor keeps school id in ?from=, not in the answers path.
+  const schoolIdFromReturn =
+    answerKeysReturnHref && pathname.includes("/school-keys/")
+      ? new URLSearchParams(answerKeysReturnHref.split("?")[1] ?? "").get("school")
+      : null;
+  const schoolId =
+    schoolIdFromAdminPath(pathname) ?? schoolIdFromReturn ?? searchParams.get("school");
+  // Must use getServerSnapshot=null so SSR HTML matches the first client paint.
+  const schoolName = useAdminNavLabel("school", schoolId);
 
   return useMemo(() => {
     const folders = driveCrumbs.filter((crumb) => !isSectionRootLabel(crumb.label));
 
     if (isAnswerKeyEditorPath(pathname)) {
-      const section = sectionThrough(routeCrumbs, (href) => /\/answer-keys$/.test(href));
+      const isSchoolKey = pathname.includes("/school-keys/");
+      const sectionRe = isSchoolKey ? /\/school-keys$/ : /\/answer-keys$/;
+      const section = sectionThrough(routeCrumbs, (href) => sectionRe.test(href));
       const withFolderHome = section.map((crumb) =>
-        /\/answer-keys$/.test(crumb.href) && answerKeysReturnHref
+        sectionRe.test(crumb.href) && answerKeysReturnHref
           ? { ...crumb, href: answerKeysReturnHref }
           : crumb,
       );
+      // Rebuild School → Test from ?from= when session crumbs were not written yet.
+      let trail = folders;
+      if (trail.length === 0 && answerKeysReturnHref) {
+        const params = new URLSearchParams(answerKeysReturnHref.split("?")[1] ?? "");
+        const schoolParam = params.get("school");
+        const testParam = params.get("test");
+        if (isSchoolKey && schoolParam) {
+          const schoolHref = `${answerKeysReturnHref.split("?")[0]}?school=${encodeURIComponent(schoolParam)}`;
+          trail = [
+            {
+              label: schoolName ?? "School",
+              href: schoolHref,
+            },
+          ];
+          if (testParam) {
+            trail.push({
+              label: `Test ${testParam}`,
+              href: answerKeysReturnHref,
+            });
+          }
+        } else if (testParam) {
+          trail = [{ label: `Test ${testParam}`, href: answerKeysReturnHref }];
+        }
+      }
       const leafLabel = pathname.endsWith("/edit") ? "Edit" : "Enter answers";
-      return dedupeCrumbs([...withFolderHome, ...folders, { label: leafLabel, href: pathname }]);
+      return dedupeCrumbs([...withFolderHome, ...trail, { label: leafLabel, href: pathname }]);
+    }
+
+    // School Keys folders: Dashboard › School Keys › School › Test (same pattern as Answer Keys).
+    if (pathname === "/admin/school-keys") {
+      const section = sectionThrough(routeCrumbs, (href) => /\/school-keys$/.test(href));
+      const school = searchParams.get("school");
+      const test = searchParams.get("test");
+      const scoped = folders.filter((crumb) => {
+        if (!school && !test) return false;
+        if (!test && /test\s+\d+/i.test(crumb.label)) return false;
+        return true;
+      });
+      return dedupeCrumbs([...section, ...(school || test ? scoped : [])]);
     }
 
     if (isResultsEnterPath(pathname)) {

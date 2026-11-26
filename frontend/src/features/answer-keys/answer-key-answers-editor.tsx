@@ -38,7 +38,7 @@ import { AnswerKeyConfigDialog } from "./answer-key-config-dialog";
 import { downloadAnswerKeyTemplate, readAnswerKeyExcel } from "./answer-key-excel";
 import { AnswerKeyOptionsTable } from "./answer-key-options-table";
 import { AnswerKeyPdfActions } from "./answer-key-pdf-actions";
-import { ANSWER_KEYS_PATH } from "./constants";
+import { ANSWER_KEYS_PATH, SCHOOL_KEYS_PATH } from "./constants";
 import { readAnswerKeysReturnHref } from "./drive-path";
 import { enteredTestId, TEST_ID_LENGTH, TEST_ID_MESSAGE, TEST_ID_PATTERN, testIdDigits } from "./test-id";
 import { TestIdStatus, useTestIdCheck } from "./test-id-status";
@@ -309,9 +309,13 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
         toast.error(result.message);
         return;
       }
-      toast.success("Answer key deleted");
+      const isSchoolKey = Boolean(answerKey.school);
+      toast.success(isSchoolKey ? "School key deleted" : "Answer key deleted");
       setDeleteOpen(false);
-      router.push(readAnswerKeysReturnHref() ?? ANSWER_KEYS_PATH);
+      // Prefer ?from= (school-keys or answer-keys folder); school keys must not fall back to Answer Keys.
+      router.push(
+        readAnswerKeysReturnHref() ?? (isSchoolKey ? SCHOOL_KEYS_PATH : ANSWER_KEYS_PATH),
+      );
       router.refresh();
     });
   }

@@ -1,17 +1,18 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { DriveBrowser, type DriveItem } from "@/features/documents/drive-browser";
+import { DriveBrowser, type DriveCrumb, type DriveItem } from "@/features/documents/drive-browser";
 import { documentAnswersHref } from "@/features/documents/constants";
 import { displaySectionName } from "@/features/schools/section-label";
 import type { AnswerKey } from "@/types/answer-key";
 import type { ClassOrganization } from "@/types/section";
 import type { SchoolOption } from "@/types/school";
+import { rememberAdminNavLabel } from "@/features/admin/nav-labels";
 import { ensureSchoolSectionKeyAction } from "./actions";
 import { SCHOOL_KEYS_PATH } from "./constants";
-import { DRIVE_TESTS } from "./drive-path";
+import { DRIVE_TESTS, writeAnswerKeysFolderTrail } from "./drive-path";
 
 export type SchoolKeyBoardItem = {
   platform: AnswerKey;
@@ -60,6 +61,28 @@ export function SchoolKeysDrive({
 
   const school = schools.find((item) => item.id === schoolId);
 
+  const folderCrumbs: DriveCrumb[] = [];
+  if (schoolId && school) {
+    folderCrumbs.push({ label: school.name, href: schoolHref(school.id) });
+  }
+  if (schoolId && school && testNumber != null) {
+    folderCrumbs.push({
+      label: `Test ${testNumber}`,
+      href: testHref(school.id, testNumber),
+    });
+  }
+
+  // Same as Answer Keys: persist folder trail so Enter answers keeps School → Test in the top nav.
+  useEffect(() => {
+    if (school) rememberAdminNavLabel("school", school.id, school.name);
+    writeAnswerKeysFolderTrail(
+      `${window.location.pathname}${window.location.search}`,
+      folderCrumbs,
+    );
+    // folderCrumbs is derived from schoolId / testNumber / school name.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schoolId, school?.id, school?.name, testNumber]);
+
   const openSchoolKey = (
     platformKeyId: string,
     targetSectionId: string | null,
@@ -88,10 +111,7 @@ export function SchoolKeysDrive({
     return (
       <DriveBrowser
         key={`school-keys:${school.id}`}
-        breadcrumbs={[
-          { label: "School Keys", href: SCHOOL_KEYS_PATH },
-          { label: school.name, href: schoolHref(school.id) },
-        ]}
+        breadcrumbs={[{ label: "School Keys", href: SCHOOL_KEYS_PATH }, ...folderCrumbs]}
         items={DRIVE_TESTS.map((number) => ({
           id: String(number),
           name: `Test ${number}`,
@@ -237,11 +257,7 @@ export function SchoolKeysDrive({
     return (
       <DriveBrowser
         key={`school-keys:${school.id}:test:${testNumber}`}
-        breadcrumbs={[
-          { label: "School Keys", href: SCHOOL_KEYS_PATH },
-          { label: school.name, href: schoolHref(school.id) },
-          { label: `Test ${testNumber}`, href: from },
-        ]}
+        breadcrumbs={[{ label: "School Keys", href: SCHOOL_KEYS_PATH }, ...folderCrumbs]}
         items={[...sectionItems, ...classItems].sort((a, b) => a.name.localeCompare(b.name))}
         emptyText="No classes or sections yet. Add them on the school profile."
         searchPlaceholder="Search sections"

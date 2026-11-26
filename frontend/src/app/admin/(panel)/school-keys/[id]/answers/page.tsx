@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { AnswerKeyAnswersEditor } from "@/features/answer-keys/answer-key-answers-editor";
+import { SCHOOL_KEYS_PATH } from "@/features/answer-keys/constants";
 import { displaySectionName } from "@/features/schools/section-label";
 import { getAnswerKey } from "@/services/answer-keys";
 import { listAdminPrograms } from "@/services/programs";
@@ -15,7 +16,8 @@ export default async function SchoolKeyAnswersPage({
 }) {
   const { id } = await params;
   const [answerKey, programs] = await Promise.all([getAnswerKey(id), listAdminPrograms()]);
-  if (!answerKey || !answerKey.school) notFound();
+  // Deleted or missing school keys — return to the drive instead of a hard 404.
+  if (!answerKey || !answerKey.school) redirect(SCHOOL_KEYS_PATH);
 
   const program = programs.find((row) => row.code === answerKey.program);
   const sectionLabel = answerKey.section

@@ -44,8 +44,11 @@ export function DrivePathProvider({ children }: { children: ReactNode }) {
   const setCrumbs = useCallback(
     (next: DrivePathCrumb[]) => {
       setCrumbsState((current) => (sameCrumbs(current, next) ? current : next));
-      // Persist while browsing answer-key folders so the enter page can continue the trail.
-      if (pathname.includes("/answer-keys") && !isAnswerKeyEditorPath(pathname)) {
+      // Persist while browsing answer-key / school-key folders so the editor can return there.
+      if (
+        (pathname.includes("/answer-keys") || pathname.includes("/school-keys")) &&
+        !isAnswerKeyEditorPath(pathname)
+      ) {
         const href =
           typeof window !== "undefined"
             ? `${window.location.pathname}${window.location.search}`
@@ -72,6 +75,7 @@ export function DrivePathProvider({ children }: { children: ReactNode }) {
     // Keep their crumbs across Suspense remounts; clear only when leaving those areas.
     if (
       pathname.includes("/answer-keys") ||
+      pathname.includes("/school-keys") ||
       pathname.includes("/results") ||
       pathname.includes("/students") ||
       pathname.includes("/teachers") ||
