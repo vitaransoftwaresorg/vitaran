@@ -281,8 +281,8 @@ export function OmrRollRecovery({
             : "Enter registration number";
 
   return (
-    <div className={cn("space-y-1", editMode ? "text-emerald-950" : "text-amber-950")}>
-      <div className="flex w-full flex-wrap items-center gap-2">
+    <div className={cn("min-w-0 space-y-1", editMode ? "text-emerald-950" : "text-amber-950")}>
+      <div className="flex w-full min-w-0 flex-nowrap items-center gap-1.5">
         <label htmlFor={inputId} className="sr-only">
           {prompt}
         </label>
@@ -293,10 +293,10 @@ export function OmrRollRecovery({
           maxLength={ROLL_LENGTH}
           value={rollNo}
           disabled={busy}
-          placeholder="Registration number"
+          placeholder="Reg no"
           aria-label={prompt}
           className={cn(
-            "h-7 w-[40%] max-w-[40%] min-w-0 shrink-0 rounded-md border bg-white px-2 text-xs tracking-widest tabular-nums",
+            "h-7 w-[7.5rem] shrink-0 rounded-md border bg-white px-2 text-xs tracking-widest tabular-nums",
             editMode ? "border-emerald-300" : "border-amber-200",
           )}
           onChange={(event) => setRollNo(rollInput(event.currentTarget.value))}
@@ -311,7 +311,7 @@ export function OmrRollRecovery({
             placeholder="Student name"
             aria-label="Student name"
             className={cn(
-              "h-7 min-w-0 flex-1 rounded-md border bg-white px-2 text-xs",
+              "h-7 min-w-[9rem] flex-1 rounded-md border bg-white px-2 text-xs",
               editMode ? "border-emerald-300" : "border-amber-200",
             )}
             onChange={(event) => setStudentName(event.currentTarget.value)}
@@ -338,7 +338,7 @@ export function OmrRollRecovery({
             disabled={busy}
             aria-label="Section"
             className={cn(
-              "h-7 w-14 shrink-0 rounded-md border bg-white px-1 text-xs font-medium",
+              "h-7 w-12 shrink-0 rounded-md border bg-white px-1 text-xs font-medium",
               editMode
                 ? "border-emerald-300 text-emerald-950"
                 : "border-amber-200 text-amber-950",

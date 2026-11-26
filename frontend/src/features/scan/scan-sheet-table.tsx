@@ -407,57 +407,68 @@ export function ScanSheetTable({
                         Class {scan.student.classLevel}-{scan.student.sectionName?.trim() || "A"}
                       </span>
                     </td>
-                    <td className="px-2 py-1.5 tabular-nums text-emerald-900">
-                      {editing ? (
-                        <OmrRollRecovery
-                          portal={portal}
-                          message="Edit registration"
-                          editMode
-                          busy={editingBusy || busy}
-                          schoolId={scan.student.schoolId}
-                          inputId={`omr-edit-roll-${item.previewId}`}
-                          initialMatches={readyMatches[item.previewId] ?? NO_MATCHES}
-                          initialRollNo={scan.student.rollNo}
-                          initialStudentName={scan.student.name}
-                          placementHint={{
-                            schoolId: scan.student.schoolId,
-                            classLevel: scan.student.classLevel,
-                            programCode: scan.student.programCode,
-                          }}
-                          onSaveWithRoll={(roll, schoolId, studentName, sectionId, placement) =>
-                            void saveReadyWithRoll(
-                              item,
-                              roll,
-                              schoolId,
-                              studentName,
-                              sectionId,
-                              placement,
-                            )
-                          }
-                        />
-                      ) : (
-                        <div className="flex items-center gap-1.5">
-                          <span className="whitespace-nowrap">
-                            {scan.student.rollNo || "—"}
+                    {editing ? (
+                      <td colSpan={2} className="px-2 py-1.5">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <div className="min-w-0 flex-1">
+                            <OmrRollRecovery
+                              portal={portal}
+                              message="Edit registration"
+                              editMode
+                              busy={editingBusy || busy}
+                              schoolId={scan.student.schoolId}
+                              inputId={`omr-edit-roll-${item.previewId}`}
+                              initialMatches={readyMatches[item.previewId] ?? NO_MATCHES}
+                              initialRollNo={scan.student.rollNo}
+                              initialStudentName={scan.student.name}
+                              placementHint={{
+                                schoolId: scan.student.schoolId,
+                                classLevel: scan.student.classLevel,
+                                programCode: scan.student.programCode,
+                              }}
+                              onSaveWithRoll={(roll, schoolId, studentName, sectionId, placement) =>
+                                void saveReadyWithRoll(
+                                  item,
+                                  roll,
+                                  schoolId,
+                                  studentName,
+                                  sectionId,
+                                  placement,
+                                )
+                              }
+                            />
+                          </div>
+                          <span className="shrink-0 whitespace-nowrap font-semibold tabular-nums text-emerald-900">
+                            {formatMarks(scan.total)}/{formatMarks(scan.maxTotal)}
                           </span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 shrink-0 p-0 text-emerald-800 hover:bg-emerald-100 hover:text-emerald-950"
-                            title="Edit registration / name"
-                            disabled={savingAll || busy}
-                            onClick={() => setEditingPreviewId(item.previewId)}
-                          >
-                            <Pencil className="size-3.5" />
-                            <span className="sr-only">Edit registration</span>
-                          </Button>
                         </div>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-2 py-1.5 font-semibold tabular-nums text-emerald-900">
-                      {formatMarks(scan.total)}/{formatMarks(scan.maxTotal)}
-                    </td>
+                      </td>
+                    ) : (
+                      <>
+                        <td className="px-2 py-1.5 tabular-nums text-emerald-900">
+                          <div className="flex items-center gap-1.5">
+                            <span className="whitespace-nowrap">
+                              {scan.student.rollNo || "—"}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 w-7 shrink-0 p-0 text-emerald-800 hover:bg-emerald-100 hover:text-emerald-950"
+                              title="Edit registration / name"
+                              disabled={savingAll || busy}
+                              onClick={() => setEditingPreviewId(item.previewId)}
+                            >
+                              <Pencil className="size-3.5" />
+                              <span className="sr-only">Edit registration</span>
+                            </Button>
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-2 py-1.5 font-semibold tabular-nums text-emerald-900">
+                          {formatMarks(scan.total)}/{formatMarks(scan.maxTotal)}
+                        </td>
+                      </>
+                    )}
                     <td className="px-2 py-1.5">
                       <div className="flex flex-wrap items-center justify-end gap-1">
                         {editing ? (
@@ -550,41 +561,56 @@ export function ScanSheetTable({
                   <td className="truncate px-2 py-1.5 text-xs leading-snug text-red-800">
                     {isDup ? "Duplicate registration" : displayScanError(failure.message)}
                   </td>
-                  <td className="px-2 py-1">
-                    {recoverRoll && (failure.hasImage || failure.previewId) ? (
-                      <OmrRollRecovery
-                        portal={portal}
-                        message={failure.message}
-                        busy={busy}
-                        inputId={`omr-recovery-roll-${failure.page}`}
-                        initialMatches={pageMatches[failure.page] ?? NO_MATCHES}
-                        initialRollNo={
-                          pageRollHints[failure.page] ?? failure.rollNo?.trim() ?? ""
-                        }
-                        onSaveWithRoll={(roll, schoolId, studentName, sectionId, placement) =>
-                          void saveFailedWithRoll(
-                            failure,
-                            roll,
-                            schoolId,
-                            studentName,
-                            sectionId,
-                            placement,
-                          )
-                        }
-                      />
-                    ) : recoverRoll && !failure.hasImage && !failure.previewId ? (
-                      <span className="text-[11px] text-red-800">No page image</span>
-                    ) : (
-                      <span className="whitespace-nowrap tabular-nums text-red-800/80">
-                        {failure.rollNo?.trim() || "—"}
-                      </span>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-2 py-1.5 font-semibold tabular-nums text-red-900">
-                    {failure.total != null && failure.maxTotal != null
-                      ? `${formatMarks(failure.total)}/${formatMarks(failure.maxTotal)}`
-                      : "—"}
-                  </td>
+                  {recoverRoll && (failure.hasImage || failure.previewId) ? (
+                    <td colSpan={2} className="px-2 py-1">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <div className="min-w-0 flex-1">
+                          <OmrRollRecovery
+                            portal={portal}
+                            message={failure.message}
+                            busy={busy}
+                            inputId={`omr-recovery-roll-${failure.page}`}
+                            initialMatches={pageMatches[failure.page] ?? NO_MATCHES}
+                            initialRollNo={
+                              pageRollHints[failure.page] ?? failure.rollNo?.trim() ?? ""
+                            }
+                            onSaveWithRoll={(roll, schoolId, studentName, sectionId, placement) =>
+                              void saveFailedWithRoll(
+                                failure,
+                                roll,
+                                schoolId,
+                                studentName,
+                                sectionId,
+                                placement,
+                              )
+                            }
+                          />
+                        </div>
+                        <span className="shrink-0 whitespace-nowrap font-semibold tabular-nums text-red-900">
+                          {failure.total != null && failure.maxTotal != null
+                            ? `${formatMarks(failure.total)}/${formatMarks(failure.maxTotal)}`
+                            : "—"}
+                        </span>
+                      </div>
+                    </td>
+                  ) : (
+                    <>
+                      <td className="px-2 py-1">
+                        {recoverRoll && !failure.hasImage && !failure.previewId ? (
+                          <span className="text-[11px] text-red-800">No page image</span>
+                        ) : (
+                          <span className="whitespace-nowrap tabular-nums text-red-800/80">
+                            {failure.rollNo?.trim() || "—"}
+                          </span>
+                        )}
+                      </td>
+                      <td className="whitespace-nowrap px-2 py-1.5 font-semibold tabular-nums text-red-900">
+                        {failure.total != null && failure.maxTotal != null
+                          ? `${formatMarks(failure.total)}/${formatMarks(failure.maxTotal)}`
+                          : "—"}
+                      </td>
+                    </>
+                  )}
                   <td className="px-2 py-1.5">
                     <div className="flex flex-wrap items-center justify-end gap-1">
                       {failure.hasImage || failure.previewId ? (
