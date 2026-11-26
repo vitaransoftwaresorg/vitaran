@@ -19,6 +19,21 @@ export function solutionBookPartsFromHref(href: string): string[] | null {
   return null;
 }
 
+/**
+ * Rebuild the canonical href from view-page path parts.
+ * DB slots look like `INTEGRATED/9/MATHEMATICS[/v1]`; legacy files end in `.pdf`.
+ */
+export function hrefFromViewPathParts(parts: string[]): string | null {
+  const cleaned = parts.map((part) => part.trim()).filter(Boolean);
+  if (!cleaned.length) return null;
+  const isDbSlot =
+    cleaned.length >= 3 &&
+    Number.isInteger(Number(cleaned[1])) &&
+    !cleaned.some((part) => /\.pdf$/i.test(part));
+  const joined = cleaned.map(encodeURIComponent).join("/");
+  return isDbSlot ? `/teacher-resources/${joined}` : `/solution-books/${joined}`;
+}
+
 export function teacherResourceHref(
   programCode: string,
   classLevel: number,

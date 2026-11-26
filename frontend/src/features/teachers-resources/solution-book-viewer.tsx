@@ -4,7 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { classLabel } from "@/utils/format";
-import { solutionBookPartsFromHref } from "./solution-book-path";
+import {
+  hrefFromViewPathParts,
+  parseTeacherResourceHref,
+  solutionBookPartsFromHref,
+} from "./solution-book-path";
 import type { SolutionBook } from "./solution-books";
 
 function apiSrc(href: string) {
@@ -29,8 +33,15 @@ export function solutionBookLabel(book: Pick<SolutionBook, "subject" | "grade" |
   }`;
 }
 
-/** Infer a short label from `/solution-books/.../subject/class-N.pdf` path parts. */
+/** Infer a short label from static `/solution-books/...` or DB `/teacher-resources/...` path parts. */
 export function labelFromSolutionPath(parts: string[]) {
+  const db = parseTeacherResourceHref(`/teacher-resources/${parts.join("/")}`);
+  if (db) {
+    const subject = db.subject.charAt(0) + db.subject.slice(1).toLowerCase();
+    return `${classLabel(db.classLevel)} · ${subject}${
+      db.volume > 0 ? ` · Volume ${db.volume}` : ""
+    }`;
+  }
   const file = parts.at(-1) ?? "";
   const subjectRaw = parts.at(-2) ?? "";
   const subject = subjectRaw
@@ -42,7 +53,7 @@ export function labelFromSolutionPath(parts: string[]) {
 }
 
 type SolutionBookViewerPageProps = {
-  /** Path under /solution-books, e.g. ["integrated","mathematics","class-6.pdf"] */
+  /** Path under /solution-books or /teacher-resources view URL. */
   pathParts: string[];
   backHref: string;
   title?: string;
@@ -54,7 +65,7 @@ export function SolutionBookViewerPage({
   backHref,
   title,
 }: SolutionBookViewerPageProps) {
-  const href = `/solution-books/${pathParts.join("/")}`;
+  const href = hrefFromViewPathParts(pathParts) ?? `/solution-books/${pathParts.join("/")}`;
   const src = apiSrc(href);
   const label = title ?? labelFromSolutionPath(pathParts);
   const hostRef = useRef<HTMLDivElement>(null);
