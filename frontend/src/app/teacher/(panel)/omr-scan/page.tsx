@@ -6,7 +6,7 @@ export const maxDuration = 120;
 
 export default function TeacherOmrScanPage() {
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col">
       <ScanBoard portal="teacher" />
     </div>
   );

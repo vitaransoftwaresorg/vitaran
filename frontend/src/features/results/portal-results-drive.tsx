@@ -146,24 +146,8 @@ export function PortalResultsDrive({ resultSets, basePath, schoolCode }: PortalR
       ...new Set(openSets.flatMap((set) => set.classes.map((row) => row.classLevel))),
     ].sort((a, b) => a - b);
 
+    // One row per class — section Test IDs belong on the result page header, not here.
     items = classLevels.flatMap((classLevel) => {
-      const setsForClass = openSets.filter((set) =>
-        set.classes.some((row) => row.classLevel === classLevel),
-      );
-      const distinctTestIds = [
-        ...new Set(setsForClass.map((set) => set.testId?.trim()).filter(Boolean)),
-      ];
-      // Same class, different section/program test IDs → one row each.
-      if (distinctTestIds.length > 1) {
-        return setsForClass.flatMap((set) => {
-          const sheet = set.classes.find((row) => row.classLevel === classLevel);
-          if (!sheet) return [];
-          const program = set.programName?.trim() || set.program?.trim() || "";
-          const baseName = sheet.label || `Class ${classLevel}`;
-          const name = program && !baseName.includes(program) ? `${baseName} · ${program}` : baseName;
-          return [sheetItem(set, classLevel, name)];
-        });
-      }
       const set = pickSetForClass(openSets, classLevel);
       if (!set) return [];
       const sheet = set.classes.find((row) => row.classLevel === classLevel);

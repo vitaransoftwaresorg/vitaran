@@ -3,7 +3,7 @@
 import { wasEdited } from "@/features/documents/constants";
 import { DriveBrowser, type DriveCrumb, type DriveItem } from "@/features/documents/drive-browser";
 import { programLabel, TYPE_LABELS } from "@/features/schools/constants";
-import type { SchoolClassTestSlot, SchoolTestOption } from "@/types/answer-key";
+import type { SchoolClassTestSlot } from "@/types/answer-key";
 import type { DeleteResult } from "@/types/document";
 import type { LearningProgram } from "@/types/program";
 import type { ResultSet } from "@/types/result";
@@ -19,46 +19,11 @@ type ResultsDriveProps = {
   programs: LearningProgram[];
   schools: DriveSchool[];
   path: DrivePath;
-  /** Answer-key test IDs for the open school — fills Class row Test ID before results exist. */
-  schoolTests?: SchoolTestOption[];
-  /** Per-class section rows: split when sections have different Test IDs. */
+  /** Class slots from answer keys — program fallback when opening Enter. */
   classSlots?: SchoolClassTestSlot[];
   publishAction: (id: string, classLevel: number, published: boolean) => Promise<DeleteResult>;
   deleteAction: (id: string, classLevel: number) => Promise<DeleteResult>;
 };
-
-function testIdForClass(
-  schoolTests: SchoolTestOption[] | undefined,
-  testNumber: number,
-  classLevel: number,
-  program?: string,
-) {
-  const matches = (schoolTests ?? []).filter((test) => test.testNumber === testNumber);
-  const preferred = matches.find((test) =>
-    test.programs.some(
-      (row) =>
-        row.classLevels.includes(classLevel) && (!program || row.code === program),
-    ),
-  );
-  const fallback = matches.find((test) =>
-    test.programs.some((row) => row.classLevels.includes(classLevel)),
-  );
-  return (preferred ?? fallback)?.testId?.trim() || "";
-}
-
-function classSlotRows(
-  classSlots: SchoolClassTestSlot[] | undefined,
-  testNumber: number,
-  classLevel: number,
-) {
-  return (classSlots ?? []).find(
-    (slot) => slot.testNumber === testNumber && slot.classLevel === classLevel,
-  )?.rows;
-}
-
-function classRowLabel(classLevel: number, sectionName: string | null) {
-  return sectionName ? `Class ${classLevel} · Section ${sectionName}` : `Class ${classLevel}`;
-}
 
 type ClassEntry = {
   classLevel: number;
@@ -163,7 +128,6 @@ export function ResultsDrive({
   programs,
   schools,
   path,
-  schoolTests = [],
   classSlots = [],
   publishAction,
   deleteAction,
@@ -236,96 +200,69 @@ export function ResultsDrive({
       ]),
     ].sort((a, b) => a - b);
 
-    const classRows: DriveItem[] = classLevels.flatMap((classLevel): DriveItem[] => {
+    // One row per class — section Test IDs are shown on enter/view, not as separate nav rows.
+    const classRows: DriveItem[] = classLevels.map((classLevel): DriveItem => {
       const entry = classEntriesForSchool(
         currentSchool,
         resultSets,
         programs,
         testNumber,
       ).find((row) => row.classLevel === classLevel);
-      const slotRows = classSlotRows(classSlots, testNumber, classLevel);
-      const fallbackTestId = testIdForClass(
-        schoolTests,
-        testNumber,
-        classLevel,
-        entry?.program,
-      );
       const slotProgram =
         classSlots.find(
           (slot) => slot.testNumber === testNumber && slot.classLevel === classLevel,
         )?.programCode ?? undefined;
-      // Prefer answer-key section split; fall back to one Class row.
-      const displayRows =
-        slotRows && slotRows.length > 0
-          ? slotRows
-          : [
-              {
-                testId: fallbackTestId,
-                sectionId: null,
-                sectionName: null,
-                programCode: entry?.program ?? slotProgram ?? null,
-              },
-            ];
-
-      return displayRows.map((row): DriveItem => {
-        const program =
-          row.programCode ?? entry?.program ?? slotProgram ?? undefined;
-        const entryPath: DrivePath = {
-          schoolId,
-          testNumber,
-          classLevel,
-          program,
-        };
-        const resultSet = findResultSet(resultSets, entryPath);
-        const sheet = resultSet?.classes.find((item) => item.classLevel === classLevel);
-        const enterHref = resultEnterHref({
-          schoolId,
-          program,
-          testNumber,
-          classLevel,
-          sectionId: row.sectionId,
-        });
-        const rowName = classRowLabel(classLevel, row.sectionName);
-
-        if (!sheet || !resultSet) {
-          return {
-            id: row.sectionId
-              ? `class:${classLevel}:section:${row.sectionId}`
-              : `class:${classLevel}`,
-            name: rowName,
-            kind: "folder",
-            href: enterHref,
-            detail: "Empty",
-          };
-        }
-
-        const viewHref = resultSetHref(RESULTS_PATH, resultSet.id, classLevel);
-        const classPublished = sheet.published;
-        return {
-          id: row.sectionId
-            ? `${resultSet.id}:${classLevel}:section:${row.sectionId}`
-            : `${resultSet.id}:${classLevel}`,
-          name: rowName,
-          kind: "file",
-          fileKind: "sheet",
-          href: enterHref,
-          detail: classPublished
-            ? `${formatNumber(sheet.rowCount)} students · Published`
-            : `${formatNumber(sheet.rowCount)} students · Hidden`,
-          modified: wasEdited({ createdAt: resultSet.createdAt, updatedAt: sheet.updatedAt })
-            ? formatDateTime(sheet.updatedAt)
-            : undefined,
-          published: classPublished,
-          publishLabel: rowName,
-          onPublish: publishAction.bind(null, resultSet.id, classLevel),
-          onDelete: () => deleteAction(resultSet.id, classLevel),
-          deleteNoun: "class result",
-          actions: [
-            { label: "Enter marks", href: enterHref, icon: "edit" },
-            { label: "View", href: viewHref, icon: "view" },
-          ],
-        };
+      const program = entry?.program ?? slotProgram ?? undefined;
+      const entryPath: DrivePath = {
+        schoolId,
+        testNumber,
+        classLevel,
+        program,
+      };
+      const resultSet = findResultSet(resultSets, entryPath);
+      const sheet = resultSet?.classes.find((item) => item.classLevel === classLevel);
+      const enterHref = resultEnterHref({
+        schoolId,
+        program,
+        testNumber,
+        classLevel,
       });
+      const rowName = `Class ${classLevel}`;
+
+      if (!sheet || !resultSet) {
+        return {
+          id: `class:${classLevel}`,
+          name: rowName,
+          kind: "folder",
+          href: enterHref,
+          detail: "Empty",
+        };
+      }
+
+      const viewHref = resultSetHref(RESULTS_PATH, resultSet.id, classLevel);
+      const classPublished = sheet.published;
+      return {
+        id: `${resultSet.id}:${classLevel}`,
+        name: rowName,
+        kind: "file",
+        fileKind: "sheet",
+        href: enterHref,
+        detail: classPublished
+          ? `${formatNumber(sheet.rowCount)} students · Published`
+          : `${formatNumber(sheet.rowCount)} students · Hidden`,
+        modified: wasEdited({ createdAt: resultSet.createdAt, updatedAt: sheet.updatedAt })
+          ? formatDateTime(sheet.updatedAt)
+          : undefined,
+        published: classPublished,
+        publishLabel: rowName,
+        onPublish: publishAction.bind(null, resultSet.id, classLevel),
+        onDelete: () => deleteAction(resultSet.id, classLevel),
+        deleteNoun: "class result",
+        actions: [
+          { label: "Enter marks", href: enterHref, icon: "edit" },
+          { label: "View", href: viewHref, icon: "view" },
+        ],
+      };
     });
     driveItems.push(...classRows);
   }

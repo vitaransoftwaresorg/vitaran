@@ -42,7 +42,6 @@ export default async function AdminResultsPage({ searchParams }: PageProps<"/adm
       programs={programs}
       schools={schools}
       path={path}
-      schoolTests={schoolTests.tests}
       classSlots={schoolTests.classSlots}
       publishAction={setResultSheetPublishedAction}
       deleteAction={deleteResultSheetAction}

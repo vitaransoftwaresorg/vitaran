@@ -344,7 +344,7 @@ export function ScanSheetTable({
       : null;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="flex min-h-0 flex-1 flex-col">
       {(readyCount > 0 || failedCount > 0) && !savingAll ? (
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-neutral-100 bg-neutral-50/60 px-4 py-2">
           <p className="text-sm text-neutral-600">
@@ -369,48 +369,40 @@ export function ScanSheetTable({
         </div>
       ) : null}
 
-      {/* Column titles stay fixed; only the student/failed rows scroll vertically. No horizontal scroll. */}
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <div className="shrink-0">
-          <table className="w-full table-fixed border-separate border-spacing-0 text-left text-sm">
-            <colgroup>
-              <col className="w-12" />
-              <col className="w-[28%]" />
-              <col className="w-[18%]" />
-              <col className="w-20" />
-              <col />
-            </colgroup>
-            <thead className="text-xs font-semibold tracking-wide text-neutral-600 uppercase">
-              <tr>
-                <th className="whitespace-nowrap border-b border-neutral-200 bg-neutral-100 px-2 py-2">
-                  Page
-                </th>
-                <th className="border-b border-neutral-200 bg-neutral-100 px-2 py-2">
-                  Student / error
-                </th>
-                <th className="border-b border-neutral-200 bg-neutral-100 px-2 py-2">
-                  Reg no
-                </th>
-                <th className="whitespace-nowrap border-b border-neutral-200 bg-neutral-100 px-2 py-2">
-                  Score
-                </th>
-                <th className="whitespace-nowrap border-b border-neutral-200 bg-neutral-100 px-2 py-2 text-right">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-          </table>
-        </div>
-        <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain">
-          <table className="w-full table-fixed border-separate border-spacing-0 text-left text-sm">
-            <colgroup>
-              <col className="w-12" />
-              <col className="w-[28%]" />
-              <col className="w-[18%]" />
-              <col className="w-20" />
-              <col />
-            </colgroup>
-            <tbody>
+      {/*
+        Viewport-capped list so short laptops always get a real scrollport.
+        Nested flex-1 + overscroll-contain was trapping the wheel when height
+        didn’t resolve (layout pane is overflow-y-auto, not a flex parent).
+      */}
+      <div className="min-h-0 min-w-0 max-h-[min(70dvh,calc(100dvh-13rem))] flex-1 overflow-x-hidden overflow-y-auto overscroll-y-auto [-webkit-overflow-scrolling:touch] [touch-action:pan-y]">
+        <table className="w-full table-fixed border-separate border-spacing-0 text-left text-sm">
+          <colgroup>
+            <col className="w-12" />
+            <col className="w-[28%]" />
+            <col className="w-[18%]" />
+            <col className="w-20" />
+            <col />
+          </colgroup>
+          <thead className="sticky top-0 z-10 text-xs font-semibold tracking-wide text-neutral-600 uppercase">
+            <tr>
+              <th className="whitespace-nowrap border-b border-neutral-200 bg-neutral-100 px-2 py-2">
+                Page
+              </th>
+              <th className="border-b border-neutral-200 bg-neutral-100 px-2 py-2">
+                Student / error
+              </th>
+              <th className="border-b border-neutral-200 bg-neutral-100 px-2 py-2">
+                Reg no
+              </th>
+              <th className="whitespace-nowrap border-b border-neutral-200 bg-neutral-100 px-2 py-2">
+                Score
+              </th>
+              <th className="whitespace-nowrap border-b border-neutral-200 bg-neutral-100 px-2 py-2 text-right">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody>
             {rows.map((row) => {
               if (row.kind === "ready") {
                 const item = row.item;
@@ -593,9 +585,8 @@ export function ScanSheetTable({
                 </tr>
               );
             })}
-            </tbody>
-          </table>
-        </div>
+          </tbody>
+        </table>
       </div>
 
       <Dialog.Root

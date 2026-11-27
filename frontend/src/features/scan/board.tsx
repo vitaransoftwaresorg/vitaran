@@ -253,9 +253,9 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
       className={
         showCamera
           ? "grid gap-6 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)]"
-          : previewOpen
-            ? // Fill the panel; only the student rows scroll (headers stay fixed).
-              "flex min-h-0 flex-1 flex-col overflow-hidden"
+          :           previewOpen
+            ? // Preview list scrolls inside the table; don’t clip the page.
+              "flex min-h-0 flex-1 flex-col"
             : "space-y-4"
       }
     >
@@ -276,12 +276,12 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
       <div
         className={
           previewOpen && !showCamera
-            ? "flex min-h-0 flex-1 flex-col overflow-hidden"
+            ? "flex min-h-0 flex-1 flex-col"
             : "space-y-4"
         }
       >
         {batch.length > 0 || job ? (
-          <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-sm">
+          <section className="flex min-h-0 flex-1 flex-col rounded-2xl border border-neutral-200 bg-white shadow-sm">
             <header className="shrink-0 space-y-3 border-b border-neutral-100 px-4 py-3 sm:px-5 sm:py-4">
               {job ? (
                 <div className="space-y-3">
