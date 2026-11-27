@@ -31,6 +31,8 @@ export const MARKS_PER_QUESTION = 4;
 const BLOCK = 25;
 const MPC = ["MATHEMATICS", "PHYSICS", "CHEMISTRY"] as const;
 const MPCB = [...MPC, "BIOLOGY"] as const;
+/** Classes 1–5: Maths / Sciences / Maths Sciences (fixed 25-question bands). */
+const MS = ["MATHEMATICS", "SCIENCE"] as const;
 
 const HEADING: Record<string, string> = {
   mathematics: "MATHEMATICS",
@@ -103,30 +105,50 @@ export function markedMatchesKey(marked: AnswerOption[], expected: KeyAnswer) {
   return wanted.includes(marked[0]!);
 }
 
+function fixedBandRanges(
+  canonical: readonly string[],
+  active: ReadonlySet<string>,
+): SubjectRange[] {
+  const lastIndex = Math.max(
+    ...canonical.map((subject, index) => (active.has(subject) ? index : -1)),
+    0,
+  );
+  // Keep earlier empty bands (e.g. Sciences-only → still reserve Maths Q1–25).
+  return canonical.slice(0, lastIndex + 1).map((subject, index) => {
+    const from = index * BLOCK + 1;
+    const to = from + BLOCK - 1;
+    const on = active.has(subject);
+    return {
+      subject,
+      from,
+      to,
+      maxMarks: on ? BLOCK * MARKS_PER_QUESTION : 0,
+    };
+  });
+}
+
 /**
- * Science papers use fixed 25-question bands so question numbers never shift:
- * Maths 1–25, Physics 26–50, Chemistry 51–75, Biology 76–100.
- * A subject missing from the program (e.g. no Maths) still keeps its band with
- * maxMarks 0 — answers show as "—" and OMR ignores that band.
+ * Fixed 25-question bands so question numbers never shift.
+ * Primary (1–5): Maths 1–25, Science 26–50.
+ * Secondary: Maths 1–25, Physics 26–50, Chemistry 51–75, Biology 76–100.
+ * A subject missing from the set still keeps its band with maxMarks 0.
  */
 export function defaultSubjectRanges(subjects: readonly string[]): SubjectRange[] {
   const list = subjects.length > 0 ? [...subjects] : ["MATHEMATICS"];
   const set = new Set(list);
-  const science = MPCB.filter((subject) => set.has(subject));
-  if (science.length >= 2) {
-    const lastIndex = Math.max(...MPCB.map((subject, index) => (set.has(subject) ? index : -1)));
-    // Keep earlier empty bands (e.g. no Maths → still reserve Q1–25).
-    return MPCB.slice(0, lastIndex + 1).map((subject, index) => {
-      const from = index * BLOCK + 1;
-      const to = from + BLOCK - 1;
-      const active = set.has(subject);
-      return {
-        subject,
-        from,
-        to,
-        maxMarks: active ? BLOCK * MARKS_PER_QUESTION : 0,
-      };
-    });
+  const primaryHits = MS.filter((subject) => set.has(subject));
+  const secondaryHits = MPCB.filter((subject) => set.has(subject));
+  const looksPrimary =
+    primaryHits.length > 0 &&
+    !set.has("PHYSICS") &&
+    !set.has("CHEMISTRY") &&
+    !set.has("BIOLOGY");
+
+  if (looksPrimary) {
+    return fixedBandRanges(MS, set);
+  }
+  if (secondaryHits.length >= 1) {
+    return fixedBandRanges(MPCB, set);
   }
   const extra = QUESTIONS_PER_PAPER % list.length;
   const base = Math.floor(QUESTIONS_PER_PAPER / list.length);
@@ -199,16 +221,18 @@ function lastQuestion(answers: Record<string, KeyAnswer>, extras: number[]) {
   return max;
 }
 
-function bandHasAnswers(answers: Record<string, KeyAnswer>, from: number, to: number) {
+function lastKeyedInBand(answers: Record<string, KeyAnswer>, from: number, to: number) {
+  let max = 0;
   for (let question = from; question <= to; question += 1) {
-    if (answers[String(question)]) return true;
+    if (answers[String(question)]) max = question;
   }
-  return false;
+  return max;
 }
 
 /**
- * Fixed 25-wide bands. A subject with no keyed answers keeps its slot (maxMarks 0)
- * so Physics stays 26–50 when Maths is absent — never renumber from 1.
+ * Fixed 25-wide band slots. Each subject’s active count is how far answers go
+ * inside its slot (e.g. Maths keyed through Q20 → count 20), not the paper max.
+ * Empty subjects keep a reserved slot (maxMarks 0) so later bands never renumber.
  */
 function rangesFor(
   subjects: readonly string[],
@@ -218,26 +242,44 @@ function rangesFor(
   return subjects
     .map((subject, index) => {
       const from = index * BLOCK + 1;
-      const to = from + BLOCK - 1;
-      const keyed = bandHasAnswers(answers, from, to);
-      if (!keyed) {
+      const slotTo = from + BLOCK - 1;
+      const keyedTo = lastKeyedInBand(answers, from, slotTo);
+      if (!keyedTo) {
         // Reserve the band when the paper reaches it (or earlier empty subjects).
         if (last > 0 && last < from) return null;
-        return { subject, from, to, maxMarks: 0 };
+        return { subject, from, to: slotTo, maxMarks: 0 };
       }
-      const activeTo = Math.min(to, Math.max(last, from));
-      const count = Math.max(0, activeTo - from + 1);
-      return { subject, from, to: activeTo, maxMarks: count * MARKS_PER_QUESTION };
+      const count = Math.max(0, keyedTo - from + 1);
+      return { subject, from, to: keyedTo, maxMarks: count * MARKS_PER_QUESTION };
     })
     .filter((range): range is SubjectRange => range != null && range.to >= range.from);
 }
 
-/** Paper order is always M-P-C, plus Biology when there are 100 questions — never drop Maths. */
+/**
+ * Primary: Maths / Science (classes 1–5).
+ * Secondary: M-P-C, plus Biology when the paper reaches Q76+.
+ */
 function subjectOrder(headings: string[], last: number) {
-  const canonical = last > BLOCK * 3 ? MPCB : MPC;
-  if (headings.includes("SCIENCE") && headings.length >= 2 && !headings.includes("PHYSICS")) {
-    return ["MATHEMATICS", "SCIENCE"].filter((subject) => headings.includes(subject));
+  const hasScience = headings.includes("SCIENCE");
+  const hasSecondary = headings.some(
+    (subject) =>
+      subject === "PHYSICS" || subject === "CHEMISTRY" || subject === "BIOLOGY",
+  );
+  if (hasScience && !hasSecondary) {
+    // Keep full MS order so Sciences-only still reserves Maths 1–25.
+    if (headings.includes("MATHEMATICS") || headings.length === 1) {
+      return [...MS];
+    }
+    return MS.filter((subject) => headings.includes(subject));
   }
+  if (headings.includes("MATHEMATICS") && headings.length === 1 && !hasSecondary) {
+    return ["MATHEMATICS"];
+  }
+  // No secondary headings and ≤50 questions → primary Maths / Sciences paper.
+  if (!hasSecondary && last > 0 && last <= BLOCK * 2) {
+    return last <= BLOCK ? ["MATHEMATICS"] : [...MS];
+  }
+  const canonical = last > BLOCK * 3 ? MPCB : MPC;
   // Keep the full canonical list so empty leading subjects reserve their slots.
   return [...canonical];
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   ADMIN_BASE_PATH,
   ADMIN_SESSION_COOKIE,
+  HEAD_OFFICE_SESSION_COOKIE,
   SCHOOL_LOGIN_PATH,
   SCHOOL_SESSION_COOKIE,
   TEACHER_SESSION_COOKIE,
@@ -23,6 +24,7 @@ export function GET() {
   // NextResponse.cookies.set is keyed by name — append so Path=/ and legacy Path=/admin both clear.
   response.headers.append("Set-Cookie", expiredCookie(SCHOOL_SESSION_COOKIE, "/"));
   response.headers.append("Set-Cookie", expiredCookie(TEACHER_SESSION_COOKIE, "/"));
+  response.headers.append("Set-Cookie", expiredCookie(HEAD_OFFICE_SESSION_COOKIE, "/"));
   response.headers.append("Set-Cookie", expiredCookie(ADMIN_SESSION_COOKIE, "/"));
   response.headers.append("Set-Cookie", expiredCookie(ADMIN_SESSION_COOKIE, ADMIN_BASE_PATH));
   return response;

@@ -80,6 +80,7 @@ export function DrivePathProvider({ children }: { children: ReactNode }) {
       pathname.includes("/students") ||
       pathname.includes("/teachers") ||
       pathname.includes("/schools/") ||
+      pathname.includes("/head-offices/") ||
       /\/programs\/[^/]+/.test(pathname)
     ) {
       return;

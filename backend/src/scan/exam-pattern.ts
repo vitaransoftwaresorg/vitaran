@@ -1,21 +1,40 @@
 import type { SubjectRange } from "../utils/answer-key-parse.js";
 
-/** OMR exam pattern chosen after the test ID — controls which subject bands are scored. */
-export const EXAM_PATTERNS = ["MPCB", "PCB", "MPC"] as const;
+/** OMR exam pattern — controls which subject bands are scored. */
+export const EXAM_PATTERNS = ["MPCB", "PCB", "MPC", "MATH", "SCI", "MS"] as const;
 export type ExamPattern = (typeof EXAM_PATTERNS)[number];
+
+/** Classes 1–5 (primary / Olympiad). */
+export const PRIMARY_EXAM_PATTERNS = ["MATH", "SCI", "MS"] as const satisfies readonly ExamPattern[];
+/** Classes 6–12. */
+export const SECONDARY_EXAM_PATTERNS = ["MPCB", "PCB", "MPC"] as const satisfies readonly ExamPattern[];
 
 export const EXAM_PATTERN_LABELS: Record<ExamPattern, string> = {
   MPCB: "MPCB · Maths, Physics, Chemistry, Biology",
   PCB: "PCB · Physics, Chemistry, Biology",
   MPC: "MPC · Maths, Physics, Chemistry",
+  MATH: "Maths",
+  SCI: "Sciences",
+  MS: "Maths Sciences",
 };
 
-/** Fixed paper order; question numbers stay 1–25 / 26–50 / 51–75 / 76–100. */
+/** Fixed paper order; question numbers stay within each subject’s band. */
 export const EXAM_PATTERN_SUBJECTS: Record<ExamPattern, readonly string[]> = {
   MPCB: ["MATHEMATICS", "PHYSICS", "CHEMISTRY", "BIOLOGY"],
   PCB: ["PHYSICS", "CHEMISTRY", "BIOLOGY"],
   MPC: ["MATHEMATICS", "PHYSICS", "CHEMISTRY"],
+  MATH: ["MATHEMATICS"],
+  SCI: ["SCIENCE"],
+  MS: ["MATHEMATICS", "SCIENCE"],
 };
+
+export function examPatternsForClassLevel(classLevel: number): readonly ExamPattern[] {
+  return classLevel <= 5 ? PRIMARY_EXAM_PATTERNS : SECONDARY_EXAM_PATTERNS;
+}
+
+export function defaultExamPatternForClassLevel(classLevel: number): ExamPattern {
+  return classLevel <= 5 ? "MS" : "MPCB";
+}
 
 export function parseExamPattern(value: unknown): ExamPattern | null {
   if (typeof value !== "string") return null;

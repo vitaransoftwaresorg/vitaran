@@ -6,7 +6,7 @@ import type { SectionInput } from "@/types/section";
 
 const DRAFT_KEY = "vitaran:school-registration-draft";
 
-const examPatternSchema = z.enum(["MPCB", "PCB", "MPC"]);
+const examPatternSchema = z.enum(["MPCB", "PCB", "MPC", "MATH", "SCI", "MS"]);
 
 const sectionCreateSchema = z.object({
   classLevel: z.number().int().min(1).max(12),

@@ -108,6 +108,13 @@ const schoolFields = z.object({
   accountEmail: emailField,
   accountPhone: phoneField,
   password: z.string().max(128, "Keep the password under 128 characters."),
+  /** Optional — empty / None is allowed. */
+  headOfficeId: z.preprocess((value) => {
+    if (value == null) return null;
+    const trimmed = String(value).trim();
+    if (trimmed === "" || trimmed === "__none__") return null;
+    return trimmed;
+  }, z.union([z.uuid("Select a valid head office."), z.null()])),
 });
 
 function withCustomProgramRules<T extends z.ZodType>(schema: T) {

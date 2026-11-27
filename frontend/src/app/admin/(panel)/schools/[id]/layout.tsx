@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { SchoolNavTrail } from "@/features/schools/school-nav-trail";
 import { getSchool } from "@/services/schools";
@@ -13,7 +14,9 @@ export default async function AdminSchoolLayout({
 
   return (
     <>
-      <SchoolNavTrail id={school.id} name={school.name} />
+      <Suspense fallback={null}>
+        <SchoolNavTrail id={school.id} name={school.name} />
+      </Suspense>
       {children}
     </>
   );

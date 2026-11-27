@@ -9,6 +9,7 @@ export type AppSettings = {
   teacherResourcesPublic: boolean;
   answerKeysPublic: boolean;
   resultsPublic: boolean;
+  resultsAutoPublish: boolean;
   schoolDesktopOmrEnabled: boolean;
   teacherDesktopOmrEnabled: boolean;
   schoolMobileOmrEnabled: boolean;
@@ -34,6 +35,7 @@ export type UpdateAppSettingsInput = {
   teacherResourcesPublic: boolean;
   answerKeysPublic: boolean;
   resultsPublic: boolean;
+  resultsAutoPublish: boolean;
   schoolDesktopOmrEnabled: boolean;
   teacherDesktopOmrEnabled: boolean;
   schoolMobileOmrEnabled: boolean;

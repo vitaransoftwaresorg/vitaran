@@ -57,15 +57,44 @@ const linkBtn =
 
 const EMPTY = "—";
 
-const EXAM_PATTERN_OPTIONS: Array<{ value: ExamPattern; label: string }> = [
+const PRIMARY_EXAM_PATTERN_OPTIONS: Array<{ value: ExamPattern; label: string }> = [
+  { value: "MATH", label: "Maths" },
+  { value: "SCI", label: "Sciences" },
+  { value: "MS", label: "Maths Sciences" },
+];
+
+const SECONDARY_EXAM_PATTERN_OPTIONS: Array<{ value: ExamPattern; label: string }> = [
   { value: "MPCB", label: "MPCB" },
   { value: "PCB", label: "PCB" },
   { value: "MPC", label: "MPC" },
 ];
 
-function asExamPattern(value: string | undefined | null): ExamPattern {
-  if (value === "PCB" || value === "MPC" || value === "MPCB") return value;
-  return "MPCB";
+const ALL_EXAM_PATTERN_OPTIONS = [
+  ...PRIMARY_EXAM_PATTERN_OPTIONS,
+  ...SECONDARY_EXAM_PATTERN_OPTIONS,
+];
+
+function examPatternOptionsForClassLevel(classLevel: number) {
+  return classLevel <= 5 ? PRIMARY_EXAM_PATTERN_OPTIONS : SECONDARY_EXAM_PATTERN_OPTIONS;
+}
+
+function asExamPattern(
+  value: string | undefined | null,
+  classLevel?: number,
+): ExamPattern {
+  const allowed = ALL_EXAM_PATTERN_OPTIONS.some((row) => row.value === value)
+    ? (value as ExamPattern)
+    : null;
+  if (allowed) {
+    if (classLevel == null) return allowed;
+    const forLevel = examPatternOptionsForClassLevel(classLevel);
+    if (forLevel.some((row) => row.value === allowed)) return allowed;
+  }
+  return classLevel != null && classLevel <= 5 ? "MS" : "MPCB";
+}
+
+function examPatternLabel(value: string) {
+  return ALL_EXAM_PATTERN_OPTIONS.find((row) => row.value === value)?.label ?? value;
 }
 
 type ClassRow = {
@@ -211,15 +240,21 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     return fromOffering.length > 0 ? fromOffering : fallback;
   }
 
-  /** Subject access checklist — only subjects on this program’s catalog. */
+  /**
+   * Subject access checklist — program catalog ∩ class band
+   * (1–5 → Maths/Science, 6+ → MPCB).
+   */
   function allSubjectsFor(programId: string, classLevel: number): Subject[] {
     const program =
       resolveProgram(programId, classLevel) ??
       schoolPrograms.find((row) => row.programId === programId);
     const catalog = (program?.catalogSubjects ?? []) as Subject[];
-    if (catalog.length > 0) return [...new Set(catalog)];
-    // Custom / incomplete catalog: fall back to class-band defaults only.
-    return [...new Set(subjectsForClassLevel(classLevel) as Subject[])];
+    const band = subjectsForClassLevel(classLevel) as Subject[];
+    if (catalog.length === 0) return [...new Set(band)];
+    const allowed = new Set(catalog);
+    const filtered = band.filter((subject) => allowed.has(subject));
+    // Prefer class-band subjects that exist on the program (Primary → Maths/Science).
+    return filtered.length > 0 ? filtered : [...new Set(catalog)];
   }
 
   const [query, setQuery] = useState("");
@@ -250,7 +285,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
             section: "A",
             programId,
             programName: program?.programName ?? row.programName,
-            examPattern: asExamPattern(row.examPattern),
+            examPattern: asExamPattern(row.examPattern, row.classLevel),
             subjects: accessSubjects(programId, row.classLevel),
             teacherId: ct?.teacherId ?? null,
             teacherName: ct?.teacherName ?? null,
@@ -269,7 +304,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
             section: section.name,
             programId,
             programName: program?.programName ?? section.programName,
-            examPattern: asExamPattern(section.examPattern),
+            examPattern: asExamPattern(section.examPattern, section.classLevel),
             subjects: accessSubjects(programId, section.classLevel),
             teacherId: section.classTeacher?.teacherId ?? null,
             teacherName: section.classTeacher?.name ?? null,
@@ -286,7 +321,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
           section: row.name?.trim() || "A",
           programId,
           programName: program?.programName ?? row.programName,
-          examPattern: asExamPattern(row.examPattern),
+          examPattern: asExamPattern(row.examPattern, row.classLevel),
           subjects: accessSubjects(programId, row.classLevel, row.subjects),
           teacherId: null,
           teacherName: null,
@@ -436,9 +471,23 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     setErrors({});
   }
 
-  const examPatternSelectItems = useMemo(
-    () => EXAM_PATTERN_OPTIONS.map((row) => ({ value: row.value, label: row.label })),
-    [],
+  const createClassLevel = Number(classLevel) || 0;
+  const createExamPatternOptions = useMemo(
+    () => (createClassLevel ? examPatternOptionsForClassLevel(createClassLevel) : []),
+    [createClassLevel],
+  );
+  const createExamPatternSelectItems = useMemo(
+    () => createExamPatternOptions.map((row) => ({ value: row.value, label: row.label })),
+    [createExamPatternOptions],
+  );
+  const editExamPatternOptions = useMemo(
+    () =>
+      editing ? examPatternOptionsForClassLevel(editing.classLevel) : SECONDARY_EXAM_PATTERN_OPTIONS,
+    [editing],
+  );
+  const editExamPatternSelectItems = useMemo(
+    () => editExamPatternOptions.map((row) => ({ value: row.value, label: row.label })),
+    [editExamPatternOptions],
   );
 
   function toggleSubject(subject: Subject, checked: boolean) {
@@ -519,6 +568,8 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
         setErrors({ subjects: subjectResult.message });
         return;
       }
+      // Keep form offerings in sync so the subjects column does not show "—".
+      onSubjectAccessChange?.(programId, level, subjects);
 
       const result = await createAdminSectionAction(schoolId, {
         classLevel: level,
@@ -870,17 +921,17 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
               <FieldLabel>Exam pattern *</FieldLabel>
               <Select
                 value={editExamPattern}
-                items={examPatternSelectItems}
+                items={editExamPatternSelectItems}
                 onValueChange={(value) => {
-                  if (value == null) return;
-                  setEditExamPattern(asExamPattern(value));
+                  if (value == null || !editing) return;
+                  setEditExamPattern(asExamPattern(value, editing.classLevel));
                 }}
               >
-                <SelectTrigger className="h-9 w-36">
+                <SelectTrigger className="h-9 min-w-36">
                   <SelectValue placeholder="Select" />
                 </SelectTrigger>
                 <SelectContent alignItemWithTrigger={false}>
-                  {EXAM_PATTERN_OPTIONS.map((row) => (
+                  {editExamPatternOptions.map((row) => (
                     <SelectItem key={row.value} value={row.value}>
                       {row.label}
                     </SelectItem>
@@ -980,10 +1031,10 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                 items={classSelectItems}
                 onValueChange={(value) => {
                   if (value == null) return;
+                  const level = Number(value);
                   setClassLevel(value);
                   setProgramId((prev) => {
                     if (!prev) return "";
-                    const level = Number(value);
                     return schoolPrograms.some(
                       (row) =>
                         row.programId === prev &&
@@ -991,6 +1042,11 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                     )
                       ? prev
                       : "";
+                  });
+                  setExamPattern((prev) => {
+                    if (!prev) return "";
+                    const allowed = examPatternOptionsForClassLevel(level);
+                    return allowed.some((row) => row.value === prev) ? prev : "";
                   });
                   setErrors((prev) => ({ ...prev, classLevel: undefined }));
                 }}
@@ -1055,18 +1111,21 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
               <FieldLabel>Exam pattern *</FieldLabel>
               <Select
                 value={examPattern || null}
-                items={examPatternSelectItems}
+                items={createExamPatternSelectItems}
+                disabled={!createClassLevel}
                 onValueChange={(value) => {
                   if (value == null) return;
-                  setExamPattern(asExamPattern(value));
+                  setExamPattern(asExamPattern(value, createClassLevel));
                   setErrors((prev) => ({ ...prev, examPattern: undefined }));
                 }}
               >
-                <SelectTrigger className="h-9 w-36">
-                  <SelectValue placeholder="Select" />
+                <SelectTrigger className="h-9 min-w-36">
+                  <SelectValue
+                    placeholder={createClassLevel ? "Select" : "Pick class first"}
+                  />
                 </SelectTrigger>
                 <SelectContent alignItemWithTrigger={false}>
-                  {EXAM_PATTERN_OPTIONS.map((row) => (
+                  {createExamPatternOptions.map((row) => (
                     <SelectItem key={row.value} value={row.value}>
                       {row.label}
                     </SelectItem>
@@ -1076,7 +1135,11 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
               {errors.examPattern ? (
                 <FieldError>{errors.examPattern}</FieldError>
               ) : (
-                <p className="text-[11px] text-neutral-500">OMR scores this pattern’s subjects.</p>
+                <p className="text-[11px] text-neutral-500">
+                  {createClassLevel > 0 && createClassLevel <= 5
+                    ? "Classes 1–5: Maths, Sciences, or Maths Sciences."
+                    : "OMR scores this pattern’s subjects."}
+                </p>
               )}
             </Field>
 
@@ -1226,7 +1289,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
                         schoolName,
                       ) || "—"}
                     </td>
-                    <td className="px-4 py-3 text-neutral-700 tabular-nums">{row.examPattern}</td>
+                    <td className="px-4 py-3 text-neutral-700">{examPatternLabel(row.examPattern)}</td>
                     <td className="px-4 py-3 text-neutral-700">
                       {row.subjects.length > 0 ? (
                         <span className="break-words">

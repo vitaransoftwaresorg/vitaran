@@ -17,6 +17,7 @@ export type AppSettingsDto = {
   teacherResourcesPublic: boolean;
   answerKeysPublic: boolean;
   resultsPublic: boolean;
+  resultsAutoPublish: boolean;
   schoolDesktopOmrEnabled: boolean;
   teacherDesktopOmrEnabled: boolean;
   schoolMobileOmrEnabled: boolean;
@@ -50,6 +51,7 @@ function toDto(row: NonNullable<Awaited<ReturnType<typeof settingsRepository.fin
     teacherResourcesPublic: row.teacherResourcesPublic,
     answerKeysPublic: row.answerKeysPublic,
     resultsPublic: row.resultsPublic,
+    resultsAutoPublish: row.resultsAutoPublish,
     schoolDesktopOmrEnabled: row.schoolDesktopOmrEnabled,
     teacherDesktopOmrEnabled: row.teacherDesktopOmrEnabled,
     schoolMobileOmrEnabled: row.schoolMobileOmrEnabled,
@@ -65,6 +67,7 @@ const EMPTY: AppSettingsDto = {
   teacherResourcesPublic: false,
   answerKeysPublic: false,
   resultsPublic: false,
+  resultsAutoPublish: true,
   schoolDesktopOmrEnabled: true,
   teacherDesktopOmrEnabled: true,
   schoolMobileOmrEnabled: true,
@@ -131,6 +134,7 @@ export async function updateAppSettings(input: UpdateAppSettingsInput) {
     teacherResourcesPublic: input.teacherResourcesPublic,
     answerKeysPublic: input.answerKeysPublic,
     resultsPublic: input.resultsPublic,
+    resultsAutoPublish: input.resultsAutoPublish,
     schoolDesktopOmrEnabled: input.schoolDesktopOmrEnabled,
     teacherDesktopOmrEnabled: input.teacherDesktopOmrEnabled,
     schoolMobileOmrEnabled: input.schoolMobileOmrEnabled,

@@ -25,7 +25,11 @@ export function subscribeAdminNavLabels(onStoreChange: () => void) {
   return () => listeners.delete(onStoreChange);
 }
 
-export function rememberAdminNavLabel(kind: "school" | "program", id: string, label: string) {
+export function rememberAdminNavLabel(
+  kind: "school" | "program" | "office",
+  id: string,
+  label: string,
+) {
   const next = label.trim();
   if (!id || !next) return;
   const k = key(kind, id);
@@ -40,7 +44,10 @@ export function rememberAdminNavLabel(kind: "school" | "program", id: string, la
   for (const listener of [...listeners]) listener();
 }
 
-export function readAdminNavLabel(kind: "school" | "program", id: string): string | null {
+export function readAdminNavLabel(
+  kind: "school" | "program" | "office",
+  id: string,
+): string | null {
   const k = key(kind, id);
   const hit = memory.get(k);
   if (hit) return hit;
@@ -61,7 +68,10 @@ export function readAdminNavLabel(kind: "school" | "program", id: string): strin
  * Hydration-safe: server + first client paint return null, then session/memory after mount.
  * Do not call `readAdminNavLabel` during render — it can disagree with SSR HTML.
  */
-export function useAdminNavLabel(kind: "school" | "program", id: string | null): string | null {
+export function useAdminNavLabel(
+  kind: "school" | "program" | "office",
+  id: string | null,
+): string | null {
   return useSyncExternalStore(
     subscribeAdminNavLabels,
     () => (id ? readAdminNavLabel(kind, id) : null),
@@ -75,5 +85,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function schoolIdFromAdminPath(pathname: string): string | null {
   const match = pathname.match(/^\/admin\/schools\/([^/]+)/);
   if (!match || match[1] === "new" || match[1] === "students") return null;
+  return UUID.test(match[1]!) ? match[1]! : null;
+}
+
+/** `/admin/head-offices/:uuid/...` → office id */
+export function officeIdFromAdminPath(pathname: string): string | null {
+  const match = pathname.match(/^\/admin\/head-offices\/([^/]+)/);
+  if (!match || match[1] === "new") return null;
   return UUID.test(match[1]!) ? match[1]! : null;
 }

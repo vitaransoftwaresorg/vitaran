@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { examPatternsForClassLevel } from "../scan/exam-pattern.js";
 
 const optionalSectionName = z
   .string()
@@ -26,18 +27,32 @@ export const examPatternSchema = z
   .string()
   .trim()
   .transform((value) => value.toUpperCase())
-  .pipe(z.enum(["MPCB", "PCB", "MPC"]));
+  .pipe(z.enum(["MPCB", "PCB", "MPC", "MATH", "SCI", "MS"]));
 
-export const createSectionSchema = z.object({
-  classLevel: z.number().int().min(1).max(12),
-  /** Omit / blank = Section A (default when the class has no other sections). */
-  name: optionalSectionName,
-  programId: z.uuid(),
-  studentCount: optionalSeatCount,
-  examPattern: examPatternSchema,
-  classTeacherId: z.uuid().nullable().optional(),
-  applyTeacherToClass: z.boolean().optional().default(false),
-});
+export const createSectionSchema = z
+  .object({
+    classLevel: z.number().int().min(1).max(12),
+    /** Omit / blank = Section A (default when the class has no other sections). */
+    name: optionalSectionName,
+    programId: z.uuid(),
+    studentCount: optionalSeatCount,
+    examPattern: examPatternSchema,
+    classTeacherId: z.uuid().nullable().optional(),
+    applyTeacherToClass: z.boolean().optional().default(false),
+  })
+  .superRefine((data, ctx) => {
+    const allowed = examPatternsForClassLevel(data.classLevel);
+    if (!(allowed as readonly string[]).includes(data.examPattern)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["examPattern"],
+        message:
+          data.classLevel <= 5
+            ? "Classes 1–5 use Maths, Sciences, or Maths Sciences"
+            : "Classes 6–12 use MPCB, PCB, or MPC",
+      });
+    }
+  });
 
 export const updateSectionSchema = z
   .object({

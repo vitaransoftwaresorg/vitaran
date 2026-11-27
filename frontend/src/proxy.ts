@@ -4,6 +4,9 @@ import {
   ADMIN_LOGIN_PATH,
   ADMIN_LOGOUT_PATH,
   ADMIN_SESSION_COOKIE,
+  HEAD_OFFICE_BASE_PATH,
+  HEAD_OFFICE_HOME_PATH,
+  HEAD_OFFICE_SESSION_COOKIE,
   RETURN_TO_COOKIE,
   SCHOOL_BASE_PATH,
   SCHOOL_HOME_PATH,
@@ -14,11 +17,15 @@ import {
   TEACHER_SESSION_COOKIE,
 } from "@/constants/auth";
 
-/** Shared school + teacher portal login (header dropdown on home). */
+/** Shared school + teacher + head office portal login (header dropdown on home). */
 const PORTAL_LOGIN_PATH = SCHOOL_LOGIN_PATH;
 
 function isLoginEntryPath(pathname: string) {
-  return pathname === "/school/login" || pathname === "/teacher/login";
+  return (
+    pathname === "/school/login" ||
+    pathname === "/teacher/login" ||
+    pathname === "/head-office/login"
+  );
 }
 
 function redirectToLogin(request: NextRequest, loginPath: string) {
@@ -87,6 +94,7 @@ export function proxy(request: NextRequest) {
   const hasAdmin = request.cookies.has(ADMIN_SESSION_COOKIE);
   const hasSchool = request.cookies.has(SCHOOL_SESSION_COOKIE);
   const hasTeacher = request.cookies.has(TEACHER_SESSION_COOKIE);
+  const hasHeadOffice = request.cookies.has(HEAD_OFFICE_SESSION_COOKIE);
 
   // Solution books are view-only via /api/solution-books — never serve raw public PDFs.
   if (pathname.startsWith("/solution-books/")) {
@@ -108,8 +116,12 @@ export function proxy(request: NextRequest) {
   }
 
   // Signed-in users go straight to their portal — never the public landing site.
+  // Head office wins over a nested school workspace session (HO is the account).
   if (isMarketingPage(pathname)) {
     if (hasAdmin) return NextResponse.redirect(new URL(ADMIN_BASE_PATH, request.nextUrl));
+    if (hasHeadOffice) {
+      return NextResponse.redirect(new URL(HEAD_OFFICE_HOME_PATH, request.nextUrl));
+    }
     if (hasSchool) {
       return NextResponse.redirect(
         new URL(
@@ -140,6 +152,9 @@ export function proxy(request: NextRequest) {
   // Legacy login routes → home dropdown (or portal home if already signed in).
   if (isLoginEntryPath(pathname)) {
     if (hasAdmin) return NextResponse.redirect(new URL(ADMIN_BASE_PATH, request.nextUrl));
+    if (hasHeadOffice) {
+      return NextResponse.redirect(new URL(HEAD_OFFICE_HOME_PATH, request.nextUrl));
+    }
     if (hasSchool) {
       return NextResponse.redirect(new URL(SCHOOL_HOME_PATH, request.nextUrl));
     }
@@ -166,9 +181,17 @@ export function proxy(request: NextRequest) {
     return redirectToLogin(request, PORTAL_LOGIN_PATH);
   }
 
+  if (pathname.startsWith(HEAD_OFFICE_BASE_PATH)) {
+    if (hasHeadOffice) return NextResponse.next();
+    return redirectToLogin(request, PORTAL_LOGIN_PATH);
+  }
+
   // Legacy public content pages → teacher portal, or school if only school is signed in.
   if (hasTeacher) {
     return NextResponse.redirect(new URL(teacherPortalPath(pathname) + request.nextUrl.search, request.nextUrl));
+  }
+  if (hasHeadOffice) {
+    return NextResponse.redirect(new URL(HEAD_OFFICE_HOME_PATH, request.nextUrl));
   }
   if (hasSchool) {
     return NextResponse.redirect(new URL(schoolPortalPath(pathname), request.nextUrl));
@@ -186,6 +209,8 @@ export const config = {
     "/school/:path*",
     "/teacher",
     "/teacher/:path*",
+    "/head-office",
+    "/head-office/:path*",
     "/teachers-resources",
     "/teachers-resources/:path*",
     "/solution-books",

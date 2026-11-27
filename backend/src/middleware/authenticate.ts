@@ -1,5 +1,6 @@
 import type { RequestHandler } from "express";
 import { verifyAdminToken } from "../services/auth.service.js";
+import { verifyHeadOfficeToken } from "../services/head-office-auth.service.js";
 import { verifySchoolToken } from "../services/school-auth.service.js";
 import { verifyTeacherToken } from "../services/teacher-auth.service.js";
 import { AppError } from "../utils/app-error.js";
@@ -7,7 +8,7 @@ import { AppError } from "../utils/app-error.js";
 const BEARER_PREFIX = "Bearer ";
 
 function bearerAuth(
-  local: "admin" | "school" | "teacher",
+  local: "admin" | "school" | "teacher" | "headOffice",
   verify: (token: string) => Promise<unknown>,
 ): RequestHandler {
   return async (req, res, next) => {
@@ -30,3 +31,4 @@ function bearerAuth(
 export const requireAdmin = bearerAuth("admin", verifyAdminToken);
 export const requireSchool = bearerAuth("school", verifySchoolToken);
 export const requireTeacher = bearerAuth("teacher", verifyTeacherToken);
+export const requireHeadOffice = bearerAuth("headOffice", verifyHeadOfficeToken);

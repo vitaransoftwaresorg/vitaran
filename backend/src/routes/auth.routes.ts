@@ -5,9 +5,18 @@ import {
   requestForgotPasswordOtp,
   verifyForgotPasswordOtp,
 } from "../controllers/forgot-password.controller.js";
+import {
+  getCurrentHeadOffice,
+  headOfficeLogin,
+} from "../controllers/head-office-auth.controller.js";
 import { getCurrentSchool, schoolLogin } from "../controllers/school-auth.controller.js";
 import { getCurrentTeacher, teacherLogin } from "../controllers/teacher-auth.controller.js";
-import { requireAdmin, requireSchool, requireTeacher } from "../middleware/authenticate.js";
+import {
+  requireAdmin,
+  requireHeadOffice,
+  requireSchool,
+  requireTeacher,
+} from "../middleware/authenticate.js";
 import {
   forgotPasswordRateLimit,
   googleLoginRateLimit,
@@ -50,6 +59,14 @@ authRouter.post(
   teacherLogin,
 );
 authRouter.get("/teacher/me", requireTeacher, getCurrentTeacher);
+
+authRouter.post(
+  "/head-office/login",
+  validate(schoolLoginSchema),
+  schoolLoginRateLimit,
+  headOfficeLogin,
+);
+authRouter.get("/head-office/me", requireHeadOffice, getCurrentHeadOffice);
 
 authRouter.post(
   "/forgot-password",

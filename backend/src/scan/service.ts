@@ -64,7 +64,11 @@ import {
   type SheetRead,
 } from "./read-sheet.js";
 import { getObject, putObject } from "../services/object-storage.js";
-import { parseExamPattern, type ExamPattern } from "./exam-pattern.js";
+import {
+  defaultExamPatternForClassLevel,
+  parseExamPattern,
+  type ExamPattern,
+} from "./exam-pattern.js";
 import { evaluatedImage, scoreWithKey, scoringFingerprint } from "./regrade.js";
 import * as scanRepository from "./repository.js";
 import { sheetFlags, type SheetScore } from "./score.js";
@@ -820,10 +824,11 @@ async function resolveClassExamPattern(
   classLevel: number,
   sectionId?: string | null,
 ): Promise<ExamPattern> {
+  const fallback = defaultExamPatternForClassLevel(classLevel);
   if (sectionId) {
     const section = await sectionRepository.findSectionById(sectionId);
     if (section && section.schoolId === schoolId) {
-      return parseExamPattern(section.examPattern) ?? "MPCB";
+      return parseExamPattern(section.examPattern) ?? fallback;
     }
   }
   const sections = (await sectionRepository.listSectionsBySchool(schoolId)).filter(
@@ -832,10 +837,10 @@ async function resolveClassExamPattern(
   if (sections.length > 0) {
     const counts = new Map<ExamPattern, number>();
     for (const section of sections) {
-      const pattern = parseExamPattern(section.examPattern) ?? "MPCB";
+      const pattern = parseExamPattern(section.examPattern) ?? fallback;
       counts.set(pattern, (counts.get(pattern) ?? 0) + 1);
     }
-    let best: ExamPattern = "MPCB";
+    let best: ExamPattern = fallback;
     let bestCount = 0;
     for (const [pattern, count] of counts) {
       if (count > bestCount) {
@@ -846,8 +851,8 @@ async function resolveClassExamPattern(
     return best;
   }
   const whole = await schoolClassRepository.findSchoolClassByLevel(schoolId, classLevel);
-  if (whole) return parseExamPattern(whole.examPattern) ?? "MPCB";
-  return "MPCB";
+  if (whole) return parseExamPattern(whole.examPattern) ?? fallback;
+  return fallback;
 }
 
 export async function checkTestId(context: ScanContext, testId: string) {
@@ -920,7 +925,10 @@ export async function registerOmrPdf(
     }
     const examPattern = parseExamPattern(identity.examPattern);
     if (!examPattern) {
-      throw new AppError(400, "Choose the exam pattern (MPCB, PCB, or MPC) before uploading");
+      throw new AppError(
+        400,
+        "Choose the exam pattern (Maths / Sciences / Maths Sciences, or MPCB / PCB / MPC) before uploading",
+      );
     }
     purgeExpiredPdfBatches();
     const owner = ownerOf(context);

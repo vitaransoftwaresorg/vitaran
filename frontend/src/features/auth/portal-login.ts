@@ -5,14 +5,21 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import {
   ADMIN_BASE_PATH,
+  HEAD_OFFICE_HOME_PATH,
   RETURN_TO_COOKIE,
   SCHOOL_HOME_PATH,
   TEACHER_HOME_PATH,
 } from "@/constants/auth";
 import { ApiError } from "@/services/api-client";
-import { loginAdmin, loginSchool, loginTeacher } from "@/services/auth";
+import { loginAdmin, loginHeadOffice, loginSchool, loginTeacher } from "@/services/auth";
 import { createAdminSession, getAdminSession } from "@/features/admin-auth/session";
-import { createSchoolSession, getSchoolSession } from "@/features/school-auth/session";
+import { createHeadOfficeSession, getHeadOfficeSession } from "@/features/head-office-auth/session";
+import { clearSelectedHeadOfficeSchoolId } from "@/features/head-office-portal/selected-school";
+import {
+  createSchoolSession,
+  deleteSchoolSession,
+  getSchoolSession,
+} from "@/features/school-auth/session";
 import { createTeacherSession, getTeacherSession } from "@/features/teacher-auth/session";
 import { passwordField, type LoginFormState } from "./schema";
 
@@ -31,16 +38,16 @@ function loginErrorMessage(error: unknown): string {
 const isWrongCredentials = (error: unknown) => error instanceof ApiError && error.status === 401;
 
 /**
- * One login for schools, teachers and the admin.
- * Tries school, then teacher, then (for emails) admin; only wrong credentials fall through.
+ * One login for schools, teachers, head offices and the admin.
+ * Tries school → teacher → head office → (for emails) admin.
  */
 export async function portalLogin(
   _state: LoginFormState,
   formData: FormData,
 ): Promise<LoginFormState> {
-  // Already signed in → go straight to the portal (no re-entry of credentials).
   if (await getSchoolSession()) redirect(SCHOOL_HOME_PATH);
   if (await getTeacherSession()) redirect(TEACHER_HOME_PATH);
+  if (await getHeadOfficeSession()) redirect(HEAD_OFFICE_HOME_PATH);
   if (await getAdminSession()) redirect(ADMIN_BASE_PATH);
 
   const identifier = String(formData.get("identifier") ?? "");
@@ -58,7 +65,7 @@ export async function portalLogin(
   }
 
   const credentials = parsed.data;
-  let role: "school" | "teacher" | "admin";
+  let role: "school" | "teacher" | "head-office" | "admin";
 
   try {
     try {
@@ -72,17 +79,28 @@ export async function portalLogin(
         await createTeacherSession(token, expiresAt);
         role = "teacher";
       } catch (teacherError) {
-        if (!isWrongCredentials(teacherError) || !credentials.identifier.includes("@")) throw teacherError;
+        if (!isWrongCredentials(teacherError)) throw teacherError;
         try {
-          const { token, expiresAt } = await loginAdmin({
-            email: credentials.identifier.toLowerCase(),
-            password: credentials.password,
-          });
-          await createAdminSession(token, expiresAt);
-          role = "admin";
-        } catch (adminError) {
-          // The school/teacher wording keeps the admin account invisible on this page.
-          throw isWrongCredentials(adminError) ? teacherError : adminError;
+          const { token, expiresAt } = await loginHeadOffice(credentials);
+          await createHeadOfficeSession(token, expiresAt);
+          // Fresh HO session: no remembered school, no nested school workspace.
+          await deleteSchoolSession();
+          await clearSelectedHeadOfficeSchoolId();
+          role = "head-office";
+        } catch (officeError) {
+          if (!isWrongCredentials(officeError) || !credentials.identifier.includes("@")) {
+            throw isWrongCredentials(officeError) ? teacherError : officeError;
+          }
+          try {
+            const { token, expiresAt } = await loginAdmin({
+              email: credentials.identifier.toLowerCase(),
+              password: credentials.password,
+            });
+            await createAdminSession(token, expiresAt);
+            role = "admin";
+          } catch (adminError) {
+            throw isWrongCredentials(adminError) ? teacherError : adminError;
+          }
         }
       }
     }
@@ -93,11 +111,8 @@ export async function portalLogin(
   const cookieStore = await cookies();
   cookieStore.delete(RETURN_TO_COOKIE);
 
-  if (role === "admin") {
-    redirect(ADMIN_BASE_PATH);
-  }
-  if (role === "teacher") {
-    redirect(TEACHER_HOME_PATH);
-  }
+  if (role === "admin") redirect(ADMIN_BASE_PATH);
+  if (role === "teacher") redirect(TEACHER_HOME_PATH);
+  if (role === "head-office") redirect(HEAD_OFFICE_HOME_PATH);
   redirect(SCHOOL_HOME_PATH);
 }

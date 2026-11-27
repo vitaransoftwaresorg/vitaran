@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { KeyRound, Loader2, Mail, RefreshCw } from "lucide-react";
+import { KeyRound, Loader2, Mail, Pencil, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -18,6 +18,11 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
+  resetHeadOfficeSchoolPasswordAction,
+  sendHeadOfficeSchoolCredentialsAction,
+  updateHeadOfficeSchoolLoginEmailAction,
+} from "@/features/head-office-portal/actions";
+import {
   resetSchoolPasswordAction,
   sendSchoolCredentialsAction,
 } from "@/features/schools/actions";
@@ -30,9 +35,11 @@ import {
 } from "@/features/teachers/actions";
 
 type MailResult = { ok: true; to: string } | { ok: false; message: string };
+type EmailResult = { ok: true; accountEmail: string } | { ok: false; message: string };
 
 type CredentialTarget =
   | { kind: "school"; id: string }
+  | { kind: "head-office-school"; id: string }
   | { kind: "admin-teacher"; id: string }
   | { kind: "school-teacher"; id: string };
 
@@ -55,14 +62,30 @@ function suggestPassword() {
 
 async function sendCredentials(target: CredentialTarget): Promise<MailResult> {
   if (target.kind === "school") return sendSchoolCredentialsAction(target.id);
+  if (target.kind === "head-office-school") {
+    return sendHeadOfficeSchoolCredentialsAction(target.id);
+  }
   if (target.kind === "admin-teacher") return sendAdminTeacherCredentialsAction(target.id);
   return sendSchoolTeacherCredentialsAction(target.id);
 }
 
 async function resetPassword(target: CredentialTarget, password: string): Promise<MailResult> {
   if (target.kind === "school") return resetSchoolPasswordAction(target.id, password);
+  if (target.kind === "head-office-school") {
+    return resetHeadOfficeSchoolPasswordAction(target.id, password);
+  }
   if (target.kind === "admin-teacher") return resetAdminTeacherPasswordAction(target.id, password);
   return resetSchoolTeacherPasswordAction(target.id, password);
+}
+
+async function updateLoginEmail(
+  target: CredentialTarget,
+  accountEmail: string,
+): Promise<EmailResult> {
+  if (target.kind === "head-office-school") {
+    return updateHeadOfficeSchoolLoginEmailAction(target.id, accountEmail);
+  }
+  return { ok: false, message: "Updating login email is not available here." };
 }
 
 /** Footer with visible credentials plus Send / Reset password actions. */
@@ -78,7 +101,10 @@ export function CredentialMailBar({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [resetOpen, setResetOpen] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
   const [newPassword, setNewPassword] = useState("");
+  const [newEmail, setNewEmail] = useState(loginEmail);
+  const canEditEmail = target.kind === "head-office-school";
 
   const send = () =>
     startTransition(async () => {
@@ -88,8 +114,13 @@ export function CredentialMailBar({
     });
 
   const openReset = () => {
-    setNewPassword(suggestPassword());
+    setNewPassword("");
     setResetOpen(true);
+  };
+
+  const openEmail = () => {
+    setNewEmail(loginEmail);
+    setEmailOpen(true);
   };
 
   const confirmReset = () => {
@@ -103,6 +134,28 @@ export function CredentialMailBar({
       if (result.ok) {
         toast.success(`New password emailed to ${result.to}`);
         setResetOpen(false);
+        router.refresh();
+      } else {
+        toast.error(result.message);
+      }
+    });
+  };
+
+  const confirmEmail = () => {
+    const next = newEmail.trim().toLowerCase();
+    if (!next || !next.includes("@")) {
+      toast.error("Enter a valid email address.");
+      return;
+    }
+    if (next === loginEmail.trim().toLowerCase()) {
+      setEmailOpen(false);
+      return;
+    }
+    startTransition(async () => {
+      const result = await updateLoginEmail(target, next);
+      if (result.ok) {
+        toast.success(`Login email updated to ${result.accountEmail}`);
+        setEmailOpen(false);
         router.refresh();
       } else {
         toast.error(result.message);
@@ -155,6 +208,12 @@ export function CredentialMailBar({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {canEditEmail ? (
+            <Button type="button" variant="outline" size="sm" disabled={pending} onClick={openEmail}>
+              <Pencil />
+              Change email
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="outline"
@@ -211,6 +270,38 @@ export function CredentialMailBar({
             <Button type="button" disabled={pending} onClick={confirmReset}>
               {pending ? <Loader2 className="animate-spin" /> : <Mail />}
               Save &amp; email
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={emailOpen} onOpenChange={(open) => !pending && setEmailOpen(open)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Change login email</AlertDialogTitle>
+            <AlertDialogDescription>
+              Update the portal login email for this {recipientLabel}. They will sign in with the
+              new address.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <Field>
+            <FieldLabel htmlFor="login-email">Login email</FieldLabel>
+            <Input
+              id="login-email"
+              type="email"
+              value={newEmail}
+              onChange={(event) => setNewEmail(event.currentTarget.value)}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </Field>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>Cancel</AlertDialogCancel>
+            <Button type="button" disabled={pending} onClick={confirmEmail}>
+              {pending ? <Loader2 className="animate-spin" /> : <Pencil />}
+              Save email
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

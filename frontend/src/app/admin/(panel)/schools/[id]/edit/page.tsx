@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PageHeader } from "@/features/admin/page-header";
 import { SchoolForm } from "@/features/schools/school-form";
+import { listHeadOffices } from "@/services/head-offices";
 import { listPrograms } from "@/services/programs";
 import {
   getAdminSchoolSectionStrength,
@@ -16,7 +17,11 @@ export const metadata: Metadata = { title: "Edit School" };
 
 export default async function EditSchoolPage({ params }: PageProps<"/admin/schools/[id]/edit">) {
   const { id } = await params;
-  const [school, catalog] = await Promise.all([getSchool(id), listPrograms()]);
+  const [school, catalog, headOffices] = await Promise.all([
+    getSchool(id),
+    listPrograms(),
+    listHeadOffices(),
+  ]);
   if (!school) notFound();
 
   const [organization, strength, classTeacherSlots, rosterCounts] = await Promise.all([
@@ -36,6 +41,7 @@ export default async function EditSchoolPage({ params }: PageProps<"/admin/schoo
       <SchoolForm
         school={school}
         catalog={catalog}
+        headOffices={headOffices}
         classesPanel={{
           organization,
           classTeacherSlots,

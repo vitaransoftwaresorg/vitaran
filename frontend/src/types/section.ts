@@ -8,7 +8,7 @@ export type SectionClassTeacher = {
   status: TeacherStatus;
 };
 
-export type ExamPattern = "MPCB" | "PCB" | "MPC";
+export type ExamPattern = "MPCB" | "PCB" | "MPC" | "MATH" | "SCI" | "MS";
 
 export type SchoolSection = {
   id: string;

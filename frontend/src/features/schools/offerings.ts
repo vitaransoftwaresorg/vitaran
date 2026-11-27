@@ -131,11 +131,14 @@ export function syncCustomSubjectOfferings(
 export function catalogProgramsForForm(
   catalog: LearningProgram[],
   live: SchoolProgramOffering[] = [],
+  saved: SchoolProgramOffering[] = [],
 ): SchoolProgramOffering[] {
   const year = new Date().getFullYear();
   const liveById = new Map(live.map((row) => [row.programId, row]));
+  const savedById = new Map(saved.map((row) => [row.programId, row]));
   return catalog.map((program) => {
     const liveProgram = liveById.get(program.id);
+    const savedProgram = savedById.get(program.id);
     const levels = Array.from(
       { length: Math.max(0, program.classTo - program.classFrom + 1) },
       (_, index) => program.classFrom + index,
@@ -149,11 +152,18 @@ export function catalogProgramsForForm(
       classFrom: program.classFrom,
       classTo: program.classTo,
       catalogSubjects: program.subjects,
-      classes: levels.map((classLevel) => ({
-        classLevel,
-        subjects:
-          liveProgram?.classes.find((row) => row.classLevel === classLevel)?.subjects ?? [],
-      })),
+      classes: levels.map((classLevel) => {
+        const liveSubjects =
+          liveProgram?.classes.find((row) => row.classLevel === classLevel)?.subjects ?? [];
+        const savedSubjects =
+          savedProgram?.classes.find((row) => row.classLevel === classLevel)?.subjects ?? [];
+        return {
+          classLevel,
+          // Prefer live form tokens; fall back to saved school offerings so subjects
+          // do not flash "—" after create before offerings catch up.
+          subjects: liveSubjects.length > 0 ? liveSubjects : savedSubjects,
+        };
+      }),
     };
   });
 }

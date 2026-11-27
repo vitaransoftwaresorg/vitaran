@@ -3,7 +3,7 @@
 import { useTransition } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronsUpDown, LogOut } from "lucide-react";
+import { Building2, ChevronsUpDown, LogOut, School } from "lucide-react";
 import { RememberedNavLink } from "@/components/layout/remembered-nav-link";
 import { BrandBars } from "@/components/shared/logo";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -30,26 +30,34 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { headOfficeLogout } from "@/features/head-office-auth/actions";
+import { leaveHeadOfficeSchoolAction } from "@/features/head-office-portal/actions";
 import { schoolLogout } from "@/features/school-auth/actions";
 import { isSchoolNavActive, schoolNavGroups } from "@/features/school-portal/navigation";
 import type { SchoolAccount } from "@/types/school";
 
-export function SchoolSidebar({ school }: { school: SchoolAccount }) {
+export function SchoolSidebar({
+  school,
+  fromHeadOffice = false,
+}: {
+  school: SchoolAccount;
+  fromHeadOffice?: boolean;
+}) {
   const pathname = usePathname();
   const { isMobile, setOpenMobile } = useSidebar();
   const [signingOut, startSignOut] = useTransition();
   const initials = school.name.slice(0, 2).toUpperCase();
+  const homeHref = fromHeadOffice ? "/school" : "/school/resources";
 
   return (
     <Sidebar collapsible="icon" side={isMobile ? "right" : "left"}>
-      {/* Brand only on desktop — mobile already has logo in the page header. */}
       {!isMobile && (
         <SidebarHeader>
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton
                 size="lg"
-                render={<Link href="/school/resources" />}
+                render={<Link href={homeHref} />}
                 className="hover:bg-transparent active:bg-transparent"
               >
                 <span className="flex aspect-square size-8 items-center justify-center rounded-lg bg-white text-brand-800">
@@ -57,7 +65,9 @@ export function SchoolSidebar({ school }: { school: SchoolAccount }) {
                 </span>
                 <span className="grid flex-1 text-left leading-tight">
                   <span className="truncate font-heading font-bold text-white">Vitaran Learning</span>
-                  <span className="truncate text-xs text-brand-400">School portal</span>
+                  <span className="truncate text-xs text-brand-400">
+                    {fromHeadOffice ? "Head office" : "School portal"}
+                  </span>
                 </span>
               </SidebarMenuButton>
             </SidebarMenuItem>
@@ -66,6 +76,29 @@ export function SchoolSidebar({ school }: { school: SchoolAccount }) {
       )}
 
       <SidebarContent>
+        {fromHeadOffice ? (
+          <SidebarGroup>
+            <SidebarGroupLabel className="text-brand-400">Portfolio</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    tooltip="All Schools"
+                    onClick={() => {
+                      isMobile && setOpenMobile(false);
+                      startSignOut(() => void leaveHeadOfficeSchoolAction());
+                    }}
+                    className="transition-colors duration-150"
+                  >
+                    <School />
+                    <span>All Schools</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ) : null}
+
         {schoolNavGroups.map((group) => (
           <SidebarGroup key={group.label}>
             <SidebarGroupLabel className="text-brand-400">{group.label}</SidebarGroupLabel>
@@ -127,14 +160,34 @@ export function SchoolSidebar({ school }: { school: SchoolAccount }) {
                   </DropdownMenuLabel>
                 </DropdownMenuGroup>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  variant="destructive"
-                  disabled={signingOut}
-                  onClick={() => startSignOut(() => schoolLogout())}
-                >
-                  <LogOut />
-                  {signingOut ? "Signing out…" : "Sign out"}
-                </DropdownMenuItem>
+                {fromHeadOffice ? (
+                  <>
+                    <DropdownMenuItem
+                      disabled={signingOut}
+                      onClick={() => startSignOut(() => void leaveHeadOfficeSchoolAction())}
+                    >
+                      <Building2 />
+                      {signingOut ? "Returning…" : "All Schools"}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      variant="destructive"
+                      disabled={signingOut}
+                      onClick={() => startSignOut(() => void headOfficeLogout())}
+                    >
+                      <LogOut />
+                      Sign out
+                    </DropdownMenuItem>
+                  </>
+                ) : (
+                  <DropdownMenuItem
+                    variant="destructive"
+                    disabled={signingOut}
+                    onClick={() => startSignOut(() => void schoolLogout())}
+                  >
+                    <LogOut />
+                    {signingOut ? "Signing out…" : "Sign out"}
+                  </DropdownMenuItem>
+                )}
               </DropdownMenuContent>
             </DropdownMenu>
           </SidebarMenuItem>

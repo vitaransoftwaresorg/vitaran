@@ -1,6 +1,7 @@
 import {
   BookMarked,
   BookOpen,
+  Building2,
   CirclePlus,
   GraduationCap,
   KeyRound,
@@ -37,6 +38,7 @@ export const adminNavGroups: AdminNavGroup[] = [
     items: [
       { title: "Register School", href: "/admin/schools/new", icon: CirclePlus },
       { title: "Schools", href: "/admin/schools", icon: School },
+      { title: "Head Offices", href: "/admin/head-offices", icon: Building2 },
       { title: "Students", href: "/admin/schools/students", icon: GraduationCap },
       { title: "Teachers", href: "/admin/teachers", icon: Users },
       { title: "Programs", href: "/admin/programs", icon: BookMarked },
@@ -105,6 +107,7 @@ const SEGMENT_LABELS: Record<string, string> = {
   "teacher-resources": "Teacher Resources",
   "answer-keys": "Answer Keys",
   "school-keys": "School Keys",
+  "head-offices": "Head Offices",
   objections: "Key Objections",
   upload: "Upload",
   results: "Results and Ranks",
@@ -119,6 +122,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function crumbLabel(segment: string, previous: string | undefined) {
   if (SEGMENT_LABELS[segment]) return SEGMENT_LABELS[segment];
   if (previous === "answer-keys" || previous === "school-keys") return "Key";
+  if (previous === "head-offices") return "Office";
   return "Details";
 }
 
@@ -153,6 +157,7 @@ export function getAdminBreadcrumbs(pathname: string): AdminBreadcrumb[] {
     // UUID detail ids are resolved by name in the top nav (school / program / answer key).
     if (previous === "answer-keys" && UUID.test(segment)) return;
     if (previous === "school-keys" && UUID.test(segment)) return;
+    if (previous === "head-offices" && UUID.test(segment)) return;
     if (previous === "programs" && UUID.test(segment)) return;
     if (previous === "schools" && UUID.test(segment)) return;
     crumbs.push({
@@ -179,6 +184,19 @@ function adminDriveParentHref(pathname: string, search: string): string | null {
 }
 
 export function getAdminParentHref(pathname: string, search = ""): string | null {
+  // School profile opened from a head office — back to that office, not Schools.
+  if (
+    /^\/admin\/schools\/[^/]+/.test(pathname) &&
+    !pathname.startsWith("/admin/schools/students") &&
+    pathname !== "/admin/schools/new" &&
+    !pathname.startsWith("/admin/schools/new/")
+  ) {
+    const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+    const officeId = params.get("office");
+    if (params.get("from") === "head-office" && officeId) {
+      return `/admin/head-offices/${encodeURIComponent(officeId)}`;
+    }
+  }
   if (/^\/admin\/answer-keys\/[^/]+\/(edit|answers)$/.test(pathname)) {
     return readAnswerKeysReturnHref() ?? "/admin/answer-keys";
   }

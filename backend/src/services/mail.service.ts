@@ -284,6 +284,48 @@ export async function sendSchoolCredentialsEmail(input: {
   });
 }
 
+/** Admin → head office portal account. */
+export async function sendHeadOfficeCredentialsEmail(input: {
+  to: string;
+  officeName: string;
+  loginEmail: string;
+  loginPhone?: string | null;
+  password: string;
+  reason: "created" | "password-reset" | "resend";
+}) {
+  const reset = input.reason === "password-reset";
+  const subject =
+    input.reason === "created"
+      ? `Welcome to Vitaran Learning – Head Office Portal for ${input.officeName}`
+      : reset
+        ? `Password Updated – ${input.officeName} Head Office Portal`
+        : `Head Office Portal Login Details – ${input.officeName}`;
+  const paragraphs =
+    input.reason === "created"
+      ? [
+          `Welcome to Vitaran Learning. We are pleased to have ${input.officeName} on board.`,
+          "Your head office portal account has been created. Through the portal you can view and manage the schools under your office. Your sign-in details are given below.",
+        ]
+      : reset
+        ? ["The password for your head office portal account has been updated. Please use the details below to sign in."]
+        : ["As requested, please find the sign-in details for your head office portal account below."];
+  return sendNotice(input.to, subject, {
+    salutation: `Dear ${input.officeName} Team,`,
+    paragraphs,
+    detailsTitle: "Sign-in details",
+    rows: [
+      ["Login email", input.loginEmail],
+      ...(input.loginPhone ? ([["Login phone", input.loginPhone]] as NoticeRow[]) : []),
+      ["Password", input.password],
+      ["Portal", portalAddress()],
+    ],
+    closing: [
+      "Please keep these credentials confidential and share them only with authorised staff.",
+      ...(reset ? ["If you did not request this change, please contact Vitaran Learning immediately."] : []),
+    ],
+  });
+}
+
 /**
  * School → teacher: sent under the school's name, Reply-To the school's login email.
  * On password reset, the school mailbox is CC'd so they also receive the new password.

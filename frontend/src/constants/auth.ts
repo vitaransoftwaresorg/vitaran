@@ -18,6 +18,13 @@ export const TEACHER_LOGIN_PATH = SCHOOL_LOGIN_PATH;
 /** After teacher login — the dashboard is the landing page. */
 export const TEACHER_HOME_PATH = "/teacher";
 
+export const HEAD_OFFICE_SESSION_COOKIE = "vitaran_head_office_session";
+export const HEAD_OFFICE_BASE_PATH = "/head-office";
+export const HEAD_OFFICE_LOGIN_PATH = SCHOOL_LOGIN_PATH;
+export const HEAD_OFFICE_HOME_PATH = "/head-office";
+/** Last school the head office chose to manage (non-secret id). */
+export const HEAD_OFFICE_SELECTED_SCHOOL_COOKIE = "vitaran_ho_selected_school";
+
 /** Clears stale school/teacher cookies, then shows the portal login. */
 export const PORTAL_SESSION_EXPIRED_PATH = "/auth/session-expired";
 

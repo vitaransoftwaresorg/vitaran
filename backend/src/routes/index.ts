@@ -22,6 +22,8 @@ import {
   teacherResultRouter,
 } from "./result.routes.js";
 import { programCatalogRouter, programRouter } from "./program.routes.js";
+import { headOfficeRouter } from "./head-office.routes.js";
+import { headOfficePortalRouter } from "./head-office-portal.routes.js";
 import { schoolRouter } from "./school.routes.js";
 import {
   adminSchoolStudentResourceRouter,
@@ -67,6 +69,8 @@ apiRouter.use("/schools/:schoolId/students", adminSchoolStudentRouter);
 apiRouter.use("/students", adminStudentRouter);
 apiRouter.use("/programs", programRouter);
 apiRouter.use("/catalog/programs", programCatalogRouter);
+apiRouter.use("/head-offices", headOfficeRouter);
+apiRouter.use("/head-office", blockIfMaintenance, headOfficePortalRouter);
 apiRouter.use("/teachers", teacherRouter);
 apiRouter.use("/answer-keys", answerKeyRouter);
 apiRouter.use("/public/answer-keys", publicAnswerKeyRouter);

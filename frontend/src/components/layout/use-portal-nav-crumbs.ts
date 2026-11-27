@@ -3,7 +3,11 @@
 import { useMemo, useSyncExternalStore } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useDrivePathCrumbs } from "@/components/layout/drive-path-context";
-import { schoolIdFromAdminPath, useAdminNavLabel } from "@/features/admin/nav-labels";
+import {
+  officeIdFromAdminPath,
+  schoolIdFromAdminPath,
+  useAdminNavLabel,
+} from "@/features/admin/nav-labels";
 import {
   isAnswerKeyEditorPath,
   readAnswerKeysReturnHref,
@@ -40,6 +44,7 @@ function isSectionRootLabel(label: string) {
     value === "teachers" ||
     value === "programs" ||
     value === "schools" ||
+    value === "head offices" ||
     value === "students" ||
     value === "resources" ||
     value === "teacher resources" ||
@@ -92,8 +97,12 @@ export function usePortalNavCrumbs(routeCrumbs: PortalNavCrumb[]): PortalNavCrum
       : null;
   const schoolId =
     schoolIdFromAdminPath(pathname) ?? schoolIdFromReturn ?? searchParams.get("school");
+  const officeIdFromQuery =
+    searchParams.get("from") === "head-office" ? searchParams.get("office") : null;
+  const officeId = officeIdFromAdminPath(pathname) ?? officeIdFromQuery;
   // Must use getServerSnapshot=null so SSR HTML matches the first client paint.
   const schoolName = useAdminNavLabel("school", schoolId);
+  const officeName = useAdminNavLabel("office", officeId);
 
   return useMemo(() => {
     const folders = driveCrumbs.filter((crumb) => !isSectionRootLabel(crumb.label));
@@ -241,22 +250,65 @@ export function usePortalNavCrumbs(routeCrumbs: PortalNavCrumb[]): PortalNavCrum
       return dedupeCrumbs([...section, ...folders]);
     }
 
+    // Head office: Dashboard › Head Offices › Name profile [› Edit]
+    if (
+      /\/head-offices\/[^/]+/.test(pathname) &&
+      !pathname.endsWith("/head-offices/new")
+    ) {
+      const section = sectionThrough(routeCrumbs, (href) => /\/head-offices$/.test(href));
+      const rest = routeCrumbs.slice(section.length).filter(
+        (crumb) =>
+          crumb.label !== "Details" &&
+          crumb.label !== "Office" &&
+          crumb.label !== "Edit" &&
+          crumb.label !== "Profile",
+      );
+      const officeHref = officeId ? `/admin/head-offices/${officeId}` : null;
+      const profileLabel = officeName
+        ? officeName
+            .trim()
+            .split(/\s+/)
+            .concat("profile")
+            .map((word) => (word ? word.charAt(0).toUpperCase() + word.slice(1) : word))
+            .join(" ")
+        : null;
+      const named =
+        profileLabel &&
+        officeHref &&
+        !folders.some((crumb) => crumb.href === officeHref)
+          ? [{ label: profileLabel, href: officeHref }, ...folders]
+          : folders;
+      return dedupeCrumbs([...section, ...named, ...rest]);
+    }
+
     // School detail / edit: Dashboard › Schools › Name [› Edit]
     // Nested school routes (programs, classes, …) keep school name before the leaf.
     // Skip the Students drive — handled above (URL is /admin/schools/students).
+    // From a head office: still show Schools trail; Back uses ?from=head-office&office=.
     if (
       /\/schools\/[^/]+/.test(pathname) &&
       !pathname.endsWith("/schools/new") &&
       pathname !== "/admin/schools/students" &&
       !pathname.startsWith("/admin/schools/students/")
     ) {
+      const fromHeadOffice = searchParams.get("from") === "head-office";
+      const officeParam = searchParams.get("office");
+      const schoolQuery =
+        fromHeadOffice && officeParam
+          ? `?from=head-office&office=${encodeURIComponent(officeParam)}`
+          : "";
+      const schoolHref = schoolId ? `/admin/schools/${schoolId}${schoolQuery}` : null;
+      const named =
+        schoolName && schoolHref && !folders.some((crumb) => crumb.href.split("?")[0] === `/admin/schools/${schoolId}`)
+          ? [{ label: schoolName, href: schoolHref }, ...folders]
+          : folders.map((crumb) =>
+              crumb.href.startsWith("/admin/schools/") && schoolQuery && !crumb.href.includes("?")
+                ? { ...crumb, href: `${crumb.href}${schoolQuery}` }
+                : crumb,
+            );
+
       const section = sectionThrough(routeCrumbs, (href) => /\/schools$/.test(href));
       const rest = routeCrumbs.slice(section.length).filter((crumb) => crumb.label !== "Details");
-      const schoolHref = schoolId ? `/admin/schools/${schoolId}` : null;
-      const named =
-        schoolName && schoolHref && !folders.some((crumb) => crumb.href === schoolHref)
-          ? [{ label: schoolName, href: schoolHref }, ...folders]
-          : folders;
       return dedupeCrumbs([...section, ...named, ...rest]);
     }
 
@@ -268,6 +320,8 @@ export function usePortalNavCrumbs(routeCrumbs: PortalNavCrumb[]): PortalNavCrum
     searchParams,
     schoolId,
     schoolName,
+    officeId,
+    officeName,
     answerKeysReturnHref,
     resultsReturnHref,
   ]);

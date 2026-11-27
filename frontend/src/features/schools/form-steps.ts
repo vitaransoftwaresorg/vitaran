@@ -23,6 +23,7 @@ export const SCHOOL_FORM_STEPS = [
       "board",
       "type",
       "status",
+      "headOfficeId",
       "principalName",
       "studentStrength",
       "accountEmail",

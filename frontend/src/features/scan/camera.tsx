@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { Camera, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,10 @@ import { cn } from "@/lib/utils";
 import type { ScanPortal } from "@/services/scans";
 import type { ScanPreview, TestIdCheck } from "@/types/scan";
 import { registerOmrPdfDirect } from "./client-upload";
-import { EXAM_PATTERN_OPTIONS, type ExamPattern } from "./exam-pattern";
+import {
+  examPatternOptionsForClassLevel,
+  type ExamPattern,
+} from "./exam-pattern";
 import { fileNameHasTestNumber } from "./pdf-file-name";
 import { startPdfJob } from "./pdf-batch";
 import { bindPendingIdentityAction, checkTestIdAction } from "./actions";
@@ -167,8 +170,24 @@ export function ScanCamera({
   const enteredTest = testId.trim();
   const testComplete = TEST_ID_PATTERN.test(enteredTest);
   const checked = testComplete && testCheck?.value === enteredTest ? testCheck : null;
-  const patternReady = EXAM_PATTERN_OPTIONS.some((row) => row.value === examPattern);
+  const patternClassLevel = checked?.ok ? checked.keys[0]?.classLevel : undefined;
+  const patternOptions = useMemo(
+    () =>
+      patternClassLevel != null ? examPatternOptionsForClassLevel(patternClassLevel) : [],
+    [patternClassLevel],
+  );
+  const patternReady = patternOptions.some((row) => row.value === examPattern);
   const testReady = Boolean(checked?.ok) && patternReady;
+  const patternHint =
+    patternClassLevel != null && patternClassLevel <= 5
+      ? "Maths, Sciences, or Maths Sciences"
+      : "MPCB, PCB, or MPC";
+
+  useEffect(() => {
+    if (!checked?.ok || !examPattern) return;
+    if (patternOptions.some((row) => row.value === examPattern)) return;
+    onExamPattern?.("");
+  }, [checked?.ok, examPattern, onExamPattern, patternOptions]);
 
   useEffect(() => {
     if (!testComplete) return;
@@ -188,7 +207,7 @@ export function ScanCamera({
       return false;
     }
     if (!patternReady) {
-      toast.error("Choose the exam pattern (MPCB, PCB, or MPC).");
+      toast.error(`Choose the exam pattern (${patternHint}).`);
       return false;
     }
     if (checked) {
@@ -216,7 +235,7 @@ export function ScanCamera({
           Exam pattern
         </Label>
         <Select
-          items={EXAM_PATTERN_OPTIONS.map((option) => ({
+          items={patternOptions.map((option) => ({
             value: option.value,
             label: option.label,
           }))}
@@ -228,10 +247,10 @@ export function ScanCamera({
           }}
         >
           <SelectTrigger id={id} className="h-11 w-full rounded-xl bg-white px-3.5 text-sm">
-            <SelectValue placeholder="MPCB, PCB, or MPC" />
+            <SelectValue placeholder={patternHint} />
           </SelectTrigger>
           <SelectContent>
-            {EXAM_PATTERN_OPTIONS.map((option) => (
+            {patternOptions.map((option) => (
               <SelectItem key={option.value} value={option.value}>
                 {option.label}
               </SelectItem>
@@ -550,7 +569,7 @@ export function ScanCamera({
               checked && !checked.ok
                 ? checked.message
                 : !patternReady
-                  ? "Choose the exam pattern (MPCB, PCB, or MPC)."
+                  ? `Choose the exam pattern (${patternHint}).`
                   : "Enter a valid test ID first, then upload.",
             );
           }}
@@ -601,7 +620,7 @@ export function ScanCamera({
       return;
     }
     if (!patternReady) {
-      toast.error("Choose the exam pattern (MPCB, PCB, or MPC).");
+      toast.error(`Choose the exam pattern (${patternHint}).`);
       return;
     }
     if (typeof navigator.mediaDevices?.getUserMedia === "function") {

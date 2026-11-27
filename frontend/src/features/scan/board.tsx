@@ -58,7 +58,9 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
   const [cameraKey, setCameraKey] = useState(0);
   // Owned by this page, so opening it any way (back from review, refresh, menu) starts with an empty test ID.
   const [testId, setTestId] = useState("");
-  const [examPattern, setExamPattern] = useState<"" | "MPCB" | "PCB" | "MPC">("");
+  const [examPattern, setExamPattern] = useState<
+    "" | "MPCB" | "PCB" | "MPC" | "MATH" | "SCI" | "MS"
+  >("");
   const restRef = useRef<ScanQueueItem[]>([]);
 
   useEffect(

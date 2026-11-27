@@ -38,6 +38,7 @@ export function upsertSettings(data: {
   teacherResourcesPublic: boolean;
   answerKeysPublic: boolean;
   resultsPublic: boolean;
+  resultsAutoPublish: boolean;
   schoolDesktopOmrEnabled: boolean;
   teacherDesktopOmrEnabled: boolean;
   schoolMobileOmrEnabled: boolean;
@@ -53,6 +54,7 @@ export function upsertSettings(data: {
       teacherResourcesPublic: data.teacherResourcesPublic,
       answerKeysPublic: data.answerKeysPublic,
       resultsPublic: data.resultsPublic,
+      resultsAutoPublish: data.resultsAutoPublish,
       schoolDesktopOmrEnabled: data.schoolDesktopOmrEnabled,
       teacherDesktopOmrEnabled: data.teacherDesktopOmrEnabled,
       schoolMobileOmrEnabled: data.schoolMobileOmrEnabled,
@@ -65,6 +67,7 @@ export function upsertSettings(data: {
       teacherResourcesPublic: data.teacherResourcesPublic,
       answerKeysPublic: data.answerKeysPublic,
       resultsPublic: data.resultsPublic,
+      resultsAutoPublish: data.resultsAutoPublish,
       schoolDesktopOmrEnabled: data.schoolDesktopOmrEnabled,
       teacherDesktopOmrEnabled: data.teacherDesktopOmrEnabled,
       schoolMobileOmrEnabled: data.schoolMobileOmrEnabled,

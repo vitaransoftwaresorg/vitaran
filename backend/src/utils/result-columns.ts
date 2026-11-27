@@ -21,11 +21,20 @@ export type ColumnRole =
   | "subject"
   | null;
 
-const SUBJECT_HEADER: Record<string, string> = { MATHEMATICS: "MATHS" };
+const SUBJECT_HEADER: Record<string, string> = {
+  MATHEMATICS: "MATHS",
+  SCIENCE: "SCIENCES",
+};
 const KNOWN_SUBJECT = /\bmath|\bphys|\bchem|\bbio|\bscience|\benglish|\bsocial|\bhindi|\btelugu|\bgk\b/i;
 
-/** Canonical OMR paper order (MPCB). PCB / MPC are subsets. */
-export const PAPER_SUBJECT_ORDER = ["MATHEMATICS", "PHYSICS", "CHEMISTRY", "BIOLOGY"] as const;
+/** Canonical OMR paper order — primary MS then secondary MPCB. */
+export const PAPER_SUBJECT_ORDER = [
+  "MATHEMATICS",
+  "SCIENCE",
+  "PHYSICS",
+  "CHEMISTRY",
+  "BIOLOGY",
+] as const;
 
 export function subjectHeader(code: string) {
   return SUBJECT_HEADER[code] ?? code.replaceAll("_", " ").toUpperCase();
@@ -35,6 +44,7 @@ export function subjectHeader(code: string) {
 export function subjectCodeFromHeader(label: string): string | null {
   const text = foldLabel(label);
   if (/^math/.test(text)) return "MATHEMATICS";
+  if (/^scien/.test(text)) return "SCIENCE";
   if (/^phys/.test(text)) return "PHYSICS";
   if (/^chem/.test(text)) return "CHEMISTRY";
   if (/^bio/.test(text)) return "BIOLOGY";

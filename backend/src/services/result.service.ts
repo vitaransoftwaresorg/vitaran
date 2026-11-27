@@ -447,9 +447,19 @@ async function writeClassSheet(
     rows,
   };
   try {
-    const resultSet = existingId
+    let resultSet = existingId
       ? await resultRepository.updateResultSet(existingId, meta, [sheet], [], requireClasses)
       : await resultRepository.createResultSet(meta, [sheet]);
+    // Sheet rewrite clears publish flags — re-publish when auto-publish is on (default).
+    const { resultsAutoPublish } = await settingsService.getAppSettings();
+    if (resultsAutoPublish) {
+      const published = await resultRepository.setResultSheetPublished(
+        resultSet.id,
+        classLevel,
+        true,
+      );
+      if (published) resultSet = published;
+    }
     notifyContentChanged({ kind: KIND, schoolId: resultSet.school.id, adminOnly: !resultSet.published });
     return resultSet;
   } catch (error) {

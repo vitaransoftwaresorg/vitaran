@@ -27,7 +27,8 @@ type AnswerKeyPortalViewProps = {
 };
 
 const SUBJECT_BLOCK = 25;
-const SCIENCE_ORDER = ["MATHEMATICS", "PHYSICS", "CHEMISTRY", "BIOLOGY"] as const;
+const PRIMARY_ORDER = ["MATHEMATICS", "SCIENCE"] as const;
+const SECONDARY_ORDER = ["MATHEMATICS", "PHYSICS", "CHEMISTRY", "BIOLOGY"] as const;
 
 function questionsIn(range: SubjectRange) {
   return Array.from(
@@ -45,13 +46,17 @@ function countOf(range: SubjectRange) {
   return Math.max(0, range.to - range.from + 1);
 }
 
-function padLeadingEmptyBands(ranges: SubjectRange[]): SubjectRange[] {
+function padLeadingEmptyBands(
+  ranges: SubjectRange[],
+  classLevel: number,
+): SubjectRange[] {
   if (ranges.length === 0) return ranges;
+  const order: readonly string[] = classLevel <= 5 ? PRIMARY_ORDER : SECONDARY_ORDER;
   const first = ranges[0]!;
-  const expectedIndex = SCIENCE_ORDER.indexOf(first.subject as (typeof SCIENCE_ORDER)[number]);
+  const expectedIndex = order.indexOf(first.subject);
   if (expectedIndex <= 0) return ranges;
   if (first.from !== expectedIndex * SUBJECT_BLOCK + 1) return ranges;
-  const leading = SCIENCE_ORDER.slice(0, expectedIndex).map((subject, index) => ({
+  const leading = order.slice(0, expectedIndex).map((subject, index) => ({
     subject,
     from: index * SUBJECT_BLOCK + 1,
     to: index * SUBJECT_BLOCK + SUBJECT_BLOCK,
@@ -141,6 +146,7 @@ export function AnswerKeyPortalView({
     answerKey.subjectRanges.length > 0
       ? answerKey.subjectRanges
       : [{ subject: "MATHEMATICS", from: 1, to: 100, maxMarks: 0 }],
+    answerKey.classLevel,
   );
 
   /** One card per question: open first, otherwise the latest review. */

@@ -35,7 +35,11 @@ import {
 
 const OPTIONS = ["A", "B", "C", "D"] as const;
 
-const SUBJECT_NAMES: Record<string, string> = { MATHEMATICS: "Mathematics", GK: "General Knowledge" };
+const SUBJECT_NAMES: Record<string, string> = {
+  MATHEMATICS: "Mathematics",
+  SCIENCE: "Sciences",
+  GK: "General Knowledge",
+};
 
 export type AnswerKeyPdfData = {
   schoolName: string;

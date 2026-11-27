@@ -7,6 +7,7 @@ import type {
   SchoolLoginResult,
   TeacherLoginResult,
 } from "@/types/auth";
+import type { HeadOfficeAccount, HeadOfficeLoginResult } from "@/types/head-office-portal";
 import type { SchoolAccount } from "@/types/school";
 import type { TeacherAccount } from "@/types/teacher";
 
@@ -60,6 +61,23 @@ export async function fetchCurrentTeacher(token: string): Promise<TeacherAccount
     cache: "no-store",
   });
   return teacher;
+}
+
+/** `identifier` is the head office login email or phone number. */
+export function loginHeadOffice(credentials: { identifier: string; password: string }) {
+  return apiClient<HeadOfficeLoginResult>("/auth/head-office/login", {
+    method: "POST",
+    body: credentials,
+    cache: "no-store",
+  });
+}
+
+export async function fetchCurrentHeadOffice(token: string): Promise<HeadOfficeAccount> {
+  const { office } = await apiClient<{ office: HeadOfficeAccount }>("/auth/head-office/me", {
+    headers: authHeader(token),
+    cache: "no-store",
+  });
+  return office;
 }
 
 /** Exchange a Google ID token for the existing portal JWT. Never creates an account. */

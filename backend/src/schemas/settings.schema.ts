@@ -12,6 +12,7 @@ export const updateAppSettingsSchema = z.object({
   teacherResourcesPublic: z.boolean(),
   answerKeysPublic: z.boolean(),
   resultsPublic: z.boolean(),
+  resultsAutoPublish: z.boolean(),
   schoolDesktopOmrEnabled: z.boolean(),
   teacherDesktopOmrEnabled: z.boolean(),
   schoolMobileOmrEnabled: z.boolean(),

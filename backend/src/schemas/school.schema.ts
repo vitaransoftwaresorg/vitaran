@@ -89,6 +89,8 @@ const schoolFields = {
   notes: optionalText(1000),
   accountEmail: email,
   accountPhone: phone,
+  /** Optional regional / corporate head office. */
+  headOfficeId: z.uuid().nullable().optional(),
 };
 
 export const createSchoolSchema = z

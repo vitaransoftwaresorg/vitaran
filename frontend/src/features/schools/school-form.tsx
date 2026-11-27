@@ -40,6 +40,7 @@ import {
   type SchoolType,
   type Subject,
 } from "@/types/school";
+import type { HeadOfficeListItem } from "@/types/head-office";
 import type { LearningProgram } from "@/types/program";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { smoothScrollToElement, useSmoothWheelScroll } from "@/hooks/use-smooth-scroll";
@@ -118,14 +119,29 @@ type SchoolClassesPanelData = {
 type SchoolFormProps = {
   school?: SchoolDetail;
   catalog: LearningProgram[];
+  headOffices?: HeadOfficeListItem[];
   /** Existing classes on edit; register keeps new classes until Submit. */
   classesPanel?: SchoolClassesPanelData;
 };
+
+const HEAD_OFFICE_NONE = "__none__";
 
 const boardItems = SCHOOL_BOARDS.map((value) => ({ value, label: BOARD_LABELS[value] }));
 const typeItems = SCHOOL_TYPES.map((value) => ({ value, label: TYPE_LABELS[value] }));
 const statusItems = SCHOOL_STATUSES.map((value) => ({ value, label: STATUS_LABELS[value] }));
 const stateItems = INDIAN_STATES.map((value) => ({ value, label: value }));
+
+function headOfficeSelectItems(offices: HeadOfficeListItem[]) {
+  return [
+    { value: HEAD_OFFICE_NONE, label: "None" },
+    ...[...offices]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((office) => ({
+        value: office.id,
+        label: `${office.name} (${office.code})`,
+      })),
+  ];
+}
 
 const emailInput = { type: "email", getHint: getEmailHint } as const;
 
@@ -183,6 +199,7 @@ function toFormValues(school?: SchoolDetail): SchoolFormValues {
       status: "ACTIVE",
       offerings: [],
       customClasses: [],
+      headOfficeId: HEAD_OFFICE_NONE,
     };
   }
 
@@ -216,10 +233,11 @@ function toFormValues(school?: SchoolDetail): SchoolFormValues {
     accountEmail: school.accountEmail ?? "",
     accountPhone: school.accountPhone ?? "",
     password: school.password ?? "",
+    headOfficeId: school.headOfficeId ?? HEAD_OFFICE_NONE,
   };
 }
 
-export function SchoolForm({ school, catalog, classesPanel }: SchoolFormProps) {
+export function SchoolForm({ school, catalog, headOffices = [], classesPanel }: SchoolFormProps) {
   const router = useRouter();
   const keepDraft = !school;
   const draft = useSchoolDraft(keepDraft);
@@ -254,6 +272,7 @@ export function SchoolForm({ school, catalog, classesPanel }: SchoolFormProps) {
       hasLogo={Boolean(school?.hasLogo)}
       logoVersion={school?.updatedAt}
       catalog={catalog}
+      headOffices={headOffices}
       schoolPrograms={school?.schoolPrograms}
       classesPanel={classesPanel}
       action={formAction}
@@ -278,6 +297,7 @@ type SchoolFormWizardProps = {
   /** Changes whenever the school is saved, so the browser fetches a replaced logo. */
   logoVersion?: string;
   catalog: LearningProgram[];
+  headOffices?: HeadOfficeListItem[];
   schoolPrograms?: SchoolDetail["schoolPrograms"];
   classesPanel?: SchoolClassesPanelData;
   action: (formData: FormData) => void;
@@ -303,6 +323,7 @@ function SchoolFormWizard({
   hasLogo = false,
   logoVersion,
   catalog,
+  headOffices = [],
   schoolPrograms = [],
   classesPanel,
   action,
@@ -358,6 +379,7 @@ function SchoolFormWizard({
   /** Regular catalog is always available; customized schools also get their own program. */
   const regularCatalog = catalog.filter((program) => (program.type ?? "REGULAR") === "REGULAR");
   const typeCatalog = schoolType === "CUSTOMIZED" ? regularCatalog : regularCatalog;
+  const headOfficeItems = useMemo(() => headOfficeSelectItems(headOffices), [headOffices]);
   const liveSchoolPrograms = useMemo(
     () =>
       liveOfferingsFromForm({
@@ -372,8 +394,8 @@ function SchoolFormWizard({
   );
   /** Regular catalog only — customized schools do not get a per-school LearningProgram. */
   const panelSchoolPrograms = useMemo(
-    () => catalogProgramsForForm(typeCatalog, liveSchoolPrograms),
-    [typeCatalog, liveSchoolPrograms],
+    () => catalogProgramsForForm(typeCatalog, liveSchoolPrograms, schoolPrograms),
+    [typeCatalog, liveSchoolPrograms, schoolPrograms],
   );
   const [step, setStep] = useState(() =>
     resolveInitialStep(searchParams.get(STEP_SEARCH_PARAM), values, serverErrors, mode),
@@ -972,6 +994,33 @@ function SchoolFormWizard({
                 </SelectContent>
               </Select>
               {error("status")}
+            </Field>
+
+            <Field data-invalid={invalid("headOfficeId")} className="md:col-span-2 lg:col-span-3">
+              <FieldLabel htmlFor="headOfficeId">Head Office</FieldLabel>
+              <Select
+                name="headOfficeId"
+                items={headOfficeItems}
+                defaultValue={values.headOfficeId || HEAD_OFFICE_NONE}
+                onValueChange={saveDraftSoon}
+              >
+                <SelectTrigger
+                  id="headOfficeId"
+                  className="w-full"
+                  aria-invalid={invalid("headOfficeId")}
+                >
+                  <SelectValue placeholder="None (optional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  {headOfficeItems.map((item) => (
+                    <SelectItem key={item.value} value={item.value}>
+                      {item.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-neutral-500">Optional — leave as None if not needed.</p>
+              {error("headOfficeId")}
             </Field>
 
                 <Field data-invalid={invalid("principalName")} className="lg:col-span-3">

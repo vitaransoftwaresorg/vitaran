@@ -118,12 +118,13 @@ type AnswerKeyAnswersEditorProps = {
 const SUBJECT_BLOCK = 25;
 
 function questionsIn(range: SubjectRange) {
+  if (range.to < range.from) return [];
   return Array.from({ length: Math.max(0, range.to - range.from + 1) }, (_, index) => range.from + index);
 }
 
-/** maxMarks 0 = reserved empty band (no Maths) — still show Q numbers as "—". */
+/** maxMarks 0 or inverted from/to = no active questions for this subject. */
 function isEmptyBand(range: SubjectRange) {
-  return range.maxMarks === 0;
+  return range.maxMarks === 0 || range.to < range.from;
 }
 
 function countOf(range: SubjectRange) {
@@ -152,13 +153,53 @@ function snapshot(
 }
 
 /**
- * Fixed 25-wide slots (Maths 1–25, Physics 26–50, …). Setting a subject to 0 keeps
- * its band as empty "—" placeholders — never renumbers later subjects down to Q1.
+ * Class 1–5 question windows from the set counts (20 or 25, etc.):
+ * - Maths 20 + Science 20 → Maths 1–20, Science 21–40
+ * - Maths 25 + Science 25 → Maths 1–25, Science 26–50
+ * - Maths 20, Science 0  → Maths 1–20
+ * - Maths 0, Science 20  → Science 26–45 (Science keeps band order from Q26)
+ * Class 6+: fixed 25-wide slots (Maths 1–25, Physics 26–50, …).
  */
 function rangesFromCounts(
   rows: Array<{ subject: string; count: number }>,
   correctMarks: number,
+  classLevel = 12,
 ): SubjectRange[] {
+  if (classLevel <= 5) {
+    const mathCount = Math.min(
+      SUBJECT_BLOCK,
+      Math.max(0, rows.find((row) => row.subject === "MATHEMATICS")?.count ?? 0),
+    );
+    const scienceCount = Math.min(
+      SUBJECT_BLOCK,
+      Math.max(0, rows.find((row) => row.subject === "SCIENCE")?.count ?? 0),
+    );
+
+    const maths: SubjectRange =
+      mathCount > 0
+        ? {
+            subject: "MATHEMATICS",
+            from: 1,
+            to: mathCount,
+            maxMarks: mathCount * correctMarks,
+          }
+        : { subject: "MATHEMATICS", from: 1, to: 0, maxMarks: 0 };
+
+    // Science follows Maths when Maths is on; otherwise stays in the Q26+ band order.
+    const scienceFrom = mathCount > 0 ? mathCount + 1 : SUBJECT_BLOCK + 1;
+    const science: SubjectRange =
+      scienceCount > 0
+        ? {
+            subject: "SCIENCE",
+            from: scienceFrom,
+            to: scienceFrom + scienceCount - 1,
+            maxMarks: scienceCount * correctMarks,
+          }
+        : { subject: "SCIENCE", from: scienceFrom, to: scienceFrom - 1, maxMarks: 0 };
+
+    return [maths, science];
+  }
+
   return rows.map((row, index) => {
     const from = index * SUBJECT_BLOCK + 1;
     const count = Math.min(SUBJECT_BLOCK, Math.max(0, row.count));
@@ -174,7 +215,7 @@ function rangesFromCounts(
   });
 }
 
-/** Drop answers outside a subject's active window; other subjects keep their Q numbers. */
+/** Drop answers outside a subject's fixed 25-wide slot (secondary papers). */
 function trimBandAnswers<T>(
   previous: Record<string, T>,
   subjectIndex: number,
@@ -192,20 +233,102 @@ function trimBandAnswers<T>(
   return next;
 }
 
+/**
+ * Class 1–5 contiguous: remap each subject’s answers by position when counts change
+ * (e.g. Science was Q26–45 → Q21–40 after Maths shrinks to 20).
+ */
+function remapContiguousAnswers<T>(
+  previous: Record<string, T>,
+  oldRanges: SubjectRange[],
+  nextRanges: SubjectRange[],
+): Record<string, T> {
+  const next: Record<string, T> = {};
+  for (const oldRange of oldRanges) {
+    if (isEmptyBand(oldRange) || oldRange.to < oldRange.from) continue;
+    const newRange = nextRanges.find((range) => range.subject === oldRange.subject);
+    if (!newRange || isEmptyBand(newRange) || newRange.to < newRange.from) continue;
+    const oldQuestions = questionsIn(oldRange);
+    const newQuestions = questionsIn(newRange);
+    const len = Math.min(oldQuestions.length, newQuestions.length);
+    for (let index = 0; index < len; index += 1) {
+      const value = previous[String(oldQuestions[index]!)];
+      if (value !== undefined) next[String(newQuestions[index]!)] = value;
+    }
+  }
+  return next;
+}
+
 const FALLBACK_RANGES: SubjectRange[] = [
   { subject: "MATHEMATICS", from: 1, to: 100, maxMarks: 400 },
 ];
 
-const SCIENCE_ORDER = ["MATHEMATICS", "PHYSICS", "CHEMISTRY", "BIOLOGY"] as const;
+const PRIMARY_ORDER = ["MATHEMATICS", "SCIENCE"] as const;
+const SECONDARY_ORDER = ["MATHEMATICS", "PHYSICS", "CHEMISTRY", "BIOLOGY"] as const;
 
-/** When Physics starts at 26 with no Maths row, reserve Q1–25 as empty "—". */
-function padLeadingEmptyBands(ranges: SubjectRange[]): SubjectRange[] {
+function paperSubjectOrder(classLevel: number) {
+  return classLevel <= 5 ? PRIMARY_ORDER : SECONDARY_ORDER;
+}
+
+/** Class 1–5 default: Maths + Sciences, 25 each → Q1–25 / Q26–50. */
+function primaryFullRanges(correctMarks: number): SubjectRange[] {
+  return rangesFromCounts(
+    PRIMARY_ORDER.map((subject) => ({ subject, count: SUBJECT_BLOCK })),
+    correctMarks,
+    1,
+  );
+}
+
+/**
+ * Remap class 1–5 keys onto Maths / Science using the count rules above.
+ */
+function rangesForClassLevel(
+  ranges: SubjectRange[],
+  classLevel: number,
+  correctMarks: number,
+): SubjectRange[] {
+  const order = paperSubjectOrder(classLevel);
+  if (classLevel <= 5) {
+    const looksSecondary = ranges.some(
+      (range) =>
+        range.subject === "PHYSICS" ||
+        range.subject === "CHEMISTRY" ||
+        range.subject === "BIOLOGY",
+    );
+    const hasScience = ranges.some((range) => range.subject === "SCIENCE");
+    if (looksSecondary && !hasScience) {
+      return primaryFullRanges(correctMarks);
+    }
+    if (ranges.length === 0) return primaryFullRanges(correctMarks);
+    const bySubject = new Map(ranges.map((range) => [range.subject, range]));
+    const rows = PRIMARY_ORDER.map((subject) => {
+      const existing = bySubject.get(subject);
+      if (!existing || isEmptyBand(existing) || existing.to < existing.from) {
+        // Prefer default 25 when subject was never configured; keep 0 if explicitly empty.
+        const explicitlyEmpty =
+          existing != null && (isEmptyBand(existing) || existing.to < existing.from);
+        return { subject, count: explicitlyEmpty ? 0 : SUBJECT_BLOCK };
+      }
+      return {
+        subject,
+        count: Math.min(SUBJECT_BLOCK, Math.max(1, countOf(existing))),
+      };
+    });
+    return rangesFromCounts(rows, correctMarks, classLevel);
+  }
+  return padLeadingEmptyBands(ranges, order);
+}
+
+/** When Science/Physics starts mid-paper with no Maths row, reserve leading bands as empty "—". */
+function padLeadingEmptyBands(
+  ranges: SubjectRange[],
+  order: readonly string[] = SECONDARY_ORDER,
+): SubjectRange[] {
   if (ranges.length === 0) return ranges;
   const first = ranges[0]!;
-  const expectedIndex = SCIENCE_ORDER.indexOf(first.subject as (typeof SCIENCE_ORDER)[number]);
+  const expectedIndex = order.indexOf(first.subject);
   if (expectedIndex <= 0) return ranges;
   if (first.from !== expectedIndex * SUBJECT_BLOCK + 1) return ranges;
-  const leading = SCIENCE_ORDER.slice(0, expectedIndex).map((subject, index) => ({
+  const leading = order.slice(0, expectedIndex).map((subject, index) => ({
     subject,
     from: index * SUBJECT_BLOCK + 1,
     to: index * SUBJECT_BLOCK + SUBJECT_BLOCK,
@@ -220,8 +343,10 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
   const [deleting, startDeleting] = useTransition();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const pending = saving || deleting;
-  const initialRanges = padLeadingEmptyBands(
+  const initialRanges = rangesForClassLevel(
     answerKey.subjectRanges.length > 0 ? answerKey.subjectRanges : FALLBACK_RANGES,
+    answerKey.classLevel,
+    initialCorrectMarks(answerKey),
   );
   const [answers, setAnswers] = useState<Record<string, KeyAnswer>>(() => answerKey.answers);
   const [explanations, setExplanations] = useState<Record<string, string>>(() => answerKey.explanations);
@@ -238,7 +363,10 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
   const [counts, setCounts] = useState(() =>
     initialRanges.map((range) => ({ subject: range.subject, count: countOf(range) })),
   );
-  const ranges = useMemo(() => rangesFromCounts(counts, correctMarks), [counts, correctMarks]);
+  const ranges = useMemo(
+    () => rangesFromCounts(counts, correctMarks, answerKey.classLevel),
+    [counts, correctMarks, answerKey.classLevel],
+  );
   const [baseline, setBaseline] = useState(() =>
     snapshot(
       answerKey.answers,
@@ -292,9 +420,9 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
       ) !== baseline,
     [answers, explanations, ranges, keyTypeRanges, testId, correctMarks, wrongMarks, baseline],
   );
-  // Empty bands still count toward the paper (100 Q) so numbers never collapse.
+  // Active questions only (empty / zero-count bands do not add to the total).
   const totalQuestions = ranges.reduce(
-    (sum, range) => sum + Math.max(0, range.to - range.from + 1),
+    (sum, range) => sum + (isEmptyBand(range) || range.to < range.from ? 0 : countOf(range)),
     0,
   );
   const incomplete = ranges
@@ -329,9 +457,13 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
     const nextCounts = counts.map((row) =>
       row.subject === subject ? { ...row, count: nextCount } : row,
     );
-    const nextRanges = rangesFromCounts(nextCounts, correctMarks);
-    const nextRange = nextRanges[subjectIndex];
-    if (subjectIndex >= 0) {
+    const previousRanges = ranges;
+    const nextRanges = rangesFromCounts(nextCounts, correctMarks, answerKey.classLevel);
+    if (answerKey.classLevel <= 5) {
+      setAnswers((current) => remapContiguousAnswers(current, previousRanges, nextRanges));
+      setExplanations((current) => remapContiguousAnswers(current, previousRanges, nextRanges));
+    } else if (subjectIndex >= 0) {
+      const nextRange = nextRanges[subjectIndex];
       setAnswers((current) => trimBandAnswers(current, subjectIndex, nextRange));
       setExplanations((current) => trimBandAnswers(current, subjectIndex, nextRange));
     }
@@ -378,12 +510,35 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
     }
   }
 
+  /**
+   * Import keeps the editor’s subject counts (default 25 each for class 1–5).
+   * Change counts before or after import; Save stores whatever counts are set.
+   * Class 1–5 bands stay contiguous (20+20 → Q1–40).
+   */
+  function rangesForImport(
+    _imported: Array<{ question: number }>,
+    parsedRanges?: SubjectRange[],
+  ): SubjectRange[] {
+    if (answerKey.classLevel <= 5) {
+      if (counts.some((row) => row.count > 0)) {
+        return rangesFromCounts(counts, correctMarks, answerKey.classLevel);
+      }
+      return primaryFullRanges(correctMarks);
+    }
+
+    if (parsedRanges?.length) {
+      return rangesForClassLevel(parsedRanges, answerKey.classLevel, correctMarks);
+    }
+    return ranges;
+  }
+
   function applyImportedAnswers(
     imported: Array<{ question: number; answer: KeyAnswer }>,
     sourceName: string,
+    activeRanges: SubjectRange[] = ranges,
   ) {
     const allowed = new Set(
-      ranges
+      activeRanges
         .filter((range) => !isEmptyBand(range))
         .flatMap((range) => questionsIn(range).map(String)),
     );
@@ -410,9 +565,15 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
       return;
     }
 
+    const subjectSummary = activeRanges
+      .filter((range) => !isEmptyBand(range))
+      .map((range) => `${subjectLabel(range.subject)} ${countOf(range)}`)
+      .join(" · ");
+
     setAnswers(next);
     toast.success(
       `Imported ${applied} answer${applied === 1 ? "" : "s"} from ${sourceName}` +
+        (subjectSummary ? ` · ${subjectSummary}` : "") +
         (skipped ? ` · ${skipped} outside this paper skipped` : "") +
         ". Review, then Save.",
     );
@@ -445,7 +606,9 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
         if (result.data.testId && !testId.trim()) {
           setTestId(enteredTestId(result.data.testId));
         }
-        applyImportedAnswers(imported, file.name);
+        const nextRanges = rangesForImport(imported, result.data.subjectRanges);
+        setCounts(nextRanges.map((range) => ({ subject: range.subject, count: countOf(range) })));
+        applyImportedAnswers(imported, file.name, nextRanges);
         return;
       }
 
@@ -454,7 +617,9 @@ export function AnswerKeyAnswersEditor({ answerKey, heading, readOnly = false }:
         toast.error(`No answers found in ${file.name}. Fill the Answer column and try again.`);
         return;
       }
-      applyImportedAnswers(imported, file.name);
+      const nextRanges = rangesForImport(imported);
+      setCounts(nextRanges.map((range) => ({ subject: range.subject, count: countOf(range) })));
+      applyImportedAnswers(imported, file.name, nextRanges);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not read this file.");
     } finally {

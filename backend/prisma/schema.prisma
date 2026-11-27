@@ -66,6 +66,34 @@ model LearningProgram {
   @@map("learning_programs")
 }
 
+/// Regional / corporate head office that groups one or more schools.
+model HeadOffice {
+  id            String   @id @default(uuid()) @db.Uuid
+  /// Short office code shown to admins (unique).
+  code          String   @unique @db.VarChar(64)
+  name          String   @db.VarChar(200)
+  contactName   String   @map("contact_name") @db.VarChar(120)
+  contactEmail  String   @map("contact_email") @db.VarChar(254)
+  contactPhone  String   @map("contact_phone") @db.VarChar(20)
+  addressLine   String   @map("address_line") @db.VarChar(300)
+  city          String   @db.VarChar(100)
+  state         String   @db.VarChar(100)
+  pincode       String   @db.VarChar(6)
+  notes         String?  @db.VarChar(1000)
+  /// Portal login email (defaults to contact email).
+  accountEmail      String?  @unique @map("account_email") @db.VarChar(254)
+  accountPhone      String?  @map("account_phone") @db.VarChar(20)
+  passwordHash      String?  @map("password_hash") @db.VarChar(255)
+  passwordEncrypted String?  @map("password_encrypted") @db.VarChar(512)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  schools       School[]
+
+  @@index([createdAt])
+  @@index([accountPhone])
+  @@map("head_offices")
+}
+
 model School {
   id                String       @id @default(uuid()) @db.Uuid
   serial            Int          @unique @default(autoincrement())
@@ -94,6 +122,9 @@ model School {
   logoMimeType      String?      @map("logo_mime_type") @db.VarChar(64)
   logoFileName      String?      @map("logo_file_name") @db.VarChar(255)
   logoData          Bytes?       @map("logo_data")
+  /// Optional head office this school belongs to.
+  headOfficeId      String?      @map("head_office_id") @db.Uuid
+  headOffice        HeadOffice?  @relation(fields: [headOfficeId], references: [id], onDelete: SetNull)
   createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
   answerKeys        AnswerKey[]
@@ -111,6 +142,7 @@ model School {
   @@index([status])
   @@index([board])
   @@index([createdAt])
+  @@index([headOfficeId])
   @@map("schools")
 }
 
@@ -235,7 +267,7 @@ model SchoolClass {
   classLevel   Int             @map("class_level") @db.SmallInt
   programId    String          @map("program_id") @db.Uuid
   studentCount Int             @map("student_count") @db.SmallInt
-  /// OMR subject pattern for this class: MPCB | PCB | MPC.
+  /// OMR subject pattern: primary MATH|SCI|MS · secondary MPCB|PCB|MPC.
   examPattern  String          @default("MPCB") @map("exam_pattern") @db.VarChar(8)
   school       School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   program      LearningProgram @relation(fields: [programId], references: [id], onDelete: Restrict)
@@ -272,7 +304,7 @@ model SchoolSection {
   name           String          @db.VarChar(32)
   programId      String          @map("program_id") @db.Uuid
   studentCount   Int             @map("student_count") @db.SmallInt
-  /// OMR subject pattern for this section: MPCB | PCB | MPC.
+  /// OMR subject pattern: primary MATH|SCI|MS · secondary MPCB|PCB|MPC.
   examPattern    String          @default("MPCB") @map("exam_pattern") @db.VarChar(8)
   classTeacherId String?         @map("class_teacher_id") @db.Uuid
   school         School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
@@ -573,6 +605,8 @@ model AppSettings {
   answerKeysPublic Boolean @default(false) @map("answer_keys_public")
   /// When true, published results are public on /results (no login).
   resultsPublic Boolean @default(false) @map("results_public")
+  /// When true, new/updated class results are published to schools immediately.
+  resultsAutoPublish Boolean @default(true) @map("results_auto_publish")
   /// School portal desktop OMR (PDF / file upload).
   schoolDesktopOmrEnabled Boolean @default(true) @map("school_desktop_omr_enabled")
   /// Teacher portal desktop OMR.

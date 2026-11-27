@@ -36,6 +36,7 @@ import { getObject } from "./object-storage.js";
 import { loadVitaranLogo } from "./rank-card.render.js";
 import { toSchoolRef, type SchoolAccountDto } from "./school.service.js";
 import * as settingsService from "./settings.service.js";
+import { subjectsForClassLevel } from "../utils/subject.js";
 
 const KIND = "answer-keys";
 
@@ -494,14 +495,24 @@ function emptyKeyFile() {
   return { fileName: "Answer key", fileSize: 0, data: Buffer.alloc(0) };
 }
 
-async function blankKeyFields(programCode: string): Promise<ParsedJsonFields & { correctMarks: number; wrongMarks: number }> {
+async function blankKeyFields(
+  programCode: string,
+  classLevel: number,
+): Promise<ParsedJsonFields & { correctMarks: number; wrongMarks: number }> {
   const program = await programRepository.findProgramByCode(programCode);
+  // Class level wins: 1–5 → Maths/Science bands; 6+ → MPCB from program (or secondary default).
+  const subjects =
+    classLevel <= 5
+      ? subjectsForClassLevel(classLevel)
+      : program?.subjects?.length
+        ? program.subjects
+        : subjectsForClassLevel(classLevel);
   return {
     answers: {} as Prisma.InputJsonValue,
     explanations: {} as Prisma.InputJsonValue,
     printedAnswers: {} as Prisma.InputJsonValue,
     printedExplanations: {} as Prisma.InputJsonValue,
-    subjectRanges: defaultSubjectRanges(program?.subjects ?? []) as Prisma.InputJsonValue,
+    subjectRanges: defaultSubjectRanges(subjects) as Prisma.InputJsonValue,
     correctMarks: 4,
     wrongMarks: 0,
   };
@@ -530,7 +541,7 @@ export async function uploadAnswerKey({ schoolId, program, ...meta }: UploadAnsw
     programCode: program,
     schoolId: resolvedSchoolId,
     ...emptyKeyFile(),
-    ...(await blankKeyFields(program)),
+    ...(await blankKeyFields(program, meta.classLevel)),
   });
   // Draft shells stay admin-only until answers are saved (and usually published).
   notifyContentChanged({

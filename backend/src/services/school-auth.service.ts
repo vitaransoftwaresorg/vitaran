@@ -7,6 +7,7 @@ import type { SchoolWithPrograms } from "../repositories/school.repository.js";
 import type { SchoolLoginInput } from "../schemas/auth.schema.js";
 import { AppError } from "../utils/app-error.js";
 import { hashPassword, passwordNeedsRehash, verifyPassword } from "../utils/password.js";
+import type { SchoolSessionRow } from "../repositories/school.repository.js";
 import {
   toSchoolAccountDto,
   toSchoolSessionAccountDto,
@@ -66,6 +67,22 @@ export async function loginSchool(input: SchoolLoginInput): Promise<SchoolLoginR
   return issueSchoolLogin(school, secret);
 }
 
+async function signSchoolToken(schoolId: string, passwordHash: string, secret: Uint8Array) {
+  const expiresAt = new Date(Date.now() + env.SCHOOL_JWT_EXPIRES_IN_DAYS * DAY_MS);
+  const token = await new SignJWT({
+    role: SCHOOL_ROLE,
+    pwv: passwordVersion(passwordHash),
+  })
+    .setProtectedHeader({ alg: JWT_ALGORITHM })
+    .setSubject(schoolId)
+    .setIssuer(JWT_ISSUER)
+    .setAudience(JWT_AUDIENCE)
+    .setIssuedAt()
+    .setExpirationTime(expiresAt)
+    .sign(secret);
+  return { token, expiresAt };
+}
+
 /** Password or Google — same JWT. Caller already proved the account. */
 export async function issueSchoolLogin(
   school: SchoolWithPrograms,
@@ -78,21 +95,28 @@ export async function issueSchoolLogin(
     throw new AppError(401, "Invalid email, phone or password");
   }
 
-  const expiresAt = new Date(Date.now() + env.SCHOOL_JWT_EXPIRES_IN_DAYS * DAY_MS);
-
-  const token = await new SignJWT({
-    role: SCHOOL_ROLE,
-    pwv: passwordVersion(school.passwordHash),
-  })
-    .setProtectedHeader({ alg: JWT_ALGORITHM })
-    .setSubject(school.id)
-    .setIssuer(JWT_ISSUER)
-    .setAudience(JWT_AUDIENCE)
-    .setIssuedAt()
-    .setExpirationTime(expiresAt)
-    .sign(secret);
-
+  const { token, expiresAt } = await signSchoolToken(school.id, school.passwordHash, secret);
   return { token, expiresAt: expiresAt.toISOString(), school: toSchoolAccountDto(school) };
+}
+
+/** Head office (or other trusted caller) opens a school portal session. */
+export async function issueSchoolSessionLogin(
+  school: SchoolSessionRow,
+  secret = getSecret(),
+): Promise<SchoolLoginResult> {
+  if (school.status !== SchoolStatus.ACTIVE) {
+    throw new AppError(403, "This school account is inactive");
+  }
+  if (!school.passwordHash) {
+    throw new AppError(400, "This school has no portal password yet");
+  }
+
+  const { token, expiresAt } = await signSchoolToken(school.id, school.passwordHash, secret);
+  return {
+    token,
+    expiresAt: expiresAt.toISOString(),
+    school: toSchoolSessionAccountDto(school),
+  };
 }
 
 export async function verifySchoolToken(token: string): Promise<SchoolAccountDto> {

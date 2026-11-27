@@ -74,6 +74,7 @@ export type School = SchoolSummary & {
   notes: string | null;
   accountEmail: string | null;
   accountPhone: string | null;
+  headOfficeId: string | null;
   hasLogo: boolean;
   updatedAt: string;
 };
@@ -102,6 +103,7 @@ export type SchoolInput = Omit<
   | "schoolPrograms"
   | "programCodes"
   | "hasLogo"
+  | "headOfficeId"
 > & {
   /** School ID shown as VLS-XXXX (e.g. VLS-0018). */
   code: string;
@@ -110,6 +112,8 @@ export type SchoolInput = Omit<
   programs: SchoolProgramInput[];
   /** Customized schools: create/update this catalog program instead of picking one. */
   customProgram?: CustomProgramInput;
+  /** Optional head office assignment. */
+  headOfficeId?: string | null;
   password?: string;
 };
 

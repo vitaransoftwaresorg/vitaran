@@ -1,3 +1,5 @@
+import { prisma } from "../config/database.js";
+import * as headOfficeRepository from "../repositories/head-office.repository.js";
 import * as programRepository from "../repositories/program.repository.js";
 import * as schoolRepository from "../repositories/school.repository.js";
 import type {
@@ -88,6 +90,7 @@ export type SchoolDto = SchoolSummaryDto & {
   notes: string | null;
   accountEmail: string | null;
   accountPhone: string | null;
+  headOfficeId: string | null;
   schoolPrograms: SchoolProgramDto[];
   /** Convenience: catalog codes the school is enrolled in. */
   programCodes: string[];
@@ -110,6 +113,18 @@ async function assertSchoolCodeAvailable(code: string, excludeId?: string) {
     ]);
   }
   return code.trim();
+}
+
+async function assertHeadOfficeExists(headOfficeId: string) {
+  const office = await prisma.headOffice.findUnique({
+    where: { id: headOfficeId },
+    select: { id: true },
+  });
+  if (!office) {
+    throw new AppError(400, "Head office not found", [
+      { path: ["headOfficeId"], message: "Select a valid head office" },
+    ]);
+  }
 }
 
 function toSchoolPrograms(school: SchoolWithPrograms): SchoolProgramDto[] {
@@ -177,6 +192,7 @@ export function toSchoolDto(school: SchoolWithPrograms): SchoolDto {
     notes: school.notes,
     accountEmail: school.accountEmail,
     accountPhone: school.accountPhone,
+    headOfficeId: school.headOfficeId,
     schoolPrograms,
     programCodes: schoolPrograms.map((row) => row.programCode),
     updatedAt: school.updatedAt.toISOString(),
@@ -225,6 +241,7 @@ export function toSchoolSessionAccountDto(school: SchoolSessionRow): SchoolAccou
     studentStrength: null,
     accountEmail: school.accountEmail,
     accountPhone: null,
+    headOfficeId: null,
     schoolPrograms,
     programCodes: schoolPrograms.map((row) => row.programCode),
     hasLogo: Boolean(school.logoMimeType),
@@ -247,7 +264,11 @@ async function passwordChanged(id: string, password: string) {
 }
 
 export async function getAccountAvailability({ email, excludeId }: AccountAvailabilityQuery) {
-  return { emailTaken: await schoolRepository.isEmailUsedByOtherSchool(email, excludeId) };
+  const [usedBySchool, usedByOffice] = await Promise.all([
+    schoolRepository.isEmailUsedByOtherSchool(email, excludeId),
+    headOfficeRepository.isEmailUsedByOtherHeadOffice(email),
+  ]);
+  return { emailTaken: usedBySchool || usedByOffice };
 }
 
 export async function getCodeAvailability({ code, excludeId }: CodeAvailabilityQuery) {
@@ -262,8 +283,13 @@ async function assertAccountAvailable(
 
   for (const field of ["accountEmail", "contactEmail"] as const) {
     const email = account[field];
-    if (email && (await schoolRepository.isEmailUsedByOtherSchool(email, excludeId))) {
+    if (!email) continue;
+    if (await schoolRepository.isEmailUsedByOtherSchool(email, excludeId)) {
       issues.push({ path: [field], message: "Email already exists" });
+      continue;
+    }
+    if (await headOfficeRepository.isEmailUsedByOtherHeadOffice(email)) {
+      issues.push({ path: [field], message: "This email is already used by a head office" });
     }
   }
 
@@ -381,6 +407,7 @@ export async function createSchool({
   programs,
   customProgram: _customProgram,
   code,
+  headOfficeId,
   ...input
 }: CreateSchoolInput) {
   await assertAccountAvailable(input);
@@ -388,12 +415,14 @@ export async function createSchool({
   const offerings = await offeringsForSchoolType(input.type, programs);
   await assertProgramOfferings(offerings);
   const schoolCode = await assertSchoolCodeAvailable(code);
+  if (headOfficeId) await assertHeadOfficeExists(headOfficeId);
 
   const school = toSchoolDto(
     await schoolRepository.createSchool({
       ...input,
       code: schoolCode,
       programs: offerings,
+      ...(headOfficeId ? { headOffice: { connect: { id: headOfficeId } } } : {}),
       ...(await sealPassword(password)),
     }),
   );
@@ -415,7 +444,14 @@ export async function createSchool({
 
 export async function updateSchool(
   id: string,
-  { password, programs, customProgram: _customProgram, code, ...input }: UpdateSchoolInput,
+  {
+    password,
+    programs,
+    customProgram: _customProgram,
+    code,
+    headOfficeId,
+    ...input
+  }: UpdateSchoolInput,
 ) {
   await assertAccountAvailable(input, id);
   const current = await schoolRepository.findSchoolById(id);
@@ -431,6 +467,7 @@ export async function updateSchool(
 
   const seal = password && (await passwordChanged(id, password));
   const schoolCode = code !== undefined ? await assertSchoolCodeAvailable(code, id) : undefined;
+  if (headOfficeId) await assertHeadOfficeExists(headOfficeId);
 
   const previousOfferings: OfferingSnapshot[] | null = offerings
     ? current.schoolPrograms.map((row) => ({
@@ -448,6 +485,11 @@ export async function updateSchool(
     ...input,
     ...(schoolCode !== undefined ? { code: schoolCode } : {}),
     ...(offerings ? { programs: offerings } : {}),
+    ...(headOfficeId !== undefined
+      ? headOfficeId
+        ? { headOffice: { connect: { id: headOfficeId } } }
+        : { headOffice: { disconnect: true } }
+      : {}),
     ...(seal && password ? await sealPassword(password) : {}),
   });
 
@@ -548,6 +590,16 @@ export async function resetSchoolPassword(id: string, password: string) {
     throw new AppError(502, "Password was saved but the email could not be sent. Try Send credentials.");
   }
   return { ok: true as const, to: current.accountEmail };
+}
+
+/** Update the school portal login email (account email). */
+export async function updateSchoolLoginEmail(id: string, accountEmail: string) {
+  const current = await schoolRepository.findSchoolById(id);
+  if (!current) throw new AppError(404, "School not found");
+  const email = accountEmail.trim().toLowerCase();
+  await assertAccountAvailable({ accountEmail: email }, id);
+  await schoolRepository.updateSchool(id, { accountEmail: email });
+  return { ok: true as const, accountEmail: email };
 }
 
 export async function getSchoolStats() {

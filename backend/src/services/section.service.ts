@@ -88,7 +88,7 @@ function toSectionDto(
     programName: row.program.name,
     year: row.program.year,
     studentCount: row.studentCount,
-    examPattern: row.examPattern || "MPCB",
+    examPattern: row.examPattern || (row.classLevel <= 5 ? "MS" : "MPCB"),
     classTeacher: row.classTeacher
       ? {
           id: row.classTeacher.id,
@@ -115,7 +115,7 @@ function toWholeClassDto(
     programName: row.program.name,
     year: row.program.year,
     studentCount: row.studentCount,
-    examPattern: row.examPattern || "MPCB",
+    examPattern: row.examPattern || (row.classLevel <= 5 ? "MS" : "MPCB"),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -261,7 +261,9 @@ export async function createSection(schoolId: string, input: CreateSectionInput)
         name: DEFAULT_SECTION_NAME,
         programId: existingWhole.programId,
         studentCount: existingWhole.studentCount,
-        examPattern: existingWhole.examPattern || "MPCB",
+        examPattern:
+          existingWhole.examPattern ||
+          (existingWhole.classLevel <= 5 ? "MS" : "MPCB"),
         classTeacherId: null,
       });
       await studentRepository.assignWholeClassStudentsToSection(
@@ -288,7 +290,10 @@ export async function createSection(schoolId: string, input: CreateSectionInput)
     name: sectionName,
     programId: input.programId,
     studentCount: input.studentCount,
-    examPattern: input.examPattern ?? existingWhole?.examPattern ?? "MPCB",
+    examPattern:
+      input.examPattern ??
+      existingWhole?.examPattern ??
+      (input.classLevel <= 5 ? "MS" : "MPCB"),
     classTeacherId,
   });
 

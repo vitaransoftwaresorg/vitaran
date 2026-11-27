@@ -28,6 +28,7 @@ type ToggleKey =
   | "resources"
   | "keys"
   | "results"
+  | "resultsAutoPublish"
   | "schoolDesktopOmr"
   | "teacherDesktopOmr"
   | "schoolMobileOmr"
@@ -66,6 +67,9 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
   );
   const [answerKeysPublic, setAnswerKeysPublic] = useState(initial.answerKeysPublic);
   const [resultsPublic, setResultsPublic] = useState(initial.resultsPublic);
+  const [resultsAutoPublish, setResultsAutoPublish] = useState(
+    initial.resultsAutoPublish ?? true,
+  );
   const [schoolDesktopOmrEnabled, setSchoolDesktopOmrEnabled] = useState(
     initial.schoolDesktopOmrEnabled ?? true,
   );
@@ -141,6 +145,7 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
       teacherResourcesPublic: boolean;
       answerKeysPublic: boolean;
       resultsPublic: boolean;
+      resultsAutoPublish: boolean;
       schoolDesktopOmrEnabled: boolean;
       teacherDesktopOmrEnabled: boolean;
       schoolMobileOmrEnabled: boolean;
@@ -162,6 +167,7 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
       teacherResourcesPublic,
       answerKeysPublic,
       resultsPublic,
+      resultsAutoPublish,
       schoolDesktopOmrEnabled,
       teacherDesktopOmrEnabled,
       schoolMobileOmrEnabled,
@@ -180,6 +186,7 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
             patch.teacherResourcesPublic ?? previous.teacherResourcesPublic,
           answerKeysPublic: patch.answerKeysPublic ?? previous.answerKeysPublic,
           resultsPublic: patch.resultsPublic ?? previous.resultsPublic,
+          resultsAutoPublish: patch.resultsAutoPublish ?? previous.resultsAutoPublish,
           schoolDesktopOmrEnabled:
             patch.schoolDesktopOmrEnabled ?? previous.schoolDesktopOmrEnabled,
           teacherDesktopOmrEnabled:
@@ -207,6 +214,9 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
           if (patch.resultsPublic !== undefined) {
             setResultsPublic(previous.resultsPublic);
           }
+          if (patch.resultsAutoPublish !== undefined) {
+            setResultsAutoPublish(previous.resultsAutoPublish);
+          }
           if (patch.schoolDesktopOmrEnabled !== undefined) {
             setSchoolDesktopOmrEnabled(previous.schoolDesktopOmrEnabled);
           }
@@ -232,6 +242,7 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
           setTeacherResourcesPublic(result.settings.teacherResourcesPublic);
           setAnswerKeysPublic(result.settings.answerKeysPublic);
           setResultsPublic(result.settings.resultsPublic);
+          setResultsAutoPublish(result.settings.resultsAutoPublish ?? true);
           setSchoolDesktopOmrEnabled(result.settings.schoolDesktopOmrEnabled);
           setTeacherDesktopOmrEnabled(result.settings.teacherDesktopOmrEnabled);
           setSchoolMobileOmrEnabled(result.settings.schoolMobileOmrEnabled);
@@ -287,6 +298,19 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
       {
         toggle: "results",
         successMessage: next ? "Results are public" : "Results are private",
+      },
+    );
+  }
+
+  function setResultsAutoPublishToggle(next: boolean) {
+    setResultsAutoPublish(next);
+    persist(
+      { resultsAutoPublish: next },
+      {
+        toggle: "resultsAutoPublish",
+        successMessage: next
+          ? "Results auto-publish on"
+          : "Results auto-publish off — publish each class manually",
       },
     );
   }
@@ -487,24 +511,56 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
         </section>
 
         <section className="rounded-xl border border-brand-200 bg-white p-5 shadow-[0_4px_16px_-8px_rgb(25_28_95/0.12)]">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <h2 className="text-sm font-bold text-brand-950">Results</h2>
-              <p className="mt-1 text-sm text-neutral-600">
-                Public: guests enter a School ID to open that school&apos;s published results. Private: login
-                required. Applies to all visitors immediately.
-              </p>
+          <div>
+            <h2 className="text-sm font-bold text-brand-950">Results</h2>
+            <p className="mt-1 text-sm text-neutral-600">
+              Control public guest access and whether new class results publish to schools
+              automatically.
+            </p>
+          </div>
+          <div className="mt-4 space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-4 border-t border-brand-100 pt-4">
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-900">Public website</h3>
+                <p className="mt-0.5 text-sm text-neutral-600">
+                  Public: guests enter a School ID to open published results. Private: login
+                  required.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={resultsPublic}
+                  onCheckedChange={setResultsPublicToggle}
+                  disabled={busyToggle === "results"}
+                  id="results-public"
+                />
+                <label htmlFor="results-public" className="text-sm font-semibold text-neutral-800">
+                  {resultsPublic ? "Public" : "Private"}
+                </label>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Switch
-                checked={resultsPublic}
-                onCheckedChange={setResultsPublicToggle}
-                disabled={busyToggle === "results"}
-                id="results-public"
-              />
-              <label htmlFor="results-public" className="text-sm font-semibold text-neutral-800">
-                {resultsPublic ? "Public" : "Private"}
-              </label>
+            <div className="flex flex-wrap items-start justify-between gap-4 border-t border-brand-100 pt-4">
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-900">Auto-publish</h3>
+                <p className="mt-0.5 text-sm text-neutral-600">
+                  On: enter marks and OMR saves publish that class to schools immediately. Off:
+                  publish each class manually from Results.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={resultsAutoPublish}
+                  onCheckedChange={setResultsAutoPublishToggle}
+                  disabled={busyToggle === "resultsAutoPublish"}
+                  id="results-auto-publish"
+                />
+                <label
+                  htmlFor="results-auto-publish"
+                  className="text-sm font-semibold text-neutral-800"
+                >
+                  {resultsAutoPublish ? "On" : "Off"}
+                </label>
+              </div>
             </div>
           </div>
         </section>
