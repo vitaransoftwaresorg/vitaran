@@ -2,6 +2,7 @@ import type { RequestHandler } from "express";
 import type {
   CreateHeadOfficeInput,
   HeadOfficeCodeAvailabilityQuery,
+  HeadOfficeEmailAvailabilityQuery,
   UpdateHeadOfficeInput,
 } from "../schemas/head-office.schema.js";
 import * as headOfficeService from "../services/head-office.service.js";
@@ -16,6 +17,11 @@ export const listHeadOffices: RequestHandler = async (_req, res) => {
 export const getCodeAvailability: RequestHandler = async (req, res) => {
   const { code, excludeId } = req.query as unknown as HeadOfficeCodeAvailabilityQuery;
   sendSuccess(res, await headOfficeService.getCodeAvailability(code, excludeId));
+};
+
+export const getEmailAvailability: RequestHandler = async (req, res) => {
+  const { email, excludeId } = req.query as unknown as HeadOfficeEmailAvailabilityQuery;
+  sendSuccess(res, await headOfficeService.getEmailAvailability(email, excludeId));
 };
 
 export const getNextOfficeCode: RequestHandler = async (_req, res) => {

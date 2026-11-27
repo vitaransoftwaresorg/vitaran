@@ -94,9 +94,9 @@ const PDF_MAX = 500 * 1024 * 1024;
  * Production: keep unsaved OMR sheets available across review and deploys.
  * Metadata is also written under OMR_DATA_DIR so PM2 reload does not wipe batches.
  */
-const PREVIEW_TTL_MS = 12 * 60 * 60 * 1000;
+const PREVIEW_TTL_MS = 10 * 60 * 60 * 1000;
 /** Idle TTL refreshed on every poll / page finish / preview view. */
-const PDF_BATCH_TTL_MS = 12 * 60 * 60 * 1000;
+const PDF_BATCH_TTL_MS = 10 * 60 * 60 * 1000;
 
 type PdfBatchItem = {
   page: number;

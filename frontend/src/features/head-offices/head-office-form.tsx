@@ -31,7 +31,15 @@ import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
 import { cn } from "@/lib/utils";
 import type { HeadOffice } from "@/types/head-office";
 import type { SchoolSummary } from "@/types/school";
-import { type HeadOfficeFormState, type HeadOfficeFormValues } from "./actions";
+import {
+  isHeadOfficeEmailTakenAction,
+  type HeadOfficeFormState,
+  type HeadOfficeFormValues,
+} from "./actions";
+
+const EMAIL_CHECK_DELAY_MS = 400;
+const EMAIL_TAKEN_FALLBACK = "This email is already in use";
+const normalizeEmail = (value = "") => value.trim().toLowerCase();
 
 const NEUTRAL_THEME =
   "text-neutral-950 [--primary:var(--color-neutral-950)] [--primary-foreground:var(--color-white)] [--foreground:var(--color-neutral-950)] [--muted:var(--color-neutral-100)] [--muted-foreground:var(--color-neutral-500)] [--border:var(--color-neutral-200)] [--input:var(--color-neutral-300)] [--ring:var(--color-neutral-400)]";
@@ -165,6 +173,10 @@ export function HeadOfficeForm({ office, nextCode, schools, action }: HeadOffice
   const [dirty, setDirty] = useState(false);
   /** Enter in school search / checkbox focus must not create the office — only Submit. */
   const submitIntentRef = useRef(false);
+  const emailCheckTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const contactEmailRef = useRef(contactEmail);
+  contactEmailRef.current = contactEmail;
+  const [takenEmails, setTakenEmails] = useState<Record<string, string>>({});
   const serverErrors = state?.status === "error" ? state.fieldErrors : undefined;
   const errors = useMemo(() => {
     const merged: Partial<Record<keyof HeadOfficeFormValues, string[]>> = {
@@ -182,6 +194,14 @@ export function HeadOfficeForm({ office, nextCode, schools, action }: HeadOffice
   const unsaved = useUnsavedChanges(dirty && !pending);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    const email = normalizeEmail(contactEmail);
+    if (email && takenEmails[email]) {
+      event.preventDefault();
+      setClientErrors((prev) => ({ ...prev, contactEmail: takenEmails[email] }));
+      setStepError("Check the highlighted fields.");
+      if (!isEdit) setStep(0);
+      return;
+    }
     if (isEdit) {
       if (!dirty) {
         event.preventDefault();
@@ -216,10 +236,19 @@ export function HeadOfficeForm({ office, nextCode, schools, action }: HeadOffice
   }, [state, isEdit, router]);
 
   useEffect(() => {
-    if (state?.status !== "error" || !errors || isEdit) return;
-    const hasStep1Error = STEP1_FIELDS.some((field) => Boolean(errors[field]?.[0]));
+    if (state?.status !== "error") return;
+    const emailMessage = state.fieldErrors?.contactEmail?.[0];
+    const email = normalizeEmail(state.values.contactEmail);
+    if (emailMessage && email) {
+      setTakenEmails((prev) => ({ ...prev, [email]: emailMessage }));
+      setClientErrors((prev) => ({ ...prev, contactEmail: emailMessage }));
+    }
+    if (isEdit) return;
+    const hasStep1Error = STEP1_FIELDS.some((field) =>
+      Boolean(state.fieldErrors?.[field]?.[0] || (field === "contactEmail" && emailMessage)),
+    );
     setStep(hasStep1Error ? 0 : 1);
-  }, [state, errors, isEdit]);
+  }, [state, isEdit]);
 
   const filteredSchools = useMemo(() => {
     const needle = schoolQuery.trim().toLowerCase();
@@ -251,6 +280,32 @@ export function HeadOfficeForm({ office, nextCode, schools, action }: HeadOffice
     setStep(index);
   }
 
+  function checkEmailTaken(value: string) {
+    if (emailCheckTimer.current) clearTimeout(emailCheckTimer.current);
+    const email = normalizeEmail(value);
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
+    if (takenEmails[email]) {
+      setClientErrors((prev) => ({ ...prev, contactEmail: takenEmails[email] }));
+      return;
+    }
+    emailCheckTimer.current = setTimeout(async () => {
+      const result = await isHeadOfficeEmailTakenAction(email, office?.id);
+      if (normalizeEmail(contactEmailRef.current) !== email) return;
+      if (!result.taken) {
+        setClientErrors((prev) => {
+          if (!prev.contactEmail) return prev;
+          const next = { ...prev };
+          delete next.contactEmail;
+          return next;
+        });
+        return;
+      }
+      const message = result.message || EMAIL_TAKEN_FALLBACK;
+      setTakenEmails((prev) => ({ ...prev, [email]: message }));
+      setClientErrors((prev) => ({ ...prev, contactEmail: message }));
+    }, EMAIL_CHECK_DELAY_MS);
+  }
+
   function goNext() {
     const nextErrors = validateOfficeDetails({
       name,
@@ -264,6 +319,10 @@ export function HeadOfficeForm({ office, nextCode, schools, action }: HeadOffice
       notes,
       password,
     });
+    const email = normalizeEmail(contactEmail);
+    if (email && takenEmails[email]) {
+      nextErrors.contactEmail = takenEmails[email];
+    }
     if (Object.keys(nextErrors).length > 0) {
       setClientErrors(nextErrors);
       setStepError("Check the highlighted fields.");
@@ -386,7 +445,9 @@ export function HeadOfficeForm({ office, nextCode, schools, action }: HeadOffice
             markDirty();
             clearFieldError("contactEmail");
             setContactEmail(event.target.value);
+            checkEmailTaken(event.target.value);
           }}
+          onBlur={(event) => checkEmailTaken(event.target.value)}
           required
         />
         {fieldError("contactEmail")}

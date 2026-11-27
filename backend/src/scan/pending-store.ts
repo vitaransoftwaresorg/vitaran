@@ -186,7 +186,7 @@ export function listPendingMetaFilesSync() {
 }
 
 /** Drop upload/pending files older than maxAgeMs (best-effort; never throws). */
-export async function purgeStaleOmrTemp(maxAgeMs = 24 * 60 * 60 * 1000) {
+export async function purgeStaleOmrTemp(maxAgeMs = 10 * 60 * 60 * 1000) {
   try {
     await ensureOmrTempDirs();
     const cutoff = Date.now() - maxAgeMs;

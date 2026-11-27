@@ -160,6 +160,22 @@ export async function isHeadOfficeCodeTakenAction(code: string, excludeId?: stri
   }
 }
 
+/** Fails open: create/update still rejects duplicates on save. */
+export async function isHeadOfficeEmailTakenAction(
+  email: string,
+  excludeId?: string,
+): Promise<{ taken: boolean; message: string | null }> {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+    return { taken: false, message: null };
+  }
+  try {
+    return await headOfficeService.getHeadOfficeEmailAvailability(normalized, excludeId);
+  } catch {
+    return { taken: false, message: null };
+  }
+}
+
 export async function getNextHeadOfficeCodeAction() {
   try {
     return await headOfficeService.getNextHeadOfficeCode();

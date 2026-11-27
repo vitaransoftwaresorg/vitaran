@@ -39,6 +39,14 @@ export function getHeadOfficeCodeAvailability(code: string, excludeId?: string) 
   return adminApi<{ taken: boolean }>(`${BASE}/code-availability?${query}`);
 }
 
+export function getHeadOfficeEmailAvailability(email: string, excludeId?: string) {
+  const query = new URLSearchParams({ email });
+  if (excludeId) query.set("excludeId", excludeId);
+  return adminApi<{ taken: boolean; message: string | null }>(
+    `${BASE}/email-availability?${query}`,
+  );
+}
+
 export async function getNextHeadOfficeCode() {
   const result = await adminApi<{ code: string }>(`${BASE}/next-code`);
   return result.code;

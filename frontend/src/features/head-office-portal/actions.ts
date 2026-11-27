@@ -103,7 +103,18 @@ export async function updateHeadOfficeSchoolLoginEmailAction(
     return { ok: true as const, accountEmail: result.accountEmail };
   } catch (error) {
     unstable_rethrow(error);
-    if (error instanceof ApiError) return { ok: false as const, message: error.message };
+    if (error instanceof ApiError) {
+      const details = error.details;
+      if (Array.isArray(details)) {
+        const fieldMessage = details.find(
+          (row) => row && typeof row === "object" && typeof (row as { message?: unknown }).message === "string",
+        ) as { message: string } | undefined;
+        if (fieldMessage?.message) {
+          return { ok: false as const, message: fieldMessage.message };
+        }
+      }
+      return { ok: false as const, message: error.message };
+    }
     return { ok: false as const, message: "Could not update login email." };
   }
 }

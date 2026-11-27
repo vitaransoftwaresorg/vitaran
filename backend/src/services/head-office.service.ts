@@ -123,6 +123,23 @@ export async function getCodeAvailability(code: string, excludeId?: string) {
   return { taken: Boolean(existing && existing.id !== excludeId) };
 }
 
+/** Live check for the create/edit form — same rules as assertEmailAvailable. */
+export async function getEmailAvailability(email: string, excludeId?: string) {
+  const normalized = email.toLowerCase().trim();
+  const [usedBySchool, usedByOffice] = await Promise.all([
+    schoolRepository.isEmailUsedByOtherSchool(normalized),
+    headOfficeRepository.isEmailUsedByOtherHeadOffice(normalized, excludeId),
+  ]);
+  return {
+    taken: usedBySchool || usedByOffice,
+    message: usedBySchool
+      ? "This email is already used by a school"
+      : usedByOffice
+        ? "This email is already used by another head office"
+        : null,
+  };
+}
+
 export async function getNextOfficeCode() {
   try {
     const code = await headOfficeRepository.findNextOfficeCode();

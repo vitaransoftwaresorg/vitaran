@@ -3,6 +3,7 @@ import {
   createHeadOffice,
   deleteHeadOffice,
   getCodeAvailability,
+  getEmailAvailability,
   getHeadOffice,
   getNextOfficeCode,
   listHeadOffices,
@@ -13,6 +14,7 @@ import { validate } from "../middleware/validate.js";
 import {
   createHeadOfficeSchema,
   headOfficeCodeAvailabilityQuerySchema,
+  headOfficeEmailAvailabilityQuerySchema,
   headOfficeIdParamsSchema,
   updateHeadOfficeSchema,
 } from "../schemas/head-office.schema.js";
@@ -26,6 +28,11 @@ headOfficeRouter.get(
   "/code-availability",
   validate(headOfficeCodeAvailabilityQuerySchema, "query"),
   getCodeAvailability,
+);
+headOfficeRouter.get(
+  "/email-availability",
+  validate(headOfficeEmailAvailabilityQuerySchema, "query"),
+  getEmailAvailability,
 );
 headOfficeRouter.post("/", validate(createHeadOfficeSchema), createHeadOffice);
 headOfficeRouter.get("/:id", validate(headOfficeIdParamsSchema, "params"), getHeadOffice);

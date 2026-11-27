@@ -20,6 +20,11 @@ export const headOfficeCodeAvailabilityQuerySchema = z.object({
   excludeId: z.string().uuid().optional(),
 });
 
+export const headOfficeEmailAvailabilityQuerySchema = z.object({
+  email: z.string().trim().email().max(254),
+  excludeId: z.string().uuid().optional(),
+});
+
 const officeCodeSchema = z
   .string()
   .trim()
@@ -56,4 +61,7 @@ export type CreateHeadOfficeInput = z.infer<typeof createHeadOfficeSchema>;
 export type UpdateHeadOfficeInput = z.infer<typeof updateHeadOfficeSchema>;
 export type HeadOfficeCodeAvailabilityQuery = z.infer<
   typeof headOfficeCodeAvailabilityQuerySchema
+>;
+export type HeadOfficeEmailAvailabilityQuery = z.infer<
+  typeof headOfficeEmailAvailabilityQuerySchema
 >;
