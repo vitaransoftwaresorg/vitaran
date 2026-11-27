@@ -211,6 +211,8 @@ export type SchoolClassTestRow = {
   sectionId: string | null;
   /** Null when every section shares the same Test ID (or the class has no sections). */
   sectionName: string | null;
+  /** Section’s own program when sections differ; otherwise the class/slot program. */
+  programCode?: string | null;
 };
 
 export type SchoolClassTestSlot = {

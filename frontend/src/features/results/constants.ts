@@ -18,6 +18,8 @@ export const resultEnterHref = (params: {
   program?: string;
   testNumber: number;
   classLevel: number;
+  /** When sections have different Test IDs / programs — scope enter to that section. */
+  sectionId?: string | null;
 }) => {
   const search = new URLSearchParams({
     school: params.schoolId,
@@ -25,6 +27,7 @@ export const resultEnterHref = (params: {
     class: String(params.classLevel),
   });
   if (params.program) search.set("program", params.program);
+  if (params.sectionId) search.set("section", params.sectionId);
   return `${RESULT_ENTER_PATH}?${search}`;
 };
 

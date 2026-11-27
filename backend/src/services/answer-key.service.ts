@@ -399,53 +399,76 @@ export async function listSchoolTestsForResults(schoolId: string) {
     testNumber: number;
     classLevel: number;
     programCode: string | null;
-    rows: Array<{ testId: string; sectionId: string | null; sectionName: string | null }>;
+    rows: Array<{
+      testId: string;
+      sectionId: string | null;
+      sectionName: string | null;
+      programCode: string | null;
+    }>;
   }> = [];
+
+  const classProgramFallback = (classLevel: number) =>
+    school.schoolPrograms.find((row) =>
+      row.classes.some((cls) => cls.classLevel === classLevel),
+    )?.program.code ?? null;
 
   for (const testNumber of testNumbers) {
     for (const classLevel of classLevels) {
       const atLevel = sections.filter((section) => section.classLevel === classLevel);
-      const programCode =
-        atLevel[0]?.program.code ??
-        school.schoolPrograms.find((row) =>
-          row.classes.some((cls) => cls.classLevel === classLevel),
-        )?.program.code ??
-        null;
-      if (!programCode) continue;
+      const fallbackProgram = classProgramFallback(classLevel);
 
       const resolved = (atLevel.length ? atLevel : [null]).map((section) => {
         const sectionId = section?.id ?? null;
         const sectionName = section?.name ?? null;
+        // Each section may run a different program — resolve Test ID from that program.
+        const programCode = section?.program.code ?? fallbackProgram;
+        if (!programCode) {
+          return { sectionId, sectionName, programCode: null as string | null, testId: "" };
+        }
         return {
           sectionId,
           sectionName,
+          programCode,
           testId: resolveSectionTestId(testNumber, classLevel, programCode, sectionId),
         };
       });
-      const withIds = resolved.filter((row) => row.testId);
+      const withIds = resolved.filter((row) => row.testId && row.programCode);
       if (!withIds.length) continue;
 
-      const distinct = [...new Set(withIds.map((row) => row.testId))];
+      const distinctIds = [...new Set(withIds.map((row) => row.testId))];
+      const slotProgram =
+        withIds.every((row) => row.programCode === withIds[0]!.programCode)
+          ? withIds[0]!.programCode
+          : fallbackProgram;
+
       // Same Test ID on every section (or whole class) → one Class row.
-      if (distinct.length === 1) {
+      if (distinctIds.length === 1) {
         classSlots.push({
           testNumber,
           classLevel,
-          programCode,
-          rows: [{ testId: distinct[0]!, sectionId: null, sectionName: null }],
+          programCode: slotProgram,
+          rows: [
+            {
+              testId: distinctIds[0]!,
+              sectionId: null,
+              sectionName: null,
+              programCode: slotProgram,
+            },
+          ],
         });
         continue;
       }
 
-      // Different Test IDs → one row per section.
+      // Different Test IDs (often different section programs) → one row per section.
       classSlots.push({
         testNumber,
         classLevel,
-        programCode,
+        programCode: slotProgram,
         rows: withIds.map((row) => ({
           testId: row.testId,
           sectionId: row.sectionId,
           sectionName: row.sectionName,
+          programCode: row.programCode,
         })),
       });
     }
@@ -467,6 +490,19 @@ export async function listSchoolTestsForResults(schoolId: string) {
       .sort((a, b) => b.testNumber - a.testNumber || a.testId.localeCompare(b.testId)),
     classSlots,
   };
+}
+
+/** Section / class Test IDs for one school test folder row (results header). */
+export async function sectionTestIdsForClass(
+  schoolId: string,
+  testNumber: number,
+  classLevel: number,
+) {
+  const { classSlots } = await listSchoolTestsForResults(schoolId);
+  return (
+    classSlots.find((slot) => slot.testNumber === testNumber && slot.classLevel === classLevel)
+      ?.rows ?? []
+  );
 }
 
 export async function getAnswerKeyStats() {

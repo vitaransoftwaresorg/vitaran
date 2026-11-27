@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { wasEdited } from "@/features/documents/constants";
 import { SchoolTypeBadge } from "@/features/schools/school-type-badge";
-import type { ResultSet, ResultSheet } from "@/types/result";
+import type { ResultSectionTestId, ResultSet, ResultSheet } from "@/types/result";
 import type { ClassScan } from "@/types/scan";
 import { downloadFileName } from "@/utils/download-file-name";
 import { formatDateTime } from "@/utils/format";
@@ -36,6 +36,21 @@ type ResultSetViewProps = {
   schoolCode?: string;
 };
 
+function isPlaceholderTestId(value: string | null | undefined) {
+  const id = value?.trim() ?? "";
+  return !id || id === "-" || /^T-\d+$/i.test(id);
+}
+
+function sectionTestLines(sheet: ResultSheet, fallbackTestId: string): ResultSectionTestId[] {
+  const fromSheet = (sheet.sectionTestIds ?? []).filter((row) => !isPlaceholderTestId(row.testId));
+  if (fromSheet.length > 1) return fromSheet;
+  if (fromSheet.length === 1) return fromSheet;
+  if (!isPlaceholderTestId(fallbackTestId)) {
+    return [{ testId: fallbackTestId.trim(), sectionId: null, sectionName: null }];
+  }
+  return [];
+}
+
 /** A test's results: a title line, a tab per uploaded class, and that class's students. */
 export function ResultSetView({
   resultSet,
@@ -49,13 +64,50 @@ export function ResultSetView({
   blockUnpublishedClasses = false,
   schoolCode,
 }: ResultSetViewProps) {
+  const testLines = sectionTestLines(sheet, resultSet.testId);
+
   return (
     <div className="space-y-4">
 
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
         <div className="min-w-0">
           <h1 className="text-base font-bold break-words text-neutral-950 sm:text-2xl">
-            Test ID {resultSet.testId}{" "}
+            {testLines.length > 1 ? (
+              <>
+                {testLines.map((row, index) => (
+                  <span key={`${row.sectionId ?? "all"}:${row.testId}`}>
+                    {index > 0 ? <span className="mx-1.5 font-normal text-neutral-300">·</span> : null}
+                    {row.sectionName ? (
+                      <>
+                        Section {row.sectionName} :{" "}
+                        <span className="font-mono font-semibold text-brand-800">{row.testId}</span>
+                      </>
+                    ) : (
+                      <>
+                        Test ID{" "}
+                        <span className="font-mono font-semibold text-brand-800">{row.testId}</span>
+                      </>
+                    )}
+                  </span>
+                ))}
+              </>
+            ) : testLines[0] ? (
+              <>
+                {testLines[0].sectionName ? (
+                  <>
+                    Section {testLines[0].sectionName} :{" "}
+                    <span className="font-mono font-semibold text-brand-800">{testLines[0].testId}</span>
+                  </>
+                ) : (
+                  <>
+                    Test ID{" "}
+                    <span className="font-mono font-semibold text-brand-800">{testLines[0].testId}</span>
+                  </>
+                )}
+              </>
+            ) : (
+              <>Test {resultSet.testNumber}</>
+            )}{" "}
             <span className="text-neutral-300">·</span> Test No {resultSet.testNumber}{" "}
             <span className="text-neutral-300">·</span> {resultProgramLabel(resultSet)}
           </h1>

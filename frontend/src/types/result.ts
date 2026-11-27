@@ -33,6 +33,14 @@ export type ResultSet = Publishable & {
 
 export type ResultCell = string | number | boolean | null;
 
+/** Section Test IDs for the class header (from answer keys). */
+export type ResultSectionTestId = {
+  testId: string;
+  sectionId: string | null;
+  sectionName: string | null;
+  programCode?: string | null;
+};
+
 /** A class's parsed spreadsheet. */
 export type ResultSheet = Omit<ResultClass, "updatedAt"> & {
   /** Title lines above the sheet's header row. */
@@ -40,6 +48,8 @@ export type ResultSheet = Omit<ResultClass, "updatedAt"> & {
   columns: string[];
   rows: ResultCell[][];
   classLabel?: string;
+  /** When sections use different Test IDs — shown on the result page header. */
+  sectionTestIds?: ResultSectionTestId[];
   updatedAt: string;
 };
 

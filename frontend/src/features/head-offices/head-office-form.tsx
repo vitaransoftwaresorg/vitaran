@@ -1,6 +1,14 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  useActionState,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import Form from "next/form";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -155,6 +163,8 @@ export function HeadOfficeForm({ office, nextCode, schools, action }: HeadOffice
   const [stepError, setStepError] = useState<string | null>(null);
   const [clientErrors, setClientErrors] = useState<ClientErrors>({});
   const [dirty, setDirty] = useState(false);
+  /** Enter in school search / checkbox focus must not create the office — only Submit. */
+  const submitIntentRef = useRef(false);
   const serverErrors = state?.status === "error" ? state.fieldErrors : undefined;
   const errors = useMemo(() => {
     const merged: Partial<Record<keyof HeadOfficeFormValues, string[]>> = {
@@ -170,6 +180,23 @@ export function HeadOfficeForm({ office, nextCode, schools, action }: HeadOffice
   const cancelHref = office ? `/admin/head-offices/${office.id}` : "/admin/head-offices";
   const isLast = step === FORM_STEPS.length - 1;
   const unsaved = useUnsavedChanges(dirty && !pending);
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    if (isEdit) {
+      if (!dirty) {
+        event.preventDefault();
+        return;
+      }
+      unsaved.markClean();
+      return;
+    }
+    if (!submitIntentRef.current) {
+      event.preventDefault();
+      return;
+    }
+    submitIntentRef.current = false;
+    unsaved.markClean();
+  }
 
   function clearFieldError(field: keyof HeadOfficeFormValues) {
     setClientErrors((prev) => {
@@ -491,6 +518,10 @@ export function HeadOfficeForm({ office, nextCode, schools, action }: HeadOffice
           <Input
             value={schoolQuery}
             onChange={(event) => setSchoolQuery(event.target.value)}
+            onKeyDown={(event) => {
+              // Enter would otherwise submit the create form.
+              if (event.key === "Enter") event.preventDefault();
+            }}
             placeholder="Search schools"
             className="h-10 pr-3 pl-9!"
             aria-label="Search schools"
@@ -523,6 +554,9 @@ export function HeadOfficeForm({ office, nextCode, schools, action }: HeadOffice
                   className="mt-1 size-4 rounded border-neutral-300"
                   checked={checked}
                   onChange={(event) => toggleSchool(school.id, event.target.checked)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") event.preventDefault();
+                  }}
                 />
                 <span className="min-w-0 flex-1">
                   <span className="block font-medium text-neutral-950">{school.name}</span>
@@ -546,6 +580,7 @@ export function HeadOfficeForm({ office, nextCode, schools, action }: HeadOffice
       <Form
         ref={unsaved.formRef}
         action={formAction}
+        onSubmit={handleSubmit}
         className={cn("scroll-mt-20 space-y-4", NEUTRAL_THEME, ROOMY_CONTROLS)}
         noValidate
       >
@@ -604,7 +639,13 @@ export function HeadOfficeForm({ office, nextCode, schools, action }: HeadOffice
                   Cancel
                 </Link>
                 {dirty ? (
-                  <Button type="submit" disabled={pending}>
+                  <Button
+                    type="submit"
+                    disabled={pending}
+                    onClick={() => {
+                      submitIntentRef.current = true;
+                    }}
+                  >
                     {pending ? <Loader2 className="animate-spin" /> : <Save />}
                     Save changes
                   </Button>
@@ -632,7 +673,13 @@ export function HeadOfficeForm({ office, nextCode, schools, action }: HeadOffice
                       <ArrowRight />
                     </Button>
                   ) : (
-                    <Button type="submit" disabled={pending}>
+                    <Button
+                      type="submit"
+                      disabled={pending}
+                      onClick={() => {
+                        submitIntentRef.current = true;
+                      }}
+                    >
                       {pending ? <Loader2 className="animate-spin" /> : <Save />}
                       Submit
                     </Button>

@@ -41,6 +41,7 @@ export default async function AdminResultEnterPage({
   const query = await searchParams;
   const schoolId = first(query.school);
   const program = first(query.program)?.trim() || undefined;
+  const sectionId = first(query.section)?.trim() || undefined;
   const testNumber = Number(first(query.test));
   const classLevel = Number(first(query.class));
 
@@ -75,9 +76,11 @@ export default async function AdminResultEnterPage({
       : program);
 
   // Same ACTIVE class roster as Students — not seats/strength, not a results-only list.
+  // When nav opens a section row (different Test ID / program), only that section’s students.
   const studentPage = await listAllAdminSchoolStudents(schoolId, {
     classLevel,
     status: "ACTIVE",
+    ...(sectionId ? { sectionId } : {}),
   });
 
   const resultSet =
@@ -131,6 +134,10 @@ export default async function AdminResultEnterPage({
       (slot) => slot.testNumber === testNumber && slot.classLevel === classLevel,
     )?.rows ?? [];
   const classTestId = (() => {
+    if (sectionId) {
+      const forSection = sectionTestIds.find((row) => row.sectionId === sectionId);
+      if (forSection && !isPlaceholderTestId(forSection.testId)) return forSection.testId;
+    }
     if (sectionTestIds.length === 1 && !isPlaceholderTestId(sectionTestIds[0]?.testId)) {
       return sectionTestIds[0]!.testId;
     }
@@ -146,19 +153,11 @@ export default async function AdminResultEnterPage({
     if (fromSet && !isPlaceholderTestId(fromSet)) return fromSet;
     return undefined;
   })();
-  const breadcrumbTestLabel =
-    sectionTestIds.length > 1
-      ? sectionTestIds
-          .map((row) =>
-            row.sectionName ? `Sec ${row.sectionName} ${row.testId}` : row.testId,
-          )
-          .join(" · ")
-      : classTestId;
-  // Folder levels only — "Results and Ranks" already lives in the top navbar.
+  // Folder levels only — Test ID lives on the enter/result page header, not in nav.
   const breadcrumbs = [
     { label: school.name, href: `${RESULTS_PATH}?${schoolParams}` },
     {
-      label: breadcrumbTestLabel ? `Test ${testNumber} · ${breadcrumbTestLabel}` : `Test ${testNumber}`,
+      label: `Test ${testNumber}`,
       href: backHref,
     },
     { label: `Class ${classLevel}`, href: `${RESULTS_PATH}/enter?${new URLSearchParams({

@@ -65,7 +65,6 @@ export function PortalResultsDrive({ resultSets, basePath, schoolCode }: PortalR
     const testFolder = resultsTestFolderHref(basePath, set.testNumber);
     const view = resultSetHref(basePath, set.id, classLevel, school || undefined, testFolder);
     const live = sheet.published && set.published;
-    const testId = set.testId?.trim() || "";
     return {
       id: `${set.id}:${classLevel}`,
       name,
@@ -75,8 +74,6 @@ export function PortalResultsDrive({ resultSets, basePath, schoolCode }: PortalR
       blockedMessage: live
         ? undefined
         : "Not Published. This result will open here once the admin publishes it.",
-      // Class / section rows show Test ID; Test 1 / Test 2 folders do not.
-      testId,
       detail: live
         ? studentCount(sheet.rowCount)
         : `${studentCount(sheet.rowCount)} · Not Published`,

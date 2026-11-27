@@ -27,11 +27,6 @@ type ResultsDriveProps = {
   deleteAction: (id: string, classLevel: number) => Promise<DeleteResult>;
 };
 
-function isPlaceholderTestId(value: string | null | undefined) {
-  const id = value?.trim() ?? "";
-  return !id || id === "-" || /^T-\d+$/i.test(id);
-}
-
 function testIdForClass(
   schoolTests: SchoolTestOption[] | undefined,
   testNumber: number,
@@ -248,23 +243,6 @@ export function ResultsDrive({
         programs,
         testNumber,
       ).find((row) => row.classLevel === classLevel);
-      const entryPath: DrivePath = {
-        schoolId,
-        testNumber,
-        classLevel,
-        program: entry?.program,
-      };
-      const resultSet = findResultSet(resultSets, entryPath);
-      const sheet = resultSet?.classes.find((item) => item.classLevel === classLevel);
-      const enterHref = resultEnterHref({
-        schoolId,
-        program: entry?.program ?? classSlots.find(
-          (slot) => slot.testNumber === testNumber && slot.classLevel === classLevel,
-        )?.programCode ?? undefined,
-        testNumber,
-        classLevel,
-      });
-
       const slotRows = classSlotRows(classSlots, testNumber, classLevel);
       const fallbackTestId = testIdForClass(
         schoolTests,
@@ -272,48 +250,65 @@ export function ResultsDrive({
         classLevel,
         entry?.program,
       );
+      const slotProgram =
+        classSlots.find(
+          (slot) => slot.testNumber === testNumber && slot.classLevel === classLevel,
+        )?.programCode ?? undefined;
       // Prefer answer-key section split; fall back to one Class row.
       const displayRows =
         slotRows && slotRows.length > 0
           ? slotRows
-          : [{ testId: fallbackTestId, sectionId: null, sectionName: null }];
+          : [
+              {
+                testId: fallbackTestId,
+                sectionId: null,
+                sectionName: null,
+                programCode: entry?.program ?? slotProgram ?? null,
+              },
+            ];
 
-      if (!sheet || !resultSet) {
-        return displayRows.map(
-          (row): DriveItem => ({
+      return displayRows.map((row): DriveItem => {
+        const program =
+          row.programCode ?? entry?.program ?? slotProgram ?? undefined;
+        const entryPath: DrivePath = {
+          schoolId,
+          testNumber,
+          classLevel,
+          program,
+        };
+        const resultSet = findResultSet(resultSets, entryPath);
+        const sheet = resultSet?.classes.find((item) => item.classLevel === classLevel);
+        const enterHref = resultEnterHref({
+          schoolId,
+          program,
+          testNumber,
+          classLevel,
+          sectionId: row.sectionId,
+        });
+        const rowName = classRowLabel(classLevel, row.sectionName);
+
+        if (!sheet || !resultSet) {
+          return {
             id: row.sectionId
               ? `class:${classLevel}:section:${row.sectionId}`
               : `class:${classLevel}`,
-            name: classRowLabel(classLevel, row.sectionName),
+            name: rowName,
             kind: "folder",
             href: enterHref,
-            testId: row.testId,
             detail: "Empty",
-          }),
-        );
-      }
+          };
+        }
 
-      const viewHref = resultSetHref(RESULTS_PATH, resultSet.id, classLevel);
-      const classPublished = sheet.published;
-      const storedTestId = resultSet.testId?.trim() || "";
-      const sharedStored =
-        !isPlaceholderTestId(storedTestId) && displayRows.length === 1
-          ? storedTestId
-          : "";
-
-      return displayRows.map(
-        (row): DriveItem => ({
+        const viewHref = resultSetHref(RESULTS_PATH, resultSet.id, classLevel);
+        const classPublished = sheet.published;
+        return {
           id: row.sectionId
             ? `${resultSet.id}:${classLevel}:section:${row.sectionId}`
             : `${resultSet.id}:${classLevel}`,
-          name: classRowLabel(classLevel, row.sectionName),
+          name: rowName,
           kind: "file",
           fileKind: "sheet",
           href: enterHref,
-          testId:
-            row.testId ||
-            sharedStored ||
-            (!isPlaceholderTestId(storedTestId) ? storedTestId : ""),
           detail: classPublished
             ? `${formatNumber(sheet.rowCount)} students · Published`
             : `${formatNumber(sheet.rowCount)} students · Hidden`,
@@ -321,7 +316,7 @@ export function ResultsDrive({
             ? formatDateTime(sheet.updatedAt)
             : undefined,
           published: classPublished,
-          publishLabel: classRowLabel(classLevel, row.sectionName),
+          publishLabel: rowName,
           onPublish: publishAction.bind(null, resultSet.id, classLevel),
           onDelete: () => deleteAction(resultSet.id, classLevel),
           deleteNoun: "class result",
@@ -329,8 +324,8 @@ export function ResultsDrive({
             { label: "Enter marks", href: enterHref, icon: "edit" },
             { label: "View", href: viewHref, icon: "view" },
           ],
-        }),
-      );
+        };
+      });
     });
     driveItems.push(...classRows);
   }

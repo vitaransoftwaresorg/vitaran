@@ -446,7 +446,7 @@ export function ClassResultsBoard({
                       {index > 0 ? <span className="mx-1.5 text-neutral-300">·</span> : null}
                       {row.sectionName ? (
                         <>
-                          Section {row.sectionName}{" "}
+                          Section {row.sectionName} :{" "}
                           <span className="font-mono text-brand-800">{row.testId}</span>
                         </>
                       ) : (

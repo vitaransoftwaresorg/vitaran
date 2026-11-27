@@ -55,6 +55,7 @@ import {
 import { downloadFileName } from "../utils/download-file-name.js";
 import { getObject, putObject } from "./object-storage.js";
 import { toSchoolRef, type SchoolAccountDto } from "./school.service.js";
+import * as answerKeyService from "./answer-key.service.js";
 import * as settingsService from "./settings.service.js";
 
 const KIND = "results";
@@ -535,7 +536,10 @@ export async function saveManualResultSheet(input: ManualResultSheetInput) {
   const columns = forceSubjectPaperMaxes(input.columns);
   const filled = input.rows.filter((row) => row.some((cell) => cell !== null && cell !== ""));
   assertWithinMax(columns, filled);
-  const roster = await studentRepository.listSchoolRoster(meta.schoolId);
+  // Keep each program’s sheet to that program’s students (two sections / two programs → two sets).
+  const roster = (await studentRepository.listSchoolRoster(meta.schoolId)).filter(
+    (student) => !meta.programCode || student.program.code === meta.programCode,
+  );
   const rows = projectSheetOntoRoster(
     columns,
     filled,
@@ -889,7 +893,10 @@ export async function getResultSheet(params: ResultSheetParams, actor?: ContentA
 
   const schoolId = resultSet?.school.id;
   if (schoolId) {
-    const roster = await studentRepository.listSchoolRoster(schoolId);
+    const programCode = resultSet?.programCode;
+    const roster = (await studentRepository.listSchoolRoster(schoolId)).filter(
+      (student) => !programCode || student.program.code === programCode,
+    );
     parsedRows = projectSheetOntoRoster(
       parsedColumns,
       parsedRows,
@@ -905,6 +912,13 @@ export async function getResultSheet(params: ResultSheetParams, actor?: ContentA
     parsedRows = byRank(parsedColumns, parsedRows);
   }
 
+  const sectionTestIds =
+    resultSet != null
+      ? await answerKeyService
+          .sectionTestIdsForClass(resultSet.school.id, resultSet.testNumber, params.classLevel)
+          .catch(() => [])
+      : [];
+
   if (contentActor?.kind === "teacher") {
     const roster = await studentRepository.listSchoolRoster(contentActor.teacher.schoolId);
     const scoped = projectSheetForTeacher(parsedColumns, parsedRows, contentActor.teacher, roster);
@@ -918,6 +932,7 @@ export async function getResultSheet(params: ResultSheetParams, actor?: ContentA
       rows: paper.rows,
       rowCount: paper.rows.length,
       classLabel: scoped.classLabel,
+      sectionTestIds,
       updatedAt: updatedAt.toISOString(),
     };
   }
@@ -928,6 +943,7 @@ export async function getResultSheet(params: ResultSheetParams, actor?: ContentA
     columns: paper.columns,
     rows: paper.rows,
     rowCount: paper.rows.length,
+    sectionTestIds,
     updatedAt: updatedAt.toISOString(),
   };
 }
