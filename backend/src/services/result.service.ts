@@ -437,6 +437,9 @@ async function writeClassSheet(
     fileName: resolvedName,
     contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
+  // New/updated class results publish by default (settings can turn this off).
+  const { resultsAutoPublish } = await settingsService.getAppSettings();
+  const publish = resultsAutoPublish;
   const sheet: NewResultSheet = {
     classLevel,
     fileName: resolvedName,
@@ -445,21 +448,20 @@ async function writeClassSheet(
     caption,
     columns,
     rows,
+    published: publish,
+    publishedAt: publish ? new Date() : null,
   };
   try {
     let resultSet = existingId
       ? await resultRepository.updateResultSet(existingId, meta, [sheet], [], requireClasses)
       : await resultRepository.createResultSet(meta, [sheet]);
-    // Sheet rewrite clears publish flags — re-publish when auto-publish is on (default).
-    const { resultsAutoPublish } = await settingsService.getAppSettings();
-    if (resultsAutoPublish) {
-      const published = await resultRepository.setResultSheetPublished(
-        resultSet.id,
-        classLevel,
-        true,
-      );
-      if (published) resultSet = published;
-    }
+    // Sync set-level published from sheets (rewrite replaces the class sheet).
+    const synced = await resultRepository.setResultSheetPublished(
+      resultSet.id,
+      classLevel,
+      publish,
+    );
+    if (synced) resultSet = synced;
     notifyContentChanged({ kind: KIND, schoolId: resultSet.school.id, adminOnly: !resultSet.published });
     return resultSet;
   } catch (error) {

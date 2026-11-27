@@ -2,6 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ADMIN_SESSION_COOKIE, PORTAL_SESSION_EXPIRED_PATH } from "@/constants/auth";
+import { redirectIfMaintenance } from "@/features/settings/maintenance-redirect";
 import { ApiError, apiClient, buildApiUrl } from "@/services/api-client";
 
 type AdminApiOptions = Parameters<typeof apiClient>[1];
@@ -27,6 +28,7 @@ export async function adminApi<T>(
     if (error instanceof ApiError && error.status === 401) {
       redirect(PORTAL_SESSION_EXPIRED_PATH);
     }
+    redirectIfMaintenance(error);
     throw error;
   }
 }

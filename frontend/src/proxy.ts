@@ -101,6 +101,11 @@ export function proxy(request: NextRequest) {
     return new NextResponse("Not found", { status: 404 });
   }
 
+  // Maintenance notice — do not bounce signed-in users back into portal RSC.
+  if (pathname === "/under-maintenance" || pathname.startsWith("/under-maintenance/")) {
+    return NextResponse.next();
+  }
+
   if (pathname.startsWith(ADMIN_BASE_PATH)) {
     if (pathname === "/admin/login") {
       return adminResponse(
@@ -203,6 +208,8 @@ export const config = {
   matcher: [
     "/",
     "/contact",
+    "/under-maintenance",
+    "/under-maintenance/:path*",
     "/admin",
     "/admin/:path*",
     "/school",

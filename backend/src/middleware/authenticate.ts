@@ -57,6 +57,22 @@ export const requireAdmin: RequestHandler = async (req, res, next) => {
     }
   });
 };
+/** Settings / employee management — root admin only. */
+export const requireRootAdmin: RequestHandler = (req, res, next) => {
+  requireAdmin(req, res, (error) => {
+    if (error) {
+      next(error);
+      return;
+    }
+    const admin = res.locals.admin as AdminProfile | undefined;
+    if (!admin?.isRoot) {
+      next(new AppError(403, "Only the primary admin can manage settings"));
+      return;
+    }
+    next();
+  });
+};
+
 export const requireSchool = bearerAuth("school", verifySchoolToken);
 export const requireTeacher = bearerAuth("teacher", verifyTeacherToken);
 export const requireHeadOffice = bearerAuth("headOffice", verifyHeadOfficeToken);

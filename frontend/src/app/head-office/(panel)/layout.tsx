@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { HeadOfficeHeader } from "@/components/layout/head-office-header";
 import { HeadOfficeSidebar } from "@/components/layout/head-office-sidebar";
@@ -10,6 +11,7 @@ import { verifyHeadOfficeSession } from "@/features/head-office-auth/session";
 import { headOfficeNavGroups } from "@/features/head-office-portal/navigation";
 import { getSelectedHeadOfficeSchoolId } from "@/features/head-office-portal/selected-school";
 import { PortalNavMemory } from "@/features/portal-nav/portal-nav-memory";
+import { UNDER_MAINTENANCE_PATH } from "@/features/settings/maintenance-redirect";
 import { PortalMaintenanceGate } from "@/features/settings/portal-maintenance-gate";
 import { listHeadOfficeSchools } from "@/services/head-office-portal";
 import { getPublicSettings } from "@/services/settings";
@@ -21,10 +23,12 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function HeadOfficePanelLayout({ children }: { children: React.ReactNode }) {
-  const [office, cookieStore, settings, schools, selectedSchoolId] = await Promise.all([
+  const [cookieStore, settings] = await Promise.all([cookies(), getPublicSettings()]);
+  // listHeadOfficeSchools is blocked during maintenance — redirect before calling it.
+  if (settings.maintenanceMode) redirect(UNDER_MAINTENANCE_PATH);
+
+  const [office, schools, selectedSchoolId] = await Promise.all([
     verifyHeadOfficeSession(),
-    cookies(),
-    getPublicSettings(),
     listHeadOfficeSchools(),
     getSelectedHeadOfficeSchoolId(),
   ]);

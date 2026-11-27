@@ -49,12 +49,21 @@ export type NewResultSheet = {
   caption: string[];
   columns: string[];
   rows: CellValue[][];
+  /** Defaults to published when omitted (matches schema). */
+  published?: boolean;
+  publishedAt?: Date | null;
 };
 
 async function insertSheet(tx: Prisma.TransactionClient, resultSetId: string, sheet: NewResultSheet) {
-  const { rows, ...rest } = sheet;
+  const { rows, published = true, publishedAt = published ? new Date() : null, ...rest } = sheet;
   const { id } = await tx.resultSheet.create({
-    data: { ...rest, resultSetId, rowCount: rows.length },
+    data: {
+      ...rest,
+      resultSetId,
+      rowCount: rows.length,
+      published,
+      publishedAt: published ? publishedAt ?? new Date() : null,
+    },
     select: { id: true },
   });
   await tx.resultRow.createMany({
@@ -176,7 +185,12 @@ export function findResultSheetFile(where: Prisma.ResultSheetWhereInput) {
 export function createResultSet(meta: ResultSetMeta, sheets: NewResultSheet[]) {
   return prisma.$transaction(
     async (tx) => {
-      const { id } = await tx.resultSet.create({ data: meta, select: { id: true } });
+      const anyPublished = sheets.some((sheet) => sheet.published !== false);
+      const publishedAt = anyPublished ? new Date() : null;
+      const { id } = await tx.resultSet.create({
+        data: { ...meta, published: anyPublished, publishedAt },
+        select: { id: true },
+      });
       for (const sheet of sheets) await insertSheet(tx, id, sheet);
       return tx.resultSet.findUniqueOrThrow({ where: { id }, select: resultSetSummarySelect });
     },

@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { AdminHeader } from "@/components/layout/admin-header";
 import { AdminPageBack } from "@/components/layout/admin-page-back";
@@ -13,6 +14,7 @@ import { adminNavGroups } from "@/features/admin/navigation";
 import { LiveRefresh } from "@/features/live/live-refresh";
 import { PortalNavMemory } from "@/features/portal-nav/portal-nav-memory";
 import { EmployeeMaintenanceGate } from "@/features/settings/employee-maintenance-gate";
+import { UNDER_MAINTENANCE_PATH } from "@/features/settings/maintenance-redirect";
 import { getPublicSettings } from "@/services/settings";
 
 const ADMIN_NAV_ROOTS = adminNavGroups.flatMap((group) => group.items.map((item) => item.href));
@@ -25,11 +27,10 @@ export const revalidate = 0;
 export default async function AdminPanelLayout({
   children,
 }: LayoutProps<"/admin">) {
-  const [admin, cookieStore, settings] = await Promise.all([
-    verifyAdminSession(),
-    cookies(),
-    getPublicSettings(),
-  ]);
+  const [cookieStore, settings] = await Promise.all([cookies(), getPublicSettings()]);
+  const admin = await verifyAdminSession();
+  // Employees: skip portal RSC that would hit 503 APIs on refresh.
+  if (settings.maintenanceMode && !admin.isRoot) redirect(UNDER_MAINTENANCE_PATH);
   const defaultOpen = cookieStore.get(SIDEBAR_STATE_COOKIE)?.value !== "false";
 
   return (

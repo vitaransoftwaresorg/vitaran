@@ -2,6 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { PORTAL_SESSION_EXPIRED_PATH, TEACHER_SESSION_COOKIE } from "@/constants/auth";
+import { redirectIfMaintenance } from "@/features/settings/maintenance-redirect";
 import { ApiError, apiClient, buildApiUrl } from "@/services/api-client";
 
 type TeacherApiOptions = Parameters<typeof apiClient>[1];
@@ -21,6 +22,7 @@ export async function teacherApi<T>(path: string, options: TeacherApiOptions = {
     return await apiClient<T>(path, { ...options, headers, cache: "no-store" });
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) redirect(PORTAL_SESSION_EXPIRED_PATH);
+    redirectIfMaintenance(error);
     throw error;
   }
 }

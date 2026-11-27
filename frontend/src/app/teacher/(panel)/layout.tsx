@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { DrivePathProvider } from "@/components/layout/drive-path-context";
 import { InPageBackProvider } from "@/components/layout/in-page-back";
@@ -10,6 +11,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { LiveRefresh } from "@/features/live/live-refresh";
 import { PortalNavMemory } from "@/features/portal-nav/portal-nav-memory";
+import { UNDER_MAINTENANCE_PATH } from "@/features/settings/maintenance-redirect";
 import { PortalMaintenanceGate } from "@/features/settings/portal-maintenance-gate";
 import { verifyTeacherSession } from "@/features/teacher-auth/session";
 import { teacherNavGroups } from "@/features/teacher-portal/navigation";
@@ -29,11 +31,10 @@ export default async function TeacherPanelLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [teacher, cookieStore, settings] = await Promise.all([
-    verifyTeacherSession(),
-    cookies(),
-    getPublicSettings(),
-  ]);
+  const [cookieStore, settings] = await Promise.all([cookies(), getPublicSettings()]);
+  if (settings.maintenanceMode) redirect(UNDER_MAINTENANCE_PATH);
+
+  const teacher = await verifyTeacherSession();
   const defaultOpen = cookieStore.get(SIDEBAR_STATE_COOKIE)?.value !== "false";
 
   return (

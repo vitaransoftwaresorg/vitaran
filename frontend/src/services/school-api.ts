@@ -2,6 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { PORTAL_SESSION_EXPIRED_PATH, SCHOOL_SESSION_COOKIE } from "@/constants/auth";
+import { redirectIfMaintenance } from "@/features/settings/maintenance-redirect";
 import { ApiError, apiClient, buildApiUrl } from "@/services/api-client";
 
 type ApiInit = {
@@ -26,6 +27,7 @@ export async function schoolApi<T>(path: string, init: ApiInit = {}): Promise<T>
     });
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) redirect(PORTAL_SESSION_EXPIRED_PATH);
+    redirectIfMaintenance(error);
     throw error;
   }
 }

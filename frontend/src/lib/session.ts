@@ -1,6 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import { cookies } from "next/headers";
+import { redirectIfMaintenance } from "@/features/settings/maintenance-redirect";
 import { ApiError } from "@/services/api-client";
 
 type SessionConfig<T> = {
@@ -34,6 +35,7 @@ export function createSession<T>({ cookieName, path, fetchProfile }: SessionConf
       return await fetchProfile(token);
     } catch (error) {
       if (error instanceof ApiError && error.status === 401) return null;
+      redirectIfMaintenance(error);
       throw error;
     }
   });

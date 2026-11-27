@@ -543,8 +543,8 @@ model ResultSet {
   testId      String        @map("test_id") @db.VarChar(64)
   /// Ordinal test number (1–30).
   testNumber  Int           @map("test_number") @db.SmallInt
-  /// Schools only see published results.
-  published   Boolean       @default(false)
+  /// Schools only see published results. New sets default published (auto-publish).
+  published   Boolean       @default(true)
   publishedAt DateTime?     @map("published_at") @db.Timestamptz(3)
   createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -572,7 +572,7 @@ model ResultSheet {
   /// Original .xlsx bytes for download; never selected in list queries.
   data        Bytes
   /// Schools only see this class once published (set-level `published` is derived from sheets).
-  published   Boolean     @default(false)
+  published   Boolean     @default(true)
   publishedAt DateTime?   @map("published_at") @db.Timestamptz(3)
   createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)

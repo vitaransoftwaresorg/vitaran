@@ -32,7 +32,7 @@ import {
 import { RememberedNavLink } from "@/components/layout/remembered-nav-link";
 import { ADMIN_LOGOUT_PATH } from "@/constants/auth";
 import { broadcastAdminLogout } from "@/features/admin-auth/admin-session-guard";
-import { adminNavGroups, isNavItemActive } from "@/features/admin/navigation";
+import { adminNavGroupsFor, isNavItemActive } from "@/features/admin/navigation";
 import type { AdminProfile } from "@/types/auth";
 
 export function AdminSidebar({ admin }: { admin: AdminProfile }) {
@@ -40,6 +40,7 @@ export function AdminSidebar({ admin }: { admin: AdminProfile }) {
   const { isMobile, setOpenMobile } = useSidebar();
   const [signingOut, setSigningOut] = useState(false);
   const initials = admin.email.slice(0, 2).toUpperCase();
+  const navGroups = adminNavGroupsFor(admin);
 
   return (
     <Sidebar collapsible="icon" side={isMobile ? "right" : "left"}>
@@ -70,7 +71,7 @@ export function AdminSidebar({ admin }: { admin: AdminProfile }) {
       )}
 
       <SidebarContent>
-        {adminNavGroups.map((group) => (
+        {navGroups.map((group) => (
           <SidebarGroup key={group.label}>
             <SidebarGroupLabel className="text-brand-400">
               {group.label}

@@ -61,6 +61,17 @@ export const adminNavGroups: AdminNavGroup[] = [
   },
 ];
 
+/** Employee admins share the console but not platform settings. */
+export function adminNavGroupsFor(admin: { isRoot: boolean }): AdminNavGroup[] {
+  if (admin.isRoot) return adminNavGroups;
+  return adminNavGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => item.href !== "/admin/settings"),
+    }))
+    .filter((group) => group.items.length > 0);
+}
+
 const allItems = adminNavGroups.flatMap((group) => group.items);
 
 function isStudentAdminPath(pathname: string) {

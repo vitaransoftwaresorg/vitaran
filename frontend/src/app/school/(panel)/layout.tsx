@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { DrivePathProvider } from "@/components/layout/drive-path-context";
 import { HeadOfficeHeader } from "@/components/layout/head-office-header";
@@ -17,6 +18,7 @@ import { LiveRefresh } from "@/features/live/live-refresh";
 import { PortalNavMemory } from "@/features/portal-nav/portal-nav-memory";
 import { verifySchoolSession } from "@/features/school-auth/session";
 import { schoolNavGroups } from "@/features/school-portal/navigation";
+import { UNDER_MAINTENANCE_PATH } from "@/features/settings/maintenance-redirect";
 import { PortalMaintenanceGate } from "@/features/settings/portal-maintenance-gate";
 import { listHeadOfficeSchools } from "@/services/head-office-portal";
 import { getPublicSettings } from "@/services/settings";
@@ -34,13 +36,16 @@ export default async function SchoolPanelLayout({
   children,
 }: LayoutProps<"/school">) {
   const cookieStore = await cookies();
+  const settings = await getPublicSettings();
+  // Avoid rendering portal pages that call blocked APIs (refresh → 503 / not-found).
+  if (settings.maintenanceMode) redirect(UNDER_MAINTENANCE_PATH);
+
   const fromHeadOffice = cookieStore.has(HEAD_OFFICE_SESSION_COOKIE);
 
   if (fromHeadOffice) {
-    const [school, office, settings, schools] = await Promise.all([
+    const [school, office, schools] = await Promise.all([
       verifySchoolSession(),
       verifyHeadOfficeSession(),
-      getPublicSettings(),
       listHeadOfficeSchools(),
     ]);
     const schoolOptions = schools.map((row) => ({
@@ -91,7 +96,7 @@ export default async function SchoolPanelLayout({
     );
   }
 
-  const [school, settings] = await Promise.all([verifySchoolSession(), getPublicSettings()]);
+  const school = await verifySchoolSession();
   const defaultOpen = cookieStore.get(SIDEBAR_STATE_COOKIE)?.value !== "false";
 
   return (

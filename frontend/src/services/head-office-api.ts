@@ -2,6 +2,7 @@ import "server-only";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { HEAD_OFFICE_SESSION_COOKIE, PORTAL_SESSION_EXPIRED_PATH } from "@/constants/auth";
+import { redirectIfMaintenance } from "@/features/settings/maintenance-redirect";
 import { ApiError, apiClient } from "@/services/api-client";
 
 type ApiInit = {
@@ -26,6 +27,7 @@ export async function headOfficeApi<T>(path: string, init: ApiInit = {}): Promis
     });
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) redirect(PORTAL_SESSION_EXPIRED_PATH);
+    redirectIfMaintenance(error);
     throw error;
   }
 }
