@@ -11,7 +11,7 @@ export default async function AdminProgramsPage() {
   return (
     <>
       <PageHeader
-        description="Catalog of learning programs schools can enrol in."
+        description="Regular catalog programs. Customized schools enrol in these — they do not get their own program row."
         actions={
           <Link href="/admin/programs/new" className={cn(buttonVariants())}>
             Add program

@@ -29,12 +29,16 @@ import {
 import { capitalizeWords } from "@/features/schools/schema";
 import { programs as regularProgramCatalog } from "@/features/teachers-resources/content";
 import { cn } from "@/lib/utils";
+import type { HeadOfficeListItem } from "@/types/head-office";
 import type { SchoolOption } from "@/types/school";
 import {
   deleteCustomizedTeacherResourceAction,
+  deleteHeadOfficeCustomizedTeacherResourceAction,
   deleteRegularTeacherResourceAction,
   listCustomizedTeacherResourcesAction,
+  listHeadOfficeCustomizedTeacherResourcesAction,
   uploadCustomizedTeacherResourceAction,
+  uploadHeadOfficeCustomizedTeacherResourceAction,
   uploadRegularTeacherResourceAction,
   type RegularTeacherResourceRow,
   type TeacherResourceRow,
@@ -43,11 +47,13 @@ import { regularResourceSlots } from "./regular-resource-slots";
 
 type AdminTeacherResourcesBoardProps = {
   customizedSchools: SchoolOption[];
+  headOffices: HeadOfficeListItem[];
   initialRegular: RegularTeacherResourceRow[];
 };
 
 export function AdminTeacherResourcesBoard({
   customizedSchools,
+  headOffices,
   initialRegular,
 }: AdminTeacherResourcesBoardProps) {
   return (
@@ -65,7 +71,7 @@ export function AdminTeacherResourcesBoard({
         <RegularResourcesPanel initial={initialRegular} />
       </TabsContent>
       <TabsContent value="customized" className="space-y-4">
-        <CustomizedResourcesPanel schools={customizedSchools} />
+        <CustomizedResourcesPanel schools={customizedSchools} headOffices={headOffices} />
       </TabsContent>
     </Tabs>
   );
@@ -389,28 +395,71 @@ function offeringLabel(row: { code: string; name: string }) {
   return capitalizeWords(programLabel(row.code, row.name));
 }
 
-function CustomizedResourcesPanel({ schools }: { schools: SchoolOption[] }) {
+type CustomizedScope = "school" | "head-office";
+
+type CustomizedProgramOption = {
+  code: string;
+  name: string;
+  classLevels: number[];
+};
+
+function headOfficeProgramOptions(): CustomizedProgramOption[] {
+  const byCode = new Map<string, CustomizedProgramOption>();
+  for (const slot of regularResourceSlots()) {
+    const entry = byCode.get(slot.programCode) ?? {
+      code: slot.programCode,
+      name: slot.programTitle,
+      classLevels: [],
+    };
+    if (!entry.classLevels.includes(slot.classLevel)) {
+      entry.classLevels.push(slot.classLevel);
+    }
+    byCode.set(slot.programCode, entry);
+  }
+  return [...byCode.values()].map((row) => ({
+    ...row,
+    classLevels: [...row.classLevels].sort((a, b) => a - b),
+  }));
+}
+
+function CustomizedResourcesPanel({
+  schools,
+  headOffices,
+}: {
+  schools: SchoolOption[];
+  headOffices: HeadOfficeListItem[];
+}) {
+  const [scope, setScope] = useState<CustomizedScope>("school");
   const [schoolId, setSchoolId] = useState("");
+  const [headOfficeId, setHeadOfficeId] = useState("");
   const school = schools.find((row) => row.id === schoolId) ?? null;
-  const offerings = registeredOfferings(school);
+  const schoolOfferings = registeredOfferings(school);
+  const headOfficeOfferings = useMemo(() => headOfficeProgramOptions(), []);
+  const offerings = scope === "school" ? schoolOfferings : headOfficeOfferings;
   const [programCode, setProgramCode] = useState("");
   const [resources, setResources] = useState<TeacherResourceRow[]>([]);
   const [loading, setLoading] = useState(false);
+
+  const ownerId = scope === "school" ? schoolId : headOfficeId;
 
   useEffect(() => {
     if (!programCode) return;
     if (offerings.some((row) => row.code === programCode)) return;
     setProgramCode("");
-  }, [schoolId, offerings, programCode]);
+  }, [scope, ownerId, offerings, programCode]);
 
   useEffect(() => {
-    if (!schoolId) {
+    if (!ownerId) {
       setResources([]);
       return;
     }
     let live = true;
     setLoading(true);
-    void listCustomizedTeacherResourcesAction(schoolId).then((result) => {
+    const load =
+      scope === "school"
+        ? listCustomizedTeacherResourcesAction(ownerId)
+        : listHeadOfficeCustomizedTeacherResourcesAction(ownerId);
+    void load.then((result) => {
       if (!live) return;
       setLoading(false);
       if (!result.ok) {
@@ -423,18 +472,22 @@ function CustomizedResourcesPanel({ schools }: { schools: SchoolOption[] }) {
     return () => {
       live = false;
     };
-  }, [schoolId]);
+  }, [scope, ownerId]);
 
   const selectedProgram = offerings.find((row) => row.code === programCode) ?? null;
   const programItems = offerings.map((row) => ({
     value: row.code,
     label: offeringLabel(row),
   }));
+  const scopeItems = [
+    { value: "school", label: "School" },
+    { value: "head-office", label: "Head office" },
+  ];
 
-  if (schools.length === 0) {
+  if (schools.length === 0 && headOffices.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-neutral-300 bg-white px-4 py-10 text-center text-sm text-neutral-500">
-        No customized schools yet. Register a customized school first, then upload its teacher
+        No customized schools or head offices yet. Register one first, then upload teacher
         resources here.
       </div>
     );
@@ -444,38 +497,87 @@ function CustomizedResourcesPanel({ schools }: { schools: SchoolOption[] }) {
     <div className="space-y-4">
       <div>
         <p className="text-sm font-semibold text-neutral-950">Customized teacher resources</p>
-        <p className="mt-0.5 text-sm text-neutral-500">
-          Select school, then a regular catalog program registered for that school, and upload or
-          update PDFs by class and subject.
-        </p>
       </div>
 
-      <div className="grid max-w-2xl gap-3 sm:grid-cols-2">
+      <div className="grid max-w-3xl gap-3 sm:grid-cols-3">
         <div className="space-y-1.5">
-          <p className="text-xs font-semibold tracking-wider text-neutral-500 uppercase">
-            School
-          </p>
+          <p className="text-xs font-semibold tracking-wider text-neutral-500 uppercase">Upload for</p>
           <Select
-            items={schools.map((row) => ({ value: row.id, label: row.name }))}
-            value={schoolId || null}
+            items={scopeItems}
+            value={scope}
             onValueChange={(next) => {
-              if (!next) return;
-              setSchoolId(next);
+              if (next !== "school" && next !== "head-office") return;
+              setScope(next);
               setProgramCode("");
+              setResources([]);
             }}
           >
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select school" />
+              <SelectValue placeholder="Select scope" />
             </SelectTrigger>
             <SelectContent>
-              {schools.map((row) => (
-                <SelectItem key={row.id} value={row.id}>
-                  {row.name}
+              {scopeItems.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
         </div>
+
+        {scope === "school" ? (
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold tracking-wider text-neutral-500 uppercase">
+              School
+            </p>
+            <Select
+              items={schools.map((row) => ({ value: row.id, label: row.name }))}
+              value={schoolId || null}
+              onValueChange={(next) => {
+                if (!next) return;
+                setSchoolId(next);
+                setProgramCode("");
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select school" />
+              </SelectTrigger>
+              <SelectContent>
+                {schools.map((row) => (
+                  <SelectItem key={row.id} value={row.id}>
+                    {row.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            <p className="text-xs font-semibold tracking-wider text-neutral-500 uppercase">
+              Head office
+            </p>
+            <Select
+              items={headOffices.map((row) => ({ value: row.id, label: row.name }))}
+              value={headOfficeId || null}
+              onValueChange={(next) => {
+                if (!next) return;
+                setHeadOfficeId(next);
+                setProgramCode("");
+              }}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select head office" />
+              </SelectTrigger>
+              <SelectContent>
+                {headOffices.map((row) => (
+                  <SelectItem key={row.id} value={row.id}>
+                    {row.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         <div className="space-y-1.5">
           <p className="text-xs font-semibold tracking-wider text-neutral-500 uppercase">
@@ -488,7 +590,7 @@ function CustomizedResourcesPanel({ schools }: { schools: SchoolOption[] }) {
               if (next) setProgramCode(next);
             }}
           >
-            <SelectTrigger className="w-full" disabled={!schoolId || offerings.length === 0}>
+            <SelectTrigger className="w-full" disabled={!ownerId || offerings.length === 0}>
               <SelectValue placeholder="Select program" />
             </SelectTrigger>
             <SelectContent>
@@ -502,9 +604,9 @@ function CustomizedResourcesPanel({ schools }: { schools: SchoolOption[] }) {
         </div>
       </div>
 
-      {!schoolId ? (
+      {!ownerId ? (
         <div className="rounded-xl border border-dashed border-neutral-300 bg-white px-4 py-8 text-center text-sm text-neutral-500">
-          Select a school to continue.
+          {scope === "school" ? "Select a school to continue." : "Select a head office to continue."}
         </div>
       ) : loading ? (
         <div className="flex justify-center py-12">
@@ -512,8 +614,9 @@ function CustomizedResourcesPanel({ schools }: { schools: SchoolOption[] }) {
         </div>
       ) : offerings.length === 0 ? (
         <div className="rounded-xl border border-dashed border-neutral-300 bg-white px-4 py-8 text-center text-sm text-neutral-500">
-          This school has no regular catalog programs with classes yet. Enrol Advanced / Integrated
-          (or another regular program) on the school form first.
+          {scope === "school"
+            ? "This school has no regular catalog programs with classes yet. Enrol Advanced / Integrated (or another regular program) on the school form first."
+            : "No regular catalog programs available for head office uploads."}
         </div>
       ) : !selectedProgram ? (
         <div className="rounded-xl border border-dashed border-neutral-300 bg-white px-4 py-8 text-center text-sm text-neutral-500">
@@ -521,7 +624,8 @@ function CustomizedResourcesPanel({ schools }: { schools: SchoolOption[] }) {
         </div>
       ) : (
         <CustomizedUploadTable
-          schoolId={schoolId}
+          scope={scope}
+          ownerId={ownerId}
           program={selectedProgram}
           resources={resources}
           onChange={setResources}
@@ -532,13 +636,15 @@ function CustomizedResourcesPanel({ schools }: { schools: SchoolOption[] }) {
 }
 
 function CustomizedUploadTable({
-  schoolId,
+  scope,
+  ownerId,
   program,
   resources,
   onChange,
 }: {
-  schoolId: string;
-  program: SchoolOption["offerings"][number];
+  scope: CustomizedScope;
+  ownerId: string;
+  program: CustomizedProgramOption;
   resources: TeacherResourceRow[];
   onChange: (next: TeacherResourceRow[]) => void;
 }) {
@@ -561,7 +667,7 @@ function CustomizedUploadTable({
   if (rows.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-neutral-300 bg-white px-4 py-8 text-center text-sm text-neutral-500">
-        No classes enrolled for this program yet. Add classes on the school form first.
+        No classes available for this program yet.
       </div>
     );
   }
@@ -574,7 +680,8 @@ function CustomizedUploadTable({
           <CustomizedResourceTableRow
             key={`${program.code}-${row.classLevel}-${row.subject}`}
             serial={index + 1}
-            schoolId={schoolId}
+            scope={scope}
+            ownerId={ownerId}
             programCode={program.code}
             classLevel={row.classLevel}
             subject={row.subject}
@@ -613,7 +720,8 @@ function CustomizedUploadTable({
 
 function CustomizedResourceTableRow({
   serial,
-  schoolId,
+  scope,
+  ownerId,
   programCode,
   classLevel,
   subject,
@@ -622,7 +730,8 @@ function CustomizedResourceTableRow({
   onDeleted,
 }: {
   serial: number;
-  schoolId: string;
+  scope: CustomizedScope;
+  ownerId: string;
   programCode: string;
   classLevel: number;
   subject: string;
@@ -649,13 +758,22 @@ function CustomizedResourceTableRow({
             startTransition(async () => {
               const form = new FormData();
               form.append("file", file);
-              const result = await uploadCustomizedTeacherResourceAction(
-                schoolId,
-                programCode,
-                classLevel,
-                subject,
-                form,
-              );
+              const result =
+                scope === "school"
+                  ? await uploadCustomizedTeacherResourceAction(
+                      ownerId,
+                      programCode,
+                      classLevel,
+                      subject,
+                      form,
+                    )
+                  : await uploadHeadOfficeCustomizedTeacherResourceAction(
+                      ownerId,
+                      programCode,
+                      classLevel,
+                      subject,
+                      form,
+                    );
               if (!result.ok) {
                 toast.error(result.message);
                 return;
@@ -670,12 +788,20 @@ function CustomizedResourceTableRow({
             existing
               ? () => {
                   startTransition(async () => {
-                    const result = await deleteCustomizedTeacherResourceAction(
-                      schoolId,
-                      programCode,
-                      classLevel,
-                      subject,
-                    );
+                    const result =
+                      scope === "school"
+                        ? await deleteCustomizedTeacherResourceAction(
+                            ownerId,
+                            programCode,
+                            classLevel,
+                            subject,
+                          )
+                        : await deleteHeadOfficeCustomizedTeacherResourceAction(
+                            ownerId,
+                            programCode,
+                            classLevel,
+                            subject,
+                          );
                     if (!result.ok) {
                       toast.error(result.message);
                       return;

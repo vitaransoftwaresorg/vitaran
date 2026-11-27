@@ -15,7 +15,7 @@ const CATALOG_PREFERENCE = [
   "Integrated Program",
   "New Olympiad Program",
   "Olympiad Program",
-  "Olympiad Program Class 1 to 5",
+  "Pre-Olympiad Program",
 ];
 
 export type PortalProgram = ProgramContent;

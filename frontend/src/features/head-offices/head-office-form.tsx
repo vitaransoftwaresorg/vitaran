@@ -362,9 +362,6 @@ export function HeadOfficeForm({ office, nextCode, schools, action }: HeadOffice
           }}
           required
         />
-        <p className="text-xs text-neutral-500">
-          Portal login email — must not already be used by a school.
-        </p>
         {fieldError("contactEmail")}
       </Field>
       <Field data-invalid={invalid("password")} className="md:col-span-2">
@@ -385,9 +382,6 @@ export function HeadOfficeForm({ office, nextCode, schools, action }: HeadOffice
           }}
           required
         />
-        <p className="text-xs text-neutral-500">
-          Contact email/phone + this password unlock the head office portal.
-        </p>
         {fieldError("password")}
       </Field>
       <Field data-invalid={invalid("addressLine")} className="md:col-span-2">

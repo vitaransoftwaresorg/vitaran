@@ -56,7 +56,7 @@ export const SCHOOL_FORM_STEPS = [
 export const SCHOOL_FORM_RESOURCES_STEP = {
   id: "resources",
   title: "Teacher resources",
-  fields: [] as const satisfies readonly SchoolFormField[],
+  fields: ["teacherResourceSourceSchoolId"] as const satisfies readonly SchoolFormField[],
 } as const satisfies SchoolFormStep;
 
 export const STEP_SEARCH_PARAM = "step";

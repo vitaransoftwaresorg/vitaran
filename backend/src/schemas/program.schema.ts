@@ -6,7 +6,8 @@ const CLASS = z.number().int().min(1).max(12);
 
 const programFields = z.object({
   name: z.string().trim().min(2).max(120),
-  type: z.enum(SchoolType).default(SchoolType.REGULAR),
+  /** Catalog programs are regular only — customized schools enrol in these, they do not get their own catalog row. */
+  type: z.literal(SchoolType.REGULAR).default(SchoolType.REGULAR),
   year: z.number().int().min(2020).max(2100),
   classFrom: CLASS,
   classTo: CLASS,
@@ -28,6 +29,7 @@ export const createProgramSchema = programFields.refine(classRangeOk, {
 });
 
 export const updateProgramSchema = programFields
+  .omit({ type: true })
   .partial()
   .refine((value) => Object.keys(value).length > 0, {
     message: "At least one field is required",

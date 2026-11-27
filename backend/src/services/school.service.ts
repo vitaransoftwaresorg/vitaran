@@ -91,6 +91,7 @@ export type SchoolDto = SchoolSummaryDto & {
   accountEmail: string | null;
   accountPhone: string | null;
   headOfficeId: string | null;
+  teacherResourceSourceSchoolId: string | null;
   schoolPrograms: SchoolProgramDto[];
   /** Convenience: catalog codes the school is enrolled in. */
   programCodes: string[];
@@ -123,6 +124,40 @@ async function assertHeadOfficeExists(headOfficeId: string) {
   if (!office) {
     throw new AppError(400, "Head office not found", [
       { path: ["headOfficeId"], message: "Select a valid head office" },
+    ]);
+  }
+}
+
+async function assertTeacherResourceSourceSchool(
+  sourceSchoolId: string,
+  options: { schoolId?: string; schoolType: SchoolType },
+) {
+  if (options.schoolType !== SchoolType.CUSTOMIZED) {
+    throw new AppError(400, "Only customized schools can reuse teacher resources", [
+      {
+        path: ["teacherResourceSourceSchoolId"],
+        message: "Only customized schools can reuse another school's teacher resources",
+      },
+    ]);
+  }
+  if (options.schoolId && sourceSchoolId === options.schoolId) {
+    throw new AppError(400, "A school cannot reuse its own teacher resources", [
+      {
+        path: ["teacherResourceSourceSchoolId"],
+        message: "Select a different customized school",
+      },
+    ]);
+  }
+  const source = await prisma.school.findUnique({
+    where: { id: sourceSchoolId },
+    select: { id: true, type: true },
+  });
+  if (!source || source.type !== SchoolType.CUSTOMIZED) {
+    throw new AppError(400, "Source school not found", [
+      {
+        path: ["teacherResourceSourceSchoolId"],
+        message: "Select a valid customized school",
+      },
     ]);
   }
 }
@@ -193,6 +228,7 @@ export function toSchoolDto(school: SchoolWithPrograms): SchoolDto {
     accountEmail: school.accountEmail,
     accountPhone: school.accountPhone,
     headOfficeId: school.headOfficeId,
+    teacherResourceSourceSchoolId: school.teacherResourceSourceSchoolId,
     schoolPrograms,
     programCodes: schoolPrograms.map((row) => row.programCode),
     updatedAt: school.updatedAt.toISOString(),
@@ -242,6 +278,7 @@ export function toSchoolSessionAccountDto(school: SchoolSessionRow): SchoolAccou
     accountEmail: school.accountEmail,
     accountPhone: null,
     headOfficeId: null,
+    teacherResourceSourceSchoolId: null,
     schoolPrograms,
     programCodes: schoolPrograms.map((row) => row.programCode),
     hasLogo: Boolean(school.logoMimeType),
@@ -408,6 +445,7 @@ export async function createSchool({
   customProgram: _customProgram,
   code,
   headOfficeId,
+  teacherResourceSourceSchoolId,
   ...input
 }: CreateSchoolInput) {
   await assertAccountAvailable(input);
@@ -416,6 +454,11 @@ export async function createSchool({
   await assertProgramOfferings(offerings);
   const schoolCode = await assertSchoolCodeAvailable(code);
   if (headOfficeId) await assertHeadOfficeExists(headOfficeId);
+  if (teacherResourceSourceSchoolId) {
+    await assertTeacherResourceSourceSchool(teacherResourceSourceSchoolId, {
+      schoolType: input.type,
+    });
+  }
 
   const school = toSchoolDto(
     await schoolRepository.createSchool({
@@ -423,6 +466,13 @@ export async function createSchool({
       code: schoolCode,
       programs: offerings,
       ...(headOfficeId ? { headOffice: { connect: { id: headOfficeId } } } : {}),
+      ...(teacherResourceSourceSchoolId
+        ? {
+            teacherResourceSourceSchool: {
+              connect: { id: teacherResourceSourceSchoolId },
+            },
+          }
+        : {}),
       ...(await sealPassword(password)),
     }),
   );
@@ -450,6 +500,7 @@ export async function updateSchool(
     customProgram: _customProgram,
     code,
     headOfficeId,
+    teacherResourceSourceSchoolId,
     ...input
   }: UpdateSchoolInput,
 ) {
@@ -468,6 +519,30 @@ export async function updateSchool(
   const seal = password && (await passwordChanged(id, password));
   const schoolCode = code !== undefined ? await assertSchoolCodeAvailable(code, id) : undefined;
   if (headOfficeId) await assertHeadOfficeExists(headOfficeId);
+  if (teacherResourceSourceSchoolId) {
+    await assertTeacherResourceSourceSchool(teacherResourceSourceSchoolId, {
+      schoolId: id,
+      schoolType: nextType,
+    });
+  } else if (
+    teacherResourceSourceSchoolId === null &&
+    nextType !== SchoolType.CUSTOMIZED &&
+    current.teacherResourceSourceSchoolId
+  ) {
+    // Clearing when switching away from customized is fine via null below.
+  } else if (
+    teacherResourceSourceSchoolId === undefined &&
+    current.teacherResourceSourceSchoolId &&
+    nextType !== SchoolType.CUSTOMIZED
+  ) {
+    // Drop reuse link when school is no longer customized.
+  }
+
+  const clearSourceOnTypeChange =
+    nextType !== SchoolType.CUSTOMIZED && Boolean(current.teacherResourceSourceSchoolId);
+  const nextSourceId = clearSourceOnTypeChange
+    ? null
+    : teacherResourceSourceSchoolId;
 
   const previousOfferings: OfferingSnapshot[] | null = offerings
     ? current.schoolPrograms.map((row) => ({
@@ -489,6 +564,15 @@ export async function updateSchool(
       ? headOfficeId
         ? { headOffice: { connect: { id: headOfficeId } } }
         : { headOffice: { disconnect: true } }
+      : {}),
+    ...(nextSourceId !== undefined
+      ? nextSourceId
+        ? {
+            teacherResourceSourceSchool: {
+              connect: { id: nextSourceId },
+            },
+          }
+        : { teacherResourceSourceSchool: { disconnect: true } }
       : {}),
     ...(seal && password ? await sealPassword(password) : {}),
   });

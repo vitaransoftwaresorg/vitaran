@@ -88,6 +88,7 @@ model HeadOffice {
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
   schools       School[]
+  teacherResources HeadOfficeTeacherResource[]
 
   @@index([createdAt])
   @@index([accountPhone])
@@ -125,6 +126,10 @@ model School {
   /// Optional head office this school belongs to.
   headOfficeId      String?      @map("head_office_id") @db.Uuid
   headOffice        HeadOffice?  @relation(fields: [headOfficeId], references: [id], onDelete: SetNull)
+  /// Optional other customized school whose teacher PDFs this school reuses.
+  teacherResourceSourceSchoolId String? @map("teacher_resource_source_school_id") @db.Uuid
+  teacherResourceSourceSchool   School? @relation("TeacherResourceSource", fields: [teacherResourceSourceSchoolId], references: [id], onDelete: SetNull)
+  teacherResourceLinkedSchools  School[] @relation("TeacherResourceSource")
   createdAt         DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
   answerKeys        AnswerKey[]
@@ -143,6 +148,7 @@ model School {
   @@index([board])
   @@index([createdAt])
   @@index([headOfficeId])
+  @@index([teacherResourceSourceSchoolId])
   @@map("schools")
 }
 
@@ -167,6 +173,27 @@ model SchoolStudentResource {
   @@index([schoolId])
   @@index([schoolId, programCode])
   @@map("school_student_resources")
+}
+
+/// Head office × program × class × subject PDF — used by all linked customized schools.
+model HeadOfficeTeacherResource {
+  id           String     @id @default(uuid()) @db.Uuid
+  headOfficeId String     @map("head_office_id") @db.Uuid
+  headOffice   HeadOffice @relation(fields: [headOfficeId], references: [id], onDelete: Cascade)
+  programCode  String     @map("program_code") @db.VarChar(64)
+  classLevel   Int        @map("class_level") @db.SmallInt
+  subject      String     @db.VarChar(64)
+  fileName     String     @map("file_name") @db.VarChar(255)
+  fileSize     Int        @map("file_size")
+  mimeType     String     @map("mime_type") @db.VarChar(64)
+  data         Bytes
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([headOfficeId, programCode, classLevel, subject])
+  @@index([headOfficeId])
+  @@index([headOfficeId, programCode])
+  @@map("head_office_teacher_resources")
 }
 
 /// Shared regular teacher solution books (program × class × subject × volume).

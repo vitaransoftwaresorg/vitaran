@@ -9,13 +9,17 @@ import {
   type RegularTeacherResource,
 } from "@/services/regular-teacher-resources";
 import {
+  deleteHeadOfficeTeacherResource,
   deleteSchoolStudentResource,
+  listHeadOfficeTeacherResources,
   listSchoolStudentResources,
+  uploadHeadOfficeTeacherResource,
   uploadSchoolStudentResource,
+  type HeadOfficeTeacherResource,
   type SchoolStudentResource,
 } from "@/services/schools";
 
-export type TeacherResourceRow = SchoolStudentResource;
+export type TeacherResourceRow = SchoolStudentResource | HeadOfficeTeacherResource;
 export type RegularTeacherResourceRow = RegularTeacherResource;
 
 function revalidateTeacherResourceViews() {
@@ -135,6 +139,69 @@ export async function deleteCustomizedTeacherResourceAction(
 ) {
   try {
     await deleteSchoolStudentResource(schoolId, programCode, classLevel, subject);
+    revalidatePath("/admin/teacher-resources");
+    revalidatePath("/school/resources");
+    revalidatePath("/teacher/resources");
+    return { ok: true as const };
+  } catch (error) {
+    return {
+      ok: false as const,
+      message: error instanceof ApiError ? error.message : "Could not remove this PDF.",
+    };
+  }
+}
+
+export async function listHeadOfficeCustomizedTeacherResourcesAction(headOfficeId: string) {
+  try {
+    const resources = await listHeadOfficeTeacherResources(headOfficeId);
+    return { ok: true as const, resources };
+  } catch (error) {
+    return {
+      ok: false as const,
+      message: error instanceof ApiError ? error.message : "Could not load teacher resources.",
+    };
+  }
+}
+
+export async function uploadHeadOfficeCustomizedTeacherResourceAction(
+  headOfficeId: string,
+  programCode: string,
+  classLevel: number,
+  subject: string,
+  formData: FormData,
+) {
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size <= 0) {
+    return { ok: false as const, message: "Choose a PDF to upload." };
+  }
+  try {
+    const resource = await uploadHeadOfficeTeacherResource(
+      headOfficeId,
+      programCode,
+      classLevel,
+      subject,
+      file,
+    );
+    revalidatePath("/admin/teacher-resources");
+    revalidatePath("/school/resources");
+    revalidatePath("/teacher/resources");
+    return { ok: true as const, resource };
+  } catch (error) {
+    return {
+      ok: false as const,
+      message: error instanceof ApiError ? error.message : "Could not upload this PDF.",
+    };
+  }
+}
+
+export async function deleteHeadOfficeCustomizedTeacherResourceAction(
+  headOfficeId: string,
+  programCode: string,
+  classLevel: number,
+  subject: string,
+) {
+  try {
+    await deleteHeadOfficeTeacherResource(headOfficeId, programCode, classLevel, subject);
     revalidatePath("/admin/teacher-resources");
     revalidatePath("/school/resources");
     revalidatePath("/teacher/resources");

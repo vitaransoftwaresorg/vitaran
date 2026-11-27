@@ -58,7 +58,8 @@ export async function createProgram(input: CreateProgramInput) {
     await programRepository.createProgram({
       code,
       name: input.name,
-      type: input.type,
+      // Always regular — customized schools enrol here; never create per-school catalog rows.
+      type: "REGULAR",
       year: input.year,
       classFrom: input.classFrom,
       classTo: input.classTo,
@@ -89,7 +90,6 @@ export async function updateProgram(id: string, input: UpdateProgramInput) {
 
   const updated = await programRepository.updateProgram(id, {
     name: input.name,
-    type: input.type,
     year: input.year,
     classFrom: input.classFrom,
     classTo: input.classTo,

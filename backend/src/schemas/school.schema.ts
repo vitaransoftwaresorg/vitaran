@@ -91,6 +91,8 @@ const schoolFields = {
   accountPhone: phone,
   /** Optional regional / corporate head office. */
   headOfficeId: z.uuid().nullable().optional(),
+  /** Optional other customized school whose teacher PDFs this school reuses. */
+  teacherResourceSourceSchoolId: z.uuid().nullable().optional(),
 };
 
 export const createSchoolSchema = z

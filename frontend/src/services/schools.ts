@@ -158,6 +158,55 @@ export function deleteSchoolStudentResource(
   );
 }
 
+export type HeadOfficeTeacherResource = {
+  id: string;
+  headOfficeId: string;
+  programCode: string;
+  classLevel: number;
+  subject: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function listHeadOfficeTeacherResources(headOfficeId: string) {
+  return adminApi<HeadOfficeTeacherResource[]>(
+    `/head-offices/${encodeURIComponent(headOfficeId)}/teacher-resources`,
+  );
+}
+
+export function uploadHeadOfficeTeacherResource(
+  headOfficeId: string,
+  programCode: string,
+  classLevel: number,
+  subject: string,
+  file: File,
+) {
+  const body = new FormData();
+  body.append("file", file);
+  body.append("programCode", programCode);
+  body.append("classLevel", String(classLevel));
+  body.append("subject", subject);
+  return adminApi<HeadOfficeTeacherResource>(
+    `/head-offices/${encodeURIComponent(headOfficeId)}/teacher-resources`,
+    { method: "PUT", body },
+  );
+}
+
+export function deleteHeadOfficeTeacherResource(
+  headOfficeId: string,
+  programCode: string,
+  classLevel: number,
+  subject: string,
+) {
+  return adminApi<void>(
+    `/head-offices/${encodeURIComponent(headOfficeId)}/teacher-resources/${encodeURIComponent(programCode)}/${classLevel}/${encodeURIComponent(subject)}`,
+    { method: "DELETE" },
+  );
+}
+
 export function deleteSchoolLogo(id: string) {
   return adminApi<SchoolDetail>(`/schools/${encodeURIComponent(id)}/logo`, {
     method: "DELETE",

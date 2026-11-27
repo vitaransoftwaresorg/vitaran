@@ -18,7 +18,7 @@ export const programs: ProgramContent[] = [
   { id: "ADVANCED", icon: TrendingUp, title: "New Advanced Program" },
   { id: "REVISED_ADVANCED", icon: RefreshCw, title: "Revised Advanced Program" },
   { id: "OLYMPIAD", icon: Trophy, title: "New Olympiad Program" },
-  { id: "OLYMPIAD_PRIMARY", icon: Medal, title: "Olympiad Program Class 1 to 5" },
+  { id: "OLYMPIAD_PRIMARY", icon: Medal, title: "Pre-Olympiad Program" },
   /** Classic Integrated — PDFs under /solution-books/classic-integrated/ */
   { id: "INTEGRATED_CLASSIC", icon: Layers, title: "Integrated Program" },
   /** Classic Advanced — PDFs under /solution-books/classic-advanced/ */

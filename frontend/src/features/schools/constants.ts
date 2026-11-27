@@ -25,7 +25,7 @@ export const PROGRAM_LABELS: Record<string, string> = {
   ADVANCED: "New Advanced Program",
   REVISED_ADVANCED: "Revised Advanced Program",
   OLYMPIAD: "New Olympiad Program",
-  OLYMPIAD_PRIMARY: "Olympiad Program Class 1 to 5",
+  OLYMPIAD_PRIMARY: "Pre-Olympiad Program",
   NEWINTEGRATED: "New Integrated Program",
   NEWADVANCED: "New Advanced Program",
   NEWOLYMPIAD: "New Olympiad Program",

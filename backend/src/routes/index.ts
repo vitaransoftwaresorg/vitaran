@@ -30,6 +30,7 @@ import {
   schoolStudentResourceRouter,
   teacherStudentResourceRouter,
 } from "./school-student-resource.routes.js";
+import { adminHeadOfficeTeacherResourceRouter } from "./head-office-teacher-resource.routes.js";
 import {
   adminRegularTeacherResourceRouter,
   publicRegularTeacherResourceRouter,
@@ -70,6 +71,7 @@ apiRouter.use("/students", adminStudentRouter);
 apiRouter.use("/programs", programRouter);
 apiRouter.use("/catalog/programs", programCatalogRouter);
 apiRouter.use("/head-offices", headOfficeRouter);
+apiRouter.use("/head-offices/:id/teacher-resources", adminHeadOfficeTeacherResourceRouter);
 apiRouter.use("/head-office", blockIfMaintenance, headOfficePortalRouter);
 apiRouter.use("/teachers", teacherRouter);
 apiRouter.use("/answer-keys", answerKeyRouter);

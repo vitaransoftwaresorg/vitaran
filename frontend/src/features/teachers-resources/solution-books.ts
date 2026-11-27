@@ -161,7 +161,7 @@ export const solutionBooks: Record<string, SolutionBook[]> = {
       { subject: "Biology", grade: 7, volume: 2, href: "/solution-books/olympiad/biology/class-7-volume-2.pdf" },
       { subject: "Biology", grade: 8, volume: 2, href: "/solution-books/olympiad/biology/class-8-volume-2.pdf" },
   ],
-  "Olympiad Program Class 1 to 5": [
+  "Pre-Olympiad Program": [
       { subject: "Mathematics", grade: 1, href: "/solution-books/olympiad-class-1-5/mathematics/class-1.pdf" },
       { subject: "Mathematics", grade: 2, href: "/solution-books/olympiad-class-1-5/mathematics/class-2.pdf" },
       { subject: "Mathematics", grade: 3, href: "/solution-books/olympiad-class-1-5/mathematics/class-3.pdf" },

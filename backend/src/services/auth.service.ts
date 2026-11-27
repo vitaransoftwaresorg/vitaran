@@ -6,6 +6,7 @@ import * as adminOperatorRepository from "../repositories/admin-operator.reposit
 import type { LoginInput } from "../schemas/auth.schema.js";
 import { AppError } from "../utils/app-error.js";
 import { verifyPassword } from "../utils/password.js";
+import * as settingsService from "./settings.service.js";
 
 const JWT_ALGORITHM = "HS256";
 const JWT_ISSUER = "vitaran-api";
@@ -123,6 +124,14 @@ export async function loginAdmin(input: LoginInput): Promise<LoginResult> {
   }
   if (operator.status !== AdminOperatorStatus.ACTIVE) {
     throw invalidCredentials();
+  }
+
+  const { maintenanceMode } = await settingsService.getPublicSettings();
+  if (maintenanceMode) {
+    throw new AppError(
+      503,
+      "Vitaran Learning is under maintenance. Please try again shortly.",
+    );
   }
 
   const admin: AdminProfile = {

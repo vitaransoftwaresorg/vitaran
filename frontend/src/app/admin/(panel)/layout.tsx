@@ -12,6 +12,8 @@ import { verifyAdminSession } from "@/features/admin-auth/session";
 import { adminNavGroups } from "@/features/admin/navigation";
 import { LiveRefresh } from "@/features/live/live-refresh";
 import { PortalNavMemory } from "@/features/portal-nav/portal-nav-memory";
+import { EmployeeMaintenanceGate } from "@/features/settings/employee-maintenance-gate";
+import { getPublicSettings } from "@/services/settings";
 
 const ADMIN_NAV_ROOTS = adminNavGroups.flatMap((group) => group.items.map((item) => item.href));
 
@@ -23,9 +25,10 @@ export const revalidate = 0;
 export default async function AdminPanelLayout({
   children,
 }: LayoutProps<"/admin">) {
-  const [admin, cookieStore] = await Promise.all([
+  const [admin, cookieStore, settings] = await Promise.all([
     verifyAdminSession(),
     cookies(),
+    getPublicSettings(),
   ]);
   const defaultOpen = cookieStore.get(SIDEBAR_STATE_COOKIE)?.value !== "false";
 
@@ -48,14 +51,21 @@ export default async function AdminPanelLayout({
             <SidebarInset className="h-dvh min-h-0 min-w-0 overflow-hidden bg-neutral-50">
               <AdminHeader />
               <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden p-3 sm:p-5 lg:px-6 lg:py-6">
-                <AdminPageBack />
-                <Suspense fallback={null}>
-                  <PortalNavMemory roots={ADMIN_NAV_ROOTS} />
-                </Suspense>
-                <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
-                  {/* null fallback: keep the current table visible during soft refresh (toggles/publish). */}
-                  <Suspense fallback={null}>{children}</Suspense>
-                </div>
+                <EmployeeMaintenanceGate
+                  isRoot={admin.isRoot}
+                  initialMaintenance={settings.maintenanceMode}
+                >
+                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                    <AdminPageBack />
+                    <Suspense fallback={null}>
+                      <PortalNavMemory roots={ADMIN_NAV_ROOTS} />
+                    </Suspense>
+                    <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
+                      {/* null fallback: keep the current table visible during soft refresh (toggles/publish). */}
+                      <Suspense fallback={null}>{children}</Suspense>
+                    </div>
+                  </div>
+                </EmployeeMaintenanceGate>
               </div>
             </SidebarInset>
           </SidebarProvider>

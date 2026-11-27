@@ -75,6 +75,7 @@ export type School = SchoolSummary & {
   accountEmail: string | null;
   accountPhone: string | null;
   headOfficeId: string | null;
+  teacherResourceSourceSchoolId: string | null;
   hasLogo: boolean;
   updatedAt: string;
 };
@@ -104,6 +105,7 @@ export type SchoolInput = Omit<
   | "programCodes"
   | "hasLogo"
   | "headOfficeId"
+  | "teacherResourceSourceSchoolId"
 > & {
   /** School ID shown as VLS-XXXX (e.g. VLS-0018). */
   code: string;
@@ -114,6 +116,8 @@ export type SchoolInput = Omit<
   customProgram?: CustomProgramInput;
   /** Optional head office assignment. */
   headOfficeId?: string | null;
+  /** Optional other customized school whose teacher PDFs this school reuses. */
+  teacherResourceSourceSchoolId?: string | null;
   password?: string;
 };
 

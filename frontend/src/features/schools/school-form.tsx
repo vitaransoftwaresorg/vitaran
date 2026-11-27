@@ -37,6 +37,7 @@ import {
   SCHOOL_STATUSES,
   SCHOOL_TYPES,
   type SchoolDetail,
+  type SchoolOption,
   type SchoolType,
   type Subject,
 } from "@/types/school";
@@ -81,7 +82,11 @@ import {
   resolveInitialStep,
   schoolFormSteps,
 } from "./form-steps";
-import { StudentResourcesStep } from "./student-resources-step";
+import {
+  RESOURCE_SOURCE_HEAD_OFFICE,
+  RESOURCE_SOURCE_OWN,
+  StudentResourcesStep,
+} from "./student-resources-step";
 import { clearSchoolDraft, saveSchoolDraft, useSchoolDraft } from "./school-draft";
 import { HintedInput } from "./hinted-input";
 import { LogoCropper } from "./logo-cropper";
@@ -120,6 +125,8 @@ type SchoolFormProps = {
   school?: SchoolDetail;
   catalog: LearningProgram[];
   headOffices?: HeadOfficeListItem[];
+  /** Other customized schools — used to reuse teacher resources on registration. */
+  resourceSourceSchools?: SchoolOption[];
   /** Existing classes on edit; register keeps new classes until Submit. */
   classesPanel?: SchoolClassesPanelData;
 };
@@ -200,6 +207,7 @@ function toFormValues(school?: SchoolDetail): SchoolFormValues {
       offerings: [],
       customClasses: [],
       headOfficeId: HEAD_OFFICE_NONE,
+      teacherResourceSourceSchoolId: HEAD_OFFICE_NONE,
     };
   }
 
@@ -234,10 +242,17 @@ function toFormValues(school?: SchoolDetail): SchoolFormValues {
     accountPhone: school.accountPhone ?? "",
     password: school.password ?? "",
     headOfficeId: school.headOfficeId ?? HEAD_OFFICE_NONE,
+    teacherResourceSourceSchoolId: school.teacherResourceSourceSchoolId ?? HEAD_OFFICE_NONE,
   };
 }
 
-export function SchoolForm({ school, catalog, headOffices = [], classesPanel }: SchoolFormProps) {
+export function SchoolForm({
+  school,
+  catalog,
+  headOffices = [],
+  resourceSourceSchools = [],
+  classesPanel,
+}: SchoolFormProps) {
   const router = useRouter();
   const keepDraft = !school;
   const draft = useSchoolDraft(keepDraft);
@@ -273,6 +288,7 @@ export function SchoolForm({ school, catalog, headOffices = [], classesPanel }: 
       logoVersion={school?.updatedAt}
       catalog={catalog}
       headOffices={headOffices}
+      resourceSourceSchools={resourceSourceSchools}
       schoolPrograms={school?.schoolPrograms}
       classesPanel={classesPanel}
       action={formAction}
@@ -298,6 +314,7 @@ type SchoolFormWizardProps = {
   logoVersion?: string;
   catalog: LearningProgram[];
   headOffices?: HeadOfficeListItem[];
+  resourceSourceSchools?: SchoolOption[];
   schoolPrograms?: SchoolDetail["schoolPrograms"];
   classesPanel?: SchoolClassesPanelData;
   action: (formData: FormData) => void;
@@ -324,6 +341,7 @@ function SchoolFormWizard({
   logoVersion,
   catalog,
   headOffices = [],
+  resourceSourceSchools = [],
   schoolPrograms = [],
   classesPanel,
   action,
@@ -350,6 +368,18 @@ function SchoolFormWizard({
   const [schoolType, setSchoolType] = useState<SchoolType>(
     initialValues.type === "CUSTOMIZED" ? "CUSTOMIZED" : "REGULAR",
   );
+  const [headOfficeId, setHeadOfficeId] = useState(
+    () => initialValues.headOfficeId || HEAD_OFFICE_NONE,
+  );
+  const [resourceSourceSchoolId, setResourceSourceSchoolId] = useState(() => {
+    const saved = initialValues.teacherResourceSourceSchoolId;
+    if (saved && saved !== HEAD_OFFICE_NONE && saved !== RESOURCE_SOURCE_OWN) return saved;
+    const initialHeadOffice = initialValues.headOfficeId || HEAD_OFFICE_NONE;
+    if (initialHeadOffice && initialHeadOffice !== HEAD_OFFICE_NONE) {
+      return RESOURCE_SOURCE_HEAD_OFFICE;
+    }
+    return RESOURCE_SOURCE_OWN;
+  });
   const [customProgramName, setCustomProgramName] = useState(
     () => (initialValues.customProgramName ?? "").trim(),
   );
@@ -1001,8 +1031,25 @@ function SchoolFormWizard({
               <Select
                 name="headOfficeId"
                 items={headOfficeItems}
-                defaultValue={values.headOfficeId || HEAD_OFFICE_NONE}
-                onValueChange={saveDraftSoon}
+                value={headOfficeId}
+                onValueChange={(next) => {
+                  if (!next) return;
+                  setHeadOfficeId(next);
+                  setResourceSourceSchoolId((current) => {
+                    const pickingSchool =
+                      current !== RESOURCE_SOURCE_OWN &&
+                      current !== RESOURCE_SOURCE_HEAD_OFFICE &&
+                      Boolean(current);
+                    if (next === HEAD_OFFICE_NONE) {
+                      return current === RESOURCE_SOURCE_HEAD_OFFICE
+                        ? RESOURCE_SOURCE_OWN
+                        : current;
+                    }
+                    // Default resource source to the selected head office.
+                    return pickingSchool ? current : RESOURCE_SOURCE_HEAD_OFFICE;
+                  });
+                  saveDraftSoon();
+                }}
               >
                 <SelectTrigger
                   id="headOfficeId"
@@ -1269,6 +1316,22 @@ function SchoolFormWizard({
             {!isEdit && schoolType === "CUSTOMIZED" ? (
               <div {...panel(3)}>
                 <StudentResourcesStep
+                  sourceSchools={resourceSourceSchools.filter((row) => row.id !== schoolId)}
+                  sourceSchoolId={resourceSourceSchoolId}
+                  headOffice={
+                    headOfficeId && headOfficeId !== HEAD_OFFICE_NONE
+                      ? {
+                          id: headOfficeId,
+                          name:
+                            headOffices.find((row) => row.id === headOfficeId)?.name ??
+                            "Head office",
+                        }
+                      : null
+                  }
+                  onSourceSchoolChange={(next) => {
+                    setResourceSourceSchoolId(next ?? RESOURCE_SOURCE_OWN);
+                    saveDraftSoon();
+                  }}
                   programs={(() => {
                     // Resources use regular catalog program names only — not the school's own custom program.
                     const byProgram = new Map<string, { programName: string; levels: Set<number> }>();
@@ -1324,6 +1387,17 @@ function SchoolFormWizard({
             {offerings.map((token) => (
               <input key={token} type="hidden" name="offerings" value={token} />
             ))}
+            {isEdit || schoolType !== "CUSTOMIZED" ? (
+              <input
+                type="hidden"
+                name="teacherResourceSourceSchoolId"
+                value={
+                  resourceSourceSchoolId === RESOURCE_SOURCE_HEAD_OFFICE
+                    ? RESOURCE_SOURCE_OWN
+                    : resourceSourceSchoolId
+                }
+              />
+            ) : null}
           </div>
 
           {isEdit ? (

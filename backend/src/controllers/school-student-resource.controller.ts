@@ -111,7 +111,7 @@ export const getSchoolPortalStudentResourceFile: RequestHandler<PortalSlotParams
     programCode,
     classLevel,
     subject,
-    { requireRegisteredClass: true },
+    { requireRegisteredClass: true, resolveInherited: true },
   );
   res.setHeader("Content-Type", file.mimeType);
   res.setHeader("Content-Disposition", `inline; filename="${file.fileName.replace(/"/g, "")}"`);
@@ -149,7 +149,7 @@ export const getTeacherPortalStudentResourceFile: RequestHandler<PortalSlotParam
     programCode,
     classLevel,
     subject,
-    { requireRegisteredClass: true },
+    { requireRegisteredClass: true, resolveInherited: true },
   );
   res.setHeader("Content-Type", file.mimeType);
   res.setHeader("Content-Disposition", `inline; filename="${file.fileName.replace(/"/g, "")}"`);

@@ -444,7 +444,7 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
             <div>
               <h2 className="text-sm font-bold text-brand-950">Maintenance mode</h2>
               <p className="mt-1 text-sm text-neutral-600">
-                When on, school and teacher portals cannot use the app.
+                When on, school and teacher portals and employee admin logins cannot use the app.
               </p>
             </div>
             <div className="flex items-center gap-2">

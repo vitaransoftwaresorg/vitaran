@@ -1,5 +1,6 @@
 import * as schoolRepository from "../repositories/school.repository.js";
 import * as resourceRepository from "../repositories/school-student-resource.repository.js";
+import * as headOfficeResourceRepository from "../repositories/head-office-teacher-resource.repository.js";
 import { deleteObject, getObject, replaceObject } from "./object-storage.js";
 import { AppError } from "../utils/app-error.js";
 import { subjectsForClassLevel } from "../utils/subject.js";
@@ -11,10 +12,37 @@ const KIND = "schools";
 const PDF_MAX_BYTES = 20 * 1024 * 1024;
 const PDF_MIME = new Set(["application/pdf"]);
 
-function toDto(row: Awaited<ReturnType<typeof resourceRepository.listBySchool>>[number]) {
+type ResourceDto = {
+  id: string;
+  schoolId: string;
+  programCode: string;
+  classLevel: number;
+  subject: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function toDto(
+  row: {
+    id: string;
+    schoolId: string;
+    programCode: string;
+    classLevel: number;
+    subject: string;
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+    createdAt: Date;
+    updatedAt: Date;
+  },
+  schoolIdOverride?: string,
+): ResourceDto {
   return {
     id: row.id,
-    schoolId: row.schoolId,
+    schoolId: schoolIdOverride ?? row.schoolId,
     programCode: row.programCode,
     classLevel: row.classLevel,
     subject: row.subject,
@@ -24,6 +52,10 @@ function toDto(row: Awaited<ReturnType<typeof resourceRepository.listBySchool>>[
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+function slotKey(programCode: string, classLevel: number, subject: string) {
+  return `${normalizeProgramCode(programCode)}:${classLevel}:${String(subject).toUpperCase()}`;
 }
 
 async function assertSchool(schoolId: string) {
@@ -63,16 +95,108 @@ function assertSchoolProgramClass(
   }
 }
 
+/** Admin: school's own uploaded PDFs only. */
 export async function listSchoolStudentResources(schoolId: string) {
   await assertSchool(schoolId);
   const rows = await resourceRepository.listBySchool(schoolId);
-  return rows.map(toDto);
+  return rows.map((row) => toDto(row));
+}
+
+/**
+ * Resolve teacher PDFs for a school:
+ * own uploads → linked source school → head office (for enrolled slots).
+ */
+async function resolveSchoolTeacherResources(schoolId: string): Promise<ResourceDto[]> {
+  const school = await assertSchool(schoolId);
+  const byKey = new Map<string, ResourceDto>();
+
+  for (const row of await resourceRepository.listBySchool(schoolId)) {
+    byKey.set(slotKey(row.programCode, row.classLevel, row.subject), toDto(row));
+  }
+
+  if (school.teacherResourceSourceSchoolId) {
+    for (const row of await resourceRepository.listBySchool(school.teacherResourceSourceSchoolId)) {
+      const key = slotKey(row.programCode, row.classLevel, row.subject);
+      if (!byKey.has(key)) byKey.set(key, toDto(row, schoolId));
+    }
+  }
+
+  if (school.headOfficeId) {
+    for (const row of await headOfficeResourceRepository.listByHeadOffice(school.headOfficeId)) {
+      const key = slotKey(row.programCode, row.classLevel, row.subject);
+      if (!byKey.has(key)) {
+        byKey.set(key, {
+          id: row.id,
+          schoolId,
+          programCode: row.programCode,
+          classLevel: row.classLevel,
+          subject: row.subject,
+          fileName: row.fileName,
+          fileSize: row.fileSize,
+          mimeType: row.mimeType,
+          createdAt: row.createdAt.toISOString(),
+          updatedAt: row.updatedAt.toISOString(),
+        });
+      }
+    }
+  }
+
+  return [...byKey.values()];
+}
+
+async function resolveSchoolTeacherResourceFile(
+  schoolId: string,
+  programCode: string,
+  classLevel: number,
+  subject: string,
+) {
+  const school = await assertSchool(schoolId);
+
+  const own = await resourceRepository.findWithData(schoolId, programCode, classLevel, subject);
+  if (own) {
+    const data = await getObject(own.data);
+    if (data) {
+      return { data, mimeType: own.mimeType, fileName: own.fileName };
+    }
+  }
+
+  if (school.teacherResourceSourceSchoolId) {
+    const sourced = await resourceRepository.findWithData(
+      school.teacherResourceSourceSchoolId,
+      programCode,
+      classLevel,
+      subject,
+    );
+    if (sourced) {
+      const data = await getObject(sourced.data);
+      if (data) {
+        return { data, mimeType: sourced.mimeType, fileName: sourced.fileName };
+      }
+    }
+  }
+
+  if (school.headOfficeId) {
+    const ho = await headOfficeResourceRepository.findWithData(
+      school.headOfficeId,
+      programCode,
+      classLevel,
+      subject,
+    );
+    if (ho) {
+      const data = await getObject(ho.data);
+      if (data) {
+        return { data, mimeType: ho.mimeType, fileName: ho.fileName };
+      }
+    }
+  }
+
+  throw new AppError(404, "Student resource not found");
 }
 
 /** Portal: only programs/classes with at least one registered class or section. */
 export async function listPortalSchoolStudentResources(actor: ContentActor) {
   const school = actor.kind === "school" ? actor.school : actor.teacher.school;
-  const resources = await listSchoolStudentResources(school.id);
+  const resources = await resolveSchoolTeacherResources(school.id);
   const orgKeys = new Set(
     (await loadOrganizationSlots(school.id)).map(
       (slot) => `${slot.programCode}:${slot.classLevel}`,
@@ -173,7 +297,7 @@ export async function getSchoolStudentResourceFile(
   programCodeRaw: string,
   classLevel: number,
   subject: string,
-  options?: { requireRegisteredClass?: boolean },
+  options?: { requireRegisteredClass?: boolean; resolveInherited?: boolean },
 ) {
   await assertSchool(schoolId);
   const programCode = normalizeProgramCode(programCodeRaw);
@@ -181,6 +305,11 @@ export async function getSchoolStudentResourceFile(
   if (options?.requireRegisteredClass) {
     await assertPortalAccess({ id: schoolId }, programCode, classLevel);
   }
+
+  if (options?.resolveInherited) {
+    return resolveSchoolTeacherResourceFile(schoolId, programCode, classLevel, subject);
+  }
+
   const row = await resourceRepository.findWithData(
     schoolId,
     programCode,

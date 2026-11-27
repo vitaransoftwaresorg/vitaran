@@ -1,8 +1,10 @@
 import type { RequestHandler } from "express";
+import type { AdminProfile } from "../services/auth.service.js";
 import { verifyAdminToken } from "../services/auth.service.js";
 import { verifyHeadOfficeToken } from "../services/head-office-auth.service.js";
 import { verifySchoolToken } from "../services/school-auth.service.js";
 import { verifyTeacherToken } from "../services/teacher-auth.service.js";
+import * as settingsService from "../services/settings.service.js";
 import { AppError } from "../utils/app-error.js";
 
 const BEARER_PREFIX = "Bearer ";
@@ -28,7 +30,33 @@ function bearerAuth(
   };
 }
 
-export const requireAdmin = bearerAuth("admin", verifyAdminToken);
+/** Root admin always allowed; employee admins blocked during maintenance. */
+export const requireAdmin: RequestHandler = async (req, res, next) => {
+  await bearerAuth("admin", verifyAdminToken)(req, res, async (error) => {
+    if (error) {
+      next(error);
+      return;
+    }
+    try {
+      const admin = res.locals.admin as AdminProfile | undefined;
+      if (admin && !admin.isRoot) {
+        const { maintenanceMode } = await settingsService.getPublicSettings();
+        if (maintenanceMode) {
+          next(
+            new AppError(
+              503,
+              "Vitaran Learning is under maintenance. Please try again shortly.",
+            ),
+          );
+          return;
+        }
+      }
+      next();
+    } catch (err) {
+      next(err);
+    }
+  });
+};
 export const requireSchool = bearerAuth("school", verifySchoolToken);
 export const requireTeacher = bearerAuth("teacher", verifyTeacherToken);
 export const requireHeadOffice = bearerAuth("headOffice", verifyHeadOfficeToken);

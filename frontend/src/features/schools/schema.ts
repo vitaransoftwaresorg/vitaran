@@ -115,6 +115,13 @@ const schoolFields = z.object({
     if (trimmed === "" || trimmed === "__none__") return null;
     return trimmed;
   }, z.union([z.uuid("Select a valid head office."), z.null()])),
+  /** Optional — reuse another customized school's teacher PDFs. */
+  teacherResourceSourceSchoolId: z.preprocess((value) => {
+    if (value == null) return null;
+    const trimmed = String(value).trim();
+    if (trimmed === "" || trimmed === "__none__" || trimmed === "__head_office__") return null;
+    return trimmed;
+  }, z.union([z.uuid("Select a valid school."), z.null()])),
 });
 
 function withCustomProgramRules<T extends z.ZodType>(schema: T) {

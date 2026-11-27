@@ -6,12 +6,12 @@ import { z } from "zod";
 import { ADMIN_BASE_PATH } from "@/constants/auth";
 import { ApiError } from "@/services/api-client";
 import * as programService from "@/services/programs";
-import { SCHOOL_TYPES, toSubjectCode } from "@/types/school";
+import { toSubjectCode } from "@/types/school";
 
 const programSchema = z
   .object({
     name: z.string().trim().min(2, "Enter the program name.").max(120),
-    type: z.enum(SCHOOL_TYPES, { error: "Select type." }),
+    type: z.literal("REGULAR").default("REGULAR"),
     year: z.coerce.number().int().min(2020).max(2100),
     classFrom: z.coerce.number({ error: "Select class from." }).int().min(1, "Select class from.").max(12),
     classTo: z.coerce.number({ error: "Select class to." }).int().min(1, "Select class to.").max(12),
@@ -118,7 +118,9 @@ export async function updateProgramAction(
   _state: ProgramFormState,
   formData: FormData,
 ): Promise<ProgramFormState> {
-  return save(formData, ({ code: _code, ...input }) => programService.updateProgram(id, input));
+  return save(formData, ({ code: _code, type: _type, ...input }) =>
+    programService.updateProgram(id, input),
+  );
 }
 
 export async function isProgramCodeTakenAction(code: string, excludeId?: string): Promise<boolean> {

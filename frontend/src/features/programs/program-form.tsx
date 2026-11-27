@@ -20,14 +20,11 @@ import {
   formatProgramCode,
   SUBJECT_LABELS,
   subjectLabel,
-  TYPE_LABELS,
 } from "@/features/schools/constants";
 import { useUnsavedChanges } from "@/hooks/use-unsaved-changes";
-import { SCHOOL_TYPES } from "@/types/school";
 import type { LearningProgram } from "@/types/program";
 import { isProgramCodeTakenAction, type ProgramFormState, type ProgramFormValues } from "./actions";
 
-const TYPE_OPTIONS = SCHOOL_TYPES.map((value) => ({ value, label: TYPE_LABELS[value] }));
 const CATALOG_SUBJECTS = Object.keys(SUBJECT_LABELS);
 const CLASS_OPTIONS = Array.from({ length: 12 }, (_, index) => String(index + 1));
 const CURRENT_YEAR = new Date().getFullYear();
@@ -44,7 +41,7 @@ type ProgramFormProps = {
 function toValues(program?: LearningProgram): ProgramFormValues {
   return {
     name: program?.name ?? "",
-    type: program?.type ?? "",
+    type: "REGULAR",
     year: String(program?.year ?? new Date().getFullYear()),
     classFrom: program ? String(program.classFrom) : "",
     classTo: program ? String(program.classTo) : "",
@@ -58,7 +55,6 @@ export function ProgramForm({ program, action }: ProgramFormProps) {
   const [state, formAction, pending] = useActionState(action, undefined);
   const values = state?.status === "error" ? state.values : toValues(program);
   const [subjects, setSubjects] = useState(values.subjects);
-  const [type, setType] = useState(values.type);
   const [classFrom, setClassFrom] = useState(values.classFrom);
   const [classTo, setClassTo] = useState(values.classTo);
   const [name, setName] = useState(values.name);
@@ -142,7 +138,6 @@ export function ProgramForm({ program, action }: ProgramFormProps) {
 
   const canSubmit =
     name.trim().length >= 2 &&
-    Boolean(type) &&
     Boolean(classFrom) &&
     Boolean(classTo) &&
     subjects.length > 0 &&
@@ -180,30 +175,7 @@ export function ProgramForm({ program, action }: ProgramFormProps) {
           {errors?.name && <FieldError>{errors.name[0]}</FieldError>}
         </Field>
 
-        <Field data-invalid={errors?.type ? true : undefined}>
-          <FieldLabel htmlFor="type">Type *</FieldLabel>
-          <input type="hidden" name="type" value={type} />
-          <Select
-            items={TYPE_OPTIONS}
-            value={type || null}
-            onValueChange={(next) => {
-              if (isEdit) setDirty(true);
-              setType(String(next ?? ""));
-            }}
-          >
-            <SelectTrigger id="type" className="w-full">
-              <SelectValue placeholder="Select type" />
-            </SelectTrigger>
-            <SelectContent>
-              {TYPE_OPTIONS.map((item) => (
-                <SelectItem key={item.value} value={item.value}>
-                  {item.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {errors?.type && <FieldError>{errors.type[0]}</FieldError>}
-        </Field>
+        <input type="hidden" name="type" value="REGULAR" />
 
         <Field data-invalid={errors?.year ? true : undefined}>
           <FieldLabel htmlFor="year">Year *</FieldLabel>
