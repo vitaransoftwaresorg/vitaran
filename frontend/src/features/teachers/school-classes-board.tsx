@@ -292,7 +292,7 @@ export function SchoolClassesBoard({
               className="w-full min-w-0 sm:w-64"
             />
           </div>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto overflow-y-clip">
             {filteredClassRows.length === 0 ? (
               <p className="px-4 py-8 text-center text-sm text-neutral-500">No matching classes.</p>
             ) : (

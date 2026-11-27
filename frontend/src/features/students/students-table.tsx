@@ -128,7 +128,7 @@ export function StudentsTable({
       {filtered.length === 0 ? (
         <p className="px-4 py-8 text-center text-sm text-neutral-500">No matching students.</p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto overflow-y-clip">
         <table className="w-full min-w-[32rem] text-left text-sm sm:min-w-[40rem]">
           <thead className="border-b border-brand-100 bg-brand-50/60 text-[11px] font-semibold tracking-wider text-neutral-500 uppercase">
             <tr>

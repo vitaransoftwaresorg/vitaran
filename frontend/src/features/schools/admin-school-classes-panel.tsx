@@ -1168,7 +1168,7 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
       ) : (
         <div
           className={cn(
-            "overflow-x-auto",
+            "overflow-x-auto overflow-y-clip",
             embedded && "rounded-xl border border-brand-200 bg-white",
           )}
         >

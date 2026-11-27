@@ -216,7 +216,7 @@ export function DriveBrowser({
           {items.length === 0 ? emptyText : "No matches in this folder"}
         </p>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto overflow-y-clip">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-neutral-100 text-left text-xs font-medium tracking-wide text-neutral-500 uppercase">

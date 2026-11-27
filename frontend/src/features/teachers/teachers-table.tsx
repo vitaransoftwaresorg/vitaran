@@ -147,7 +147,7 @@ export function TeachersTable({
       {filtered.length === 0 ? (
         <p className="px-5 py-10 text-center text-sm text-neutral-500">No matching teachers.</p>
       ) : (
-      <div className="overflow-x-auto">
+      <div className="overflow-x-auto overflow-y-clip">
       <Table>
         <TableHeader>
           <TableRow className="border-brand-100 bg-brand-50/60 hover:bg-brand-50/60">

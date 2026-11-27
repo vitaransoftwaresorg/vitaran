@@ -38,6 +38,7 @@ export default async function SchoolPanelLayout({
         <DrivePathProvider>
           <SidebarProvider
             defaultOpen={defaultOpen}
+            className="h-dvh overflow-hidden"
             style={
               {
                 "--sidebar-width": "10.8rem",
@@ -47,17 +48,17 @@ export default async function SchoolPanelLayout({
             }
           >
             <SchoolSidebar school={school} />
-            {/* Mobile: natural document scroll (nested overflow traps iOS on drive tables). Desktop: contained shell scroll. */}
-            <SidebarInset className="min-h-0 min-w-0 bg-neutral-50 md:h-dvh md:overflow-hidden">
+            {/* One scroll shell on all viewports — header sticky, tables scroll in the pane below. */}
+            <SidebarInset className="h-dvh min-h-0 min-w-0 overflow-hidden bg-neutral-50">
               <SchoolHeader />
-              <div className="flex min-h-0 w-full flex-1 flex-col p-3 sm:p-5 md:overflow-hidden lg:px-6 lg:py-6">
+              <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden p-3 sm:p-5 lg:px-6 lg:py-6">
                 <PortalMaintenanceGate initialMaintenance={settings.maintenanceMode}>
-                  <div className="flex min-h-0 flex-1 flex-col md:overflow-hidden">
+                  <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
                     <SchoolPageBack />
                     <Suspense fallback={null}>
                       <PortalNavMemory roots={SCHOOL_NAV_ROOTS} />
                     </Suspense>
-                    <div className="flex min-h-0 min-w-0 flex-1 flex-col md:overflow-y-auto">
+                    <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]">
                       {/* null fallback: keep the current table visible during soft refresh (toggles/publish). */}
                       <Suspense fallback={null}>{children}</Suspense>
                     </div>
