@@ -177,7 +177,7 @@ export function SchoolKeysDrive({
           name: `Test ${number}`,
           kind: "folder" as const,
           href: testHref(school.id, programCode, number),
-          detail: "Classes & sections",
+          detail: "Classes",
         }))}
         emptyText="No tests yet."
         searchPlaceholder="Search tests"
@@ -185,152 +185,104 @@ export function SchoolKeysDrive({
     );
   }
 
-  // School → program → test → classes & sections
+  // School → program → test → class-wise keys (sections listed on the row, not separate keys)
   if (schoolId && school && programCode && testNumber != null && organization) {
     const from = testHref(school.id, programCode, testNumber);
     const programName = offeringLabel(school, programCode);
 
-    const sections = organization.sections.filter((section) => {
+    const sectionsByClass = new Map<number, string[]>();
+    for (const section of organization.sections) {
       const code = (section.programCode || "").trim().toUpperCase();
-      return code === programCode.toUpperCase();
-    });
-    const sectionLevels = new Set(sections.map((section) => section.classLevel));
-    const wholeClasses = organization.wholeClasses.filter((row) => {
-      if (sectionLevels.has(row.classLevel)) return false;
+      if (code !== programCode.toUpperCase()) continue;
+      const names = sectionsByClass.get(section.classLevel) ?? [];
+      names.push(displaySectionName(section.name));
+      sectionsByClass.set(section.classLevel, names);
+    }
+    for (const row of organization.wholeClasses) {
       const code = (row.programCode || "").trim().toUpperCase();
-      return code === programCode.toUpperCase();
-    });
+      if (code !== programCode.toUpperCase()) continue;
+      if (!sectionsByClass.has(row.classLevel)) sectionsByClass.set(row.classLevel, []);
+    }
 
-    const sectionItems: DriveItem[] = sections.map((section) => {
-      const board = boardsByScope[section.id];
-      const row = board?.items.find((item) => item.platform.testNumber === testNumber);
-      const label = `Class ${section.classLevel}-${displaySectionName(section.name)}`;
-      const createKey = `${section.id}:${testNumber}`;
+    const classItems: DriveItem[] = [...sectionsByClass.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([classLevel, sectionNames]) => {
+        const board = boardsByScope[`class:${classLevel}`];
+        const keyRow = board?.items.find((item) => item.platform.testNumber === testNumber);
+        const uniqueSections = [...new Set(sectionNames)].sort((a, b) => a.localeCompare(b));
+        const sectionsLabel =
+          uniqueSections.length > 0
+            ? uniqueSections.map((name) => `Section ${name}`).join(", ")
+            : null;
+        const label = sectionsLabel
+          ? `Class ${classLevel} · ${sectionsLabel}`
+          : `Class ${classLevel}`;
+        const createKey = `class:${classLevel}:${testNumber}`;
 
-      if (!row?.platform) {
+        if (!keyRow?.platform) {
+          return {
+            id: `class:${classLevel}`,
+            name: label,
+            kind: "empty" as const,
+            detail: "No platform key — add under Answer Keys first",
+            createLabel: "Unavailable",
+            creating: false,
+            onCreate: () => {
+              toast.error(
+                `Add a platform answer key for ${programName} Class ${classLevel} under Answer Keys first.`,
+              );
+            },
+          };
+        }
+
+        const filled = keyRow.schoolKey?.answerCount ?? 0;
+        const href = keyRow.schoolKey
+          ? documentAnswersHref(SCHOOL_KEYS_PATH, keyRow.schoolKey.id, from)
+          : undefined;
+
+        if (!keyRow.schoolKey || filled === 0) {
+          return {
+            id: `class:${classLevel}`,
+            name: label,
+            kind: "empty" as const,
+            detail: keyRow.schoolKey
+              ? "Draft school key — save answers to keep"
+              : `Using our key · ${keyRow.platform.testId || "no test ID"}`,
+            createLabel: keyRow.schoolKey ? "Continue" : "Add school key",
+            creating: creatingId === createKey,
+            testId: keyRow.platform.testId || "",
+            onCreate: () => {
+              if (href) {
+                router.push(href);
+                return;
+              }
+              // Whole-class key (not section-wise).
+              openSchoolKey(keyRow.platform.id, null, createKey, from);
+            },
+          };
+        }
+
         return {
-          id: section.id,
+          id: `class:${classLevel}`,
           name: label,
-          kind: "empty" as const,
-          detail: "No platform key — add under Answer Keys first",
-          createLabel: "Unavailable",
-          creating: false,
-          onCreate: () => {
-            toast.error(
-              `Add a platform answer key for ${programName} Class ${section.classLevel}, or change this section’s program under Classes & sections.`,
-            );
-          },
+          kind: "file" as const,
+          href,
+          detail: `School key · ${keyRow.schoolKey.testId || keyRow.platform.testId}`,
+          testId: keyRow.schoolKey.testId || keyRow.platform.testId || "",
+          modified: keyRow.schoolKey.updatedAt,
+          actions: [
+            { label: "Edit answers", href, icon: "edit" as const },
+            { label: "View", href, icon: "view" as const },
+          ],
         };
-      }
-
-      const filled = row.schoolKey?.answerCount ?? 0;
-      const href = row.schoolKey
-        ? documentAnswersHref(SCHOOL_KEYS_PATH, row.schoolKey.id, from)
-        : undefined;
-
-      if (!row.schoolKey || filled === 0) {
-        return {
-          id: section.id,
-          name: label,
-          kind: "empty" as const,
-          detail: row.schoolKey
-            ? "Draft school key — save answers to keep"
-            : `Using our key · ${row.platform.testId || "no test ID"}`,
-          createLabel: row.schoolKey ? "Continue" : "Add school key",
-          creating: creatingId === createKey,
-          testId: row.platform.testId || "",
-          onCreate: () => {
-            if (href) {
-              router.push(href);
-              return;
-            }
-            openSchoolKey(row.platform.id, section.id, createKey, from);
-          },
-        };
-      }
-
-      return {
-        id: section.id,
-        name: label,
-        kind: "file" as const,
-        href,
-        detail: `School key · ${row.schoolKey.testId || row.platform.testId}`,
-        testId: row.schoolKey.testId || row.platform.testId || "",
-        modified: row.schoolKey.updatedAt,
-        actions: [
-          { label: "Edit answers", href, icon: "edit" as const },
-          { label: "View", href, icon: "view" as const },
-        ],
-      };
-    });
-
-    const classItems: DriveItem[] = wholeClasses.map((row) => {
-      const board = boardsByScope[`class:${row.classLevel}`];
-      const keyRow = board?.items.find((item) => item.platform.testNumber === testNumber);
-      const label = `Class ${row.classLevel}`;
-      const createKey = `class:${row.classLevel}:${testNumber}`;
-
-      if (!keyRow?.platform) {
-        return {
-          id: row.id,
-          name: label,
-          kind: "empty" as const,
-          detail: "No platform key — add under Answer Keys first",
-          createLabel: "Unavailable",
-          creating: false,
-          onCreate: () => {
-            toast.error("Add a platform answer key for this class under Answer Keys first.");
-          },
-        };
-      }
-
-      const filled = keyRow.schoolKey?.answerCount ?? 0;
-      const href = keyRow.schoolKey
-        ? documentAnswersHref(SCHOOL_KEYS_PATH, keyRow.schoolKey.id, from)
-        : undefined;
-
-      if (!keyRow.schoolKey || filled === 0) {
-        return {
-          id: row.id,
-          name: label,
-          kind: "empty" as const,
-          detail: keyRow.schoolKey
-            ? "Draft school key — save answers to keep"
-            : `Using our key · ${keyRow.platform.testId || "no test ID"}`,
-          createLabel: keyRow.schoolKey ? "Continue" : "Add school key",
-          creating: creatingId === createKey,
-          testId: keyRow.platform.testId || "",
-          onCreate: () => {
-            if (href) {
-              router.push(href);
-              return;
-            }
-            openSchoolKey(keyRow.platform.id, null, createKey, from);
-          },
-        };
-      }
-
-      return {
-        id: row.id,
-        name: label,
-        kind: "file" as const,
-        href,
-        detail: `School key · ${keyRow.schoolKey.testId || keyRow.platform.testId}`,
-        testId: keyRow.schoolKey.testId || keyRow.platform.testId || "",
-        modified: keyRow.schoolKey.updatedAt,
-        actions: [
-          { label: "Edit answers", href, icon: "edit" as const },
-          { label: "View", href, icon: "view" as const },
-        ],
-      };
-    });
+      });
 
     return (
       <DriveBrowser
         key={`school-keys:${school.id}:program:${programCode}:test:${testNumber}`}
         breadcrumbs={[{ label: "School Keys", href: SCHOOL_KEYS_PATH }, ...folderCrumbs]}
-        items={[...sectionItems, ...classItems].sort((a, b) => a.name.localeCompare(b.name))}
-        emptyText={`No classes or sections for ${programName}. Add them on the school profile.`}
+        items={classItems}
+        emptyText={`No classes for ${programName}. Add them on the school profile.`}
         searchPlaceholder="Search classes"
       />
     );

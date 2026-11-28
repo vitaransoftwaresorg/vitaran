@@ -967,21 +967,45 @@ export async function checkTestId(context: ScanContext, testId: string) {
       sectionName: section || null,
     };
   };
-  // Admin OMR: school keys for the optional picker (default none = platform only).
+  // Admin OMR: one school-key option per school (prefer whole-class over section keys).
   const schoolKeys =
     context.kind === "admin"
-      ? keys
-          .filter((key) => Boolean(key.schoolId && key.school))
-          .map((key) => ({
-            id: key.id,
-            schoolId: key.school!.id,
-            schoolName: key.school!.name,
-            sectionId: key.sectionId,
-            sectionName: key.section?.name?.trim() || null,
-            classLevel: key.classLevel,
-            programCode: key.programCode,
-            programName: toKeyRow(key).programName,
-          }))
+      ? (() => {
+          const bySchool = new Map<
+            string,
+            {
+              id: string;
+              schoolId: string;
+              schoolName: string;
+              sectionId: string | null;
+              sectionName: string | null;
+              classLevel: number;
+              programCode: string;
+              programName: string;
+            }
+          >();
+          for (const key of keys) {
+            if (!key.schoolId || !key.school) continue;
+            const existing = bySchool.get(key.schoolId);
+            const row = {
+              id: key.id,
+              schoolId: key.school.id,
+              schoolName: key.school.name,
+              sectionId: key.sectionId,
+              sectionName: key.section?.name?.trim() || null,
+              classLevel: key.classLevel,
+              programCode: key.programCode,
+              programName: toKeyRow(key).programName,
+            };
+            // Prefer class-wide key (no section) when both exist for the same school.
+            if (!existing || (existing.sectionId && !row.sectionId)) {
+              bySchool.set(key.schoolId, row);
+            }
+          }
+          return [...bySchool.values()].sort((a, b) =>
+            a.schoolName.localeCompare(b.schoolName),
+          );
+        })()
       : [];
   const platformKeys = keys.filter((key) => !key.school);
   return {

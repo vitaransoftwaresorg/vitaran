@@ -127,7 +127,8 @@ const TEST_ID_MAX_LENGTH = 7;
 const TEST_ID_PATTERN = /^\d{6,7}$/;
 const testIdInput = (value: string) => value.replace(/\D/g, "").slice(0, TEST_ID_MAX_LENGTH);
 
-const SCHOOL_KEY_NONE = "__none__";
+/** Admin OMR picker: platform answers (not a school override). */
+const SCHOOL_KEY_PLATFORM = "__platform__";
 
 type TestCheckState =
   | {
@@ -145,11 +146,6 @@ function toCheckState(
   return result.ok
     ? { value, ok: true, keys: result.keys, schoolKeys: result.schoolKeys ?? [] }
     : { value, ok: false, message: result.message };
-}
-
-function schoolKeyLabel(row: NonNullable<TestIdCheck["schoolKeys"]>[number]) {
-  const section = row.sectionName?.trim();
-  return section ? `${row.schoolName} · Section ${section}` : row.schoolName;
 }
 
 export function ScanCamera({
@@ -177,8 +173,11 @@ export function ScanCamera({
   const cameraRef = useRef<HTMLInputElement>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [testCheck, setTestCheck] = useState<TestCheckState | null>(null);
-  /** Admin only — default none (platform key) even when school keys exist. */
-  const [schoolKeyId, setSchoolKeyId] = useState("");
+  /**
+   * Admin only when school keys exist for the test ID.
+   * `null` = not chosen yet; platform sentinel = platform key; else school key id.
+   */
+  const [schoolKeyPick, setSchoolKeyPick] = useState<string | null>(null);
   const [rollError, setRollError] = useState<string | null>(null);
   const [rollMatches, setRollMatches] = useState<OmrStudentMatch[]>([]);
   const [rollHint, setRollHint] = useState("");
@@ -188,7 +187,12 @@ export function ScanCamera({
   const checked = testComplete && testCheck?.value === enteredTest ? testCheck : null;
   const schoolKeys = portal === "admin" && checked?.ok ? checked.schoolKeys : [];
   const selectedSchoolKey =
-    schoolKeyId && schoolKeys.some((row) => row.id === schoolKeyId) ? schoolKeyId : "";
+    schoolKeyPick &&
+    schoolKeyPick !== SCHOOL_KEY_PLATFORM &&
+    schoolKeys.some((row) => row.id === schoolKeyPick)
+      ? schoolKeyPick
+      : "";
+  const schoolKeyReady = schoolKeys.length === 0 || schoolKeyPick != null;
   const patternClassLevel = checked?.ok ? checked.keys[0]?.classLevel : undefined;
   const patternOptions = useMemo(
     () =>
@@ -196,7 +200,7 @@ export function ScanCamera({
     [patternClassLevel],
   );
   const patternReady = patternOptions.some((row) => row.value === examPattern);
-  const testReady = Boolean(checked?.ok) && patternReady;
+  const testReady = Boolean(checked?.ok) && patternReady && schoolKeyReady;
   const patternHint =
     patternClassLevel != null && patternClassLevel <= 5
       ? "Maths, Sciences, or Maths Sciences"
@@ -214,8 +218,8 @@ export function ScanCamera({
     void checkTestIdAction(portal, enteredTest).then((result) => {
       if (!live) return;
       setTestCheck(toCheckState(enteredTest, result));
-      // New test ID → reset school key to none.
-      setSchoolKeyId("");
+      // New test ID → clear picker (no default).
+      setSchoolKeyPick(null);
     });
     return () => {
       live = false;
@@ -223,10 +227,10 @@ export function ScanCamera({
   }, [portal, enteredTest, testComplete]);
 
   useEffect(() => {
-    if (!schoolKeyId) return;
-    if (schoolKeys.some((row) => row.id === schoolKeyId)) return;
-    setSchoolKeyId("");
-  }, [schoolKeyId, schoolKeys]);
+    if (schoolKeyPick == null || schoolKeyPick === SCHOOL_KEY_PLATFORM) return;
+    if (schoolKeys.some((row) => row.id === schoolKeyPick)) return;
+    setSchoolKeyPick(null);
+  }, [schoolKeyPick, schoolKeys]);
 
   /** Every scan and upload needs a 6–7 digit test ID that has an answer key. Returns keys when ok. */
   async function verifyTestId(): Promise<false | TestIdCheck["keys"]> {
@@ -236,6 +240,10 @@ export function ScanCamera({
     }
     if (!patternReady) {
       toast.error(`Choose the exam pattern (${patternHint}).`);
+      return false;
+    }
+    if (schoolKeys.length > 0 && schoolKeyPick == null) {
+      toast.error("Select Platform key or a school key first.");
       return false;
     }
     if (checked) {
@@ -290,33 +298,37 @@ export function ScanCamera({
   }
 
   function schoolKeyField(id: string) {
+    // Only when this test ID has school keys.
     if (!schoolKeys.length) return null;
     const items = [
-      { value: SCHOOL_KEY_NONE, label: "None (platform key)" },
+      { value: SCHOOL_KEY_PLATFORM, label: "Platform key" },
       ...schoolKeys.map((row) => ({
         value: row.id,
-        label: schoolKeyLabel(row),
+        label: row.schoolName,
       })),
     ];
+    const pickValid =
+      schoolKeyPick === SCHOOL_KEY_PLATFORM ||
+      (schoolKeyPick != null && schoolKeys.some((row) => row.id === schoolKeyPick));
     return (
       <div className="space-y-1.5">
         <Label htmlFor={id} className="text-xs font-semibold tracking-wider text-neutral-500 uppercase">
-          School key
+          Answer key
         </Label>
         <Select
           items={items}
-          value={selectedSchoolKey || SCHOOL_KEY_NONE}
+          value={pickValid ? schoolKeyPick : null}
           disabled={busy}
           onValueChange={(value) => {
-            if (value == null || value === SCHOOL_KEY_NONE) {
-              setSchoolKeyId("");
+            if (value == null) {
+              setSchoolKeyPick(null);
               return;
             }
-            setSchoolKeyId(value);
+            setSchoolKeyPick(value);
           }}
         >
           <SelectTrigger id={id} className="h-11 w-full rounded-xl bg-white px-3.5 text-sm">
-            <SelectValue placeholder="None (platform key)" />
+            <SelectValue placeholder="Select answer key" />
           </SelectTrigger>
           <SelectContent>
             {items.map((option) => (
@@ -327,7 +339,7 @@ export function ScanCamera({
           </SelectContent>
         </Select>
         <p className="text-[11px] text-neutral-500">
-          None uses the platform key. A school key fills only its answers; other subjects stay on the
+          Platform key first. A school key fills only its answers; other subjects stay on the
           platform key.
         </p>
       </div>
@@ -647,7 +659,9 @@ export function ScanCamera({
                 ? checked.message
                 : !patternReady
                   ? `Choose the exam pattern (${patternHint}).`
-                  : "Enter a valid test ID first, then upload.",
+                  : schoolKeys.length > 0 && schoolKeyPick == null
+                    ? "Select Platform key or a school key first."
+                    : "Enter a valid test ID first, then upload.",
             );
           }}
           className={cn(
@@ -671,7 +685,9 @@ export function ScanCamera({
               : testReady
                 ? "Upload OMR photos or a PDF"
                 : checked?.ok
-                  ? "Choose the exam pattern to upload"
+                  ? !patternReady
+                    ? "Choose the exam pattern to upload"
+                    : "Select Platform key or a school key"
                   : "Enter the test ID to upload"}
           </p>
           <p className="text-xs text-neutral-500">
@@ -698,6 +714,10 @@ export function ScanCamera({
     }
     if (!patternReady) {
       toast.error(`Choose the exam pattern (${patternHint}).`);
+      return;
+    }
+    if (schoolKeys.length > 0 && schoolKeyPick == null) {
+      toast.error("Select Platform key or a school key first.");
       return;
     }
     if (typeof navigator.mediaDevices?.getUserMedia === "function") {

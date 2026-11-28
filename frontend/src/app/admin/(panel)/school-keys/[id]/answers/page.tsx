@@ -38,7 +38,6 @@ export default async function SchoolKeyAnswersPage({
         programCode={answerKey.program}
         programName={program?.name}
         classLevel={answerKey.classLevel}
-        section={answerKey.section}
         testNumber={answerKey.testNumber}
       />
       <AnswerKeyAnswersEditor answerKey={answerKey} heading={heading} />

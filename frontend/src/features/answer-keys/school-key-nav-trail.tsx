@@ -7,7 +7,6 @@ import {
   writeAnswerKeysFolderTrail,
 } from "@/features/answer-keys/drive-path";
 import { SCHOOL_KEYS_PATH } from "@/features/answer-keys/constants";
-import { displaySectionName } from "@/features/schools/section-label";
 import { rememberAdminNavLabel } from "@/features/admin/nav-labels";
 
 type SchoolKeyNavTrailProps = {
@@ -15,7 +14,6 @@ type SchoolKeyNavTrailProps = {
   programCode: string;
   programName?: string | null;
   classLevel: number;
-  section?: { id: string; name: string } | null;
   testNumber: number;
 };
 
@@ -25,7 +23,6 @@ export function SchoolKeyNavTrail({
   programCode,
   programName,
   classLevel,
-  section,
   testNumber,
 }: SchoolKeyNavTrailProps) {
   const setCrumbs = useSetDrivePathCrumbs();
@@ -44,9 +41,8 @@ export function SchoolKeyNavTrail({
       test: String(testNumber),
     })}`;
 
-    const classLabel = section
-      ? `Class ${classLevel}-${displaySectionName(section.name)}`
-      : `Class ${classLevel}`;
+    // Class-wise school keys — nav shows Class N (not section-specific).
+    const classLabel = `Class ${classLevel}`;
 
     const stored = readAnswerKeysFolderCrumbs();
     const hasTest = stored.some((crumb) => crumb.label === `Test ${testNumber}`);
@@ -70,8 +66,6 @@ export function SchoolKeyNavTrail({
     programCode,
     programName,
     classLevel,
-    section?.id,
-    section?.name,
     testNumber,
     setCrumbs,
   ]);
