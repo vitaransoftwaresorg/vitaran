@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { AnswerKeyAnswersEditor } from "@/features/answer-keys/answer-key-answers-editor";
 import { SCHOOL_KEYS_PATH } from "@/features/answer-keys/constants";
+import { SchoolKeyNavTrail } from "@/features/answer-keys/school-key-nav-trail";
 import { displaySectionName } from "@/features/schools/section-label";
 import { getAnswerKey } from "@/services/answer-keys";
 import { listAdminPrograms } from "@/services/programs";
@@ -32,6 +33,14 @@ export default async function SchoolKeyAnswersPage({
 
   return (
     <div className="w-full">
+      <SchoolKeyNavTrail
+        school={answerKey.school}
+        programCode={answerKey.program}
+        programName={program?.name}
+        classLevel={answerKey.classLevel}
+        section={answerKey.section}
+        testNumber={answerKey.testNumber}
+      />
       <AnswerKeyAnswersEditor answerKey={answerKey} heading={heading} />
     </div>
   );

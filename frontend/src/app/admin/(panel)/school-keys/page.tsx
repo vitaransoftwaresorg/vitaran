@@ -25,35 +25,60 @@ export default async function AdminSchoolKeysPage({
   const schoolId = schoolIdRaw && UUID.test(schoolIdRaw) ? schoolIdRaw : undefined;
   const programRaw = first(query.program)?.trim().toUpperCase();
   const programCode = programRaw || undefined;
-  const sectionRaw = first(query.section);
-  const sectionId = sectionRaw && UUID.test(sectionRaw) ? sectionRaw : undefined;
-  const classRaw = Number(first(query.class));
-  const classLevel =
-    sectionId == null && Number.isInteger(classRaw) && classRaw >= 1 && classRaw <= 12
-      ? classRaw
-      : undefined;
+  const testRaw = Number(first(query.test));
+  const testNumber =
+    Number.isInteger(testRaw) && testRaw >= 1 && testRaw <= 18 ? testRaw : undefined;
 
   const schools = await listSchoolOptions();
   const school = schoolId ? schools.find((item) => item.id === schoolId) : undefined;
   const organization = school ? await listAdminSchoolSections(school.id) : null;
 
-  let board: SchoolKeyBoard | null = null;
-  if (school && (sectionId || classLevel != null)) {
-    try {
-      board = await listSchoolSectionKeys({
-        schoolId: school.id,
-        ...(sectionId ? { sectionId } : {}),
-        ...(classLevel != null ? { classLevel } : {}),
-      });
-    } catch {
-      board = {
-        school: { id: school.id, name: school.name, code: school.code },
-        sectionId: sectionId ?? null,
-        sectionName: null,
-        classLevel: classLevel ?? 0,
-        programCode: programCode ?? "",
-        items: [],
-      };
+  const boardsByScope: Record<string, SchoolKeyBoard> = {};
+
+  if (school && organization && programCode && testNumber != null) {
+    const sections = organization.sections.filter((section) => {
+      const code = (section.programCode || "").trim().toUpperCase();
+      return code === programCode.toUpperCase();
+    });
+    const sectionLevels = new Set(sections.map((section) => section.classLevel));
+    const scopes: Array<{ key: string; sectionId?: string; classLevel?: number }> = [];
+    for (const section of sections) {
+      scopes.push({ key: section.id, sectionId: section.id });
+    }
+    for (const row of organization.wholeClasses) {
+      if (sectionLevels.has(row.classLevel)) continue;
+      const code = (row.programCode || "").trim().toUpperCase();
+      if (code !== programCode.toUpperCase()) continue;
+      scopes.push({ key: `class:${row.classLevel}`, classLevel: row.classLevel });
+    }
+
+    const boards = await Promise.all(
+      scopes.map(async (scope) => {
+        try {
+          const board = await listSchoolSectionKeys({
+            schoolId: school.id,
+            ...(scope.sectionId ? { sectionId: scope.sectionId } : {}),
+            ...(scope.classLevel != null ? { classLevel: scope.classLevel } : {}),
+          });
+          return [scope.key, board] as const;
+        } catch {
+          return [
+            scope.key,
+            {
+              school: { id: school.id, name: school.name, code: school.code },
+              sectionId: scope.sectionId ?? null,
+              sectionName: null,
+              classLevel: scope.classLevel ?? 0,
+              programCode: programCode ?? "",
+              items: [],
+            } satisfies SchoolKeyBoard,
+          ] as const;
+        }
+      }),
+    );
+
+    for (const entry of boards) {
+      boardsByScope[entry[0]] = entry[1];
     }
   }
 
@@ -62,10 +87,9 @@ export default async function AdminSchoolKeysPage({
       schools={schools}
       schoolId={school?.id}
       programCode={programCode}
-      sectionId={sectionId}
-      classLevel={classLevel}
+      testNumber={testNumber}
       organization={organization}
-      board={board}
+      boardsByScope={boardsByScope}
     />
   );
 }

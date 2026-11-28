@@ -33,10 +33,10 @@ type SchoolKeysDriveProps = {
   schools: SchoolOption[];
   schoolId?: string;
   programCode?: string;
-  sectionId?: string;
-  classLevel?: number;
+  testNumber?: number;
   organization?: ClassOrganization | null;
-  board?: SchoolKeyBoard | null;
+  /** Boards keyed by section id, or `class:{level}` for whole-class. */
+  boardsByScope?: Record<string, SchoolKeyBoard>;
 };
 
 function schoolHref(schoolId: string) {
@@ -50,19 +50,11 @@ function programHref(schoolId: string, program: string) {
   })}`;
 }
 
-function sectionHref(schoolId: string, program: string, sectionId: string) {
+function testHref(schoolId: string, program: string, testNumber: number) {
   return `${SCHOOL_KEYS_PATH}?${new URLSearchParams({
     school: schoolId,
     program,
-    section: sectionId,
-  })}`;
-}
-
-function classHref(schoolId: string, program: string, classLevel: number) {
-  return `${SCHOOL_KEYS_PATH}?${new URLSearchParams({
-    school: schoolId,
-    program,
-    class: String(classLevel),
+    test: String(testNumber),
   })}`;
 }
 
@@ -78,22 +70,15 @@ export function SchoolKeysDrive({
   schools,
   schoolId,
   programCode,
-  sectionId,
-  classLevel,
+  testNumber,
   organization,
-  board = null,
+  boardsByScope = {},
 }: SchoolKeysDriveProps) {
   const router = useRouter();
   const [creatingId, setCreatingId] = useState<string | null>(null);
   const [, startCreating] = useTransition();
 
   const school = schools.find((item) => item.id === schoolId);
-  const scope =
-    sectionId != null
-      ? { sectionId }
-      : classLevel != null
-        ? { classLevel }
-        : undefined;
 
   const folderCrumbs: DriveCrumb[] = [];
   if (schoolId && school) {
@@ -105,18 +90,10 @@ export function SchoolKeysDrive({
       href: programHref(school.id, programCode),
     });
   }
-  if (schoolId && school && programCode && sectionId && organization) {
-    const section = organization.sections.find((item) => item.id === sectionId);
-    if (section) {
-      folderCrumbs.push({
-        label: `Class ${section.classLevel}-${displaySectionName(section.name)}`,
-        href: sectionHref(school.id, programCode, section.id),
-      });
-    }
-  } else if (schoolId && school && programCode && classLevel != null) {
+  if (schoolId && school && programCode && testNumber != null) {
     folderCrumbs.push({
-      label: `Class ${classLevel}`,
-      href: classHref(school.id, programCode, classLevel),
+      label: `Test ${testNumber}`,
+      href: testHref(school.id, programCode, testNumber),
     });
   }
 
@@ -127,7 +104,7 @@ export function SchoolKeysDrive({
       folderCrumbs,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [schoolId, school?.id, school?.name, programCode, sectionId, classLevel]);
+  }, [schoolId, school?.id, school?.name, programCode, testNumber]);
 
   const openSchoolKey = (
     platformKeyId: string,
@@ -189,9 +166,30 @@ export function SchoolKeysDrive({
     );
   }
 
-  // School → program → classes & sections
-  if (schoolId && school && programCode && !scope && organization) {
+  // School → program → pick test (before class)
+  if (schoolId && school && programCode && testNumber === undefined) {
+    return (
+      <DriveBrowser
+        key={`school-keys:${school.id}:program:${programCode}`}
+        breadcrumbs={[{ label: "School Keys", href: SCHOOL_KEYS_PATH }, ...folderCrumbs]}
+        items={DRIVE_TESTS.map((number) => ({
+          id: String(number),
+          name: `Test ${number}`,
+          kind: "folder" as const,
+          href: testHref(school.id, programCode, number),
+          detail: "Classes & sections",
+        }))}
+        emptyText="No tests yet."
+        searchPlaceholder="Search tests"
+      />
+    );
+  }
+
+  // School → program → test → classes & sections
+  if (schoolId && school && programCode && testNumber != null && organization) {
+    const from = testHref(school.id, programCode, testNumber);
     const programName = offeringLabel(school, programCode);
+
     const sections = organization.sections.filter((section) => {
       const code = (section.programCode || "").trim().toUpperCase();
       return code === programCode.toUpperCase();
@@ -203,54 +201,24 @@ export function SchoolKeysDrive({
       return code === programCode.toUpperCase();
     });
 
-    const sectionItems: DriveItem[] = sections.map((section) => ({
-      id: section.id,
-      name: `Class ${section.classLevel}-${displaySectionName(section.name)}`,
-      kind: "folder" as const,
-      href: sectionHref(school.id, programCode, section.id),
-      detail: "Tests",
-    }));
-
-    const classItems: DriveItem[] = wholeClasses.map((row) => ({
-      id: row.id,
-      name: `Class ${row.classLevel}`,
-      kind: "folder" as const,
-      href: classHref(school.id, programCode, row.classLevel),
-      detail: "Tests",
-    }));
-
-    return (
-      <DriveBrowser
-        key={`school-keys:${school.id}:program:${programCode}`}
-        breadcrumbs={[{ label: "School Keys", href: SCHOOL_KEYS_PATH }, ...folderCrumbs]}
-        items={[...sectionItems, ...classItems].sort((a, b) => a.name.localeCompare(b.name))}
-        emptyText={`No classes or sections for ${programName}. Add them on the school profile.`}
-        searchPlaceholder="Search classes"
-      />
-    );
-  }
-
-  // School → program → class/section → tests
-  if (schoolId && school && programCode && scope && board) {
-    const from =
-      scope.sectionId != null
-        ? sectionHref(school.id, programCode, scope.sectionId)
-        : classHref(school.id, programCode, scope.classLevel!);
-
-    const items: DriveItem[] = DRIVE_TESTS.map((number) => {
-      const row = board.items.find((item) => item.platform.testNumber === number);
-      const createKey = `${scope.sectionId ?? `class:${scope.classLevel}`}:${number}`;
+    const sectionItems: DriveItem[] = sections.map((section) => {
+      const board = boardsByScope[section.id];
+      const row = board?.items.find((item) => item.platform.testNumber === testNumber);
+      const label = `Class ${section.classLevel}-${displaySectionName(section.name)}`;
+      const createKey = `${section.id}:${testNumber}`;
 
       if (!row?.platform) {
         return {
-          id: String(number),
-          name: `Test ${number}`,
+          id: section.id,
+          name: label,
           kind: "empty" as const,
           detail: "No platform key — add under Answer Keys first",
           createLabel: "Unavailable",
           creating: false,
           onCreate: () => {
-            toast.error("Add a platform answer key for this class under Answer Keys first.");
+            toast.error(
+              `Add a platform answer key for ${programName} Class ${section.classLevel}, or change this section’s program under Classes & sections.`,
+            );
           },
         };
       }
@@ -262,8 +230,8 @@ export function SchoolKeysDrive({
 
       if (!row.schoolKey || filled === 0) {
         return {
-          id: String(number),
-          name: `Test ${number}`,
+          id: section.id,
+          name: label,
           kind: "empty" as const,
           detail: row.schoolKey
             ? "Draft school key — save answers to keep"
@@ -276,14 +244,14 @@ export function SchoolKeysDrive({
               router.push(href);
               return;
             }
-            openSchoolKey(row.platform.id, scope.sectionId ?? null, createKey, from);
+            openSchoolKey(row.platform.id, section.id, createKey, from);
           },
         };
       }
 
       return {
-        id: String(number),
-        name: `Test ${number}`,
+        id: section.id,
+        name: label,
         kind: "file" as const,
         href,
         detail: `School key · ${row.schoolKey.testId || row.platform.testId}`,
@@ -296,13 +264,74 @@ export function SchoolKeysDrive({
       };
     });
 
+    const classItems: DriveItem[] = wholeClasses.map((row) => {
+      const board = boardsByScope[`class:${row.classLevel}`];
+      const keyRow = board?.items.find((item) => item.platform.testNumber === testNumber);
+      const label = `Class ${row.classLevel}`;
+      const createKey = `class:${row.classLevel}:${testNumber}`;
+
+      if (!keyRow?.platform) {
+        return {
+          id: row.id,
+          name: label,
+          kind: "empty" as const,
+          detail: "No platform key — add under Answer Keys first",
+          createLabel: "Unavailable",
+          creating: false,
+          onCreate: () => {
+            toast.error("Add a platform answer key for this class under Answer Keys first.");
+          },
+        };
+      }
+
+      const filled = keyRow.schoolKey?.answerCount ?? 0;
+      const href = keyRow.schoolKey
+        ? documentAnswersHref(SCHOOL_KEYS_PATH, keyRow.schoolKey.id, from)
+        : undefined;
+
+      if (!keyRow.schoolKey || filled === 0) {
+        return {
+          id: row.id,
+          name: label,
+          kind: "empty" as const,
+          detail: keyRow.schoolKey
+            ? "Draft school key — save answers to keep"
+            : `Using our key · ${keyRow.platform.testId || "no test ID"}`,
+          createLabel: keyRow.schoolKey ? "Continue" : "Add school key",
+          creating: creatingId === createKey,
+          testId: keyRow.platform.testId || "",
+          onCreate: () => {
+            if (href) {
+              router.push(href);
+              return;
+            }
+            openSchoolKey(keyRow.platform.id, null, createKey, from);
+          },
+        };
+      }
+
+      return {
+        id: row.id,
+        name: label,
+        kind: "file" as const,
+        href,
+        detail: `School key · ${keyRow.schoolKey.testId || keyRow.platform.testId}`,
+        testId: keyRow.schoolKey.testId || keyRow.platform.testId || "",
+        modified: keyRow.schoolKey.updatedAt,
+        actions: [
+          { label: "Edit answers", href, icon: "edit" as const },
+          { label: "View", href, icon: "view" as const },
+        ],
+      };
+    });
+
     return (
       <DriveBrowser
-        key={`school-keys:${school.id}:scope:${scope.sectionId ?? `class:${scope.classLevel}`}`}
+        key={`school-keys:${school.id}:program:${programCode}:test:${testNumber}`}
         breadcrumbs={[{ label: "School Keys", href: SCHOOL_KEYS_PATH }, ...folderCrumbs]}
-        items={items}
-        emptyText="No tests yet."
-        searchPlaceholder="Search tests"
+        items={[...sectionItems, ...classItems].sort((a, b) => a.name.localeCompare(b.name))}
+        emptyText={`No classes or sections for ${programName}. Add them on the school profile.`}
+        searchPlaceholder="Search classes"
       />
     );
   }

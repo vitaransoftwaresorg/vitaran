@@ -264,16 +264,19 @@ export function getAdminParentHref(pathname: string, search = ""): string | null
   }
   if (pathname === "/admin/school-keys") {
     const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+    // Drop leftover class/section params (editor return) before stepping back.
     if (params.has("section") || params.has("class")) {
       params.delete("section");
       params.delete("class");
+    }
+    // Test → program → school
+    if (params.has("test")) {
       params.delete("test");
       const query = params.toString();
       return query ? `/admin/school-keys?${query}` : "/admin/school-keys";
     }
     if (params.has("program")) {
       params.delete("program");
-      params.delete("test");
       const query = params.toString();
       return query ? `/admin/school-keys?${query}` : "/admin/school-keys";
     }

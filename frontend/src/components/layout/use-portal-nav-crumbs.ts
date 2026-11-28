@@ -116,25 +116,26 @@ export function usePortalNavCrumbs(routeCrumbs: PortalNavCrumb[]): PortalNavCrum
           ? { ...crumb, href: answerKeysReturnHref }
           : crumb,
       );
-      // Rebuild School → Test from ?from= when session crumbs were not written yet.
+      // Rebuild School → Program → Test from ?from= when session crumbs were not written yet.
       let trail = folders;
       if (trail.length === 0 && answerKeysReturnHref) {
+        const base = answerKeysReturnHref.split("?")[0] ?? "";
         const params = new URLSearchParams(answerKeysReturnHref.split("?")[1] ?? "");
         const schoolParam = params.get("school");
+        const programParam = params.get("program");
         const testParam = params.get("test");
         if (isSchoolKey && schoolParam) {
-          const schoolHref = `${answerKeysReturnHref.split("?")[0]}?school=${encodeURIComponent(schoolParam)}`;
-          trail = [
-            {
-              label: schoolName ?? "School",
-              href: schoolHref,
-            },
-          ];
-          if (testParam) {
-            trail.push({
-              label: `Test ${testParam}`,
-              href: answerKeysReturnHref,
-            });
+          const schoolOnly = `${base}?school=${encodeURIComponent(schoolParam)}`;
+          trail = [{ label: schoolName ?? "School", href: schoolOnly }];
+          if (programParam) {
+            const programOnly = `${schoolOnly}&program=${encodeURIComponent(programParam)}`;
+            trail.push({ label: programParam, href: programOnly });
+            if (testParam) {
+              const testOnly = `${programOnly}&test=${encodeURIComponent(testParam)}`;
+              trail.push({ label: `Test ${testParam}`, href: testOnly });
+            }
+          } else if (testParam) {
+            trail.push({ label: `Test ${testParam}`, href: answerKeysReturnHref });
           }
         } else if (testParam) {
           trail = [{ label: `Test ${testParam}`, href: answerKeysReturnHref }];
@@ -144,17 +145,19 @@ export function usePortalNavCrumbs(routeCrumbs: PortalNavCrumb[]): PortalNavCrum
       return dedupeCrumbs([...withFolderHome, ...trail, { label: leafLabel, href: pathname }]);
     }
 
-    // School Keys folders: Dashboard › School Keys › School › Test (same pattern as Answer Keys).
+    // School Keys folders: School → Program → Test → Class.
     if (pathname === "/admin/school-keys") {
       const section = sectionThrough(routeCrumbs, (href) => /\/school-keys$/.test(href));
       const school = searchParams.get("school");
       const test = searchParams.get("test");
       const scoped = folders.filter((crumb) => {
-        if (!school && !test) return false;
+        if (!school) return false;
+        // Class leaf only belongs on the answers editor, not the folder list.
+        if (isClassLeafLabel(crumb.label)) return false;
         if (!test && /test\s+\d+/i.test(crumb.label)) return false;
         return true;
       });
-      return dedupeCrumbs([...section, ...(school || test ? scoped : [])]);
+      return dedupeCrumbs([...section, ...(school ? scoped : [])]);
     }
 
     if (isResultsEnterPath(pathname)) {
