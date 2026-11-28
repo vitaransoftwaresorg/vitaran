@@ -22,6 +22,7 @@ export type AppSettingsDto = {
   teacherDesktopOmrEnabled: boolean;
   schoolMobileOmrEnabled: boolean;
   teacherMobileOmrEnabled: boolean;
+  homeNetworkEnabled: boolean;
   vitaranEmails: string[];
   smeContacts: SmeContact[];
   updatedAt: string;
@@ -56,6 +57,7 @@ function toDto(row: NonNullable<Awaited<ReturnType<typeof settingsRepository.fin
     teacherDesktopOmrEnabled: row.teacherDesktopOmrEnabled,
     schoolMobileOmrEnabled: row.schoolMobileOmrEnabled,
     teacherMobileOmrEnabled: row.teacherMobileOmrEnabled,
+    homeNetworkEnabled: row.homeNetworkEnabled,
     vitaranEmails: row.vitaranEmails,
     smeContacts: asSmeContacts(row.smeContacts),
     updatedAt: row.updatedAt.toISOString(),
@@ -72,6 +74,7 @@ const EMPTY: AppSettingsDto = {
   teacherDesktopOmrEnabled: true,
   schoolMobileOmrEnabled: true,
   teacherMobileOmrEnabled: true,
+  homeNetworkEnabled: true,
   vitaranEmails: [],
   smeContacts: [],
   updatedAt: new Date(0).toISOString(),
@@ -94,6 +97,7 @@ export async function getPublicSettings() {
     teacherDesktopOmrEnabled: settings.teacherDesktopOmrEnabled,
     schoolMobileOmrEnabled: settings.schoolMobileOmrEnabled,
     teacherMobileOmrEnabled: settings.teacherMobileOmrEnabled,
+    homeNetworkEnabled: settings.homeNetworkEnabled,
   };
 }
 
@@ -139,6 +143,7 @@ export async function updateAppSettings(input: UpdateAppSettingsInput) {
     teacherDesktopOmrEnabled: input.teacherDesktopOmrEnabled,
     schoolMobileOmrEnabled: input.schoolMobileOmrEnabled,
     teacherMobileOmrEnabled: input.teacherMobileOmrEnabled,
+    homeNetworkEnabled: input.homeNetworkEnabled,
     vitaranEmails: input.vitaranEmails,
     smeContacts: input.smeContacts.map((row) => ({
       name: row.name.trim(),
@@ -160,6 +165,7 @@ export async function updateAppSettings(input: UpdateAppSettingsInput) {
       teacherDesktopOmrEnabled: after.teacherDesktopOmrEnabled,
       schoolMobileOmrEnabled: after.schoolMobileOmrEnabled,
       teacherMobileOmrEnabled: after.teacherMobileOmrEnabled,
+      homeNetworkEnabled: after.homeNetworkEnabled,
     },
   });
   void sendOnboardingEmails(after).catch((error) =>

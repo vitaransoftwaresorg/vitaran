@@ -127,15 +127,29 @@ const TEST_ID_MAX_LENGTH = 7;
 const TEST_ID_PATTERN = /^\d{6,7}$/;
 const testIdInput = (value: string) => value.replace(/\D/g, "").slice(0, TEST_ID_MAX_LENGTH);
 
+const SCHOOL_KEY_NONE = "__none__";
+
 type TestCheckState =
-  | { value: string; ok: true; keys: TestIdCheck["keys"] }
+  | {
+      value: string;
+      ok: true;
+      keys: TestIdCheck["keys"];
+      schoolKeys: NonNullable<TestIdCheck["schoolKeys"]>;
+    }
   | { value: string; ok: false; message: string };
 
 function toCheckState(
   value: string,
   result: ({ ok: true } & TestIdCheck) | { ok: false; message: string },
 ): TestCheckState {
-  return result.ok ? { value, ok: true, keys: result.keys } : { value, ok: false, message: result.message };
+  return result.ok
+    ? { value, ok: true, keys: result.keys, schoolKeys: result.schoolKeys ?? [] }
+    : { value, ok: false, message: result.message };
+}
+
+function schoolKeyLabel(row: NonNullable<TestIdCheck["schoolKeys"]>[number]) {
+  const section = row.sectionName?.trim();
+  return section ? `${row.schoolName} · Section ${section}` : row.schoolName;
 }
 
 export function ScanCamera({
@@ -163,6 +177,8 @@ export function ScanCamera({
   const cameraRef = useRef<HTMLInputElement>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [testCheck, setTestCheck] = useState<TestCheckState | null>(null);
+  /** Admin only — default none (platform key) even when school keys exist. */
+  const [schoolKeyId, setSchoolKeyId] = useState("");
   const [rollError, setRollError] = useState<string | null>(null);
   const [rollMatches, setRollMatches] = useState<OmrStudentMatch[]>([]);
   const [rollHint, setRollHint] = useState("");
@@ -170,6 +186,9 @@ export function ScanCamera({
   const enteredTest = testId.trim();
   const testComplete = TEST_ID_PATTERN.test(enteredTest);
   const checked = testComplete && testCheck?.value === enteredTest ? testCheck : null;
+  const schoolKeys = portal === "admin" && checked?.ok ? checked.schoolKeys : [];
+  const selectedSchoolKey =
+    schoolKeyId && schoolKeys.some((row) => row.id === schoolKeyId) ? schoolKeyId : "";
   const patternClassLevel = checked?.ok ? checked.keys[0]?.classLevel : undefined;
   const patternOptions = useMemo(
     () =>
@@ -193,12 +212,21 @@ export function ScanCamera({
     if (!testComplete) return;
     let live = true;
     void checkTestIdAction(portal, enteredTest).then((result) => {
-      if (live) setTestCheck(toCheckState(enteredTest, result));
+      if (!live) return;
+      setTestCheck(toCheckState(enteredTest, result));
+      // New test ID → reset school key to none.
+      setSchoolKeyId("");
     });
     return () => {
       live = false;
     };
   }, [portal, enteredTest, testComplete]);
+
+  useEffect(() => {
+    if (!schoolKeyId) return;
+    if (schoolKeys.some((row) => row.id === schoolKeyId)) return;
+    setSchoolKeyId("");
+  }, [schoolKeyId, schoolKeys]);
 
   /** Every scan and upload needs a 6–7 digit test ID that has an answer key. Returns keys when ok. */
   async function verifyTestId(): Promise<false | TestIdCheck["keys"]> {
@@ -261,6 +289,51 @@ export function ScanCamera({
     );
   }
 
+  function schoolKeyField(id: string) {
+    if (!schoolKeys.length) return null;
+    const items = [
+      { value: SCHOOL_KEY_NONE, label: "None (platform key)" },
+      ...schoolKeys.map((row) => ({
+        value: row.id,
+        label: schoolKeyLabel(row),
+      })),
+    ];
+    return (
+      <div className="space-y-1.5">
+        <Label htmlFor={id} className="text-xs font-semibold tracking-wider text-neutral-500 uppercase">
+          School key
+        </Label>
+        <Select
+          items={items}
+          value={selectedSchoolKey || SCHOOL_KEY_NONE}
+          disabled={busy}
+          onValueChange={(value) => {
+            if (value == null || value === SCHOOL_KEY_NONE) {
+              setSchoolKeyId("");
+              return;
+            }
+            setSchoolKeyId(value);
+          }}
+        >
+          <SelectTrigger id={id} className="h-11 w-full rounded-xl bg-white px-3.5 text-sm">
+            <SelectValue placeholder="None (platform key)" />
+          </SelectTrigger>
+          <SelectContent>
+            {items.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-[11px] text-neutral-500">
+          None uses the platform key. A school key fills only its answers; other subjects stay on the
+          platform key.
+        </p>
+      </div>
+    );
+  }
+
   const testHint = !enteredTest ? (
     <p className="text-[11px] text-neutral-500">Enter the 6-digit test ID first, then upload.</p>
   ) : !testComplete ? (
@@ -303,6 +376,7 @@ export function ScanCamera({
     form.append("file", file);
     if (testId.trim()) form.append("testId", testId.trim());
     if (examPattern) form.append("examPattern", examPattern);
+    if (selectedSchoolKey) form.append("schoolKeyId", selectedSchoolKey);
     const roll = rollInput(forcedRoll ?? "");
     if (forcedName?.trim()) {
       form.append("rollNo", normalizeRollNo(roll));
@@ -471,6 +545,7 @@ export function ScanCamera({
         file,
         forcedTestId,
         examPattern,
+        selectedSchoolKey || undefined,
       );
       if (pageCount < 1) {
         toast.error("This PDF has no pages.");
@@ -526,6 +601,7 @@ export function ScanCamera({
           file,
           testId: testId.trim() || undefined,
           examPattern: examPattern || undefined,
+          schoolKeyId: selectedSchoolKey || undefined,
         })),
       );
     }
@@ -558,6 +634,7 @@ export function ScanCamera({
             {testHint}
           </div>
           {patternField("scan-pattern-desktop")}
+          {schoolKeyField("scan-school-key-desktop")}
           {failedRollPanel()}
         </div>
         <label
@@ -664,6 +741,7 @@ export function ScanCamera({
           {testHint}
         </div>
         {patternField("scan-pattern")}
+        {schoolKeyField("scan-school-key")}
         {failedRollPanel()}
       </div>
       <input

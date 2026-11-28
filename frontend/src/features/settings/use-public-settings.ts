@@ -14,6 +14,7 @@ const EMPTY: PublicSettings = {
   teacherDesktopOmrEnabled: true,
   schoolMobileOmrEnabled: true,
   teacherMobileOmrEnabled: true,
+  homeNetworkEnabled: true,
 };
 
 function asPublicSettings(value: unknown): PublicSettings | null {
@@ -27,7 +28,7 @@ function asPublicSettings(value: unknown): PublicSettings | null {
   ) {
     return null;
   }
-  // OMR flags default on when absent so a partial live event cannot wipe them.
+  // OMR / home network flags default on when absent so a partial live event cannot wipe them.
   return {
     maintenanceMode: row.maintenanceMode,
     teacherResourcesPublic: row.teacherResourcesPublic,
@@ -41,6 +42,8 @@ function asPublicSettings(value: unknown): PublicSettings | null {
       typeof row.schoolMobileOmrEnabled === "boolean" ? row.schoolMobileOmrEnabled : true,
     teacherMobileOmrEnabled:
       typeof row.teacherMobileOmrEnabled === "boolean" ? row.teacherMobileOmrEnabled : true,
+    homeNetworkEnabled:
+      typeof row.homeNetworkEnabled === "boolean" ? row.homeNetworkEnabled : true,
   };
 }
 

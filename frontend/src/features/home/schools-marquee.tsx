@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
 import { School } from "lucide-react";
+import { usePublicSettings } from "@/features/settings/use-public-settings";
 import { cn } from "@/lib/utils";
 import { PARTNER_SCHOOLS, type PartnerSchool } from "@/features/home/partner-schools";
 
@@ -86,8 +87,11 @@ function MarqueeTrack({
 
 export function SchoolsMarquee({ className }: SchoolsMarqueeProps) {
   const reduceMotion = useReducedMotion();
+  const { settings, ready } = usePublicSettings();
   const schools = PARTNER_SCHOOLS;
 
+  // Default on until settings load; hide when admin disables "Our network".
+  if (ready && !settings.homeNetworkEnabled) return null;
   if (schools.length === 0) return null;
 
   const durationSec = Math.max(32, schools.length * 7);

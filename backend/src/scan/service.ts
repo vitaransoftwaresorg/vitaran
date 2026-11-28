@@ -69,6 +69,11 @@ import {
   parseExamPattern,
   type ExamPattern,
 } from "./exam-pattern.js";
+import {
+  findPlatformKeyFor,
+  mergePlatformAndSchoolKey,
+  scoringKeyForStored,
+} from "./key-merge.js";
 import { evaluatedImage, scoreWithKey, scoringFingerprint } from "./regrade.js";
 import * as scanRepository from "./repository.js";
 import { sheetFlags, type SheetScore } from "./score.js";
@@ -128,6 +133,11 @@ type PdfBatch = {
   testId: string;
   /** Exam pattern for every page in this PDF batch. */
   examPattern: ExamPattern;
+  /**
+   * Admin-only: school answer key to merge over the platform key.
+   * Empty / omitted → platform key only (even if school keys exist).
+   */
+  schoolKeyId?: string | null;
   items: PdfBatchItem[];
   finished: boolean;
   cancelled: boolean;
@@ -527,23 +537,82 @@ function keyVisibleTo(key: ScanKey, school: ScanSchool) {
   return rankKeyForSchool(key, school, undefined) < 99;
 }
 
+type ResolveKeyOptions = {
+  /** Admin picker: merge this school key over the platform key. */
+  schoolKeyId?: string;
+  /**
+   * Admin with no school key selected — use platform only
+   * (do not auto-apply a school key from the student’s school).
+   */
+  forcePlatform?: boolean;
+};
+
+async function loadSelectedSchoolKey(schoolKeyId: string, testId: string) {
+  const schoolKey = await answerKeyRepository.findAnswerKeyById(schoolKeyId);
+  if (!schoolKey?.schoolId || !keyHasAnswers(schoolKey)) {
+    throw new AppError(404, "Selected school answer key was not found.");
+  }
+  if (schoolKey.testId?.trim().toUpperCase() !== testId.trim().toUpperCase()) {
+    throw new AppError(422, "Selected school answer key does not match this test ID.");
+  }
+  return withPlatformMerge(schoolKey);
+}
+
+/**
+ * School / teacher auto-pick and admin picker: school answers overlay platform.
+ * If there is no platform key (e.g. customized-only), use the school key as-is.
+ */
+async function withPlatformMerge(key: ScanKey): Promise<ScanKey> {
+  if (!key.schoolId) return key;
+  const platform = await findPlatformKeyFor(key);
+  if (!platform || !keyHasAnswers(platform)) return key;
+  return mergePlatformAndSchoolKey(platform, key);
+}
+
 /** The key must be for the student's class and program as stored in the database. */
-async function resolveKey(school: ScanSchool | null, tests: string[], student: ScanStudent) {
+async function resolveKey(
+  school: ScanSchool | null,
+  tests: string[],
+  student: ScanStudent,
+  options: ResolveKeyOptions = {},
+) {
   let lastError: unknown;
   for (const testId of tests) {
     try {
+      if (options.schoolKeyId) {
+        const key = await loadSelectedSchoolKey(options.schoolKeyId, testId);
+        const who = `${student.name || student.rollNo} (${student.rollNo})`;
+        if (key.classLevel !== student.classLevel) {
+          throw new AppError(
+            422,
+            `Test ID ${testId} is for Class ${key.classLevel}, but ${who} is in Class ${student.classLevel}.`,
+          );
+        }
+        if (student.programCode && key.programCode !== student.programCode) {
+          throw new AppError(
+            422,
+            `Test ID ${testId} belongs to a different program than ${who}.`,
+          );
+        }
+        return { key, school };
+      }
+
       const keys = await answerKeyRepository.findAnswerKeys({
         testId: { equals: testId.trim(), mode: "insensitive" },
       });
-      const visible = (
-        school
+      const visible = options.forcePlatform
+        ? keys
+            .filter((key) => !key.school && key.type === SchoolType.REGULAR)
+            .sort((a, b) => Number(b.published) - Number(a.published))
+        : school
           ? keys
               .map((key) => ({ key, rank: rankKeyForSchool(key, school, student.sectionId) }))
               .filter((row) => row.rank < 99)
               .sort((a, b) => a.rank - b.rank || Number(b.key.published) - Number(a.key.published))
               .map((row) => row.key)
-          : keys.filter((key) => !key.school).sort((a, b) => Number(b.published) - Number(a.published))
-      );
+          : keys
+              .filter((key) => !key.school)
+              .sort((a, b) => Number(b.published) - Number(a.published));
       if (visible.length === 0) {
         throw new AppError(404, `No answer key for test ID ${testId}${school ? ` at ${school.name}` : ""}`);
       }
@@ -565,7 +634,8 @@ async function resolveKey(school: ScanSchool | null, tests: string[], student: S
           `Test ID ${testId} belongs to a different program than ${who}.`,
         );
       }
-      return { key: match[0]!, school };
+      // School/teacher: auto-use school key when present (merged); never show a picker.
+      return { key: await withPlatformMerge(match[0]!), school };
     } catch (error) {
       lastError = error;
       if (!(error instanceof AppError) || error.statusCode >= 500) throw error;
@@ -575,19 +645,30 @@ async function resolveKey(school: ScanSchool | null, tests: string[], student: S
 }
 
 /** Answer key for an unregistered walk-in — class/program come from the key (test ID). */
-async function resolveWalkInKey(school: ScanSchool, testId: string) {
+async function resolveWalkInKey(
+  school: ScanSchool,
+  testId: string,
+  options: ResolveKeyOptions = {},
+) {
+  if (options.schoolKeyId) {
+    return loadSelectedSchoolKey(options.schoolKeyId, testId);
+  }
   const keys = await answerKeyRepository.findAnswerKeys({
     testId: { equals: testId.trim(), mode: "insensitive" },
   });
-  const visible = keys
-    .map((key) => ({ key, rank: rankKeyForSchool(key, school, undefined) }))
-    .filter((row) => row.rank < 99)
-    .sort((a, b) => a.rank - b.rank || Number(b.key.published) - Number(a.key.published))
-    .map((row) => row.key);
+  const visible = options.forcePlatform
+    ? keys
+        .filter((key) => !key.school && key.type === SchoolType.REGULAR)
+        .sort((a, b) => Number(b.published) - Number(a.published))
+    : keys
+        .map((key) => ({ key, rank: rankKeyForSchool(key, school, undefined) }))
+        .filter((row) => row.rank < 99)
+        .sort((a, b) => a.rank - b.rank || Number(b.key.published) - Number(a.key.published))
+        .map((row) => row.key);
   if (visible.length === 0) {
     throw new AppError(404, `No answer key for test ID ${testId} at ${school.name}`);
   }
-  return visible[0]!;
+  return withPlatformMerge(visible[0]!);
 }
 
 async function loadScanSchool(id: string): Promise<ScanSchool> {
@@ -873,21 +954,40 @@ export async function checkTestId(context: ScanContext, testId: string) {
     );
   }
   const catalog = new Map((await programRepository.findPrograms()).map((program) => [program.code, program.name]));
+  const toKeyRow = (key: (typeof keys)[number]) => {
+    const named = programNameOf(context, key);
+    const owner = key.school?.name?.trim() || "Platform";
+    const section = key.section?.name?.trim();
+    return {
+      testNumber: key.testNumber,
+      classLevel: key.classLevel,
+      programCode: key.programCode,
+      programName: named !== key.programCode ? named : (catalog.get(key.programCode) ?? key.programCode),
+      owner,
+      sectionName: section || null,
+    };
+  };
+  // Admin OMR: school keys for the optional picker (default none = platform only).
+  const schoolKeys =
+    context.kind === "admin"
+      ? keys
+          .filter((key) => Boolean(key.schoolId && key.school))
+          .map((key) => ({
+            id: key.id,
+            schoolId: key.school!.id,
+            schoolName: key.school!.name,
+            sectionId: key.sectionId,
+            sectionName: key.section?.name?.trim() || null,
+            classLevel: key.classLevel,
+            programCode: key.programCode,
+            programName: toKeyRow(key).programName,
+          }))
+      : [];
+  const platformKeys = keys.filter((key) => !key.school);
   return {
     testId: keys[0]!.testId!.trim(),
-    keys: keys.map((key) => {
-      const named = programNameOf(context, key);
-      const owner = key.school?.name?.trim() || "Platform";
-      const section = key.section?.name?.trim();
-      return {
-        testNumber: key.testNumber,
-        classLevel: key.classLevel,
-        programCode: key.programCode,
-        programName: named !== key.programCode ? named : (catalog.get(key.programCode) ?? key.programCode),
-        owner,
-        sectionName: section || null,
-      };
-    }),
+    keys: (platformKeys.length ? platformKeys : keys).map(toKeyRow),
+    schoolKeys,
   };
 }
 
@@ -899,7 +999,7 @@ export async function registerOmrPdf(
   context: ScanContext,
   pdfPath: string,
   fileName: string,
-  identity: { testId?: string; examPattern?: string } = {},
+  identity: { testId?: string; examPattern?: string; schoolKeyId?: string } = {},
   fileSize = 0,
 ) {
   if (fileSize > PDF_MAX) {
@@ -912,7 +1012,7 @@ export async function registerOmrPdf(
   }
   let accepted = false;
   try {
-    const { testId, keys } = await checkTestId(context, identity.testId ?? "");
+    const { testId, keys, schoolKeys } = await checkTestId(context, identity.testId ?? "");
     const testNumber = keys[0]?.testNumber;
     if (
       testNumber != null &&
@@ -930,6 +1030,15 @@ export async function registerOmrPdf(
         "Choose the exam pattern (Maths / Sciences / Maths Sciences, or MPCB / PCB / MPC) before uploading",
       );
     }
+    const schoolKeyIdRaw =
+      typeof identity.schoolKeyId === "string" ? identity.schoolKeyId.trim() : "";
+    const schoolKeyId =
+      context.kind === "admin" &&
+      schoolKeyIdRaw &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(schoolKeyIdRaw) &&
+      schoolKeys.some((row) => row.id === schoolKeyIdRaw)
+        ? schoolKeyIdRaw
+        : null;
     purgeExpiredPdfBatches();
     const owner = ownerOf(context);
     const active = [...pdfBatches.values()].find(
@@ -952,6 +1061,7 @@ export async function registerOmrPdf(
       pageCount,
       testId,
       examPattern,
+      schoolKeyId,
       items: [],
       finished: false,
       cancelled: false,
@@ -1183,6 +1293,7 @@ async function readPdfBatch(context: ScanContext, batch: PdfBatch) {
         const { previewId, scan } = await previewScan(context, sheet.jpeg, sheet.fileName, {
           testId: batch.testId,
           examPattern: batch.examPattern,
+          schoolKeyId: batch.schoolKeyId ?? undefined,
           flat: true,
           lean: true,
         });
@@ -1351,6 +1462,8 @@ export async function previewScan(
     rollNo?: string;
     testId?: string;
     schoolId?: string;
+    /** Admin: school answer key to merge over platform (default none). */
+    schoolKeyId?: string;
     examPattern?: string;
     /** When set and the roll is not on the roster, save as a walk-in for the test ID's class. */
     studentName?: string;
@@ -1394,6 +1507,17 @@ export async function previewScan(
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identity.schoolId)
       ? identity.schoolId
       : undefined;
+  const schoolKeyId =
+    context.kind === "admin" &&
+    typeof identity.schoolKeyId === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(identity.schoolKeyId)
+      ? identity.schoolKeyId
+      : undefined;
+  /** Admin OMR: no school key selected → platform only (do not auto-use student school key). */
+  const keyOptions: ResolveKeyOptions = {
+    schoolKeyId,
+    forcePlatform: context.kind === "admin" && !schoolKeyId,
+  };
   // Empty reg + name is allowed — shared blank is empty string (not 0000000).
   const blankWalkIn =
     Boolean(walkInName) &&
@@ -1514,13 +1638,18 @@ export async function previewScan(
 
   if (enrolled) {
     try {
-      const resolved = await resolveKey(school, [testId], {
-        name: enrolled.name,
-        rollNo: enrolled.rollNo,
-        classLevel: enrolled.classLevel,
-        programCode: enrolled.program?.code ?? null,
-        sectionId: enrolled.sectionId ?? enrolled.section?.id ?? null,
-      });
+      const resolved = await resolveKey(
+        school,
+        [testId],
+        {
+          name: enrolled.name,
+          rollNo: enrolled.rollNo,
+          classLevel: enrolled.classLevel,
+          programCode: enrolled.program?.code ?? null,
+          sectionId: enrolled.sectionId ?? enrolled.section?.id ?? null,
+        },
+        keyOptions,
+      );
       key = resolved.key;
     } catch (error) {
       // Wrong class/program for this test — still score vs the test key; examiner rebinds reg later.
@@ -1551,7 +1680,7 @@ export async function previewScan(
       throw new AppError(422, "Registration number must be 7 digits, or empty with a name");
     }
     const walkInRoll = effectiveRoll;
-    key = await resolveWalkInKey(school, testId);
+    key = await resolveWalkInKey(school, testId, keyOptions);
     // Class/program: PDF majority (client or pending), else answer key.
     const majority = majorityPlacementFromPending(context);
     const walkInClass = walkInClassHint ?? majority.classLevel ?? key.classLevel;
@@ -1572,13 +1701,18 @@ export async function previewScan(
       throw new AppError(500, "Student was added but could not be loaded for this OMR.");
     }
     enrolled = created;
-    ({ key } = await resolveKey(school, [testId], {
-      name: created.name,
-      rollNo: created.rollNo,
-      classLevel: created.classLevel,
-      programCode: created.program?.code ?? null,
-      sectionId: created.sectionId ?? created.section?.id ?? null,
-    }));
+    ({ key } = await resolveKey(
+      school,
+      [testId],
+      {
+        name: created.name,
+        rollNo: created.rollNo,
+        classLevel: created.classLevel,
+        programCode: created.program?.code ?? null,
+        sectionId: created.sectionId ?? created.section?.id ?? null,
+      },
+      keyOptions,
+    ));
     identityRoll = created.rollNo;
     identityName = created.name || walkInName;
     identityClass = created.classLevel;
@@ -1587,7 +1721,7 @@ export async function previewScan(
     studentId = created.id;
   } else if (identityError) {
     // Score now with the test-ID key; bind registration later without re-reading bubbles.
-    const evalKey = await resolveWalkInKey(school, testId);
+    const evalKey = await resolveWalkInKey(school, testId, keyOptions);
     const bubbleRoll = [typedRoll, read.rollNo, ...read.rollCandidates].find((roll) =>
       /^\d{7}$/.test(roll),
     );
@@ -1728,13 +1862,22 @@ async function rebindPendingRoll(context: ScanContext, previewId: string, rollNo
     return;
   }
   const enrolled = await resolveStudent(row.school, [clean]);
-  const { key } = await resolveKey(row.school, [row.identity.testId], {
-    name: enrolled.name,
-    rollNo: enrolled.rollNo,
-    classLevel: enrolled.classLevel,
-    programCode: enrolled.program?.code ?? null,
-    sectionId: enrolled.sectionId ?? enrolled.section?.id ?? null,
-  });
+  const pendingKeyOptions: ResolveKeyOptions = {
+    schoolKeyId: row.key.schoolId ? row.key.id : undefined,
+    forcePlatform: row.context.kind === "admin" && !row.key.schoolId,
+  };
+  const { key } = await resolveKey(
+    row.school,
+    [row.identity.testId],
+    {
+      name: enrolled.name,
+      rollNo: enrolled.rollNo,
+      classLevel: enrolled.classLevel,
+      programCode: enrolled.program?.code ?? null,
+      sectionId: enrolled.sectionId ?? enrolled.section?.id ?? null,
+    },
+    pendingKeyOptions,
+  );
   // Keep the scan/PDF exam pattern; re-score when the answer key changes after rebinding.
   const nextPattern = row.examPattern;
   const keyChanged = key.id !== row.key.id;
@@ -1879,13 +2022,22 @@ export async function bindPendingIdentity(
     };
   }
 
-  const { key } = await resolveKey(row.school, [row.identity.testId], {
-    name: enrolled.name,
-    rollNo: enrolled.rollNo,
-    classLevel: enrolled.classLevel,
-    programCode: enrolled.program?.code ?? null,
-    sectionId: enrolled.sectionId ?? enrolled.section?.id ?? null,
-  });
+  const pendingKeyOptions: ResolveKeyOptions = {
+    schoolKeyId: row.key.schoolId ? row.key.id : undefined,
+    forcePlatform: row.context.kind === "admin" && !row.key.schoolId,
+  };
+  const { key } = await resolveKey(
+    row.school,
+    [row.identity.testId],
+    {
+      name: enrolled.name,
+      rollNo: enrolled.rollNo,
+      classLevel: enrolled.classLevel,
+      programCode: enrolled.program?.code ?? null,
+      sectionId: enrolled.sectionId ?? enrolled.section?.id ?? null,
+    },
+    pendingKeyOptions,
+  );
   // Keep the scan/PDF exam pattern after correcting registration.
   const nextPattern = row.examPattern;
   const keyChanged = key.id !== row.key.id;
@@ -1973,8 +2125,9 @@ export async function commitScans(context: ScanContext, previewIds: string[]) {
 
 /** The key changed (an objection was accepted, or the admin edited it) after this sheet was read. */
 async function useCurrentKey(row: Pending) {
-  const current = await answerKeyRepository.findAnswerKeyById(row.key.id);
-  if (!current) throw new AppError(410, "This answer key was removed. Scan again.");
+  const stored = await answerKeyRepository.findAnswerKeyById(row.key.id);
+  if (!stored) throw new AppError(410, "This answer key was removed. Scan again.");
+  const current = await scoringKeyForStored(stored);
   if (scoringFingerprint(current) === scoringFingerprint(row.key)) return;
   const readFlags = row.flags.filter((flag) => flag.reason !== "Un-attempted");
   if (row.bubbles) {

@@ -193,6 +193,7 @@ export function ScanBoard({ portal }: { portal: ScanPortal }) {
         form.append("file", next.file);
         if (next.testId) form.append("testId", next.testId);
         if (next.examPattern) form.append("examPattern", next.examPattern);
+        if (next.schoolKeyId) form.append("schoolKeyId", next.schoolKeyId);
         const result = await previewScanAction(portal, form);
         if (result.ok) {
           setScanBatch([...getScanBatch(), result.result]);

@@ -41,6 +41,8 @@ export function previewScan(
     testId?: string;
     examPattern?: string;
     schoolId?: string;
+    /** Admin: school answer key to merge over platform (default none). */
+    schoolKeyId?: string;
     studentName?: string;
     /** Walk-in section — defaults to A on the server when omitted. */
     sectionId?: string;
@@ -63,6 +65,7 @@ export function previewScan(
   if (identity?.testId) body.append("testId", identity.testId);
   if (identity?.examPattern) body.append("examPattern", identity.examPattern);
   if (identity?.schoolId) body.append("schoolId", identity.schoolId);
+  if (identity?.schoolKeyId) body.append("schoolKeyId", identity.schoolKeyId);
   if (identity?.studentName) body.append("studentName", identity.studentName);
   if (identity?.sectionId) body.append("sectionId", identity.sectionId);
   if (identity?.classLevel) body.append("classLevel", String(identity.classLevel));

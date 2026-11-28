@@ -393,15 +393,22 @@ export const AdminSchoolClassesPanel = memo(function AdminSchoolClassesPanel({
     const levels = new Set<number>();
     for (const program of schoolPrograms) {
       for (const cls of program.classes) levels.add(cls.classLevel);
+      // Catalog range (classFrom–classTo) — same as edit, so Add class isn’t missing levels.
+      for (let level = program.classFrom; level <= program.classTo; level += 1) {
+        levels.add(level);
+      }
     }
     return [...levels].sort((a, b) => a - b);
   }, [schoolPrograms]);
 
+  /** Programs that cover this class — checked classes or catalog range (matches edit select). */
   const programsForClass = useMemo(() => {
     const level = Number(classLevel);
     if (!level) return [];
-    return schoolPrograms.filter((row) =>
-      row.classes.some((cls) => cls.classLevel === level),
+    return schoolPrograms.filter(
+      (row) =>
+        row.classes.some((cls) => cls.classLevel === level) ||
+        (level >= row.classFrom && level <= row.classTo),
     );
   }, [schoolPrograms, classLevel]);
 

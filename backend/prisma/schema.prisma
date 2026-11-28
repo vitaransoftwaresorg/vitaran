@@ -642,6 +642,8 @@ model AppSettings {
   schoolMobileOmrEnabled Boolean @default(true) @map("school_mobile_omr_enabled")
   /// Teacher portal mobile camera scan.
   teacherMobileOmrEnabled Boolean @default(true) @map("teacher_mobile_omr_enabled")
+  /// When true, the home page shows the "Our network" partner schools section.
+  homeNetworkEnabled Boolean @default(true) @map("home_network_enabled")
   /// Inboxes for every answer-key objection.
   vitaranEmails    String[] @default([]) @map("vitaran_emails") @db.VarChar(254)
   /// SME contacts: [{ "name": "…", "subject": "MATHEMATICS", "email": "…" }]

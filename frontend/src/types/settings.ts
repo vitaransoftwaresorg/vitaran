@@ -14,6 +14,7 @@ export type AppSettings = {
   teacherDesktopOmrEnabled: boolean;
   schoolMobileOmrEnabled: boolean;
   teacherMobileOmrEnabled: boolean;
+  homeNetworkEnabled: boolean;
   vitaranEmails: string[];
   smeContacts: SmeContact[];
   updatedAt: string;
@@ -28,6 +29,7 @@ export type PublicSettings = {
   teacherDesktopOmrEnabled: boolean;
   schoolMobileOmrEnabled: boolean;
   teacherMobileOmrEnabled: boolean;
+  homeNetworkEnabled: boolean;
 };
 
 export type UpdateAppSettingsInput = {
@@ -40,6 +42,7 @@ export type UpdateAppSettingsInput = {
   teacherDesktopOmrEnabled: boolean;
   schoolMobileOmrEnabled: boolean;
   teacherMobileOmrEnabled: boolean;
+  homeNetworkEnabled: boolean;
   vitaranEmails: string[];
   smeContacts: SmeContact[];
 };

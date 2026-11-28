@@ -113,6 +113,7 @@ function omrRouter(contextOf: (res: Response) => scanService.ScanContext) {
       rollNo?: string;
       testId?: string;
       schoolId?: string;
+      schoolKeyId?: string;
       examPattern?: string;
       studentName?: string;
       sectionId?: string;
@@ -134,6 +135,7 @@ function omrRouter(contextOf: (res: Response) => scanService.ScanContext) {
         rollNo: typeof body?.rollNo === "string" ? body.rollNo : undefined,
         testId: typeof body?.testId === "string" ? body.testId : "",
         schoolId: typeof body?.schoolId === "string" ? body.schoolId : "",
+        schoolKeyId: typeof body?.schoolKeyId === "string" ? body.schoolKeyId : "",
         examPattern: typeof body?.examPattern === "string" ? body.examPattern : "",
         studentName: typeof body?.studentName === "string" ? body.studentName : "",
         sectionId: typeof body?.sectionId === "string" ? body.sectionId : "",
@@ -158,13 +160,18 @@ function omrRouter(contextOf: (res: Response) => scanService.ScanContext) {
         .find(Boolean) ?? "";
     const testId = pick(req.body?.testId, req.query?.testId, req.get("x-test-id"));
     const examPattern = pick(req.body?.examPattern, req.query?.examPattern, req.get("x-exam-pattern"));
+    const schoolKeyId = pick(
+      req.body?.schoolKeyId,
+      req.query?.schoolKeyId,
+      req.get("x-school-key-id"),
+    );
     sendSuccess(
       res,
       await scanService.registerOmrPdf(
         contextOf(res),
         file.path,
         file.originalname,
-        { testId, examPattern },
+        { testId, examPattern, schoolKeyId: schoolKeyId || undefined },
         file.size,
       ),
     );

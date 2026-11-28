@@ -33,6 +33,20 @@ export type TestIdCheck = {
     owner?: string;
     sectionName?: string | null;
   }>;
+  /**
+   * Admin OMR only: filled school keys for this test ID.
+   * Empty → hide the school-key picker (platform only).
+   */
+  schoolKeys?: Array<{
+    id: string;
+    schoolId: string;
+    schoolName: string;
+    sectionId: string | null;
+    sectionName: string | null;
+    classLevel: number;
+    programCode: string;
+    programName: string;
+  }>;
 };
 
 /** A saved OMR in a class, for the results table's OMR column. */

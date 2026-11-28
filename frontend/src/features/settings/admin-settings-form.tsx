@@ -32,7 +32,8 @@ type ToggleKey =
   | "schoolDesktopOmr"
   | "teacherDesktopOmr"
   | "schoolMobileOmr"
-  | "teacherMobileOmr";
+  | "teacherMobileOmr"
+  | "homeNetwork";
 
 const SUBJECT_OPTIONS = [
   "MATHEMATICS",
@@ -81,6 +82,9 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
   );
   const [teacherMobileOmrEnabled, setTeacherMobileOmrEnabled] = useState(
     initial.teacherMobileOmrEnabled ?? true,
+  );
+  const [homeNetworkEnabled, setHomeNetworkEnabled] = useState(
+    initial.homeNetworkEnabled ?? true,
   );
   const [vitaranEmails, setVitaranEmails] = useState<string[]>(
     initial.vitaranEmails.length > 0 ? initial.vitaranEmails : [""],
@@ -150,6 +154,7 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
       teacherDesktopOmrEnabled: boolean;
       schoolMobileOmrEnabled: boolean;
       teacherMobileOmrEnabled: boolean;
+      homeNetworkEnabled: boolean;
       vitaranEmails: string[];
       smeContacts: SmeContact[];
     }>,
@@ -172,6 +177,7 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
       teacherDesktopOmrEnabled,
       schoolMobileOmrEnabled,
       teacherMobileOmrEnabled,
+      homeNetworkEnabled,
     };
     setError(null);
     if (options?.toggle) {
@@ -195,6 +201,7 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
             patch.schoolMobileOmrEnabled ?? previous.schoolMobileOmrEnabled,
           teacherMobileOmrEnabled:
             patch.teacherMobileOmrEnabled ?? previous.teacherMobileOmrEnabled,
+          homeNetworkEnabled: patch.homeNetworkEnabled ?? previous.homeNetworkEnabled,
           vitaranEmails: patch.vitaranEmails ?? [
             ...new Set(vitaranEmails.map((email) => email.trim().toLowerCase()).filter(Boolean)),
           ],
@@ -229,6 +236,9 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
           if (patch.teacherMobileOmrEnabled !== undefined) {
             setTeacherMobileOmrEnabled(previous.teacherMobileOmrEnabled);
           }
+          if (patch.homeNetworkEnabled !== undefined) {
+            setHomeNetworkEnabled(previous.homeNetworkEnabled);
+          }
           return;
         }
         setSmeContacts(result.settings.smeContacts);
@@ -247,6 +257,7 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
           setTeacherDesktopOmrEnabled(result.settings.teacherDesktopOmrEnabled);
           setSchoolMobileOmrEnabled(result.settings.schoolMobileOmrEnabled);
           setTeacherMobileOmrEnabled(result.settings.teacherMobileOmrEnabled);
+          setHomeNetworkEnabled(result.settings.homeNetworkEnabled ?? true);
         }
         if (options?.clearDrafts) setDrafts([emptySme()]);
         toast.success(options?.successMessage ?? "Settings saved");
@@ -355,6 +366,19 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
       {
         toggle: "teacherMobileOmr",
         successMessage: next ? "Teacher mobile scan on" : "Teacher mobile scan off",
+      },
+    );
+  }
+
+  function setHomeNetwork(next: boolean) {
+    setHomeNetworkEnabled(next);
+    persist(
+      { homeNetworkEnabled: next },
+      {
+        toggle: "homeNetwork",
+        successMessage: next
+          ? "Our network section shown on the home page"
+          : "Our network section hidden on the home page",
       },
     );
   }
@@ -505,6 +529,29 @@ export function AdminSettingsForm({ initial, operators }: AdminSettingsFormProps
               />
               <label htmlFor="answer-keys-public" className="text-sm font-semibold text-neutral-800">
                 {answerKeysPublic ? "Public" : "Private"}
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-brand-200 bg-white p-5 shadow-[0_4px_16px_-8px_rgb(25_28_95/0.12)]">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-bold text-brand-950">Our network</h2>
+              <p className="mt-1 text-sm text-neutral-600">
+                Show or hide the partner schools section on the public home page. Applies to all
+                visitors immediately.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={homeNetworkEnabled}
+                onCheckedChange={setHomeNetwork}
+                disabled={busyToggle === "homeNetwork"}
+                id="home-network-enabled"
+              />
+              <label htmlFor="home-network-enabled" className="text-sm font-semibold text-neutral-800">
+                {homeNetworkEnabled ? "Shown" : "Hidden"}
               </label>
             </div>
           </div>

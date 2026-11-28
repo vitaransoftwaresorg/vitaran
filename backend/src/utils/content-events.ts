@@ -21,6 +21,7 @@ export type PublicSettingsSnapshot = {
   teacherDesktopOmrEnabled: boolean;
   schoolMobileOmrEnabled: boolean;
   teacherMobileOmrEnabled: boolean;
+  homeNetworkEnabled: boolean;
 };
 
 export type ContentChange = {

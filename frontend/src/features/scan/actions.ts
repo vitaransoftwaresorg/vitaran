@@ -48,6 +48,7 @@ export async function previewScanAction(
   const testId = String(formData.get("testId") ?? "").trim();
   const examPattern = String(formData.get("examPattern") ?? "").trim();
   const schoolId = String(formData.get("schoolId") ?? "").trim();
+  const schoolKeyId = String(formData.get("schoolKeyId") ?? "").trim();
   const studentName = String(formData.get("studentName") ?? "").trim();
   const flat = String(formData.get("flat") ?? "").trim();
   const upright = String(formData.get("upright") ?? "").trim();
@@ -68,6 +69,7 @@ export async function previewScanAction(
         testId,
         examPattern: examPattern || undefined,
         schoolId: schoolId || undefined,
+        schoolKeyId: schoolKeyId || undefined,
         studentName: studentName || undefined,
         sectionId: sectionId || undefined,
         classLevel,

@@ -653,18 +653,45 @@ export async function listSchoolSectionKeyBoard(input: {
     throw new AppError(400, "This class has no program enrollment");
   }
 
-  const platformKeys = await answerKeyRepository.findAnswerKeys({
+  const level = classLevel;
+  const programCodesForClass = [
+    ...new Set(
+      [
+        programCode,
+        ...school.schoolPrograms
+          .filter(
+            (row) =>
+              row.classes.some((cls) => cls.classLevel === level) ||
+              (level >= row.program.classFrom && level <= row.program.classTo),
+          )
+          .map((row) => row.program.code),
+      ].filter(Boolean),
+    ),
+  ];
+
+  // Prefer this section’s program; if it has no platform keys yet, still list other
+  // enrolled programs for the class so School Keys isn’t empty for that section.
+  let platformKeys = await answerKeyRepository.findAnswerKeys({
     schoolId: null,
     type: SchoolType.REGULAR,
     programCode,
-    classLevel,
+    classLevel: level,
     sectionId: null,
   });
+  if (platformKeys.length === 0 && programCodesForClass.length > 1) {
+    platformKeys = await answerKeyRepository.findAnswerKeys({
+      schoolId: null,
+      type: SchoolType.REGULAR,
+      programCode: { in: programCodesForClass },
+      classLevel: level,
+      sectionId: null,
+    });
+  }
   const schoolKeys = await answerKeyRepository.findAnswerKeys({
     schoolId: school.id,
     sectionId,
-    classLevel,
-    programCode,
+    classLevel: level,
+    programCode: { in: programCodesForClass },
   });
   const schoolByTest = new Map(
     schoolKeys

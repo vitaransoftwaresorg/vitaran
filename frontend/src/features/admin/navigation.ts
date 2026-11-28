@@ -267,10 +267,12 @@ export function getAdminParentHref(pathname: string, search = ""): string | null
     if (params.has("section") || params.has("class")) {
       params.delete("section");
       params.delete("class");
+      params.delete("test");
       const query = params.toString();
       return query ? `/admin/school-keys?${query}` : "/admin/school-keys";
     }
-    if (params.has("test")) {
+    if (params.has("program")) {
+      params.delete("program");
       params.delete("test");
       const query = params.toString();
       return query ? `/admin/school-keys?${query}` : "/admin/school-keys";

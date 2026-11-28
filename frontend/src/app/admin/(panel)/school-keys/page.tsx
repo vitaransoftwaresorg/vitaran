@@ -23,44 +23,37 @@ export default async function AdminSchoolKeysPage({
   const query = await searchParams;
   const schoolIdRaw = first(query.school);
   const schoolId = schoolIdRaw && UUID.test(schoolIdRaw) ? schoolIdRaw : undefined;
-  const testRaw = Number(first(query.test));
-  const testNumber =
-    Number.isInteger(testRaw) && testRaw >= 1 && testRaw <= 18 ? testRaw : undefined;
+  const programRaw = first(query.program)?.trim().toUpperCase();
+  const programCode = programRaw || undefined;
+  const sectionRaw = first(query.section);
+  const sectionId = sectionRaw && UUID.test(sectionRaw) ? sectionRaw : undefined;
+  const classRaw = Number(first(query.class));
+  const classLevel =
+    sectionId == null && Number.isInteger(classRaw) && classRaw >= 1 && classRaw <= 12
+      ? classRaw
+      : undefined;
 
   const schools = await listSchoolOptions();
   const school = schoolId ? schools.find((item) => item.id === schoolId) : undefined;
   const organization = school ? await listAdminSchoolSections(school.id) : null;
 
-  const boardsByScope: Record<string, SchoolKeyBoard> = {};
-
-  if (school && organization && testNumber != null) {
-    const scopes: Array<{ key: string; sectionId?: string; classLevel?: number }> = [];
-    for (const section of organization.sections) {
-      scopes.push({ key: section.id, sectionId: section.id });
-    }
-    const sectionLevels = new Set(organization.sections.map((section) => section.classLevel));
-    for (const row of organization.wholeClasses) {
-      if (sectionLevels.has(row.classLevel)) continue;
-      scopes.push({ key: `class:${row.classLevel}`, classLevel: row.classLevel });
-    }
-
-    const boards = await Promise.all(
-      scopes.map(async (scope) => {
-        try {
-          const board = await listSchoolSectionKeys({
-            schoolId: school.id,
-            ...(scope.sectionId ? { sectionId: scope.sectionId } : {}),
-            ...(scope.classLevel != null ? { classLevel: scope.classLevel } : {}),
-          });
-          return [scope.key, board] as const;
-        } catch {
-          return null;
-        }
-      }),
-    );
-
-    for (const entry of boards) {
-      if (entry) boardsByScope[entry[0]] = entry[1];
+  let board: SchoolKeyBoard | null = null;
+  if (school && (sectionId || classLevel != null)) {
+    try {
+      board = await listSchoolSectionKeys({
+        schoolId: school.id,
+        ...(sectionId ? { sectionId } : {}),
+        ...(classLevel != null ? { classLevel } : {}),
+      });
+    } catch {
+      board = {
+        school: { id: school.id, name: school.name, code: school.code },
+        sectionId: sectionId ?? null,
+        sectionName: null,
+        classLevel: classLevel ?? 0,
+        programCode: programCode ?? "",
+        items: [],
+      };
     }
   }
 
@@ -68,9 +61,11 @@ export default async function AdminSchoolKeysPage({
     <SchoolKeysDrive
       schools={schools}
       schoolId={school?.id}
-      testNumber={testNumber}
+      programCode={programCode}
+      sectionId={sectionId}
+      classLevel={classLevel}
       organization={organization}
-      boardsByScope={boardsByScope}
+      board={board}
     />
   );
 }

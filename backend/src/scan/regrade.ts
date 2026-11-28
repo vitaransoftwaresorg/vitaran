@@ -7,6 +7,7 @@ import { logger } from "../utils/logger.js";
 import { asRgba } from "../utils/omr-geometry.js";
 import { readAnswerBubbles, type BubbleMap } from "./detect.js";
 import { getObject, replaceObject } from "../services/object-storage.js";
+import { scoringKeyForStored } from "./key-merge.js";
 import { markedSheetPreview } from "./marked-preview.js";
 import * as scanRepository from "./repository.js";
 import {
@@ -123,8 +124,9 @@ export function regradeScansForKey(answerKeyId: string) {
 }
 
 async function regradeOnce(answerKeyId: string) {
-  const key = await answerKeyRepository.findAnswerKeyById(answerKeyId);
-  if (!key) return;
+  const stored = await answerKeyRepository.findAnswerKeyById(answerKeyId);
+  if (!stored) return;
+  const key = await scoringKeyForStored(stored);
   const evaluatedTestId = key.testId?.trim() || "";
   if (evaluatedTestId) {
     await scanRepository.syncTestIdForKey(answerKeyId, evaluatedTestId);
